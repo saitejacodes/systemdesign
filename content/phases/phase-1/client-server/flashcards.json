@@ -1,0 +1,17 @@
+[
+  { "id": "f1", "front": "What is a client?", "back": "Any program that starts a request: a browser, a mobile app, another service or a scheduled job. One process can be a server to some callers and a client of others.", "topicId": "request-response" },
+  { "id": "f2", "front": "Name the five stages of a typical web request.", "back": "DNS resolution, connection setup (TCP + TLS), request travels via a load balancer, server does the work (cache/DB), response travels back.", "topicId": "request-response" },
+  { "id": "f3", "front": "Round trips before the request is sent on a fresh TLS 1.3 connection?", "back": "Two: one for the TCP handshake, one for TLS 1.3. The request goes out on the third. A reused connection needs none.", "topicId": "request-response" },
+  { "id": "f4", "front": "What is state, in the client–server sense?", "back": "Data that must survive from one request to the next: login, cart, upload progress, read position.", "topicId": "stateless-stateful" },
+  { "id": "f5", "front": "Define a stateless server.", "back": "A server that keeps no request-to-request data in its own memory or disk, so any copy can answer any request.", "topicId": "stateless-stateful" },
+  { "id": "f6", "front": "The \"kill it\" test for statelessness?", "back": "Kill the server and send the next request to a fresh copy. If the user notices (logged out, lost cart), there is state in memory.", "topicId": "stateless-stateful" },
+  { "id": "f7", "front": "Three naturally stateful components.", "back": "Databases, caches like Redis, and servers holding long-lived connections (WebSockets, game sessions).", "topicId": "stateless-stateful" },
+  { "id": "f8", "front": "Four homes for session state.", "back": "The client (signed cookie/JWT), server memory, a shared cache (Redis), or the database.", "topicId": "where-state-lives" },
+  { "id": "f9", "front": "Main cost of JWT sessions?", "back": "Hard to revoke before expiry (needs a deny list, which is shared state again), and the token travels with every request.", "topicId": "where-state-lives" },
+  { "id": "f10", "front": "Rule of thumb for app server memory?", "back": "Memory is for copies, not for the only copy. Keep only data you can rebuild after a restart.", "topicId": "where-state-lives" },
+  { "id": "f11", "front": "Memory needed for 1 million sessions of 2 KB each?", "back": "About 2 GB (1,000,000 × 2 KB), before replication and overhead.", "topicId": "where-state-lives" },
+  { "id": "f12", "front": "What are sticky sessions?", "back": "Load balancer routing that sends each user back to the same server, needed when sessions live in that server's memory.", "topicId": "statelessness-scaling" },
+  { "id": "f13", "front": "Three problems with sticky sessions.", "back": "Uneven load, sessions lost when a server restarts, and new servers only help with new users.", "topicId": "statelessness-scaling" },
+  { "id": "f14", "front": "Why does statelessness make deploys and autoscaling easy?", "back": "No server owns unique data, so you can add, replace or remove servers without moving or losing anything.", "topicId": "statelessness-scaling" },
+  { "id": "f15", "front": "If the app tier is stateless, is the system stateless?", "back": "No. State moves into caches and databases, which then need replication and failover. You concentrate the hard problems in a few components.", "topicId": "statelessness-scaling" }
+]

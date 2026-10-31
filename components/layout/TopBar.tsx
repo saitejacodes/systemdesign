@@ -34,7 +34,7 @@ export function TopBar() {
         <ol className="flex items-center gap-2">
           <li><Link href="/" className="no-underline" style={{ color: "var(--ink-muted)" }}>Lab</Link></li>
           {list.map((c, i) => (
-            <li key={c.href} className="flex items-center gap-2 truncate">
+            <li key={c.href} className={`flex items-center gap-2 truncate ${i < list.length - 1 ? "max-sm:hidden" : ""}`}>
               <span aria-hidden style={{ color: "var(--ink-muted)" }}>/</span>
               {i === list.length - 1 ? <span aria-current="page">{c.label}</span> : <Link href={c.href} className="no-underline" style={{ color: "var(--ink-muted)" }}>{c.label}</Link>}
             </li>

@@ -1,0 +1,32 @@
+[
+  {
+    "id": "mdn-http-overview",
+    "title": "An overview of HTTP",
+    "author": "MDN Web Docs",
+    "kind": "docs",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview",
+    "why": "Clear walk-through of clients, servers, proxies and how a stateless protocol carries sessions with cookies.",
+    "topicIds": ["request-response", "stateless-stateful"],
+    "free": true
+  },
+  {
+    "id": "twelve-factor-processes",
+    "title": "The Twelve-Factor App: VI. Processes",
+    "author": "Adam Wiggins",
+    "kind": "docs",
+    "url": "https://12factor.net/processes",
+    "why": "The short, classic argument for stateless, share-nothing app processes and against sticky sessions.",
+    "topicIds": ["stateless-stateful", "statelessness-scaling"],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 1 frames reliability, scalability and maintainability; the rest explains the stateful components you push state into.",
+    "topicIds": ["where-state-lives", "statelessness-scaling"],
+    "free": false
+  }
+]

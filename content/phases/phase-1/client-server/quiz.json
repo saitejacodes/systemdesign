@@ -1,0 +1,155 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "Which definition of a **stateless** app server is correct?",
+    "options": [
+      { "id": "a", "text": "It never reads or writes any data." },
+      { "id": "b", "text": "It keeps no request-to-request data in its own memory, so any copy can serve any request." },
+      { "id": "c", "text": "It only serves GET requests." },
+      { "id": "d", "text": "It stores sessions on its local disk instead of in RAM." }
+    ],
+    "correct": ["b"],
+    "explanation": "Stateless means the server holds no data between requests that only it knows; state lives in the request or in shared stores. (a) is wrong: stateless servers read and write databases all the time. (c) confuses statelessness with HTTP method safety. (d) is still local state: another server cannot see that disk.",
+    "topicId": "stateless-stateful",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "On a fresh HTTPS connection using TLS 1.3, roughly how many network round trips happen before the server receives the request?",
+    "options": [
+      { "id": "a", "text": "Zero" },
+      { "id": "b", "text": "One (TCP)" },
+      { "id": "c", "text": "Two (TCP, then TLS)" },
+      { "id": "d", "text": "Five" }
+    ],
+    "correct": ["c"],
+    "explanation": "TCP needs one round trip for its handshake and TLS 1.3 needs one more, so the request goes out on the third trip. (a) only applies to a reused connection (or 0-RTT resumption, a special case). (b) forgets TLS. (d) overstates it; TLS 1.2 adds two round trips, not four.",
+    "topicId": "request-response",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "scenario",
+    "scenario": "You run 6 app servers with in-memory sessions and sticky routing. During each deploy, servers restart one at a time and support tickets spike: \"I got logged out\" and \"my cart is empty\".",
+    "prompt": "What is the best fix?",
+    "options": [
+      { "id": "a", "text": "Deploy at night so fewer users notice." },
+      { "id": "b", "text": "Move sessions and carts to a shared store such as Redis and turn off sticky routing." },
+      { "id": "c", "text": "Add more app servers so each restart affects fewer users." },
+      { "id": "d", "text": "Increase the session cookie lifetime." }
+    ],
+    "correct": ["b"],
+    "explanation": "The root cause is that the only copy of session state lives in process memory. Moving it to a shared store makes restarts harmless and removes the need for sticky routing. (a) and (c) shrink the damage but keep losing state. (d) changes nothing: the cookie still points at data that was wiped.",
+    "topicId": "where-state-lives",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "multi",
+    "prompt": "Which of these are **naturally stateful** components? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "A PostgreSQL primary" },
+      { "id": "b", "text": "A WebSocket server holding open chat connections" },
+      { "id": "c", "text": "A REST API server that reads sessions from Redis" },
+      { "id": "d", "text": "A Redis cache" }
+    ],
+    "correct": ["a", "b", "d"],
+    "explanation": "Databases and caches exist to hold state, and an open WebSocket connection is state that cannot move to another machine. (c) is the textbook stateless server: its state lives in Redis, so any copy can serve the request.",
+    "topicId": "stateless-stateful",
+    "difficulty": 1
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "What is the main drawback of putting a self-contained JWT on the client instead of a session id?",
+    "options": [
+      { "id": "a", "text": "Servers cannot verify it without a database lookup." },
+      { "id": "b", "text": "It is hard to revoke before it expires." },
+      { "id": "c", "text": "It cannot carry a user id." },
+      { "id": "d", "text": "It only works with sticky sessions." }
+    ],
+    "correct": ["b"],
+    "explanation": "A signed token stays valid until expiry unless you add a server-side deny list, which reintroduces shared state. (a) is backwards: the point of a JWT is verifying without a lookup. (c) is false; user id is the usual claim. (d) is false; any server with the key can verify it.",
+    "topicId": "where-state-lives",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "scenario": "Your app peaks at 3,000 requests per second. Every request reads the user's session. Sessions are 1 KB and there are 500,000 active sessions. The primary database already runs at 70% CPU.",
+    "prompt": "Where should sessions live?",
+    "options": [
+      { "id": "a", "text": "In the primary database, in a sessions table." },
+      { "id": "b", "text": "In a replicated Redis session store." },
+      { "id": "c", "text": "In each app server's memory with sticky routing." },
+      { "id": "d", "text": "In an unsigned cookie." }
+    ],
+    "correct": ["b"],
+    "explanation": "500,000 × 1 KB is about 500 MB, which fits in one Redis node, and 3,000 reads per second is trivial for Redis. (a) adds 3,000 queries per second to a database that is already busy, the hardest tier to scale. (c) brings back lost sessions on restart and skewed load. (d) lets users edit their own session.",
+    "topicId": "where-state-lives",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "single",
+    "prompt": "Why does statelessness make autoscaling simple?",
+    "options": [
+      { "id": "a", "text": "Stateless servers use less CPU." },
+      { "id": "b", "text": "Adding or removing a server neither requires moving data nor loses any." },
+      { "id": "c", "text": "Stateless servers do not need a load balancer." },
+      { "id": "d", "text": "Autoscalers can only start stateless containers." }
+    ],
+    "correct": ["b"],
+    "explanation": "Because no server owns unique data, the platform can add copies under load and remove them later without migrating or destroying anything. (a) is unrelated: CPU depends on the work, not on where state lives. (c) is false; you still need to spread traffic. (d) is false; autoscalers can start anything, the problem is what you lose when they stop it.",
+    "topicId": "statelessness-scaling",
+    "difficulty": 1
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "scenario": "You moved sessions to Redis and removed sticky routing. A week later, Redis restarts during a maintenance window with persistence turned off.",
+    "prompt": "What happens, and what is the lesson?",
+    "options": [
+      { "id": "a", "text": "Nothing; stateless app servers are immune to this." },
+      { "id": "b", "text": "Every user is logged out; the state moved to Redis, so Redis now needs replication or persistence." },
+      { "id": "c", "text": "Only users on the restarted app server are logged out." },
+      { "id": "d", "text": "Sessions are rebuilt automatically from the load balancer." }
+    ],
+    "correct": ["b"],
+    "explanation": "Moving state does not remove it. The session store is now the stateful component, so its durability matters: use a replica, persistence, or accept that a restart logs everyone out. (a) ignores where the state went. (c) describes the old in-memory design. (d) is false; load balancers do not keep session data.",
+    "topicId": "statelessness-scaling",
+    "difficulty": 3
+  },
+  {
+    "id": "q9",
+    "type": "single",
+    "prompt": "Which of these is a good use of an app server's local memory?",
+    "options": [
+      { "id": "a", "text": "The only copy of each user's shopping cart" },
+      { "id": "b", "text": "A copy of feature-flag settings that is refreshed every 30 seconds from a central store" },
+      { "id": "c", "text": "Upload progress that must survive a deploy" },
+      { "id": "d", "text": "Payment records awaiting settlement" }
+    ],
+    "correct": ["b"],
+    "explanation": "Memory is for copies, not for the only copy. A refreshed copy of feature flags can be rebuilt after a restart. (a), (c) and (d) are the only copies of data that matters, so losing them on a restart is real damage.",
+    "topicId": "where-state-lives",
+    "difficulty": 1
+  },
+  {
+    "id": "q10",
+    "type": "multi",
+    "prompt": "Sticky sessions cause which problems? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Uneven load when some users are much heavier than others" },
+      { "id": "b", "text": "Users lose in-memory sessions when their server restarts" },
+      { "id": "c", "text": "New servers only receive new users, so they cannot absorb load from existing users" },
+      { "id": "d", "text": "Requests become slower because the load balancer must query the database" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Pinning users to servers skews load, ties session lifetime to server lifetime, and limits how fast new capacity helps. (d) is wrong: sticky routing is usually done with a cookie or a hash of the client IP, without a database query.",
+    "topicId": "statelessness-scaling",
+    "difficulty": 2
+  }
+]

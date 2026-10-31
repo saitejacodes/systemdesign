@@ -18,3 +18,11 @@
 - Theme choice is stored in localStorage (`sdl-theme`) and applied by an inline script before paint. It moves to the Dexie Settings table in Prompt 03 only if needed.
 - The landing page keeps its own header (as drawn); every other route uses the app shell via the `app/(shell)` route group.
 - Sidebar tree shows the 7 phases; sections come from content in Prompt 02 (empty phases say "Coming soon"). No placeholder section names.
+
+## Prompt 02
+- MDX via `next-mdx-remote/rsc` with `blockJS: false` (lessons are trusted repo files; props like `items={[...]}` need JS expressions).
+- Search uses MiniSearch. The index is built at build time into the static route `/search-index.json` and loaded in the browser on first query. That route also runs cross-file validation, so bad content fails `pnpm build`.
+- Content validation errors name the file and field path (`lib/content/parse.ts`). `lib/content/content.test.ts` also enforces the §7 volume targets for every section.
+- `<Term>` tooltips are pure CSS (hover and keyboard focus), linking to `/glossary#slug`.
+- Shiki renders both github-light and github-dark colours; CSS picks one per `data-theme`.
+- `/phase/[n]` lists a phase's sections (the collapsed sidebar links there).

@@ -1,0 +1,13 @@
+[
+  { "term": "Client", "slug": "client", "definition": "A program that starts a request: a browser, a mobile app, another service or a scheduled job.", "sectionId": "p1-client-server" },
+  { "term": "Server", "slug": "server", "definition": "A program that waits for requests and answers them. One process can be a server to some callers and a client of others.", "sectionId": "p1-client-server" },
+  { "term": "Request/response", "slug": "request-response", "definition": "The pattern where a client sends one request and waits for one response from the server.", "sectionId": "p1-client-server" },
+  { "term": "Stateless server", "slug": "stateless-server", "definition": "A server that keeps no request-to-request data in its own memory or disk, so any copy can handle any request.", "sectionId": "p1-client-server" },
+  { "term": "Stateful server", "slug": "stateful-server", "definition": "A server that keeps data between requests in its own memory or disk, so some requests must reach that specific server.", "sectionId": "p1-client-server" },
+  { "term": "Session", "slug": "session", "definition": "Data that ties a series of requests to one user, such as login status or a cart, usually found by a session id in a cookie.", "sectionId": "p1-client-server" },
+  { "term": "Sticky session", "slug": "sticky-session", "definition": "Load balancer routing that sends each user back to the same server, usually because their session lives in that server's memory.", "sectionId": "p1-client-server" },
+  { "term": "JSON Web Token (JWT)", "slug": "jwt", "definition": "A signed token that carries claims such as a user id and expiry, so servers can verify it without a lookup. Hard to revoke before it expires.", "sectionId": "p1-client-server" },
+  { "term": "Horizontal scaling", "slug": "horizontal-scaling", "definition": "Adding capacity by running more machines or copies of a service, rather than making one machine bigger.", "sectionId": "p1-client-server" },
+  { "term": "Load balancer", "slug": "load-balancer", "definition": "A component that receives requests and spreads them across several backend servers, skipping servers that fail health checks.", "sectionId": "p1-client-server" },
+  { "term": "Twelve-Factor App", "slug": "twelve-factor-app", "definition": "A set of guidelines for building cloud services, written at Heroku; factor VI says app processes should be stateless and share nothing.", "sectionId": "p1-client-server" }
+]

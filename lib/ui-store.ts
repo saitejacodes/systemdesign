@@ -54,3 +54,7 @@ export function readTheme(): ThemeChoice {
     return "system";
   }
 }
+
+export interface HudState { live: string; items?: { k?: string; v: string; tone?: "ok" | "hot" | "over" }[]; right?: string }
+/** Per-page HudBar content; pages set it with <SetHud />. */
+export const useHud = create<{ hud: HudState | null; setHud: (h: HudState | null) => void }>()((set) => ({ hud: null, setHud: (hud) => set({ hud }) }));

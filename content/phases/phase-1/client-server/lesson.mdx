@@ -1,0 +1,209 @@
+## Why it matters
+
+Every system you will design in this course is, at its core, a set of <Term slug="client">clients</Term> asking <Term slug="server">servers</Term> to do things. The hard questions start the moment you need more than one server: which server gets the next request, and what happens to a user's half-finished checkout if that server dies? Heroku built its platform on the answer. Its <Term slug="twelve-factor-app">Twelve-Factor App</Term> guidelines say app processes should be stateless and share nothing, and Heroku restarts every dyno (app container) at least once a day. An app that keeps important data only in process memory loses it on every restart. An app that keeps its state elsewhere does not notice. This section is about that one decision: where state lives, and what it costs you.
+
+## The request/response lifecycle
+
+<DepthStamp depth="deep" />
+
+A **client** is any program that starts a conversation: a browser, a mobile app, another backend service, a cron job. A **server** is a program that waits for requests and answers them. The same process can be both: your API server is a server to the mobile app and a client of the database.
+
+The basic pattern is <Term slug="request-response">request/response</Term>. The client sends a request, the server does some work, the server sends one response back. For a typical web request, the full journey looks like this:
+
+<Figure caption="FIG. 1.1 · REQUEST LIFECYCLE · ONE HTTPS GET">
+  <Diagram label="Sequence diagram: browser resolves DNS, opens TCP and TLS connections to a load balancer, which forwards to an app server; the app server reads from a cache and a database and returns a response." chart={`sequenceDiagram
+    participant B as Browser
+    participant D as DNS resolver
+    participant L as Load balancer
+    participant A as App server
+    participant C as Cache
+    participant DB as Database
+    B->>D: api.example.com?
+    D-->>B: 203.0.113.10
+    B->>L: TCP + TLS handshake
+    B->>L: GET /orders/42
+    L->>A: forward request
+    A->>C: get order:42
+    C-->>A: miss
+    A->>DB: SELECT ... WHERE id = 42
+    DB-->>A: row
+    A->>C: set order:42
+    A-->>L: 200 OK + JSON
+    L-->>B: 200 OK + JSON`} />
+</Figure>
+
+Each step costs time, and you will meet each one again in Week 2:
+
+1. **Name resolution.** The client turns a hostname into an IP address using DNS. Usually this is cached, so it costs nothing; a cold lookup can cost tens of milliseconds.
+2. **Connection setup.** A TCP handshake takes one network round trip. TLS 1.3 adds one more (TLS 1.2 adds two). Reusing an open connection skips both.
+3. **The request travels** to a load balancer or reverse proxy, which picks a backend server.
+4. **The server does work**: parse the request, check who the caller is, read or write data in caches and databases, build a response.
+5. **The response travels back** along the same connection.
+
+Two properties of this pattern shape everything else:
+
+- **The client waits.** Until the response arrives, the user sees a spinner. Every millisecond in steps 1–5 is user-visible latency.
+- **Each request is independent at the protocol level.** HTTP itself does not remember the previous request. If the server needs to know "this is the same user who added an item a minute ago", that memory has to live somewhere. That "somewhere" is the rest of this lesson.
+
+<Callout type="tip" title="Round trips dominate">
+Network distance usually costs more than server work. A user 100 ms away pays roughly 100 ms for TCP, 100 ms for TLS 1.3 and 100 ms for the request itself on a fresh connection: about 300 ms before your server spends a single millisecond. That is why connection reuse, CDNs and caching matter so much.
+</Callout>
+
+## Stateless vs stateful servers
+
+<DepthStamp depth="deep" />
+
+**State** is data that must survive from one request to the next: who is logged in, what is in the cart, how far a file upload has got, which chat messages a user has already seen.
+
+A <Term slug="stateless-server">stateless server</Term> keeps no such data in its own memory between requests. Everything it needs to answer a request is either in the request itself (a token, a cart id, the payload) or in a shared store that every server can reach (a database or a cache). Any copy of the server can handle any request.
+
+A <Term slug="stateful-server">stateful server</Term> keeps request-to-request data in its own memory or on its own disk. The classic example is an in-memory <Term slug="session">session</Term>: the user logs in, the server stores `{ sessionId: "abc", userId: 7, cart: [...] }` in a local hash map, and later requests carrying cookie `sessionId=abc` must come back to that exact server.
+
+Stateful servers are not bad. Some workloads are naturally stateful, and pretending otherwise just moves the problem:
+
+- A **database** is stateful by definition; that is its job.
+- A **WebSocket chat server** holds thousands of open connections. The connection itself is state that cannot move to another machine.
+- A **game server** keeps the live match in memory because it updates it 30–60 times a second.
+- An **in-memory cache** like Redis is a stateful server that other, stateless servers rely on.
+
+The design skill is not "never be stateful". It is: **keep the tier that you need to scale and replace freely stateless, and push state into a small number of components that are built to hold it.**
+
+<Figure caption="FIG. 1.2 · STATELESS TIER · STATE PUSHED DOWN">
+  <Diagram label="Flowchart: clients reach a load balancer that spreads requests over three identical stateless app servers; all three read and write a shared cache and a shared database." chart={`flowchart LR
+    U[Clients] --> LB[Load balancer]
+    LB --> A1[App server 1]
+    LB --> A2[App server 2]
+    LB --> A3[App server 3]
+    A1 --> R[(Shared cache)]
+    A2 --> R
+    A3 --> R
+    A1 --> DB[(Database)]
+    A2 --> DB
+    A3 --> DB`} />
+</Figure>
+
+### A quick test
+
+Ask: "If I kill this server right now and send the next request to a brand-new copy, does the user notice?" If the answer is "no", the server is stateless for practical purposes. If the user is logged out, loses a cart, or a job silently disappears, there is state in memory that you need to either move or accept losing.
+
+## Where state lives
+
+<DepthStamp depth="tradeoffs" />
+
+Once you decide the app tier should be stateless, the state still has to go somewhere. There are four common homes, and each has a different cost.
+
+| Where | Example | Survives server restart? | Shared across servers? | Main risk |
+| --- | --- | --- | --- | --- |
+| Client | Signed cookie, JWT, local storage | Yes | Yes (sent each request) | Size limits, tampering, hard to revoke |
+| Server memory | In-process session map | No | No | Lost on restart; forces sticky routing |
+| Shared cache | Redis or Memcached session store | Usually (depends on config) | Yes | Extra network hop; cache is now critical |
+| Database | Sessions or carts table | Yes | Yes | Slower; adds load to the hardest tier to scale |
+
+### On the client
+
+You can put state in the request itself. A <Term slug="jwt">JSON Web Token (JWT)</Term> or a signed cookie carries the user id and expiry, signed by the server so the client cannot forge it. Any server with the verification key can check it without a lookup.
+
+The costs: tokens travel with every request (keep them small), and you cannot easily take one back. If a user logs out or is banned, a self-contained token stays valid until it expires unless you add a server-side deny list, which is state again. A common compromise is short-lived access tokens (minutes) plus a longer-lived refresh token checked against a store.
+
+Never trust unsigned client state. A cart total stored in a plain cookie can be edited by the user.
+
+### In server memory
+
+The fastest place to read from is your own RAM: no network hop at all. That is why it is tempting. But memory dies with the process, and only that one server can see it. If you must keep it, you need <Term slug="sticky-session">sticky sessions</Term> so the load balancer sends each user back to the same server, and you accept that a crash or deploy logs those users out.
+
+Server memory is a fine home for data you can rebuild: a local cache of configuration, a compiled template, a short-lived memo of an expensive computation. The rule of thumb: **memory is for copies, not for the only copy.**
+
+### In a shared cache
+
+A session store in Redis is the most common answer for web apps. Every app server reads the session by id in well under a millisecond inside one data center. The app tier becomes stateless; Redis becomes the stateful piece. You now have to think about what happens when Redis restarts (persistence settings, replicas) and how much memory you need: for example 1 million active sessions × 2 KB each ≈ 2 GB.
+
+### In the database
+
+Durable state that matters for the business (orders, payments, user profiles) belongs in a database with proper transactions. Session data can live there too, and for small apps that is simplest. The cost is load: if every request reads a session row, your database handles one extra query per request, and the database is the hardest tier to scale (Phase 2).
+
+## Why statelessness lets you scale
+
+<DepthStamp depth="deep" />
+
+Statelessness is what makes <Term slug="horizontal-scaling">horizontal scaling</Term> simple. When every app server is interchangeable:
+
+- **Adding capacity is just starting more copies.** Ten servers can handle roughly ten times the requests, as long as the shared stores keep up.
+- **Any load balancing algorithm works.** Round robin, least connections or random all give correct answers; you choose based on performance, not correctness.
+- **Failure is cheap.** If a server dies, the <Term slug="load-balancer">load balancer</Term> stops sending it traffic and the next request goes elsewhere. Users may see one failed request; they do not lose their session.
+- **Deploys are easy.** You can replace servers one at a time (a rolling deploy) without draining long-lived user sessions.
+- **Autoscaling works.** A platform can add servers when CPU is high and remove them at night, because removing one destroys nothing.
+
+With in-memory sessions and sticky routing, each of these gets harder. New servers only receive *new* users, so a traffic spike from existing users cannot be spread out. One "hot" server with many heavy users stays hot. Removing a server logs people out.
+
+<Callout type="warning" title="Stateless app tier, stateful system">
+Moving state out of the app servers does not make the system stateless. It concentrates state in caches and databases, and those now carry the hard problems: replication, failover, consistency. That is the right trade, because you can put your best engineering into a few stateful components instead of spreading it across hundreds of app servers. Phases 2–4 are about exactly those components.
+</Callout>
+
+## Worked example: moving a shopping cart out of memory
+
+A store runs 4 app servers behind a load balancer with sticky sessions. Carts live in each server's memory. Numbers:
+
+- 200,000 daily active users, about 20,000 active carts at peak.
+- Average cart object: 1.5 KB serialized.
+- Peak traffic: 2,000 requests per second, and 60% of requests read the cart (to show the item count in the header).
+
+**Problem.** During a deploy, each server restarts in turn. Every restart wipes about a quarter of all live carts: around 5,000 users lose their cart, four times per deploy. Also, one server has 30% of the users because sticky routing assigned many heavy shoppers to it when it was the only fresh server after an earlier crash.
+
+**Option A: carts in Redis.**
+- Memory: 20,000 carts × 1.5 KB = 30 MB. Even at 10× growth that is 300 MB, which fits easily on one Redis node with a replica.
+- Load: 2,000 req/s × 60% = 1,200 cart reads per second. A single Redis node handles well over 100,000 simple operations per second, so this is under 2% of its capacity.
+- Latency: one extra round trip inside the data center, typically well under 1 ms.
+- Result: sticky sessions can be turned off, deploys stop losing carts, and load spreads evenly.
+
+**Option B: carts in the main database.**
+- 1,200 extra reads per second on the primary database is noticeable if it already serves 3,000 queries per second: a 40% increase.
+- Durable by default, which matters if carts should survive for days (a "saved for later" feature).
+
+**Decision.** Store carts in Redis with a TTL of a few days, and copy them to the database only when the user checks out or explicitly saves them. You get speed for the common case and durability for the cases the business cares about.
+
+<TradeoffBox title="Stateless app servers" items={[
+  { gain: "Any server can handle any request, so scaling out is just adding copies", cost: "Every request that needs state pays a network hop to a shared store" },
+  { gain: "Crashes and deploys do not lose user sessions", cost: "The shared cache or database becomes critical and must be replicated" },
+  { gain: "Simple load balancing with no sticky routing", cost: "Client-side tokens are hard to revoke before they expire" }
+]} />
+
+<NotWhenBox title="Forcing everything to be stateless" items={[
+  "Thousands of long-lived connections (WebSockets, game sessions) where the connection itself is the state.",
+  "A tight real-time loop that updates state many times per second and cannot afford a network hop per update.",
+  "A single small internal tool on one machine, where a session store adds moving parts for no gain."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Stateless means the system stores no data." right="Stateless describes one tier. The data still exists; it lives in the client, a cache or a database instead of the app server's memory." />
+
+<Misconception wrong="Sticky sessions are a fine way to scale stateful servers." right="They work, but they skew load, make deploys lose sessions and make failover lossy. Treat them as a stopgap, not a design." />
+
+<Misconception wrong="JWTs make sessions free." right="They remove the session lookup, but you trade it for size on every request and the difficulty of revoking a token before expiry." />
+
+## Interview angle
+
+<InterviewAngle title="Client–server" questions={[
+  "Your app servers keep sessions in memory. What breaks when you add a second server, and how do you fix it?",
+  "Where would you store a shopping cart, and why? What changes if carts must survive for 30 days?",
+  "How would you log a user out everywhere if you use JWTs?",
+  "Which parts of your design are stateful? How do you make those parts survive a node failure?"
+]}>
+In almost every design interview you will draw a load balancer in front of several app servers. Interviewers expect you to say, unprompted, that the app servers are stateless and where the state went. Then they probe the stateful parts.
+</InterviewAngle>
+
+## Try it
+
+<Simulator id="request-journey" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+Open the [Design Studio](/studio) and draw a load balancer, three app servers, a Redis session store and a database. Mark which components are stateful. Then ask the "kill it" question of each one.

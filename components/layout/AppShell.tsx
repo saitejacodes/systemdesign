@@ -2,7 +2,8 @@
 import { useEffect, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { HudBar } from "@/components/brand";
-import { useUi } from "@/lib/ui-store";
+import { useHud, useUi } from "@/lib/ui-store";
+import { SearchBootstrap } from "./SearchBootstrap";
 import { CommandPalette } from "./CommandPalette";
 import { RightPanel } from "./RightPanel";
 import { ShortcutsDialog } from "./ShortcutsDialog";
@@ -11,8 +12,9 @@ import { TopBar } from "./TopBar";
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 
-export function AppShell({ children, sections, notes, hud }: { children: ReactNode; sections?: TreeSection[]; notes?: ReactNode; hud?: ReactNode }) {
+export function AppShell({ children, sections, notes }: { children: ReactNode; sections?: TreeSection[]; notes?: ReactNode }) {
   const pathname = usePathname();
+  const pageHud = useHud((s) => s.hud);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -43,7 +45,8 @@ export function AppShell({ children, sections, notes, hud }: { children: ReactNo
           </div>
         </div>
       </div>
-      {hud ?? <HudBar live={`Lab · ${pathname === "/" ? "home" : pathname.split("/")[1]}`} items={[{ k: "QPS", v: "0" }, { k: "P99", v: "—" }]} right="Field Manual · Rev. A" />}
+      {pageHud ? <HudBar {...pageHud} /> : <HudBar live={`Lab · ${pathname.split("/")[1] || "home"}`} items={[{ k: "QPS", v: "0" }, { k: "P99", v: "—" }]} right="Field Manual · Rev. A" />}
+      <SearchBootstrap />
       <CommandPalette />
       <ShortcutsDialog />
     </div>

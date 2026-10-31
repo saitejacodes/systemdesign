@@ -83,3 +83,30 @@
 html, body { background: var(--paper); color: var(--ink); }
 body { font-family: var(--font-sans); }
 [data-theme="blueprint"] { color-scheme: dark; }
+
+/* Lesson typography: calm reading column, no grid behind text (DECISIONS fix 7). */
+.lesson { font-size: 18px; line-height: 1.6; max-width: 68ch; }
+.lesson > p, .lesson > ul, .lesson > ol { margin: 0 0 1.1em; }
+.lesson ul, .lesson ol { padding-left: 1.3em; }
+.lesson ul { list-style: square; }
+.lesson ol { list-style: decimal; }
+.lesson li + li { margin-top: .35em; }
+.lesson h2 { font-family: var(--font-display); font-weight: 800; font-size: 32px; letter-spacing: -.025em; line-height: 1.1; margin: 2.2em 0 .5em; scroll-margin-top: 16px; }
+.lesson h3 { font-family: var(--font-display); font-weight: 700; font-size: 21px; line-height: 1.3; margin: 1.6em 0 .4em; scroll-margin-top: 16px; }
+.lesson strong { font-weight: 700; }
+.lesson :not(pre) > code { font-family: var(--font-mono); font-size: .86em; background: var(--surface-sunk); padding: .1em .3em; border-radius: 2px; }
+.lesson .fm-parts td { text-transform: none; letter-spacing: .02em; }
+.lesson blockquote { margin: 1.2em 0; padding-left: 1em; border-left: 2px solid var(--ink); color: var(--ink-muted); }
+@media (max-width: 640px) { .lesson { font-size: 17px; } .lesson h2 { font-size: 26px; } }
+
+/* Glossary term tooltip (hover or keyboard focus). */
+.term { position: relative; }
+.term > a { text-decoration-style: dotted; }
+.term-tip { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 20; width: max-content; max-width: min(320px, 80vw); padding: 8px 10px; background: var(--ink); color: var(--paper); border-radius: 2px; font-size: 14px; line-height: 1.45; font-weight: 400; visibility: hidden; opacity: 0; transition: opacity .15s ease; pointer-events: none; }
+.term:hover .term-tip, .term:focus-within .term-tip { visibility: visible; opacity: 1; }
+
+/* Shiki dual themes follow data-theme. */
+.shiki-wrap pre { margin: 0; padding: var(--space-4); font-family: var(--font-mono); font-size: 14px; line-height: 1.65; overflow-x: auto; background: transparent !important; }
+.shiki-wrap .shiki span { color: var(--shiki-light); }
+[data-theme="blueprint"] .shiki-wrap .shiki span { color: var(--shiki-dark); }
+.lesson > h2:first-child { margin-top: 0; }

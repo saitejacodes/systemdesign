@@ -1,0 +1,7 @@
+[
+  { "id": "c1", "text": "I can walk through the stages of one HTTPS request and say which ones a reused connection skips.", "topicId": "request-response" },
+  { "id": "c2", "text": "I can explain the difference between a stateless and a stateful server, with an example of each.", "topicId": "stateless-stateful" },
+  { "id": "c3", "text": "I can choose where to store sessions, carts and uploads, and name the cost of each choice.", "topicId": "where-state-lives" },
+  { "id": "c4", "text": "I can explain why a stateless app tier makes scaling, deploys and failover simpler.", "topicId": "statelessness-scaling" },
+  { "id": "c5", "text": "I can name what becomes stateful once the app tier is stateless, and how to protect it.", "topicId": "statelessness-scaling" }
+]

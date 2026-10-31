@@ -28,3 +28,11 @@ test("keyboard shortcuts open search and help", async ({ page }) => {
   await page.keyboard.press("?");
   await expect(page.getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
 });
+
+test("search finds lesson content and the glossary filters", async ({ page }) => {
+  await page.goto("/search?q=sticky");
+  await expect(page.getByRole("link", { name: /Sticky session/ }).first()).toBeVisible();
+  await page.goto("/glossary");
+  await page.getByLabel("Filter terms").fill("jwt");
+  await expect(page.getByText("1 of")).toBeVisible();
+});

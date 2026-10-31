@@ -1,0 +1,18 @@
+{
+  "id": "p1-client-server",
+  "phase": 1,
+  "slug": "client-server",
+  "title": "Client–server and where state lives",
+  "order": 1,
+  "week": 1,
+  "estimatedMinutes": 45,
+  "topics": [
+    { "id": "request-response", "title": "The request/response lifecycle", "depth": "deep" },
+    { "id": "stateless-stateful", "title": "Stateless vs stateful servers", "depth": "deep" },
+    { "id": "where-state-lives", "title": "Where state lives: client, memory, cache, database", "depth": "tradeoffs" },
+    { "id": "statelessness-scaling", "title": "Why statelessness lets you scale", "depth": "deep" }
+  ],
+  "simulatorIds": ["request-journey"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": []
+}
