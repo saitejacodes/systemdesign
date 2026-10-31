@@ -7,8 +7,11 @@ import { Wordmark } from "@/components/brand";
 import { LEARN_ICON, NAV_BOTTOM, NAV_TOP, type NavItem } from "@/lib/nav";
 import { PHASES, weekLabel } from "@/lib/curriculum";
 import { useUi } from "@/lib/ui-store";
+import { useChallengeResults, useCheckpoints, useCompletions, useQuizAttempts } from "@/lib/db/hooks";
+import { phaseProgress, sectionProgress, type SectionInfo } from "@/lib/learning/progress";
+import { SIM_CHALLENGES } from "@/lib/simulators/challenge-index";
 
-export interface TreeSection { phase: number; slug: string; title: string; order: number }
+export interface TreeSection extends SectionInfo { slug: string; title: string; order: number }
 
 function NavLink({ item, collapsed, current }: { item: NavItem; collapsed: boolean; current: boolean }) {
   const Icon = item.icon;
@@ -43,6 +46,8 @@ export function Sidebar({ sections = [] }: { sections?: TreeSection[] }) {
   const currentPhase = Number(pathname.match(/^\/phase\/(\d)/)?.[1] ?? 0);
   // The drawer always shows the full sidebar.
   const collapsed = sidebarCollapsed && !drawerOpen;
+  const data = { checkpoints: useCheckpoints() ?? [], attempts: useQuizAttempts() ?? [], challenges: useChallengeResults() ?? [], completions: useCompletions() ?? [] };
+  const byPhase = phaseProgress(sections, data, SIM_CHALLENGES);
 
   return (
     <>
@@ -78,7 +83,8 @@ export function Sidebar({ sections = [] }: { sections?: TreeSection[] }) {
                     >
                       <span className={`fm-sq fm-sq--${p.n}`}>{p.n}</span>
                       <span><span className="name">{p.name}</span><span className="wk">{weekLabel(p.weeks)}</span></span>
-                      <ChevronRight size={14} aria-hidden className={`transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                      <span className="pct">{list.length ? `${byPhase[p.n]}%` : <ChevronRight size={14} aria-hidden className={`transition-transform ${isOpen ? "rotate-90" : ""}`} />}</span>
+                      {list.length > 0 && <span className="bar" aria-hidden><i style={{ width: `${byPhase[p.n]}%`, background: `var(--phase-${p.n})` }} /></span>}
                     </button>
                     {isOpen && (
                       <div className="fm-sub">
@@ -87,8 +93,9 @@ export function Sidebar({ sections = [] }: { sections?: TreeSection[] }) {
                         ) : (
                           list.map((s) => {
                             const href = `/phase/${s.phase}/${s.slug}`;
+                            const sp = sectionProgress(s, data, SIM_CHALLENGES);
                             return (
-                              <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined}>
+                              <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined} className={sp.complete ? "done" : undefined} aria-label={`§${s.phase}.${s.order} ${s.title}${sp.complete ? ", complete" : ""}${sp.newSimulator ? ", new simulator" : ""}`}>
                                 <span className="s">§{s.phase}.{s.order}</span>{s.title}
                               </Link>
                             );

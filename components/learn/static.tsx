@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { Checkpoint, Flashcard, QuizQuestion, Resource } from "@/lib/content/schemas";
+import type { Resource } from "@/lib/content/schemas";
 import { SIM_TITLES } from "@/lib/simulators/titles";
 
 const KIND: Record<Resource["kind"], string> = { book: "Book", "free-book": "Free book", docs: "Docs", blog: "Article", paper: "Paper", video: "Video", repo: "Repo" };
@@ -29,7 +29,7 @@ export function ResourceList({ items }: { items: Resource[] }) {
   );
 }
 
-/** Placeholder card until the simulator is registered; links to its page. */
+/** Card linking to a simulator page (Prompt 05 embeds registered simulators inline). */
 export function SimulatorCard({ id }: { id: string }) {
   return (
     <div className="fm-card my-8">
@@ -40,15 +40,4 @@ export function SimulatorCard({ id }: { id: string }) {
       <div className="fm-card__foot"><Link href={`/simulators/${id}`}>Open {SIM_TITLES[id] ?? id} <span aria-hidden>→</span></Link></div>
     </div>
   );
-}
-
-// Static renderings; Prompt 03 swaps these for interactive, persisted versions.
-export function CheckpointListStatic({ items }: { items: Checkpoint[] }) {
-  return <ul className="grid gap-3">{items.map((c) => <li key={c.id} className="fm-check"><input type="checkbox" disabled aria-label={c.text} /><span>{c.text}</span></li>)}</ul>;
-}
-export function QuizStatic({ items }: { items: QuizQuestion[] }) {
-  return <ol className="grid gap-4">{items.map((q) => <li key={q.id}>{q.prompt}</li>)}</ol>;
-}
-export function FlashcardStatic({ items }: { items: Flashcard[] }) {
-  return <ul className="grid gap-2">{items.map((f) => <li key={f.id}><b>{f.front}</b> — {f.back}</li>)}</ul>;
 }

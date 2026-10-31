@@ -26,3 +26,13 @@
 - `<Term>` tooltips are pure CSS (hover and keyboard focus), linking to `/glossary#slug`.
 - Shiki renders both github-light and github-dark colours; CSS picks one per `data-theme`.
 - `/phase/[n]` lists a phase's sections (the collapsed sidebar links there).
+
+## Prompt 03
+- Content-derived ids are namespaced in the DB: checkpoint `"<sectionId>:<checkpointId>"`, card `"<sectionId>:<cardId>"`.
+- SM-2 follows Wozniak's original text: on q < 3 the card restarts (repetitions 0, interval 1 day) and the ease factor is left unchanged. Otherwise EF' is applied, min 1.3.
+- Extra table `cardReviews` (one row per grading) feeds the daily new-card limit and the Prompt 04 dashboard. `CardState.reviewedAt` was added to tell new cards from learning ones.
+- Card stages: new = never graded; learning = interval ≤ 6 days; review = longer.
+- Only full quiz runs are saved as QuizAttempts; "Retry wrong only" is practice and does not change the best score.
+- Hooks use Dexie `useLiveQuery` over the StorageAdapter. A remote adapter would need its own change feed.
+- Notes are keyed by URL path and searched from IndexedDB at query time (not in the build index). Note previews use react-markdown with no raw HTML.
+- `lib/simulators/challenge-index.ts` lists challenge ids per registered simulator; progress weighting reads it.

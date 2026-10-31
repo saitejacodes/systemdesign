@@ -3,6 +3,7 @@ import { useEffect, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { HudBar } from "@/components/brand";
 import { useHud, useUi } from "@/lib/ui-store";
+import { NotesPanel } from "./NotesPanel";
 import { SearchBootstrap } from "./SearchBootstrap";
 import { CommandPalette } from "./CommandPalette";
 import { RightPanel } from "./RightPanel";
@@ -12,7 +13,7 @@ import { TopBar } from "./TopBar";
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 
-export function AppShell({ children, sections, notes }: { children: ReactNode; sections?: TreeSection[]; notes?: ReactNode }) {
+export function AppShell({ children, sections }: { children: ReactNode; sections?: TreeSection[] }) {
   const pathname = usePathname();
   const pageHud = useHud((s) => s.hud);
 
@@ -41,7 +42,7 @@ export function AppShell({ children, sections, notes }: { children: ReactNode; s
           <TopBar />
           <div className="flex min-h-0 flex-1">
             <main id="main" className="min-w-0 flex-1 overflow-y-auto">{children}</main>
-            <RightPanel notes={notes} />
+            <RightPanel notes={<NotesPanel />} />
           </div>
         </div>
       </div>

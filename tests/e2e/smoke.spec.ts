@@ -7,6 +7,7 @@ for (const theme of ["paper", "blueprint"] as const) {
       const errors: string[] = [];
       page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
       page.on("pageerror", (e) => errors.push(e.message));
+      page.on("response", (r) => r.status() >= 400 && errors.push(`${r.status()} ${r.url()}`));
       await page.addInitScript((t) => localStorage.setItem("sdl-theme", t), theme);
       const res = await page.goto(route);
       expect(res?.status()).toBeLessThan(400);
