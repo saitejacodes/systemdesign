@@ -5,7 +5,7 @@
 - [x] 02 Content System
 - [x] 03 Learning Engine
 - [x] 04 Plan & Dashboard
-- [ ] 05 Simulator Framework
+- [x] 05 Simulator Framework
 - [ ] 06 Phase 1 Content
 - [ ] 07 Phase 1 Simulators
 - [ ] 08 Phase 2 Content

@@ -5,7 +5,7 @@ export const ROUTES = [
   "/plan",
   "/phase/1", "/phase/1/client-server",
   "/simulators",
-  "/simulators/sample",
+  "/simulators/single-server-queue",
   "/simulators/code-labs",
   "/simulators/code-labs/sample",
   "/studio",

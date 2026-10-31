@@ -45,3 +45,13 @@
 - "Behind" means a written lesson from an earlier week that isn't complete. Unwritten sections never count.
 - Import keeps the local API key in both modes. Reset keeps the Settings row (theme, plan start, key) and clears everything else.
 - Study time is counted only on learning pages (lessons, simulators, flashcards, studio, interview, case studies, reference, capstone), not on the dashboard or settings.
+
+## Prompt 05
+- "Pure" model means no React, DOM or globals, and deterministic for a seed. `tick` may mutate and return the same state object, so 60 fps runs don't copy state every tick.
+- Histograms keep the last 1,024 observations (a sliding reservoir), so percentiles react to faults. Mean and count cover the whole run.
+- Rates are per second over the last 1 s of sim time, read from the 250 ms counter samples.
+- Challenges run live at the chosen speed. Config keys set by a challenge's `setup` are locked while it runs. A challenge passes once and stays passed; `bestValue` keeps the best value from passing runs (direction set by `better`, default lower).
+- The guided tour opens automatically on a learner's first visit to each full-screen simulator (localStorage flag), never in lesson embeds.
+- The Web Worker path is not built yet. shortcut: every model ticks on the main thread; add a worker runner when a model opts in with `worker: true` and can't hold 60 fps.
+- Registry entries list `challengeIds` statically so progress can use them without loading the module. registry.test.ts checks they match the module.
+- Uppercase mono labels wrap Greek letters in `.greek` (no text-transform), so μ never renders as M.

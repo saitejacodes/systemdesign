@@ -9,6 +9,7 @@ import { Callout, Figure, InterviewAngle, Misconception, NotWhenBox, TradeoffBox
 import { CodeBlock } from "./CodeBlock";
 import { Diagram } from "./Diagram";
 import { ResourceList, SimulatorCard } from "./static";
+import { SimulatorEmbed } from "./SimulatorEmbed";
 import { LearnWidgets } from "./widgets";
 
 export const slugify = (s: string) => s.toLowerCase().replace(/[`*_]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -51,7 +52,7 @@ export async function LessonRenderer({ section }: { section: Section }) {
       InterviewAngle,
       Diagram,
       Term,
-      Simulator: ({ id }: { id: string }) => <SimulatorCard id={id} />,
+      Simulator: ({ id }: { id: string }) => <SimulatorEmbed id={id} fallback={<SimulatorCard id={id} />} />,
       CheckpointList: () => <LearnWidgets kind="checkpoints" section={section} />,
       QuizPlayer: () => <LearnWidgets kind="quiz" section={section} />,
       FlashcardDeck: () => <LearnWidgets kind="flashcards" section={section} />,

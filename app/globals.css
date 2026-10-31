@@ -110,3 +110,11 @@ body { font-family: var(--font-sans); }
 .shiki-wrap .shiki span { color: var(--shiki-light); }
 [data-theme="blueprint"] .shiki-wrap .shiki span { color: var(--shiki-dark); }
 .lesson > h2:first-child { margin-top: 0; }
+
+/* Simulator canvas text */
+.sim-lbl { font-family: var(--font-mono); font-size: 14px; font-weight: 600; letter-spacing: .1em; }
+.sim-sub { font-family: var(--font-mono); font-size: 12.5px; letter-spacing: .06em; font-variant-numeric: tabular-nums; }
+/* Greek symbols keep their case inside uppercase mono labels (μ must not become M). */
+.greek { text-transform: none; letter-spacing: 0; }
+.sim-tour-on { outline: 2px solid var(--cobalt); outline-offset: 3px; position: relative; z-index: 30; }
+.lesson [data-sim] ul, .lesson [data-sim] ol { list-style: none; padding-left: 0; margin: 0; }

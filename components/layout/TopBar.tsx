@@ -7,6 +7,9 @@ import { PHASES } from "@/lib/curriculum";
 import { useUi } from "@/lib/ui-store";
 import { ThemeToggle } from "./ThemeToggle";
 
+// Path prefixes that have no page of their own; their crumbs are plain text, not links.
+const NO_PAGE = new Set(["/phase", "/interview"]);
+
 function crumbs(pathname: string) {
   const parts = pathname.split("/").filter(Boolean);
   return parts.map((seg, i) => {
@@ -36,7 +39,7 @@ export function TopBar() {
           {list.map((c, i) => (
             <li key={c.href} className={`flex items-center gap-2 truncate ${i < list.length - 1 ? "max-sm:hidden" : ""}`}>
               <span aria-hidden style={{ color: "var(--ink-muted)" }}>/</span>
-              {i === list.length - 1 ? <span aria-current="page">{c.label}</span> : <Link href={c.href} className="no-underline" style={{ color: "var(--ink-muted)" }}>{c.label}</Link>}
+              {i === list.length - 1 ? <span aria-current="page">{c.label}</span> : NO_PAGE.has(c.href) ? <span style={{ color: "var(--ink-muted)" }}>{c.label}</span> : <Link href={c.href} className="no-underline" style={{ color: "var(--ink-muted)" }}>{c.label}</Link>}
             </li>
           ))}
         </ol>
