@@ -1,6 +1,6 @@
 # Progress
 
-- [ ] 00 Project Bible
+- [x] 00 Project Bible
 - [ ] 01 Scaffold & App Shell
 - [ ] 02 Content System
 - [ ] 03 Learning Engine
