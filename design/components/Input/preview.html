@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en" data-theme="paper"><!-- switch to data-theme="blueprint" for the dark theme -->
+<head>
+<link rel="stylesheet" href="../../tokens.css">
+<link rel="stylesheet" href="../../components.css"><meta charset="utf-8"><title>Input — preview</title></head>
+<body>
+<div class="fm-pad fm-row" style="align-items:flex-start;gap:24px">
+  <div class="fm-field"><label for="i1">Daily active users</label><input id="i1" class="fm-input fm-input--mono" value="12,000,000"><span class="fm-help">Users who open the app at least once a day.</span></div>
+  <div class="fm-field"><label for="i2">Design title</label><input id="i2" class="fm-input is-focus" placeholder="e.g. URL shortener v2"><span class="fm-help">Focused</span></div>
+  <div class="fm-field"><label for="i3">Peak factor</label><input id="i3" class="fm-input fm-input--mono is-error" value="0.4" aria-invalid="true" aria-describedby="e3"><span id="e3" class="fm-help is-error">■ Must be between 1 and 10</span></div>
+  <div class="fm-field"><label for="i4">Replication factor</label><input id="i4" class="fm-input fm-input--mono" value="3" disabled><span class="fm-help">Locked by challenge</span></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SysDesign Lab — Under Load</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+
+.b{--bg:#0B0B0C;--panel:#161618;--fg:#F2F0EA;--mute:#9C988E;--line:#F2F0EA24;--grid:#F2F0EA0F;--hot:var(--accent);--ok:#C6F432;
+--mono:"JetBrains Mono",ui-monospace,monospace;--sans:"Archivo","Helvetica Neue",Arial,sans-serif;
+background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:18px;line-height:1.55;-webkit-font-smoothing:antialiased;overflow-x:clip}
+.b *{box-sizing:border-box}
+.b a{color:var(--fg)}
+.b .wrap{max-width:1440px;margin:0 auto;padding:0 48px}
+.b .g12{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));column-gap:24px}
+.b .mono{font-family:var(--mono);font-size:12px;line-height:16px;letter-spacing:.08em;text-transform:uppercase}
+.b .mute{color:var(--mute)}
+.b .hot{color:var(--hot)}
+.b .cond{font-family:var(--sans);font-stretch:62%;font-variation-settings:"wdth" 62;font-weight:900;text-transform:uppercase;letter-spacing:-.01em}
+.b .btn{display:inline-flex;align-items:center;gap:14px;height:56px;padding:0 26px;font-family:var(--mono);font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;text-decoration:none;border:2px solid var(--fg);border-radius:0;transition:background .15s ease,color .15s ease}
+.b .btn.pri{background:var(--hot);border-color:var(--hot);color:#0B0B0C}
+.b .btn.pri:hover{background:var(--fg);border-color:var(--fg)}
+.b .btn:hover{background:var(--fg);color:#0B0B0C}
+.b a:focus-visible,.b .btn:focus-visible{outline:2px solid var(--ok);outline-offset:3px}
+.b .chart{background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:120px 82px}
+.b .tick{position:absolute;font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--mute)}
+.b .blink{animation:bblink 1s steps(2,start) infinite}
+@keyframes bblink{to{visibility:hidden}}
+.b .trace{stroke-dasharray:2600;stroke-dashoffset:2600;animation:bdraw 1.6s cubic-bezier(.3,.6,.2,1) .2s forwards}
+@keyframes bdraw{to{stroke-dashoffset:0}}
+.b .row{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));column-gap:24px;border-top:1px solid var(--line);padding:36px 0;align-items:baseline}
+.b .row:hover .n{color:var(--hot)}
+.b .wall span.w{white-space:nowrap}
+.b .wall sup{font-family:var(--mono);font-size:12px;font-stretch:100%;font-variation-settings:normal;font-weight:500;letter-spacing:.04em;vertical-align:top;margin-left:4px;color:var(--mute)}
+.b .wall .f{color:var(--hot)}
+.b .wall .f sup{color:var(--hot)}
+.b .sl{color:var(--mute);font-weight:400;padding:0 .18em}
+@media (max-width:960px){.b .wrap{padding:0 20px}.b .g12,.b .row{grid-template-columns:repeat(4,minmax(0,1fr))}.b .g12>*,.b .row>*{grid-column:1/-1 !important}.b .h1{font-size:72px !important}.b .h2{font-size:64px !important}.b .hide-m{display:none !important}}
+@media (prefers-reduced-motion:reduce){.b *{animation:none !important}.b .trace{stroke-dashoffset:0}}
+
+</style>
+
+</head>
+<body>
+
+
+<div class="b" style="--accent: #FF5B1F;"><header class="wrap" style="display:flex;align-items:center;gap:28px;height:64px;border-bottom:1px solid var(--line);flex-wrap:wrap">
+<a href="#" class="cond" style="font-size:28px;line-height:1;text-decoration:none;letter-spacing:0">SysDesign<span class="hot">/</span>Lab</a>
+<div class="mono hide-m" style="display:flex;gap:28px"><span><span class="mute">P50 </span>41 ms</span><span><span class="mute">P99 </span><span class="hot">1,240 ms ▲</span></span><span><span class="mute">ERR </span><span class="hot">3.1% ▲</span></span><span><span class="mute">QPS </span>40,112</span></div>
+<span class="mono hide-m" style="margin-left:auto"><span class="hot blink" aria-hidden="true">■</span> Status: degraded <span class="mute">(on purpose)</span></span>
+<a class="btn pri" href="#" style="height:40px;padding:0 16px;font-size:12px">Start week 1 →</a>
+</header><section class="chart" style="position:relative;border-bottom:1px solid var(--line)">
+<div class="wrap" style="position:relative;padding-top:56px;padding-bottom:64px">
+<div class="mono mute" style="display:flex;justify-content:space-between;margin-bottom:20px"><span>Fig. 01 — p99 latency, one service, one Monday</span><span class="hide-m">y: ms · x: time (IST)</span></div>
+<h1 class="cond h1" style="margin:0;font-size:180px;line-height:.8;position:relative;z-index:1">Everything<br>works on<br>your laptop.</h1>
+<p class="cond h1 hot" style="margin:18px 0 0;font-size:180px;line-height:.8;position:relative;z-index:1">Then 40,000<br>users arrive.</p>
+<svg class="hide-m" viewBox="0 0 1440 820" preserveAspectRatio="none" aria-hidden="true" style="position:absolute;left:0;top:96px;width:100%;height:820px;z-index:2;pointer-events:none;overflow:visible">
+<polyline class="trace" points="0,426 14,424 28,430 42,423 56,429 70,427 84,423 98,429 112,423 126,428 140,424 154,424 168,428 182,433 196,425 210,426 224,431 238,435 252,430 266,428 280,435 294,424 308,434 322,427 336,426 350,426 364,428 378,434 392,427 406,431 420,432 434,429 448,431 462,426 476,426 490,427 504,433 518,430 532,429 546,432 560,431 574,429 588,435 602,434 616,429 630,433 644,432 658,436 672,435 686,430 700,438 714,428 728,431 742,436 756,428 770,432 784,427 798,435 812,436 826,434 840,438 854,431 868,436 882,434 896,434 910,433 924,438 938,439 952,433 966,436 980,429 994,436" style="fill:none;stroke:var(--ok);stroke-width:2" vector-effect="non-scaling-stroke"/>
+<polyline class="trace" points="1000,436 1012,416 1022,370 1030,395 1040,300 1050,380 1058,140 1068,230 1078,96 1090,170 1102,120 1116,190 1130,110 1150,150 1172,104 1196,160 1220,118 1250,142 1290,112 1330,150 1380,122 1440,136" style="fill:none;stroke:var(--hot);stroke-width:3;animation-delay:1.2s" vector-effect="non-scaling-stroke"/>
+<line x1="1078" y1="96" x2="1078" y2="40" style="stroke:var(--fg);stroke-width:1" vector-effect="non-scaling-stroke"/>
+</svg>
+<div class="mono hide-m" style="position:absolute;top:104px;left:calc(1078 / 1440 * 100% + 14px);z-index:3;background:var(--bg);padding:6px 10px;border:1px solid var(--fg);white-space:nowrap"><span class="hot">09:02:14</span> · 40k users · p99 1,240 ms</div>
+<span class="tick hide-m" style="left:12px;top:508px">200 ms</span><span class="tick hide-m" style="left:12px;top:200px">1,200 ms</span>
+<div class="g12" style="margin-top:56px;row-gap:24px;align-items:end">
+<p style="grid-column:1/7;margin:0;font-size:22px;line-height:1.45">SysDesign Lab is sixteen weeks on what happens next: 92 lessons, 29 simulators you're meant to break, a design canvas that runs real traffic, and mock interviews against the clock.</p>
+<div style="grid-column:8/13;display:flex;gap:16px;flex-wrap:wrap;justify-content:flex-end"><a class="btn pri" href="#">Start week 1 →</a><a class="btn" href="#">Open a simulator</a></div>
+</div>
+</div>
+</section><section class="wrap" style="padding-top:128px;padding-bottom:96px">
+<div class="g12" style="margin-bottom:48px;align-items:end">
+<span class="mono mute" style="grid-column:1/4">Fig. 02 — the runbook</span>
+<h2 class="cond h2" style="grid-column:4/13;margin:0;font-size:120px;line-height:.82">Every week is <span class="hot">an incident.</span></h2>
+</div>
+<div class="row"><span class="mono hot" style="grid-column:1/3">09:02:14</span><span class="cond n" style="grid-column:3/7;font-size:72px;line-height:.85;transition:color .15s ease">Detect</span><h3 style="grid-column:7/10;margin:0;font-size:24px;line-height:1.2;font-weight:700">Learn what fails, and why.</h3><p class="mute" style="grid-column:10/13;margin:0;font-size:16px">92 lessons, each one idea with real numbers: why a cache stampedes, why a follower lies, why retries make an outage worse. Then a quiz that argues back.</p></div><div class="row"><span class="mono hot" style="grid-column:1/3">09:04:51</span><span class="cond n" style="grid-column:3/7;font-size:72px;line-height:.85;transition:color .15s ease">Reproduce</span><h3 style="grid-column:7/10;margin:0;font-size:24px;line-height:1.2;font-weight:700">Make it fail on purpose.</h3><p class="mute" style="grid-column:10/13;margin:0;font-size:16px">29 simulators with a seed, a speed dial and a “Break it” menu. Kill the leader. Flood the queue. Watch p99 do what the lesson said it would.</p></div><div class="row"><span class="mono hot" style="grid-column:1/3">09:11:30</span><span class="cond n" style="grid-column:3/7;font-size:72px;line-height:.85;transition:color .15s ease">Mitigate</span><h3 style="grid-column:7/10;margin:0;font-size:24px;line-height:1.2;font-weight:700">Draw the fix. Load-test it.</h3><p class="mute" style="grid-column:10/13;margin:0;font-size:16px">Sketch your system in the Design Studio, then run 50,000 requests a second through it. Overloaded nodes turn red and say so.</p></div><div class="row"><span class="mono hot" style="grid-column:1/3">09:45:00</span><span class="cond n" style="grid-column:3/7;font-size:72px;line-height:.85;transition:color .15s ease">Postmortem</span><h3 style="grid-column:7/10;margin:0;font-size:24px;line-height:1.2;font-weight:700">Explain it with the clock running.</h3><p class="mute" style="grid-column:10/13;margin:0;font-size:16px">Timed mock interviews on 15 case studies, scored on a rubric, with follow-ups aimed at the parts you skipped.</p></div>
+<div style="border-top:1px solid var(--line)"></div>
+</section><section style="background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+<div class="wrap" style="padding-top:112px;padding-bottom:112px">
+<div class="g12" style="margin-bottom:40px"><span class="mono mute" style="grid-column:1/4">Fig. 03 — the simulators</span><p class="mono" style="grid-column:4/13;margin:0"><span class="hot">■ Orange</span> = failing right now in a challenge. 29 of 29 can be broken.</p></div>
+<p class="cond wall" style="margin:0;font-size:72px;line-height:.98"><span class="w">Estimation<sup>S01</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Request journey<sup>S02</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w f">Load balancer<sup>S03</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Consistent hashing<sup>S04</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Rate limiter<sup>S05</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">SQL sandbox<sup>S06</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Index visualizer<sup>S07</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w f">Replication<sup>S08</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Sharding<sup>S09</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w f">Cache<sup>S10</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Redis<sup>S11</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Message queue<sup>S12</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Outbox<sup>S13</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">CAP<sup>S14</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Quorum<sup>S15</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w f">Raft<sup>S16</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Clocks<sup>S17</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Saga<sup>S18</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Snowflake<sup>S19</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w f">Retry storm<sup>S20</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Circuit breaker<sup>S21</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Availability<sup>S22</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Observability<sup>S23</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Error budget<sup>S24</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Deployment<sup>S25</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">JWT<sup>S26</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Vector search<sup>S27</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">RAG pipeline<sup>S28</sup></span> <span class="sl" aria-hidden="true">/</span> <span class="w">Code labs<sup>S29</sup></span></p>
+</div>
+</section><section class="wrap" style="padding-top:128px;padding-bottom:96px">
+<div class="g12" style="row-gap:40px;align-items:end">
+<h2 class="cond h2" style="grid-column:1/10;margin:0;font-size:168px;line-height:.8">Your pager<br>is quiet.<br><span class="hot">For now.</span></h2>
+<div style="grid-column:10/13;display:flex;flex-direction:column;gap:20px"><p style="margin:0">Week 1 is foundations and estimation. Eight hours. Runs in your browser, no account.</p><a class="btn pri" href="#" style="align-self:flex-start">Start week 1 →</a></div>
+</div>
+</section>
+<footer class="wrap mono" style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-top:20px;padding-bottom:20px;border-top:1px solid var(--line)"><span>SysDesign/Lab · Under Load edition</span><span class="mute">Set in Archivo Condensed &amp; JetBrains Mono · Uptime is a choice</span></footer></div>
+
+
+</body>
+</html>

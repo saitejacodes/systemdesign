@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en" data-theme="paper"><!-- switch to data-theme="blueprint" for the dark theme -->
+<head>
+<link rel="stylesheet" href="../../tokens.css">
+<link rel="stylesheet" href="../../components.css"><meta charset="utf-8"><title>QuizOption — preview</title></head>
+<body>
+<div class="fm-pad fm-col" style="gap:10px;max-width:620px">
+  <button class="fm-opt"><span class="key">A</span><span>Add more read replicas behind the load balancer.</span><span></span></button>
+  <button class="fm-opt is-selected"><span class="key">B</span><span>Route the user's reads to the leader for a few seconds after a write.</span><span class="verdict" style="color:var(--cobalt)">Selected</span></button>
+  <button class="fm-opt is-correct" aria-disabled="true"><span class="key">C</span><span>Use a session-pinned follower with monotonic reads.</span><span class="verdict">● Correct</span></button>
+  <button class="fm-opt is-wrong" aria-disabled="true"><span class="key">D</span><span>Switch the cache to write-behind.</span><span class="verdict">■ Incorrect</span></button>
+  <button class="fm-opt is-dim" aria-disabled="true"><span class="key">E</span><span>Increase the TTL on the CDN.</span><span></span></button>
+</div>
+</body>
+</html>

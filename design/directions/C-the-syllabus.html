@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SysDesign Lab — The Syllabus</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..500&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+
+.c{--bg:#FAFAF7;--ink:#161616;--mute:#5E5E58;--rule:#16161624;--acc:var(--accent);
+--serif:"Newsreader",Georgia,"Times New Roman",serif;--sans:"Geist","Helvetica Neue",Arial,sans-serif;--mono:"Geist Mono",ui-monospace,monospace;
+background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.c *{box-sizing:border-box}
+.c a{color:var(--ink)}
+.c .wrap{max-width:1440px;margin:0 auto;padding:0 96px}
+.c .g12{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));column-gap:24px}
+.c .mono{font-family:var(--mono);font-size:12px;line-height:18px;letter-spacing:.04em}
+.c .mute{color:var(--mute)}
+.c .serif{font-family:var(--serif)}
+.c .it{font-family:var(--serif);font-style:italic;color:var(--acc)}
+.c .btn{display:inline-flex;align-items:center;gap:12px;height:48px;padding:0 22px;background:var(--ink);color:var(--bg);text-decoration:none;font-size:15px;font-weight:500;border-radius:0;transition:background .15s ease}
+.c .btn:hover{background:var(--acc)}
+.c a:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+.c .lnk{text-decoration:none;border-bottom:1px solid var(--ink);padding-bottom:1px}
+.c .lnk:hover{color:var(--acc);border-color:var(--acc)}
+.c .part{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));column-gap:24px;padding:36px 0 40px;border-top:1px solid var(--rule);transition:background .2s ease}
+.c .part:hover h3{color:var(--acc)}
+.c .secs{margin:14px 0 0;font-size:15px;line-height:1.75;color:var(--mute)}
+.c .secs b{font-family:var(--mono);font-weight:400;font-size:11px;color:var(--acc);margin-right:5px;letter-spacing:0}
+.c .secs .s{white-space:nowrap}
+.c .lead{display:flex;align-items:baseline;gap:8px}
+.c .lead i{flex:1;border-bottom:1px dotted var(--mute);transform:translateY(-4px)}
+@media (max-width:960px){.c .wrap{padding:0 20px}.c .g12,.c .part{grid-template-columns:repeat(4,minmax(0,1fr))}.c .g12>*,.c .part>*{grid-column:1/-1 !important}.c h1{font-size:64px !important}.c h2{font-size:44px !important}.c .hide-m{display:none !important}}
+
+</style>
+
+</head>
+<body>
+
+
+<div class="c" style="--accent: #B4441F;"><header class="wrap" style="display:flex;align-items:center;gap:40px;height:80px;flex-wrap:wrap">
+<a href="#" class="serif" style="font-size:24px;text-decoration:none;letter-spacing:-.01em">SysDesign Lab</a>
+<nav aria-label="Main" class="hide-m" style="display:flex;gap:32px;font-size:15px"><a class="lnk" href="#index" style="border-color:transparent">Syllabus</a><a class="lnk" href="#" style="border-color:transparent">Simulators</a><a class="lnk" href="#" style="border-color:transparent">Studio</a><a class="lnk" href="#" style="border-color:transparent">Interviews</a></nav>
+<a class="lnk" href="#" style="margin-left:auto;font-size:15px">Begin week one →</a>
+</header><section class="wrap" style="padding-top:120px;padding-bottom:128px">
+<div class="g12" style="row-gap:72px">
+<p class="mono mute" style="grid-column:1/13;margin:0;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;border-top:1px solid var(--ink);padding-top:14px"><span>A sixteen-week course in system design</span><span>Edition 2026 · 92 sections · 29 simulators · 15 case studies</span></p>
+<h1 class="serif" style="grid-column:1/12;margin:0;font-size:156px;line-height:.94;font-weight:300;letter-spacing:-.035em">Learn to design systems that <span class="it">survive</span> their users.</h1>
+<p class="mono mute" style="grid-column:1/3;margin:0">§ 0<br>Foreword</p>
+<p style="grid-column:3/8;margin:0;font-size:20px;line-height:1.55">Most system design advice is a list of boxes to draw. This course is the reasoning behind each box: what it costs, when it fails, and how to say so in an interview. You read a section, break it in a simulator, draw it on a canvas that runs real traffic, then defend it against the clock.</p>
+<div style="grid-column:9/13;display:flex;flex-direction:column;gap:14px;align-items:flex-start"><a class="btn" href="#">Begin week one <span aria-hidden="true">→</span></a><span class="mono mute">Free. Runs in your browser. No account.</span></div>
+</div>
+</section><section class="wrap" style="padding-bottom:144px">
+<div class="g12" style="row-gap:48px">
+<p class="mono mute" style="grid-column:1/3;margin:0">§ 1<br>Method</p>
+<h2 class="serif" style="grid-column:3/12;margin:0;font-size:72px;line-height:1;font-weight:300;letter-spacing:-.025em">Four verbs, every week, until they become <span class="it">instinct</span>.</h2>
+<div style="grid-column:span 3;border-top:1px solid var(--ink);padding-top:18px"><div class="serif" style="font-size:72px;line-height:1;font-weight:300;color:var(--acc)">I</div><h3 class="serif" style="margin:16px 0 8px;font-size:30px;font-weight:400">Read</h3><p class="mute" style="margin:0">One idea per section, with worked numbers and the tradeoff stated plainly.</p></div><div style="grid-column:span 3;border-top:1px solid var(--ink);padding-top:18px"><div class="serif" style="font-size:72px;line-height:1;font-weight:300;color:var(--acc)">II</div><h3 class="serif" style="margin:16px 0 8px;font-size:30px;font-weight:400">Break</h3><p class="mute" style="margin:0">Change the load, kill a node, add jitter. Watch the system answer back.</p></div><div style="grid-column:span 3;border-top:1px solid var(--ink);padding-top:18px"><div class="serif" style="font-size:72px;line-height:1;font-weight:300;color:var(--acc)">III</div><h3 class="serif" style="margin:16px 0 8px;font-size:30px;font-weight:400">Draw</h3><p class="mute" style="margin:0">Sketch your design, then run traffic through it until something gives.</p></div><div style="grid-column:span 3;border-top:1px solid var(--ink);padding-top:18px"><div class="serif" style="font-size:72px;line-height:1;font-weight:300;color:var(--acc)">IV</div><h3 class="serif" style="margin:16px 0 8px;font-size:30px;font-weight:400">Defend</h3><p class="mute" style="margin:0">Forty-five minutes, a rubric and follow-ups aimed at what you skipped.</p></div>
+</div>
+</section><section id="index" style="background:#F2F1EC;border-top:1px solid var(--ink);border-bottom:1px solid var(--ink)">
+<div class="wrap" style="padding-top:120px;padding-bottom:120px">
+<div class="g12" style="row-gap:24px;margin-bottom:56px;align-items:end">
+<p class="mono mute" style="grid-column:1/3;margin:0">§ 2<br>Contents</p>
+<h2 class="serif" style="grid-column:3/10;margin:0;font-size:72px;line-height:1;font-weight:300;letter-spacing:-.025em">The whole course, on one <span class="it">page</span>.</h2>
+<p class="mono mute" style="grid-column:10/13;margin:0">Seven parts. Ninety-two sections. Read in order, or start where your next interview is.</p>
+</div>
+<article class="part">
+<div style="grid-column:1/3" class="mono"><span style="color:var(--acc)">Part I</span><br><span class="mute">Weeks 1–2</span></div>
+<div style="grid-column:3/10"><h3 class="serif" style="margin:0;font-size:44px;line-height:1.05;font-weight:400;letter-spacing:-.015em;transition:color .15s ease">Foundations & Networking</h3><p class="secs"><span class="s"><b>1.1</b>Client–server</span> · <span class="s"><b>1.2</b>Monoliths & microservices</span> · <span class="s"><b>1.3</b>Scaling</span> · <span class="s"><b>1.4</b>Estimation</span> · <span class="s"><b>1.5</b>Latency & throughput</span> · <span class="s"><b>1.6</b>DNS</span> · <span class="s"><b>1.7</b>TCP & UDP</span> · <span class="s"><b>1.8</b>HTTP</span> · <span class="s"><b>1.9</b>TLS</span> · <span class="s"><b>1.10</b>Load balancers</span> · <span class="s"><b>1.11</b>Reverse proxies</span> · <span class="s"><b>1.12</b>Real-time</span></p></div>
+<div style="grid-column:10/13;padding-top:14px" class="mono"><div class="lead"><span>Sections</span><i></i><span>12</span></div><div class="lead mute"><span>Simulators</span><i></i><span>5</span></div></div>
+</article><article class="part">
+<div style="grid-column:1/3" class="mono"><span style="color:var(--acc)">Part II</span><br><span class="mute">Weeks 3–6</span></div>
+<div style="grid-column:3/10"><h3 class="serif" style="margin:0;font-size:44px;line-height:1.05;font-weight:400;letter-spacing:-.015em;transition:color .15s ease">APIs, Databases, Storage & Search</h3><p class="secs"><span class="s"><b>2.1</b>REST</span> · <span class="s"><b>2.2</b>GraphQL</span> · <span class="s"><b>2.3</b>gRPC</span> · <span class="s"><b>2.4</b>API gateways</span> · <span class="s"><b>2.5</b>Rate limiting</span> · <span class="s"><b>2.6</b>Idempotency</span> · <span class="s"><b>2.7</b>SQL vs NoSQL</span> · <span class="s"><b>2.8</b>Data modeling</span> · <span class="s"><b>2.9</b>Indexing</span> · <span class="s"><b>2.10</b>Transactions</span> · <span class="s"><b>2.11</b>Locking</span> · <span class="s"><b>2.12</b>Replication</span> · <span class="s"><b>2.13</b>Sharding</span> · <span class="s"><b>2.14</b>Consistent hashing</span> · <span class="s"><b>2.15</b>Connection pooling</span> · <span class="s"><b>2.16</b>Object storage</span> · <span class="s"><b>2.17</b>Search</span> · <span class="s"><b>2.18</b>OLAP vs OLTP</span></p></div>
+<div style="grid-column:10/13;padding-top:14px" class="mono"><div class="lead"><span>Sections</span><i></i><span>18</span></div><div class="lead mute"><span>Simulators</span><i></i><span>4</span></div></div>
+</article><article class="part">
+<div style="grid-column:1/3" class="mono"><span style="color:var(--acc)">Part III</span><br><span class="mute">Weeks 7–8</span></div>
+<div style="grid-column:3/10"><h3 class="serif" style="margin:0;font-size:44px;line-height:1.05;font-weight:400;letter-spacing:-.015em;transition:color .15s ease">Caching & Messaging</h3><p class="secs"><span class="s"><b>3.1</b>Cache layers</span> · <span class="s"><b>3.2</b>Cache strategies</span> · <span class="s"><b>3.3</b>Eviction</span> · <span class="s"><b>3.4</b>Invalidation</span> · <span class="s"><b>3.5</b>Cache failures</span> · <span class="s"><b>3.6</b>CDN</span> · <span class="s"><b>3.7</b>Redis</span> · <span class="s"><b>3.8</b>Queues vs pub/sub</span> · <span class="s"><b>3.9</b>Delivery semantics</span> · <span class="s"><b>3.10</b>Partitioning & ordering</span> · <span class="s"><b>3.11</b>Failure handling</span> · <span class="s"><b>3.12</b>Event-driven design</span> · <span class="s"><b>3.13</b>Kafka vs queues</span></p></div>
+<div style="grid-column:10/13;padding-top:14px" class="mono"><div class="lead"><span>Sections</span><i></i><span>13</span></div><div class="lead mute"><span>Simulators</span><i></i><span>4</span></div></div>
+</article><article class="part">
+<div style="grid-column:1/3" class="mono"><span style="color:var(--acc)">Part IV</span><br><span class="mute">Weeks 9–10</span></div>
+<div style="grid-column:3/10"><h3 class="serif" style="margin:0;font-size:44px;line-height:1.05;font-weight:400;letter-spacing:-.015em;transition:color .15s ease">Distributed Systems & Reliability</h3><p class="secs"><span class="s"><b>4.1</b>CAP & PACELC</span> · <span class="s"><b>4.2</b>Consistency models</span> · <span class="s"><b>4.3</b>Quorums</span> · <span class="s"><b>4.4</b>Consensus</span> · <span class="s"><b>4.5</b>Time & ordering</span> · <span class="s"><b>4.6</b>Distributed transactions</span> · <span class="s"><b>4.7</b>ID generation</span> · <span class="s"><b>4.8</b>Distributed locks</span> · <span class="s"><b>4.9</b>High availability</span> · <span class="s"><b>4.10</b>Fault tolerance</span> · <span class="s"><b>4.11</b>Timeouts & retries</span> · <span class="s"><b>4.12</b>Circuit breakers</span> · <span class="s"><b>4.13</b>Bulkheads & load shedding</span> · <span class="s"><b>4.14</b>Disaster recovery</span> · <span class="s"><b>4.15</b>Chaos engineering</span></p></div>
+<div style="grid-column:10/13;padding-top:14px" class="mono"><div class="lead"><span>Sections</span><i></i><span>15</span></div><div class="lead mute"><span>Simulators</span><i></i><span>9</span></div></div>
+</article><article class="part">
+<div style="grid-column:1/3" class="mono"><span style="color:var(--acc)">Part V</span><br><span class="mute">Weeks 11–12</span></div>
+<div style="grid-column:3/10"><h3 class="serif" style="margin:0;font-size:44px;line-height:1.05;font-weight:400;letter-spacing:-.015em;transition:color .15s ease">Observability, Security & Deployment</h3><p class="secs"><span class="s"><b>5.1</b>Logging</span> · <span class="s"><b>5.2</b>Metrics</span> · <span class="s"><b>5.3</b>Tracing</span> · <span class="s"><b>5.4</b>SLOs</span> · <span class="s"><b>5.5</b>Alerting</span> · <span class="s"><b>5.6</b>Authentication & authorization</span> · <span class="s"><b>5.7</b>Access control</span> · <span class="s"><b>5.8</b>Data protection</span> · <span class="s"><b>5.9</b>Common attacks</span> · <span class="s"><b>5.10</b>Containers</span> · <span class="s"><b>5.11</b>Kubernetes</span> · <span class="s"><b>5.12</b>CI/CD</span> · <span class="s"><b>5.13</b>Release strategies</span> · <span class="s"><b>5.14</b>Infrastructure as code</span></p></div>
+<div style="grid-column:10/13;padding-top:14px" class="mono"><div class="lead"><span>Sections</span><i></i><span>14</span></div><div class="lead mute"><span>Simulators</span><i></i><span>4</span></div></div>
+</article><article class="part">
+<div style="grid-column:1/3" class="mono"><span style="color:var(--acc)">Part VI</span><br><span class="mute">Week 13</span></div>
+<div style="grid-column:3/10"><h3 class="serif" style="margin:0;font-size:44px;line-height:1.05;font-weight:400;letter-spacing:-.015em;transition:color .15s ease">Advanced & AI-Native Systems</h3><p class="secs"><span class="s"><b>6.1</b>Serverless</span> · <span class="s"><b>6.2</b>Edge computing</span> · <span class="s"><b>6.3</b>Stream processing</span> · <span class="s"><b>6.4</b>Batch processing</span> · <span class="s"><b>6.5</b>Multi-region</span> · <span class="s"><b>6.6</b>Embeddings & vector search</span> · <span class="s"><b>6.7</b>RAG</span> · <span class="s"><b>6.8</b>LLM serving</span> · <span class="s"><b>6.9</b>LLM cost & latency</span> · <span class="s"><b>6.10</b>AI reliability</span> · <span class="s"><b>6.11</b>Evals & guardrails</span> · <span class="s"><b>6.12</b>Agents</span></p></div>
+<div style="grid-column:10/13;padding-top:14px" class="mono"><div class="lead"><span>Sections</span><i></i><span>12</span></div><div class="lead mute"><span>Simulators</span><i></i><span>2</span></div></div>
+</article><article class="part">
+<div style="grid-column:1/3" class="mono"><span style="color:var(--acc)">Part VII</span><br><span class="mute">Weeks 14–16</span></div>
+<div style="grid-column:3/10"><h3 class="serif" style="margin:0;font-size:44px;line-height:1.05;font-weight:400;letter-spacing:-.015em;transition:color .15s ease">Interview Mastery</h3><p class="secs"><span class="s"><b>7.1</b>The interview framework</span> · <span class="s"><b>7.2</b>Requirements & scoping</span> · <span class="s"><b>7.3</b>Building-blocks map</span> · <span class="s"><b>7.4</b>Communicating tradeoffs</span> · <span class="s"><b>7.5</b>Deep-dive patterns</span> · <span class="s"><b>7.6</b>Mock-interview playbook</span> · <span class="s"><b>7.7</b>Level expectations</span> · <span class="s"><b>7.8</b>Final review</span></p></div>
+<div style="grid-column:10/13;padding-top:14px" class="mono"><div class="lead"><span>Sections</span><i></i><span>8</span></div><div class="lead mute"><span>Case studies</span><i></i><span>15</span></div></div>
+</article>
+<div style="border-top:1px solid var(--ink)"></div>
+</div>
+</section><section class="wrap" style="padding-top:144px;padding-bottom:112px">
+<div class="g12" style="row-gap:40px;align-items:end">
+<p class="mono mute" style="grid-column:1/3;margin:0">§ 3<br>Begin</p>
+<a href="#" class="serif" style="grid-column:3/13;font-size:112px;line-height:.95;font-weight:300;letter-spacing:-.03em;text-decoration:none">Begin week one <span class="it">→</span></a>
+<p class="mute" style="grid-column:3/8;margin:0">Week one is foundations and estimation: twelve sections, five simulators, about eight hours.</p>
+</div>
+</section>
+<footer class="wrap mono mute" style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-top:20px;padding-bottom:28px;border-top:1px solid var(--rule)"><span>SysDesign Lab · The Syllabus edition</span><span>Set in Newsreader &amp; Geist</span></footer></div>
+
+
+</body>
+</html>

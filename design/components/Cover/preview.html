@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en" data-theme="paper"><!-- switch to data-theme="blueprint" for the dark theme -->
+<head>
+<link rel="stylesheet" href="../../tokens.css">
+<link rel="stylesheet" href="../../components.css">
+<meta charset="utf-8">
+<title>SysDesign Lab: Field Manual</title>
+<style>
+  html, body { margin:0; height:100%; }
+  body { background:var(--paper); color:var(--ink); font-family:var(--font-sans); overflow:hidden; }
+  .cover { position:relative; width:960px; height:320px; overflow:hidden; }
+  .band { position:absolute; left:0; top:0; width:960px; height:112px; }
+  .ink { fill:var(--ink); } .cob { fill:var(--cobalt); } .cor { fill:var(--phase-3); } .sag { fill:var(--phase-1); } .lav { fill:var(--phase-5); }
+  .cut { fill:var(--paper); }
+  .rule { stroke:var(--ink); stroke-width:1; }
+  .blk { rx:var(--radius-0); }
+  .words { position:absolute; left:var(--space-6); bottom:var(--space-6); max-width:900px; }
+  .name { margin:0; font-family:var(--font-display); font-size:64px; line-height:.95; font-weight:800; letter-spacing:-.035em; color:var(--ink); }
+  .tag { margin:var(--space-3) 0 0 2px; font-size:14px; line-height:20px; color:var(--ink-muted); }
+</style>
+</head>
+<body>
+<div class="cover">
+<svg class="band" viewBox="0 0 960 112" width="960" height="112" aria-hidden="true">
+<!--
+  blocks      ink 336×112 (the drawing ink, largest) · cobalt 176×128 bled off the top (the one accent) · phase-3 coral 128×80 · phase-1 sage 128×112 · phase-5 lavender 128×64 bled off the right — ≈ 33% of 960×320
+  arrangement a strip of unequal bands, bottoms on one line at 112, space-4 gutters: the iso layer stack read as a strip of plates
+  pattern     plus grid, from "precise, technical, mono, a drafting grid": 30 registration crosses cut out of the ink block in paper at a space-6 pitch
+  scales      gutters space-4; pitch space-6; cross arms 12px; corners radius-0 (the system's square frames)
+-->
+<rect class="ink blk" x="0" y="0" width="336" height="112"/>
+<rect class="cut" x="26" y="27.25" width="12" height="1.5"/><rect class="cut" x="31.25" y="22" width="1.5" height="12"/><rect class="cut" x="26" y="55.25" width="12" height="1.5"/><rect class="cut" x="31.25" y="50" width="1.5" height="12"/><rect class="cut" x="26" y="83.25" width="12" height="1.5"/><rect class="cut" x="31.25" y="78" width="1.5" height="12"/><rect class="cut" x="58" y="27.25" width="12" height="1.5"/><rect class="cut" x="63.25" y="22" width="1.5" height="12"/><rect class="cut" x="58" y="55.25" width="12" height="1.5"/><rect class="cut" x="63.25" y="50" width="1.5" height="12"/><rect class="cut" x="58" y="83.25" width="12" height="1.5"/><rect class="cut" x="63.25" y="78" width="1.5" height="12"/><rect class="cut" x="90" y="27.25" width="12" height="1.5"/><rect class="cut" x="95.25" y="22" width="1.5" height="12"/><rect class="cut" x="90" y="55.25" width="12" height="1.5"/><rect class="cut" x="95.25" y="50" width="1.5" height="12"/><rect class="cut" x="90" y="83.25" width="12" height="1.5"/><rect class="cut" x="95.25" y="78" width="1.5" height="12"/><rect class="cut" x="122" y="27.25" width="12" height="1.5"/><rect class="cut" x="127.25" y="22" width="1.5" height="12"/><rect class="cut" x="122" y="55.25" width="12" height="1.5"/><rect class="cut" x="127.25" y="50" width="1.5" height="12"/><rect class="cut" x="122" y="83.25" width="12" height="1.5"/><rect class="cut" x="127.25" y="78" width="1.5" height="12"/><rect class="cut" x="154" y="27.25" width="12" height="1.5"/><rect class="cut" x="159.25" y="22" width="1.5" height="12"/><rect class="cut" x="154" y="55.25" width="12" height="1.5"/><rect class="cut" x="159.25" y="50" width="1.5" height="12"/><rect class="cut" x="154" y="83.25" width="12" height="1.5"/><rect class="cut" x="159.25" y="78" width="1.5" height="12"/><rect class="cut" x="186" y="27.25" width="12" height="1.5"/><rect class="cut" x="191.25" y="22" width="1.5" height="12"/><rect class="cut" x="186" y="55.25" width="12" height="1.5"/><rect class="cut" x="191.25" y="50" width="1.5" height="12"/><rect class="cut" x="186" y="83.25" width="12" height="1.5"/><rect class="cut" x="191.25" y="78" width="1.5" height="12"/><rect class="cut" x="218" y="27.25" width="12" height="1.5"/><rect class="cut" x="223.25" y="22" width="1.5" height="12"/><rect class="cut" x="218" y="55.25" width="12" height="1.5"/><rect class="cut" x="223.25" y="50" width="1.5" height="12"/><rect class="cut" x="218" y="83.25" width="12" height="1.5"/><rect class="cut" x="223.25" y="78" width="1.5" height="12"/><rect class="cut" x="250" y="27.25" width="12" height="1.5"/><rect class="cut" x="255.25" y="22" width="1.5" height="12"/><rect class="cut" x="250" y="55.25" width="12" height="1.5"/><rect class="cut" x="255.25" y="50" width="1.5" height="12"/><rect class="cut" x="250" y="83.25" width="12" height="1.5"/><rect class="cut" x="255.25" y="78" width="1.5" height="12"/><rect class="cut" x="282" y="27.25" width="12" height="1.5"/><rect class="cut" x="287.25" y="22" width="1.5" height="12"/><rect class="cut" x="282" y="55.25" width="12" height="1.5"/><rect class="cut" x="287.25" y="50" width="1.5" height="12"/><rect class="cut" x="282" y="83.25" width="12" height="1.5"/><rect class="cut" x="287.25" y="78" width="1.5" height="12"/><rect class="cut" x="314" y="27.25" width="12" height="1.5"/><rect class="cut" x="319.25" y="22" width="1.5" height="12"/><rect class="cut" x="314" y="55.25" width="12" height="1.5"/><rect class="cut" x="319.25" y="50" width="1.5" height="12"/><rect class="cut" x="314" y="83.25" width="12" height="1.5"/><rect class="cut" x="319.25" y="78" width="1.5" height="12"/>
+<rect class="cob blk" x="352" y="-16" width="176" height="128"/>
+<rect class="cor blk" x="544" y="32" width="128" height="80"/>
+<rect class="sag blk" x="688" y="0" width="128" height="112"/>
+<rect class="lav blk" x="832" y="48" width="128" height="64"/>
+</svg>
+<div class="words">
+<h1 class="name">SysDesign Lab:<br>Field Manual</h1>
+<p class="tag">An engineering field manual for distributed systems.</p>
+</div>
+</div>
+</body>
+</html>

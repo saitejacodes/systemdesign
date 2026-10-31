@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en" data-theme="paper"><!-- switch to data-theme="blueprint" for the dark theme -->
+<head>
+<link rel="stylesheet" href="../../tokens.css">
+<link rel="stylesheet" href="../../components.css"><meta charset="utf-8"><title>CodeBlock — preview</title></head>
+<body>
+<div class="fm-pad" style="max-width:640px"><div class="fm-code">
+<div class="fm-code__head"><span class="fm-cap">rate_limiter.lua · Redis</span><button class="fm-btn fm-btn--tool">Copy</button></div>
+<pre><span class="ln">1</span><span class="com">-- fixed window: one counter per user per minute</span>
+<span class="ln">2</span><span class="kw">local</span> n = redis.call(<span class="str">"INCR"</span>, KEYS[<span class="num">1</span>])
+<span class="ln">3</span><span class="kw">if</span> n == <span class="num">1</span> <span class="kw">then</span> redis.call(<span class="str">"EXPIRE"</span>, KEYS[<span class="num">1</span>], <span class="num">60</span>) <span class="kw">end</span>
+<span class="ln">4</span><span class="kw">return</span> n &lt;= tonumber(ARGV[<span class="num">1</span>])</pre>
+</div></div>
+</body>
+</html>

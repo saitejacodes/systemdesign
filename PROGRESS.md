@@ -1,0 +1,30 @@
+# Progress
+
+- [ ] 00 Project Bible
+- [ ] 01 Scaffold & App Shell
+- [ ] 02 Content System
+- [ ] 03 Learning Engine
+- [ ] 04 Plan & Dashboard
+- [ ] 05 Simulator Framework
+- [ ] 06 Phase 1 Content
+- [ ] 07 Phase 1 Simulators
+- [ ] 08 Phase 2 Content
+- [ ] 09 Phase 2 Simulators + SQL Sandbox
+- [ ] 10 Phase 3 Content
+- [ ] 11 Phase 3 Simulators
+- [ ] 12 Phase 4 Content
+- [ ] 13 Phase 4 Simulators
+- [ ] 14 Phase 5 Content + Simulators
+- [ ] 15 Phase 6 Content + Simulators
+- [ ] 16 Algorithm Sandboxes
+- [ ] 17 Design Studio: Canvas
+- [ ] 18 Design Studio: Run Mode
+- [ ] 19 Interview Mode
+- [ ] 20a Case Studies 1–5
+- [ ] 20b Case Studies 6–10
+- [ ] 20c Case Studies 11–15
+- [ ] 20d Phase 7 Interview Mastery
+- [ ] 21 AI Features
+- [ ] 22 Reference Library & Capstone
+- [ ] 23 Polish & QA
+- [ ] 24 Deploy

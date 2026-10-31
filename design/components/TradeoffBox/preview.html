@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en" data-theme="paper"><!-- switch to data-theme="blueprint" for the dark theme -->
+<head>
+<link rel="stylesheet" href="../../tokens.css">
+<link rel="stylesheet" href="../../components.css"><meta charset="utf-8"><title>TradeoffBox — preview</title></head>
+<body>
+<div class="fm-pad" style="max-width:640px"><div class="fm-box">
+<div class="fm-box__head"><span class="fm-box__glyph" aria-hidden="true">⇄</span>Tradeoff · Async replication</div>
+<div class="fm-tradeoff"><div class="gain"><h5>+ Gain</h5><ul style="margin:0;padding-left:18px;display:grid;gap:6px"><li>Writes return as soon as the leader commits</li><li>Followers can lag or fail without blocking writes</li></ul></div><div class="cost"><h5>− Cost</h5><ul style="margin:0;padding-left:18px;display:grid;gap:6px"><li>Stale reads from followers</li><li>Unreplicated writes are lost on failover</li></ul></div></div>
+</div></div>
+</body>
+</html>
