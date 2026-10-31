@@ -96,3 +96,11 @@ export function validateAll() {
   getResources();
   getCaseStudies();
 }
+
+/** Plan weeks plus the written sections in the shape the client pages need. */
+export function getPlanView() {
+  const sections: import("@/lib/learning/plan").PlanSection[] = getAllSections().map(({ meta, checkpoints }) => ({
+    id: meta.id, phase: meta.phase, week: meta.week, title: meta.title, href: sectionHref(meta), checkpointIds: checkpoints.map((c) => c.id), simulatorIds: meta.simulatorIds, topics: Object.fromEntries(meta.topics.map((t) => [t.id, t.title])),
+  }));
+  return { weeks: getPlan(), sections };
+}

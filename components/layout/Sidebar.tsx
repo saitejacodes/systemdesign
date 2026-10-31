@@ -7,7 +7,7 @@ import { Wordmark } from "@/components/brand";
 import { LEARN_ICON, NAV_BOTTOM, NAV_TOP, type NavItem } from "@/lib/nav";
 import { PHASES, weekLabel } from "@/lib/curriculum";
 import { useUi } from "@/lib/ui-store";
-import { useChallengeResults, useCheckpoints, useCompletions, useQuizAttempts } from "@/lib/db/hooks";
+import { useUserData } from "@/lib/db/hooks";
 import { phaseProgress, sectionProgress, type SectionInfo } from "@/lib/learning/progress";
 import { SIM_CHALLENGES } from "@/lib/simulators/challenge-index";
 
@@ -46,7 +46,7 @@ export function Sidebar({ sections = [] }: { sections?: TreeSection[] }) {
   const currentPhase = Number(pathname.match(/^\/phase\/(\d)/)?.[1] ?? 0);
   // The drawer always shows the full sidebar.
   const collapsed = sidebarCollapsed && !drawerOpen;
-  const data = { checkpoints: useCheckpoints() ?? [], attempts: useQuizAttempts() ?? [], challenges: useChallengeResults() ?? [], completions: useCompletions() ?? [] };
+  const data = useUserData();
   const byPhase = phaseProgress(sections, data, SIM_CHALLENGES);
 
   return (

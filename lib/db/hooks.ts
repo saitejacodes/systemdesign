@@ -15,6 +15,13 @@ export const useCardReviews = () => useTable("cardReviews");
 export const useNotes = () => useTable("notes");
 export const useCompletions = () => useTable("completions");
 export const useChallengeResults = () => useTable("challengeResults");
+export const useStudySessions = () => useTable("studySessions");
+export const useInterviewAttempts = () => useTable("interviewAttempts");
+
+/** The four tables progress is computed from; empty arrays while loading. */
+export function useUserData() {
+  return { checkpoints: useCheckpoints() ?? [], attempts: useQuizAttempts() ?? [], challenges: useChallengeResults() ?? [], completions: useCompletions() ?? [] };
+}
 
 /** undefined while loading, null when the page has no note yet. */
 export function useNote(pageId: string) {

@@ -8,6 +8,7 @@ import { SearchBootstrap } from "./SearchBootstrap";
 import { CommandPalette } from "./CommandPalette";
 import { RightPanel } from "./RightPanel";
 import { ShortcutsDialog } from "./ShortcutsDialog";
+import { StudyTracker } from "./StudyTracker";
 import { Sidebar, type TreeSection } from "./Sidebar";
 import { TopBar } from "./TopBar";
 
@@ -48,6 +49,7 @@ export function AppShell({ children, sections }: { children: ReactNode; sections
       </div>
       {pageHud ? <HudBar {...pageHud} /> : <HudBar live={`Lab · ${pathname.split("/")[1] || "home"}`} items={[{ k: "QPS", v: "0" }, { k: "P99", v: "—" }]} right="Field Manual · Rev. A" />}
       <SearchBootstrap />
+      <StudyTracker />
       <CommandPalette />
       <ShortcutsDialog />
     </div>

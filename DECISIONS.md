@@ -36,3 +36,12 @@
 - Hooks use Dexie `useLiveQuery` over the StorageAdapter. A remote adapter would need its own change feed.
 - Notes are keyed by URL path and searched from IndexedDB at query time (not in the build index). Note previews use react-markdown with no raw HTML.
 - `lib/simulators/challenge-index.ts` lists challenge ids per registered simulator; progress weighting reads it.
+
+## Prompt 04
+- `plan.json` `simulatorChallengeIds` entries are either `"simulatorId"` (all its challenges) or `"simulatorId:challengeId"`, because challenge ids are only defined by the simulator prompts.
+- Section ids for unwritten phases come from the section lists in prompts 08, 10, 12, 14, 15 and 20d (`p<phase>-<slug>`).
+- The current week counts calendar days from local midnight of the start date, clamped to 1–16. Before the start date it is week 1.
+- A day that hasn't reached 10 minutes yet doesn't break the streak until it ends.
+- "Behind" means a written lesson from an earlier week that isn't complete. Unwritten sections never count.
+- Import keeps the local API key in both modes. Reset keeps the Settings row (theme, plan start, key) and clears everything else.
+- Study time is counted only on learning pages (lessons, simulators, flashcards, studio, interview, case studies, reference, capstone), not on the dashboard or settings.

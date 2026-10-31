@@ -4,7 +4,7 @@
 - [x] 01 Scaffold & App Shell
 - [x] 02 Content System
 - [x] 03 Learning Engine
-- [ ] 04 Plan & Dashboard
+- [x] 04 Plan & Dashboard
 - [ ] 05 Simulator Framework
 - [ ] 06 Phase 1 Content
 - [ ] 07 Phase 1 Simulators

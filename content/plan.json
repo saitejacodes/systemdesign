@@ -1,0 +1,310 @@
+[
+  {
+    "week": 1,
+    "title": "Foundations + estimation",
+    "focus": "How requests flow, how systems grow, and how to size them with back-of-envelope numbers.",
+    "sectionIds": [
+      "p1-client-server",
+      "p1-monolith-vs-microservices",
+      "p1-scaling",
+      "p1-estimation",
+      "p1-latency-throughput"
+    ],
+    "simulatorChallengeIds": [
+      "estimation-calculator",
+      "request-journey"
+    ],
+    "caseStudyIds": [],
+    "deliverable": "Write a one-page capacity estimate (QPS, storage, bandwidth) for a photo-sharing app, and explain which number drives the design.",
+    "estimatedHours": 8
+  },
+  {
+    "week": 2,
+    "title": "Networking",
+    "focus": "DNS, TCP/UDP, HTTP, TLS and the boxes in front of your servers.",
+    "sectionIds": [
+      "p1-dns",
+      "p1-tcp-udp",
+      "p1-http",
+      "p1-tls",
+      "p1-load-balancers",
+      "p1-reverse-proxy",
+      "p1-realtime"
+    ],
+    "simulatorChallengeIds": [
+      "load-balancer"
+    ],
+    "caseStudyIds": [],
+    "deliverable": "Draw the full path of one HTTPS request from browser to database, labelling every hop and its latency budget.",
+    "estimatedHours": 8
+  },
+  {
+    "week": 3,
+    "title": "APIs + rate limiting",
+    "focus": "REST, GraphQL, gRPC, gateways, rate limiting and safe retries.",
+    "sectionIds": [
+      "p2-rest",
+      "p2-graphql",
+      "p2-grpc",
+      "p2-api-gateway",
+      "p2-rate-limiting",
+      "p2-idempotency"
+    ],
+    "simulatorChallengeIds": [
+      "rate-limiter"
+    ],
+    "caseStudyIds": [
+      "rate-limiter-service"
+    ],
+    "deliverable": "Design a public REST API for a todo service with pagination, idempotent creates and a documented rate-limit policy.",
+    "estimatedHours": 8
+  },
+  {
+    "week": 4,
+    "title": "DB I: modeling, indexing, transactions",
+    "focus": "Pick a data store by access pattern, model the data, index it and keep it correct under concurrency.",
+    "sectionIds": [
+      "p2-sql-vs-nosql",
+      "p2-data-modeling",
+      "p2-indexing",
+      "p2-transactions",
+      "p2-locking"
+    ],
+    "simulatorChallengeIds": [],
+    "caseStudyIds": [],
+    "deliverable": "Model the schema for a ticket-booking system, list its indexes, and show how you prevent double booking.",
+    "estimatedHours": 8
+  },
+  {
+    "week": 5,
+    "title": "DB II: replication, sharding, consistent hashing",
+    "focus": "Copy data for availability, split it for scale, and move as little as possible when nodes change.",
+    "sectionIds": [
+      "p2-replication",
+      "p2-sharding",
+      "p2-consistent-hashing",
+      "p2-connection-pooling"
+    ],
+    "simulatorChallengeIds": [
+      "consistent-hashing"
+    ],
+    "caseStudyIds": [
+      "url-shortener"
+    ],
+    "deliverable": "Choose a shard key for a chat app's messages table and defend it against hot partitions.",
+    "estimatedHours": 8
+  },
+  {
+    "week": 6,
+    "title": "Storage & search",
+    "focus": "Blobs, inverted indexes, and analytics stores.",
+    "sectionIds": [
+      "p2-object-storage",
+      "p2-search",
+      "p2-olap-vs-oltp"
+    ],
+    "simulatorChallengeIds": [],
+    "caseStudyIds": [
+      "typeahead"
+    ],
+    "deliverable": "Sketch the upload path for user videos with presigned URLs and multipart upload.",
+    "estimatedHours": 8
+  },
+  {
+    "week": 7,
+    "title": "Caching",
+    "focus": "Every cache layer, every write strategy, and the ways caches fail.",
+    "sectionIds": [
+      "p3-cache-layers",
+      "p3-cache-strategies",
+      "p3-eviction",
+      "p3-invalidation",
+      "p3-cache-failures",
+      "p3-cdn",
+      "p3-redis"
+    ],
+    "simulatorChallengeIds": [],
+    "caseStudyIds": [
+      "news-feed"
+    ],
+    "deliverable": "Add a cache to the news-feed read path and write down how each failure mode (stampede, stale reads, hot key) is handled.",
+    "estimatedHours": 8
+  },
+  {
+    "week": 8,
+    "title": "Messaging",
+    "focus": "Queues, pub/sub, delivery guarantees and event-driven design.",
+    "sectionIds": [
+      "p3-queues-vs-pubsub",
+      "p3-delivery-semantics",
+      "p3-partitioning-ordering",
+      "p3-failure-handling",
+      "p3-event-driven",
+      "p3-kafka-vs-queues"
+    ],
+    "simulatorChallengeIds": [],
+    "caseStudyIds": [
+      "notification-system"
+    ],
+    "deliverable": "Design the notification pipeline with retries, a dead-letter queue and per-user ordering.",
+    "estimatedHours": 8
+  },
+  {
+    "week": 9,
+    "title": "Distributed systems",
+    "focus": "CAP, consistency, quorums, consensus, clocks, transactions, IDs and locks.",
+    "sectionIds": [
+      "p4-cap-pacelc",
+      "p4-consistency-models",
+      "p4-quorums",
+      "p4-consensus",
+      "p4-time-ordering",
+      "p4-distributed-transactions",
+      "p4-id-generation",
+      "p4-distributed-locks"
+    ],
+    "simulatorChallengeIds": [],
+    "caseStudyIds": [],
+    "deliverable": "Explain, with a timeline diagram, how a distributed lock without fencing tokens corrupts data.",
+    "estimatedHours": 8
+  },
+  {
+    "week": 10,
+    "title": "Reliability",
+    "focus": "Stay up when parts fail: redundancy, timeouts, breakers, shedding and recovery.",
+    "sectionIds": [
+      "p4-high-availability",
+      "p4-fault-tolerance",
+      "p4-timeouts-retries",
+      "p4-circuit-breakers",
+      "p4-bulkheads-load-shedding",
+      "p4-disaster-recovery",
+      "p4-chaos-engineering"
+    ],
+    "simulatorChallengeIds": [],
+    "caseStudyIds": [],
+    "deliverable": "Write the failure plan for a checkout service: timeouts, retry budget, breaker thresholds, RPO and RTO.",
+    "estimatedHours": 8
+  },
+  {
+    "week": 11,
+    "title": "Observability + security",
+    "focus": "See what the system does and keep the wrong people out.",
+    "sectionIds": [
+      "p5-logging",
+      "p5-metrics",
+      "p5-tracing",
+      "p5-slos",
+      "p5-alerting",
+      "p5-authn-authz",
+      "p5-access-control",
+      "p5-data-protection",
+      "p5-common-attacks"
+    ],
+    "simulatorChallengeIds": [],
+    "caseStudyIds": [
+      "metrics-monitoring"
+    ],
+    "deliverable": "Define three SLIs and SLOs for an API and the burn-rate alert for each.",
+    "estimatedHours": 8
+  },
+  {
+    "week": 12,
+    "title": "Deployment + capstone build",
+    "focus": "Ship safely: containers, Kubernetes, CI/CD, release strategies, infrastructure as code.",
+    "sectionIds": [
+      "p5-containers",
+      "p5-kubernetes",
+      "p5-ci-cd",
+      "p5-release-strategies",
+      "p5-iac"
+    ],
+    "simulatorChallengeIds": [],
+    "caseStudyIds": [],
+    "deliverable": "Build your capstone design in Design Studio and write its rollout plan (canary steps and rollback trigger).",
+    "estimatedHours": 10
+  },
+  {
+    "week": 13,
+    "title": "Advanced + AI-native",
+    "focus": "Serverless, edge, streams, multi-region, and systems built around LLMs.",
+    "sectionIds": [
+      "p6-serverless",
+      "p6-edge-computing",
+      "p6-stream-processing",
+      "p6-batch-processing",
+      "p6-multi-region",
+      "p6-embeddings-vector-search",
+      "p6-rag",
+      "p6-llm-serving",
+      "p6-llm-cost-latency",
+      "p6-ai-reliability",
+      "p6-evals-guardrails",
+      "p6-agents"
+    ],
+    "simulatorChallengeIds": [],
+    "caseStudyIds": [
+      "rag-docs-assistant"
+    ],
+    "deliverable": "Design a RAG docs assistant with a latency and cost budget per request.",
+    "estimatedHours": 10
+  },
+  {
+    "week": 14,
+    "title": "Interview framework + case studies 1–7",
+    "focus": "Learn the 7-step framework and apply it to the first seven case studies.",
+    "sectionIds": [
+      "p7-interview-framework",
+      "p7-requirements-scoping",
+      "p7-building-blocks-map",
+      "p7-tradeoff-communication"
+    ],
+    "simulatorChallengeIds": [],
+    "caseStudyIds": [
+      "url-shortener",
+      "rate-limiter-service",
+      "news-feed",
+      "chat-app",
+      "notification-system",
+      "typeahead",
+      "video-streaming"
+    ],
+    "deliverable": "Solve two case studies end to end in Interview Mode (practice) and self-score them with the rubric.",
+    "estimatedHours": 10
+  },
+  {
+    "week": 15,
+    "title": "Case studies 8–15 + mock interviews",
+    "focus": "The harder case studies, deep-dive patterns, and timed mocks.",
+    "sectionIds": [
+      "p7-deep-dive-patterns",
+      "p7-mock-interview-playbook"
+    ],
+    "simulatorChallengeIds": [],
+    "caseStudyIds": [
+      "ride-sharing",
+      "file-sync",
+      "payment-system",
+      "ticket-booking",
+      "job-scheduler",
+      "web-crawler",
+      "metrics-monitoring",
+      "rag-docs-assistant"
+    ],
+    "deliverable": "Run three timed mock interviews and log the weakest framework step in each.",
+    "estimatedHours": 10
+  },
+  {
+    "week": 16,
+    "title": "Weak spots + mock interviews",
+    "focus": "Close the gaps the app has measured, then rehearse under time pressure.",
+    "sectionIds": [
+      "p7-level-expectations",
+      "p7-final-review"
+    ],
+    "simulatorChallengeIds": [],
+    "caseStudyIds": [],
+    "deliverable": "Clear every weak spot on /today and finish two more timed mocks with self-scores of 3+ on every rubric row.",
+    "estimatedHours": 10
+  }
+]
