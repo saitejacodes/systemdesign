@@ -1,0 +1,26 @@
+// Every route from CLAUDE.md §3 (dynamic ones with a sample param).
+export const ROUTES = [
+  "/",
+  "/today",
+  "/plan",
+  "/phase/1/sample",
+  "/simulators",
+  "/simulators/sample",
+  "/simulators/code-labs",
+  "/simulators/code-labs/sample",
+  "/studio",
+  "/studio/sample",
+  "/interview/sample",
+  "/case-studies",
+  "/case-studies/sample",
+  "/flashcards",
+  "/dashboard",
+  "/search",
+  "/glossary",
+  "/reference",
+  "/reference/sample",
+  "/resources",
+  "/capstone",
+  "/settings",
+  "/about"
+];

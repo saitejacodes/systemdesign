@@ -1,0 +1,85 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "./styles/tokens.css";
+@import "./styles/components.css";
+@import "./styles/landing.css";
+
+@custom-variant dark (&:is([data-theme="blueprint"] *));
+
+/* next/font variables (set on <html>) feed the token font stacks. */
+:root {
+  --font-display: var(--f-archivo), "Helvetica Neue", Arial, sans-serif;
+  --font-sans: var(--f-archivo), "Helvetica Neue", Arial, sans-serif;
+  --font-accent: var(--f-instrument), Georgia, "Times New Roman", serif;
+  --font-mono: var(--f-plex-mono), ui-monospace, Menlo, Consolas, monospace;
+
+  /* shadcn/ui semantic names mapped onto Field Manual tokens, so primitives restyle themselves. */
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--paper);
+  --secondary: var(--surface-sunk);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-sunk);
+  --muted-foreground: var(--ink-muted);
+  --accent: var(--surface-sunk);
+  --accent-foreground: var(--ink);
+  --destructive: var(--status-over);
+  --border: var(--ink);
+  --input: var(--ink);
+  --ring: var(--focus);
+  --radius: 4px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-sunk: var(--surface-sunk);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-line: var(--line);
+  --color-cobalt: var(--cobalt);
+  --color-on-cobalt: var(--on-cobalt);
+  --color-status-ok: var(--status-ok);
+  --color-status-hot: var(--status-hot);
+  --color-status-over: var(--status-over);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-heading: var(--font-display);
+
+  /* Field Manual: 2px controls, 4px cards, never more. */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+}
+
+html, body { background: var(--paper); color: var(--ink); }
+body { font-family: var(--font-sans); }
+[data-theme="blueprint"] { color-scheme: dark; }
