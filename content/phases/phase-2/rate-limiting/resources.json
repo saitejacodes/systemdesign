@@ -1,0 +1,39 @@
+[
+  {
+    "id": "stripe-limiters",
+    "title": "Scaling your API with rate limiters",
+    "author": "Paul Tarjan, Stripe",
+    "kind": "blog",
+    "url": "https://stripe.com/blog/rate-limiters",
+    "why": "Four kinds of limiter Stripe runs in production, and why.",
+    "topicIds": [
+      "why",
+      "placement"
+    ],
+    "free": true
+  },
+  {
+    "id": "rfc6585",
+    "title": "RFC 6585: Additional HTTP Status Codes",
+    "author": "IETF",
+    "kind": "docs",
+    "url": "https://www.rfc-editor.org/rfc/rfc6585",
+    "why": "Defines 429 Too Many Requests.",
+    "topicIds": [
+      "response"
+    ],
+    "free": true
+  },
+  {
+    "id": "redis-incr",
+    "title": "INCR command",
+    "author": "Redis",
+    "kind": "docs",
+    "url": "https://redis.io/docs/latest/commands/incr/",
+    "why": "The atomic counter, including the rate-limiter pattern in its docs.",
+    "topicIds": [
+      "distributed"
+    ],
+    "free": true
+  }
+]

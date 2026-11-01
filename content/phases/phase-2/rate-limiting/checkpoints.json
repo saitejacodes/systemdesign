@@ -1,0 +1,27 @@
+[
+  {
+    "id": "c1",
+    "text": "I can explain all five rate-limiting algorithms and their tradeoffs.",
+    "topicId": "algorithms"
+  },
+  {
+    "id": "c2",
+    "text": "I can compute a token bucket and a sliding window counter by hand.",
+    "topicId": "algorithms"
+  },
+  {
+    "id": "c3",
+    "text": "I can implement a shared limit with Redis INCR or Lua and explain the race it avoids.",
+    "topicId": "distributed"
+  },
+  {
+    "id": "c4",
+    "text": "I can choose where each limit lives in a system.",
+    "topicId": "placement"
+  },
+  {
+    "id": "c5",
+    "text": "I can describe the 429 response and correct client retry behaviour.",
+    "topicId": "response"
+  }
+]

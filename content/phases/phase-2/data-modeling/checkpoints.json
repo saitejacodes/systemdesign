@@ -1,0 +1,22 @@
+[
+  {
+    "id": "c1",
+    "text": "I can normalise a table to 3NF and explain each step.",
+    "topicId": "normalization"
+  },
+  {
+    "id": "c2",
+    "text": "I can choose a denormalisation and explain how it stays in sync.",
+    "topicId": "denormalization"
+  },
+  {
+    "id": "c3",
+    "text": "I can design Cassandra tables with partition and clustering keys and size the largest partition.",
+    "topicId": "wide-column"
+  },
+  {
+    "id": "c4",
+    "text": "I can derive a data model from a list of queries.",
+    "topicId": "query-first"
+  }
+]

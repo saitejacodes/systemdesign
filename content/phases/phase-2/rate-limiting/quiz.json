@@ -1,0 +1,355 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "Why is an IP address a weak rate-limit key on its own?",
+    "options": [
+      {
+        "id": "a",
+        "text": "IPs are too long"
+      },
+      {
+        "id": "b",
+        "text": "Many users share one IP and attackers can rotate through many"
+      },
+      {
+        "id": "c",
+        "text": "IPs change every request"
+      },
+      {
+        "id": "d",
+        "text": "Load balancers hide all IPs"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Shared NATs and rotating attackers make IPs both too strict and too loose. (a), (c) and (d) are false or irrelevant.",
+    "topicId": "why",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "A token bucket has B = 10 and R = 2/s and is full. A client sends 15 requests at once. How many succeed?",
+    "options": [
+      {
+        "id": "a",
+        "text": "2"
+      },
+      {
+        "id": "b",
+        "text": "10"
+      },
+      {
+        "id": "c",
+        "text": "15"
+      },
+      {
+        "id": "d",
+        "text": "12"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The bucket holds 10 tokens; the other 5 are rejected until it refills.",
+    "topicId": "algorithms",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "scenario",
+    "prompt": "Which algorithm is being exploited, and what fixes it?",
+    "scenario": "Your API allows 100 requests per minute using per-minute counters. A scraper sends 100 requests at 12:00:59 and 100 more at 12:01:00, every minute.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Token bucket; use leaky bucket"
+      },
+      {
+        "id": "b",
+        "text": "Fixed window boundary burst; use a sliding window counter or log"
+      },
+      {
+        "id": "c",
+        "text": "Sliding log; use fixed window"
+      },
+      {
+        "id": "d",
+        "text": "None; this is expected"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Fixed windows reset at the boundary, allowing 2× in a short span. Sliding windows look back a full window from now.",
+    "topicId": "algorithms",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "single",
+    "prompt": "Limit 100/min, previous window 80 requests, current 30, 25% into the current window. Sliding window counter estimate?",
+    "options": [
+      {
+        "id": "a",
+        "text": "110"
+      },
+      {
+        "id": "b",
+        "text": "90"
+      },
+      {
+        "id": "c",
+        "text": "50"
+      },
+      {
+        "id": "d",
+        "text": "30"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "80 × 0.75 + 30 = 90, so the request is allowed.",
+    "topicId": "algorithms",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "Which algorithm smooths output to a perfectly steady rate at the cost of added delay?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Token bucket"
+      },
+      {
+        "id": "b",
+        "text": "Fixed window"
+      },
+      {
+        "id": "c",
+        "text": "Leaky bucket"
+      },
+      {
+        "id": "d",
+        "text": "Sliding window counter"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "A leaky bucket is a queue drained at a fixed rate. The others reject rather than queue.",
+    "topicId": "algorithms",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "single",
+    "prompt": "Why is the sliding window log memory-heavy?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It stores a timestamp for every request in the window"
+      },
+      {
+        "id": "b",
+        "text": "It stores the full request body"
+      },
+      {
+        "id": "c",
+        "text": "It needs one Redis server per user"
+      },
+      {
+        "id": "d",
+        "text": "It keeps logs forever"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Memory grows with the limit × active users. (b), (c) and (d) aren't how it works.",
+    "topicId": "algorithms",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "prompt": "Why is the limit exceeded?",
+    "scenario": "Each app server runs `count = GET key; if count < 100: SET key count+1`. Under load, clients regularly get 104 or 105 requests through per minute.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Redis is too slow"
+      },
+      {
+        "id": "b",
+        "text": "Two servers read the same count before either writes, so both allow; use atomic INCR or a Lua script"
+      },
+      {
+        "id": "c",
+        "text": "The window is too short"
+      },
+      {
+        "id": "d",
+        "text": "The load balancer duplicates requests"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A read-then-write race. INCR is atomic; Lua makes multi-step logic atomic.",
+    "topicId": "distributed",
+    "difficulty": 3
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "prompt": "How many requests a minute can one client really make?",
+    "scenario": "You have 10 app servers behind a round-robin load balancer. Each server keeps its own in-memory limit of 100 requests per minute per user.",
+    "options": [
+      {
+        "id": "a",
+        "text": "100"
+      },
+      {
+        "id": "b",
+        "text": "500"
+      },
+      {
+        "id": "c",
+        "text": "1,000"
+      },
+      {
+        "id": "d",
+        "text": "Unlimited"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Ten servers × 100 each, with the load balancer spreading the client's requests.",
+    "topicId": "distributed",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "multi",
+    "prompt": "Your Redis rate-limit store is down. Which are reasonable choices? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Fail open for normal API limits"
+      },
+      {
+        "id": "b",
+        "text": "Fail closed for login-attempt limits"
+      },
+      {
+        "id": "c",
+        "text": "Silently crash the app servers"
+      },
+      {
+        "id": "d",
+        "text": "Fall back to approximate local limits"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "d"
+    ],
+    "explanation": "Fail open protects availability, fail closed protects security, local fallbacks give rough protection. Crashing (c) is never the plan.",
+    "topicId": "distributed",
+    "difficulty": 3
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "Where should a '10 exports per day' limit live?",
+    "options": [
+      {
+        "id": "a",
+        "text": "The CDN"
+      },
+      {
+        "id": "b",
+        "text": "Inside the export service, which knows what an export is"
+      },
+      {
+        "id": "c",
+        "text": "DNS"
+      },
+      {
+        "id": "d",
+        "text": "The client app only"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Business-specific limits need business context. The CDN and DNS can't see it; client-only limits are trivially bypassed.",
+    "topicId": "placement",
+    "difficulty": 2
+  },
+  {
+    "id": "q11",
+    "type": "single",
+    "prompt": "What should a rate-limited request receive?",
+    "options": [
+      {
+        "id": "a",
+        "text": "500 Internal Server Error"
+      },
+      {
+        "id": "b",
+        "text": "429 Too Many Requests with Retry-After"
+      },
+      {
+        "id": "c",
+        "text": "200 with an empty body"
+      },
+      {
+        "id": "d",
+        "text": "A dropped connection"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "429 tells the client exactly what happened and Retry-After when to try again.",
+    "topicId": "response",
+    "difficulty": 1
+  },
+  {
+    "id": "q12",
+    "type": "single",
+    "prompt": "Why add jitter to client retries?",
+    "options": [
+      {
+        "id": "a",
+        "text": "To make retries slower"
+      },
+      {
+        "id": "b",
+        "text": "So rejected clients don't all retry at the same instant and recreate the spike"
+      },
+      {
+        "id": "c",
+        "text": "Jitter is required by HTTP"
+      },
+      {
+        "id": "d",
+        "text": "To bypass the limiter"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Synchronised retries cause repeated spikes. (a), (c) and (d) miss the point.",
+    "topicId": "response",
+    "difficulty": 2
+  }
+]

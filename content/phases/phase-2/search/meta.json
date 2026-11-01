@@ -1,0 +1,43 @@
+{
+  "id": "p2-search",
+  "phase": 2,
+  "slug": "search",
+  "title": "Search",
+  "order": 17,
+  "week": 6,
+  "estimatedMinutes": 60,
+  "topics": [
+    {
+      "id": "inverted-index",
+      "title": "The inverted index",
+      "depth": "deep"
+    },
+    {
+      "id": "analysis",
+      "title": "Tokenisation and analysis",
+      "depth": "deep"
+    },
+    {
+      "id": "relevance",
+      "title": "Relevance: TF-IDF and BM25",
+      "depth": "deep"
+    },
+    {
+      "id": "elasticsearch",
+      "title": "Elasticsearch architecture",
+      "depth": "deep"
+    },
+    {
+      "id": "typeahead",
+      "title": "Typeahead with tries and top-k",
+      "depth": "deep"
+    }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [
+    "typeahead"
+  ],
+  "prerequisites": [
+    "p2-indexing"
+  ]
+}

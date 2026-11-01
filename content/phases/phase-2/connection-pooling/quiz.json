@@ -1,0 +1,295 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "How does PostgreSQL serve each client connection?",
+    "options": [
+      {
+        "id": "a",
+        "text": "One thread shared by all"
+      },
+      {
+        "id": "b",
+        "text": "Its own operating-system process"
+      },
+      {
+        "id": "c",
+        "text": "A browser tab"
+      },
+      {
+        "id": "d",
+        "text": "A Redis key"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A process per connection is why idle connections still cost memory.",
+    "topicId": "cost",
+    "difficulty": 2
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "What does a connection pool do?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Caches query results"
+      },
+      {
+        "id": "b",
+        "text": "Keeps open connections and lends them to requests, avoiding a new handshake each time"
+      },
+      {
+        "id": "c",
+        "text": "Shards the database"
+      },
+      {
+        "id": "d",
+        "text": "Encrypts the disk"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Reuse avoids TCP, TLS and auth costs per request.",
+    "topicId": "pools",
+    "difficulty": 1
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "Why set an acquire timeout on the pool?",
+    "options": [
+      {
+        "id": "a",
+        "text": "To speed up queries"
+      },
+      {
+        "id": "b",
+        "text": "So requests fail fast when the pool is exhausted instead of queuing forever"
+      },
+      {
+        "id": "c",
+        "text": "To close idle connections"
+      },
+      {
+        "id": "d",
+        "text": "It's required by SQL"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Without it, stuck requests pile up behind a saturated pool.",
+    "topicId": "pools",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "What's the root cause and best fix?",
+    "scenario": "Postgres has max_connections = 500. Each app instance has a pool of 20. Autoscaling went from 15 to 40 instances, and the new instances log 'too many clients already'.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Slow queries; add indexes"
+      },
+      {
+        "id": "b",
+        "text": "Total connections = instances × pool size exceeded max_connections; cap the total with smaller pools or a pooler"
+      },
+      {
+        "id": "c",
+        "text": "A DNS failure"
+      },
+      {
+        "id": "d",
+        "text": "The database needs more disk"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "40 × 20 = 800 > 500. Raising max_connections just makes the database slower; cap the total.",
+    "topicId": "exhaustion",
+    "difficulty": 3
+  },
+  {
+    "id": "q5",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "Pool usage climbs by a few connections an hour regardless of traffic, until all 20 are 'in use' and requests time out. Restarting the app fixes it for a day.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The database is too small"
+      },
+      {
+        "id": "b",
+        "text": "A connection leak: some code path (likely an error path) borrows a connection and never returns it"
+      },
+      {
+        "id": "c",
+        "text": "Too many indexes"
+      },
+      {
+        "id": "d",
+        "text": "Replication lag"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A pool slowly draining to zero under steady load is the classic leak signature.",
+    "topicId": "exhaustion",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "single",
+    "prompt": "Why shouldn't you call an external HTTP API inside an open transaction?",
+    "options": [
+      {
+        "id": "a",
+        "text": "HTTP is insecure"
+      },
+      {
+        "id": "b",
+        "text": "The transaction holds a pooled connection (and locks) while waiting on a slow call"
+      },
+      {
+        "id": "c",
+        "text": "Transactions can't make network calls"
+      },
+      {
+        "id": "d",
+        "text": "It causes dirty reads"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Slow external calls drain the pool and hold locks longer.",
+    "topicId": "exhaustion",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "single",
+    "prompt": "What happens to database throughput as connections grow far past its CPU core count?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It keeps rising"
+      },
+      {
+        "id": "b",
+        "text": "It peaks and then falls because sessions contend"
+      },
+      {
+        "id": "c",
+        "text": "It doubles"
+      },
+      {
+        "id": "d",
+        "text": "It stays perfectly flat"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Beyond the efficient concurrency, overhead grows faster than useful work.",
+    "topicId": "sizing",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "single",
+    "prompt": "4,000 queries/s at 5 ms each keeps how many connections busy on average?",
+    "options": [
+      {
+        "id": "a",
+        "text": "2"
+      },
+      {
+        "id": "b",
+        "text": "20"
+      },
+      {
+        "id": "c",
+        "text": "200"
+      },
+      {
+        "id": "d",
+        "text": "800"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Little's Law: 4,000 × 0.005 = 20.",
+    "topicId": "sizing",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "scenario",
+    "prompt": "What should you check first?",
+    "scenario": "After putting PgBouncer in transaction pooling mode in front of Postgres, a feature that runs `SET app.tenant_id = 7` once per session and then queries in later transactions starts returning other tenants' rows.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Disk space"
+      },
+      {
+        "id": "b",
+        "text": "Whether the code relies on session state, such as session-level SET, advisory locks or LISTEN/NOTIFY, which transaction pooling doesn't preserve"
+      },
+      {
+        "id": "c",
+        "text": "Replication lag"
+      },
+      {
+        "id": "d",
+        "text": "The CDN"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Transaction pooling gives each transaction possibly a different server connection, so session state disappears.",
+    "topicId": "poolers",
+    "difficulty": 3
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "Which PgBouncer mode gives the biggest savings for typical web apps?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Session pooling"
+      },
+      {
+        "id": "b",
+        "text": "Transaction pooling"
+      },
+      {
+        "id": "c",
+        "text": "Statement pooling"
+      },
+      {
+        "id": "d",
+        "text": "No pooling"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A server connection is held only for each transaction's duration.",
+    "topicId": "poolers",
+    "difficulty": 2
+  }
+]

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "c1",
+    "text": "I can list what belongs in a gateway and what belongs in services.",
+    "topicId": "cross-cutting"
+  },
+  {
+    "id": "c2",
+    "text": "I can calculate aggregated latency for parallel calls.",
+    "topicId": "aggregation"
+  },
+  {
+    "id": "c3",
+    "text": "I can explain when to use a BFF.",
+    "topicId": "bff"
+  },
+  {
+    "id": "c4",
+    "text": "I can describe how to make a gateway highly available.",
+    "topicId": "spof"
+  }
+]

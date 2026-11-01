@@ -1,0 +1,225 @@
+## Why it matters
+
+Almost every system design interview has an "API" step, and almost every company you will work for exposes REST APIs: Stripe, GitHub, Twilio and Shopify all publish them. A well-designed API is boring in the best way: clients can guess how it works, retries are safe, lists don't fall over at a million rows, and version 2 doesn't break version 1. A badly designed one leaks into every client forever, because once an API is public you can almost never take anything back.
+
+<Callout type="analogy" title="The library catalogue">
+A REST API is a library. Every book has a fixed shelf address (the URI). There are only a handful of things you can do at the desk: look at a book (GET), donate a new one (POST), replace one (PUT), fix a page (PATCH), throw one out (DELETE). You never ask the librarian to "runBookCleanupProcedure"; you name the thing and use one of the standard verbs. Because every library works the same way, a visitor who has used one can use them all.
+</Callout>
+
+## Resources and URIs
+
+<DepthStamp depth="deep" />
+
+<Term slug="rest">REST</Term> (Representational State Transfer) is an architectural style described by Roy Fielding in his 2000 dissertation. In practice it means: model your system as **resources** (nouns), give each one a URI, and act on them with the standard HTTP methods. The server returns a **representation** of the resource, usually JSON.
+
+Good URIs are nouns, plural, and nested only where ownership is real:
+
+```
+GET    /users/42                 one user
+GET    /users/42/orders          that user's orders
+GET    /orders/9001              one order (it has its own identity)
+POST   /orders                   create an order
+```
+
+Things to avoid:
+
+- **Verbs in paths.** `/getUser?id=42` or `/createOrder` re-invent what the HTTP method already says.
+- **Deep nesting.** `/users/42/orders/9001/items/3/reviews` couples the URI to one navigation path. Once a resource has a global ID, give it a short top-level URI.
+- **Leaking implementation.** `/api/v1/mysql_orders_table` ties clients to your database.
+
+Some operations are genuinely actions, such as "cancel this order" or "refund this payment". Two common answers: model the action as a resource (`POST /orders/9001/cancellation`, `POST /refunds`), or accept a small, clearly named action endpoint (`POST /orders/9001/cancel`). Both are seen in well-known public APIs; pick one style and use it consistently.
+
+## Verbs, safety and idempotency
+
+<DepthStamp depth="deep" />
+
+| Method | Meaning | Safe | Idempotent |
+|---|---|---|---|
+| GET | Read a resource | Yes | Yes |
+| HEAD | Headers only | Yes | Yes |
+| POST | Create, or run an action | No | No |
+| PUT | Replace the whole resource at this URI | No | Yes |
+| PATCH | Change part of a resource | No | Not guaranteed |
+| DELETE | Remove the resource | No | Yes |
+
+**Safe** means the request should not change state, so caches, crawlers and prefetchers may send it freely. **Idempotent** means sending it twice has the same effect as once. This matters because networks fail mid-request: the client sends `PUT /users/42`, the connection drops, and the client cannot tell whether the server applied it. With an idempotent method it simply retries. With POST, a blind retry may create a second order or charge a card twice. The fix for POST, idempotency keys, gets its own section later in this phase.
+
+<Callout type="analogy" title="The lift button and the vending machine">
+Pressing the lift button five times still brings one lift: idempotent. Pressing the vending machine button five times after paying once might give you five cans, or none: not idempotent. PUT and DELETE are lift buttons. POST is a vending machine, so you need a receipt number (an idempotency key) to retry it safely.
+</Callout>
+
+DELETE is idempotent in effect, not in response: the first call might return `204 No Content` and the second `404 Not Found`. The server state is the same after both, and that is what idempotency is about.
+
+## Status codes that clients can act on
+
+<DepthStamp depth="deep" />
+
+Status codes are part of your contract. Clients branch on them, so use them precisely:
+
+| Code | Use it when |
+|---|---|
+| 200 OK | A successful read or update with a body |
+| 201 Created | A POST created something; include a `Location` header with its URI |
+| 204 No Content | Success with nothing to return (often DELETE) |
+| 400 Bad Request | The request is malformed or fails validation |
+| 401 Unauthorized | No valid credentials (despite the name, it means *unauthenticated*) |
+| 403 Forbidden | Authenticated, but not allowed |
+| 404 Not Found | No such resource (also used to hide resources the caller may not know exist) |
+| 409 Conflict | The request clashes with current state, such as a version mismatch or a duplicate |
+| 422 Unprocessable Content | Well-formed but semantically invalid; some APIs use this instead of 400 |
+| 429 Too Many Requests | Rate limited; send `Retry-After` |
+| 500 / 503 | Server error / temporarily unavailable; the client may retry with backoff |
+
+The single most useful rule: **4xx means "you should change the request", 5xx means "we failed, you may retry".** A client library can implement sensible retries from that rule alone. Returning `200 OK` with `{"error": "..."}` in the body breaks every generic client, proxy and monitoring tool between you and the user.
+
+Pair codes with a consistent error body, for example:
+
+```json
+{ "error": { "code": "card_declined", "message": "Your card was declined.", "request_id": "req_8f2c" } }
+```
+
+A stable machine-readable `code`, a human `message` and a `request_id` the customer can quote to support will save your on-call engineers hours.
+
+## Pagination: offset vs cursor
+
+<DepthStamp depth="deep" />
+
+Any endpoint that returns a list must be paginated, because lists grow without limit. There are two common styles.
+
+**Offset pagination** asks for "items 40 to 60":
+
+```
+GET /posts?limit=20&offset=40
+SELECT * FROM posts ORDER BY created_at DESC LIMIT 20 OFFSET 40;
+```
+
+It is simple and lets users jump to page 37. But it has two real problems at scale:
+
+1. **It gets slower the deeper you go.** To return rows 1,000,000 to 1,000,020, most databases still walk past the first million rows and throw them away.
+2. **It skips and repeats items when data changes.** If a new post is inserted while you read page 1, everything shifts down by one, and the first item of page 2 is the last item you already saw.
+
+**Cursor pagination** (also called keyset pagination) asks for "the 20 items after this one":
+
+```
+GET /posts?limit=20&after=eyJpZCI6OTAwMX0
+SELECT * FROM posts WHERE (created_at, id) < (:ts, :id)
+ORDER BY created_at DESC, id DESC LIMIT 20;
+```
+
+The cursor is an opaque token, often base64 of the last item's sort key. With an index on `(created_at, id)` the database jumps straight to the position, so page 50,000 costs the same as page 1, and inserts don't cause skips or repeats. The `id` tie-breaker matters: without it, two posts with the same timestamp can be skipped at a page boundary.
+
+<Callout type="analogy" title="Page numbers vs a bookmark">
+Offset pagination is telling a friend "start reading at page 412". If someone tears out three pages near the front, your friend starts in the wrong place, and they still have to count 412 pages to get there. Cursor pagination is leaving a bookmark in the book: wherever the pages move, you open exactly where you stopped.
+</Callout>
+
+| | Offset | Cursor |
+|---|---|---|
+| Jump to page N | Yes | No (only next/previous) |
+| Cost of deep pages | Grows with the offset | Constant with the right index |
+| Consistent under inserts | No | Yes |
+| Good for | Admin tables, small data sets | Feeds, timelines, public APIs, infinite scroll |
+
+Large public APIs such as Stripe's and Slack's use cursor-style pagination for this reason. Return the cursor in the response (`"next_cursor": "..."` or a `Link` header) and treat it as opaque, so you can change its contents later.
+
+### Worked example: why deep offsets hurt
+
+A table has 50 million posts. A scraper walks it with `limit=100`.
+
+- Offset: page *k* makes the database skip about 100 × *k* rows. Reading all 500,000 pages skips about 100 × (1 + 2 + … + 500,000) ≈ 100 × 1.25 × 10¹¹ = **1.25 × 10¹³ row visits**. Even at an optimistic 10 million rows per second, that is about 1.25 × 10⁶ seconds: two weeks of database time.
+- Cursor: each page is an index seek plus 100 rows: about **5 × 10⁷ row visits** in total, the size of the table. At the same speed, about 5 seconds.
+
+The exact speed depends on the database, but the shape doesn't: offset cost grows with the square of the data you read, cursor cost grows linearly.
+
+## Filtering, sorting and field selection
+
+<DepthStamp depth="tradeoffs" />
+
+Use query parameters for anything that narrows or orders a collection:
+
+```
+GET /orders?status=shipped&created_after=2026-01-01&sort=-created_at&fields=id,total
+```
+
+- **Whitelist** filterable and sortable fields. Each one usually needs an index; letting clients sort by any column invites slow queries.
+- A leading `-` for descending order is a common, readable convention.
+- **Sparse fieldsets** (`fields=`) let mobile clients skip heavy fields. If clients need this everywhere, that is a hint GraphQL may suit them (next section).
+- Combine filters with cursor pagination carefully: the cursor must encode the sort key, and the index must match filter plus sort.
+
+## Versioning strategies
+
+<DepthStamp depth="tradeoffs" />
+
+Sooner or later you must make a breaking change: rename a field, change a type, remove an endpoint. The options:
+
+| Strategy | Example | Pros | Cons |
+|---|---|---|---|
+| URI version | `/v2/orders` | Obvious, easy to route and cache | Encourages big-bang versions; URIs no longer name just the resource |
+| Header version | `Accept: application/vnd.acme.v2+json` | Clean URIs | Harder to test in a browser, easy to forget |
+| Date-based version per account | `Stripe-Version: 2024-06-20` | Clients upgrade one change at a time | The server must keep transformation layers for every version |
+| No versions, additive only | Add fields, never remove | Simplest for clients | Mistakes live forever |
+
+The most important rule is not which scheme you choose but **what counts as breaking**. Adding an optional field or a new endpoint is safe if clients ignore unknown fields (tell them to). Removing or renaming a field, changing a type, or adding a new required parameter is breaking. Many teams avoid most version bumps by being strictly additive and only versioning when they truly must.
+
+<Callout type="analogy" title="The electrical socket">
+A good API version is like a wall socket standard. You can make kettles better for decades without changing the socket. Change the socket shape and every appliance in every house needs an adapter. So you change it rarely, announce it years ahead, and sell adapters (support old versions) for a long time.
+</Callout>
+
+## HATEOAS
+
+<DepthStamp depth="awareness" />
+
+<Term slug="hateoas">HATEOAS</Term> (Hypermedia As The Engine Of Application State) is the part of Fielding's REST where responses include links to the actions available next, like a web page does:
+
+```json
+{ "id": 9001, "status": "pending",
+  "_links": { "self": "/orders/9001", "cancel": "/orders/9001/cancellation", "pay": "/payments?order=9001" } }
+```
+
+In theory clients discover the API by following links. In practice, most JSON APIs that call themselves REST don't do this, and clients hard-code URIs from documentation. Know the term and the idea; you rarely need to defend it in an interview.
+
+<TradeoffBox title="REST design choices" items={[
+  { gain: "Resource URIs and standard verbs make APIs guessable and cache-friendly", cost: "Some real actions fit awkwardly and need a convention" },
+  { gain: "Cursor pagination is fast at any depth and stable under inserts", cost: "No jumping to page N; the cursor must encode the sort key" },
+  { gain: "URI versioning is obvious and easy to route", cost: "Encourages large breaking releases and duplicated code" },
+  { gain: "Precise status codes let generic clients retry correctly", cost: "Teams must agree on edge cases such as 400 vs 422" }
+]} />
+
+<NotWhenBox title="Plain REST" items={[
+  "When many different clients each need different slices of a deep object graph: GraphQL avoids dozens of bespoke endpoints.",
+  "For high-volume internal service-to-service calls with strict schemas: gRPC is smaller and faster on the wire.",
+  "For server push and live updates: use SSE or WebSockets alongside REST, not polling."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="POST is for creating, PUT is for updating." right="PUT means 'store this complete representation at this URI', which can create or replace. POST means 'process this', which is usually create-in-a-collection. The real difference is idempotency." />
+
+<Misconception wrong="401 means the user isn't allowed to do this." right="401 means not authenticated (no or bad credentials). 403 means authenticated but not permitted." />
+
+<Misconception wrong="Offset pagination is fine; databases are fast." right="Deep offsets make the database read and discard every skipped row, and pages shift when data is inserted. Use cursors for anything large or changing." />
+
+## Interview angle
+
+<InterviewAngle title="REST API design" questions={[
+  "Design the API for a todo app (or a URL shortener, or a payments service).",
+  "How would you paginate a feed with millions of items?",
+  "What happens if the client retries a POST after a timeout?",
+  "How do you evolve the API without breaking mobile apps that never update?"
+]}>
+Write 4–6 endpoints with method, path, key request fields and response, and say which are idempotent. Mention cursor pagination for any list, 429 with Retry-After for limits, and idempotency keys for POSTs that move money. Interviewers mostly want to see that you think about retries, large lists and change over time, not REST purity.
+</InterviewAngle>
+
+## Practice
+
+1. Design endpoints for a library system: books, copies, members and loans. Which operation is an "action", and how do you model it?
+2. A client reports that infinite scroll sometimes shows the same post twice. Explain the cause and fix it.
+3. You must rename `user.name` to `user.full_name`. Write a migration plan that breaks no existing client.
+4. Classify these as breaking or not: adding an optional field, making an optional field required, adding an enum value, removing an endpoint.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

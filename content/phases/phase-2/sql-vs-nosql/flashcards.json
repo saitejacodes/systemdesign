@@ -1,0 +1,80 @@
+[
+  {
+    "id": "f1",
+    "front": "Relational database?",
+    "back": "Tables with fixed schemas, linked by foreign keys, queried with SQL; supports joins and transactions.",
+    "topicId": "relational"
+  },
+  {
+    "id": "f2",
+    "front": "Relational weakness?",
+    "back": "Scaling writes beyond one machine needs sharding or distributed SQL.",
+    "topicId": "relational"
+  },
+  {
+    "id": "f3",
+    "front": "Distributed SQL examples?",
+    "back": "Google Spanner, CockroachDB: SQL and transactions across many nodes.",
+    "topicId": "relational"
+  },
+  {
+    "id": "f4",
+    "front": "Document store?",
+    "back": "Self-contained JSON-like records with nesting; one fetch per aggregate.",
+    "topicId": "document"
+  },
+  {
+    "id": "f5",
+    "front": "Document store cost?",
+    "back": "Duplicated data and weaker cross-document queries.",
+    "topicId": "document"
+  },
+  {
+    "id": "f6",
+    "front": "Key-value store?",
+    "back": "GET/PUT/DELETE by key only; value is opaque. Redis, Memcached, DynamoDB.",
+    "topicId": "key-value"
+  },
+  {
+    "id": "f7",
+    "front": "Key-value use cases?",
+    "back": "Sessions, caches, feature flags, carts, rate-limit counters.",
+    "topicId": "key-value"
+  },
+  {
+    "id": "f8",
+    "front": "Partition key vs clustering key?",
+    "back": "Partition key picks the node; clustering key sorts rows within the partition.",
+    "topicId": "wide-column"
+  },
+  {
+    "id": "f9",
+    "front": "Wide-column modelling rule?",
+    "back": "Design one table per query; ad-hoc queries scan the cluster.",
+    "topicId": "wide-column"
+  },
+  {
+    "id": "f10",
+    "front": "Graph database sweet spot?",
+    "back": "Multi-hop relationship queries: friends of friends, fraud rings.",
+    "topicId": "graph"
+  },
+  {
+    "id": "f11",
+    "front": "First step in choosing a database?",
+    "back": "List the reads and writes (access patterns), then pick.",
+    "topicId": "access-patterns"
+  },
+  {
+    "id": "f12",
+    "front": "Polyglot persistence?",
+    "back": "Using several databases, each for the access pattern it fits best.",
+    "topicId": "access-patterns"
+  },
+  {
+    "id": "f13",
+    "front": "What NoSQL usually gives up?",
+    "back": "Joins, multi-item transactions, ad-hoc queries, schema enforcement.",
+    "topicId": "access-patterns"
+  }
+]

@@ -1,0 +1,53 @@
+{
+  "id": "p2-rest",
+  "phase": 2,
+  "slug": "rest",
+  "title": "REST API design",
+  "order": 1,
+  "week": 3,
+  "estimatedMinutes": 60,
+  "topics": [
+    {
+      "id": "resources",
+      "title": "Resources and URIs",
+      "depth": "deep"
+    },
+    {
+      "id": "verbs",
+      "title": "Verbs, safety and idempotency",
+      "depth": "deep"
+    },
+    {
+      "id": "status-codes",
+      "title": "Status codes that clients can act on",
+      "depth": "deep"
+    },
+    {
+      "id": "pagination",
+      "title": "Pagination: offset vs cursor",
+      "depth": "deep"
+    },
+    {
+      "id": "filtering",
+      "title": "Filtering, sorting and field selection",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "versioning",
+      "title": "Versioning strategies",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "hateoas",
+      "title": "HATEOAS",
+      "depth": "awareness"
+    }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [
+    "url-shortener"
+  ],
+  "prerequisites": [
+    "p1-http"
+  ]
+}

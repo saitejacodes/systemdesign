@@ -1,0 +1,163 @@
+## Why it matters
+
+The transactions section showed what goes wrong when two transactions touch the same data: lost updates, double bookings, write skew. Locks are the most direct tool for preventing them, and the two main styles behave very differently under load. Pessimistic locking makes everyone queue; optimistic locking lets everyone go ahead and makes the losers retry. Pick the wrong one and you get either a queue that stalls the whole site during a flash sale, or a retry storm where almost nobody succeeds. Add a careless lock order and you get deadlocks. Every booking, inventory, wallet and collaborative-editing design depends on getting this right.
+
+<Callout type="analogy" title="The single bathroom key">
+At a petrol station, the bathroom key hangs behind the counter. Take the key and nobody else can go in until you bring it back. That's pessimistic locking: safe, but there's a queue. A shared office with a sign-in sheet works the other way. Anyone can walk in and use the meeting room, but before you leave you check whether someone else booked it since you arrived; if they did, you apologise and rebook. That's optimistic locking: no queue, but occasionally you redo work.
+</Callout>
+
+## Locks in a database
+
+<DepthStamp depth="deep" />
+
+A <Term slug="lock">lock</Term> is a marker a transaction holds on a piece of data to control what other transactions may do with it until it commits or rolls back. Two basic modes:
+
+- **Shared (read) lock:** many transactions can hold it at once; no one can write while any is held.
+- **Exclusive (write) lock:** only one holder; no one else can read-with-lock or write.
+
+Databases take many locks automatically. In PostgreSQL and MySQL, an `UPDATE` or `DELETE` takes an exclusive **row lock** on each row it changes, held until commit. Plain `SELECT`s under MVCC take no row locks at all, which is why a read-then-write pattern isn't protected unless you ask for a lock.
+
+Locks have a **granularity**: row, page or table. Row locks allow the most concurrency. Some operations (like many `ALTER TABLE` forms) need a table lock, which is why schema changes on busy tables need care.
+
+## Pessimistic locking
+
+<DepthStamp depth="deep" />
+
+<Term slug="pessimistic-locking">Pessimistic locking</Term> assumes conflicts are likely, so it locks data **before** reading it for update. In SQL that's `SELECT … FOR UPDATE`:
+
+```sql
+BEGIN;
+SELECT seats_left FROM events WHERE id = 7 FOR UPDATE;  -- locks row 7
+-- app checks seats_left > 0
+UPDATE events SET seats_left = seats_left - 1 WHERE id = 7;
+INSERT INTO tickets (event_id, user_id) VALUES (7, 42);
+COMMIT;                                                 -- lock released
+```
+
+A second transaction running the same `SELECT … FOR UPDATE` on row 7 **waits** until the first commits, then reads the new value. The read-check-write sequence becomes safe.
+
+Useful variants:
+
+- **`FOR UPDATE NOWAIT`:** fail immediately instead of waiting, so the app can show "try again".
+- **`FOR UPDATE SKIP LOCKED`:** skip rows someone else has locked. This is the standard way to build a job queue in Postgres: each worker grabs the next unlocked job without blocking the others.
+- **Lock timeouts:** `SET lock_timeout = '2s'` caps how long a request waits.
+
+### Worked example: a flash sale on one row
+
+One hot event row, and each ticket transaction holds its lock for about **5 ms** (read, check, two writes, commit). With pessimistic locking, transactions on that row run one at a time, so the row handles at most 1,000 ms ÷ 5 ms = **200 purchases a second**, however many servers you add. If 10,000 people click "buy" in the same second, the last ones wait about 50 seconds, far past any timeout.
+
+The fix isn't a different lock; it's removing the single hot row. Split the 10,000 seats into 100 rows of 100 seats ("seat buckets") and let each transaction lock a random bucket that still has stock. Now 100 transactions can proceed in parallel, roughly **20,000 purchases a second** before locks become the limit. Or skip the read entirely: `UPDATE events SET seats_left = seats_left - 1 WHERE id = 7 AND seats_left > 0` locks the row only for the update itself and returns 0 rows changed when it's sold out.
+
+## Optimistic locking
+
+<DepthStamp depth="deep" />
+
+<Term slug="optimistic-locking">Optimistic locking</Term> assumes conflicts are rare. It takes no lock while reading. Instead, each row has a **version** column, and the write only succeeds if the version hasn't changed since you read it:
+
+```sql
+SELECT id, title, body, version FROM docs WHERE id = 5;    -- version = 12
+-- user edits for a while…
+UPDATE docs SET body = 'new text', version = version + 1
+WHERE id = 5 AND version = 12;
+-- 1 row updated  → success
+-- 0 rows updated → someone else saved first: reload, merge or retry
+```
+
+This is the same idea as HTTP's `ETag` with `If-Match` from the REST section, and it's built into most ORMs (JPA's `@Version`, Rails's `lock_version`).
+
+Strengths: no locks are held while a user thinks, so it works across HTTP requests and minutes of editing. Readers and writers never wait. Weakness: under **high contention**, most attempts fail and retry, wasting work.
+
+<Callout type="analogy" title="Editing a shared document offline">
+You download a document marked "version 12", edit it on the train, and upload it. The server checks: is it still version 12? If yes, your changes become version 13. If a colleague already uploaded version 13, the server refuses and says "merge first". Nobody was ever locked out of editing; the conflict is caught at the end.
+</Callout>
+
+### Pessimistic or optimistic?
+
+| | Pessimistic | Optimistic |
+|---|---|---|
+| Assumes | Conflicts are common | Conflicts are rare |
+| While reading | Holds a lock | Holds nothing |
+| On conflict | Second transaction waits | Second write fails; app retries or merges |
+| Works across user think-time | No (never hold DB locks for minutes) | Yes |
+| Under heavy contention | Queues, but each attempt succeeds | Retry storms; most attempts wasted |
+| Good for | Short, hot critical sections (inventory, wallets) | Edits to mostly-separate records, long edits |
+
+A rough guide: if conflicts happen in under a few percent of attempts, optimistic is simpler and faster; if a row is genuinely hot, pessimistic (or redesigning away the hot row) wins.
+
+## Deadlocks
+
+<DepthStamp depth="deep" />
+
+A <Term slug="deadlock">deadlock</Term> happens when two (or more) transactions each hold a lock the other needs, so both wait forever.
+
+| Time | T1 (transfer A → B) | T2 (transfer B → A) |
+|---|---|---|
+| 1 | Locks account A | |
+| 2 | | Locks account B |
+| 3 | Wants B: **waits for T2** | |
+| 4 | | Wants A: **waits for T1** |
+
+Neither can proceed. Databases **detect** this: PostgreSQL checks for a cycle in its "who waits for whom" graph once a lock wait passes `deadlock_timeout` (1 second by default), and then aborts one of the transactions with a deadlock error. InnoDB detects deadlocks immediately by default. The surviving transaction continues; the aborted one must be retried by the application.
+
+Detection limits the damage. Prevention is better:
+
+- **Lock in a consistent order.** If every transfer locks the lower account ID first, T2 would also try A first and simply wait behind T1. No cycle, no deadlock.
+- **Keep transactions short.** Fewer locks, held for less time, means fewer chances to collide.
+- **Lock everything you need up front** in one statement where possible: `SELECT … WHERE id IN (1, 2) ORDER BY id FOR UPDATE`.
+- **Retry on deadlock errors**, with a little jitter, since they will still happen occasionally.
+
+<Callout type="analogy" title="Two cars on a narrow bridge">
+Two cars drive onto a one-lane bridge from opposite ends and meet in the middle. Neither can move forward, and neither will reverse. A deadlock detector is the traffic officer who arrives after a minute and makes one car back off. Lock ordering is the traffic light that never lets both enter at once.
+</Callout>
+
+## Beyond one database
+
+<DepthStamp depth="awareness" />
+
+Database locks only protect data inside that database. When the critical section spans systems ("only one worker may process this file"), teams use a **distributed lock** in a coordination service like etcd or ZooKeeper, or in Redis. These need a **lease** (the lock expires if the holder dies) and ideally a **fencing token**: an increasing number the storage checks, so a holder whose lease expired during a long pause can't write stale data. Distributed locks are much harder to get right than row locks; Phase 4 covers them.
+
+<TradeoffBox title="Locking tradeoffs" items={[
+  { gain: "Pessimistic locks make read-check-write safe and simple", cost: "Waiting transactions queue; one hot row caps throughput" },
+  { gain: "Optimistic locks never block and work across user think-time", cost: "Retries and wasted work when conflicts are frequent" },
+  { gain: "SKIP LOCKED gives a simple, safe job queue", cost: "Jobs are processed in no strict order" },
+  { gain: "Deadlock detection keeps the database from hanging", cost: "One transaction is aborted and must be retried" }
+]} />
+
+<NotWhenBox title="Pessimistic locks" items={[
+  "Across user think-time or HTTP requests: never hold a database lock while waiting for a person.",
+  "When an atomic UPDATE with a WHERE condition does the whole job.",
+  "On one extremely hot row: split the row or batch updates instead."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A SELECT followed by an UPDATE in one transaction is safe." right="Plain SELECTs under MVCC take no locks. Use SELECT … FOR UPDATE, an atomic UPDATE, or a version check." />
+
+<Misconception wrong="Optimistic locking is always faster." right="It's faster when conflicts are rare. Under heavy contention, repeated retries can do more total work than waiting." />
+
+<Misconception wrong="Deadlocks mean the database is broken." right="They're a normal result of lock ordering in application code. Fix the order, keep transactions short, and retry the aborted one." />
+
+## Interview angle
+
+<InterviewAngle title="Locking" questions={[
+  "How do you stop two users buying the last item?",
+  "Optimistic or pessimistic locking for a wiki editor? For a wallet?",
+  "Explain a deadlock and how you'd prevent it.",
+  "How would you build a job queue on Postgres?"
+]}>
+Show you know the cheap options first: an atomic conditional UPDATE or a constraint often avoids explicit locks entirely. Then pick pessimistic for short, hot critical sections and optimistic for long edits with rare conflicts, and say why. For deadlocks, give the two-transfer example and the lock-ordering fix. Mention SKIP LOCKED for queues and the hot-row throughput limit for flash sales.
+</InterviewAngle>
+
+## Practice
+
+1. Rewrite the ticket purchase as a single atomic UPDATE. When does it return 0 rows?
+2. A row lock is held for 8 ms. What's the maximum purchase rate on that row? How many buckets do you need for 15,000 purchases a second?
+3. Three transactions lock accounts in orders (A, B), (B, C) and (C, A). Can they deadlock? Fix it.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

@@ -1,0 +1,80 @@
+[
+  {
+    "id": "f1",
+    "front": "Foreign key?",
+    "back": "A column referencing another table's primary key; the database can enforce it points at a real row.",
+    "topicId": "entities"
+  },
+  {
+    "id": "f2",
+    "front": "Many-to-many model?",
+    "back": "A join table with both foreign keys, usually as a composite primary key.",
+    "topicId": "entities"
+  },
+  {
+    "id": "f3",
+    "front": "1NF?",
+    "back": "One value per column, no repeating groups.",
+    "topicId": "normalization"
+  },
+  {
+    "id": "f4",
+    "front": "2NF?",
+    "back": "1NF and every non-key column depends on the whole key.",
+    "topicId": "normalization"
+  },
+  {
+    "id": "f5",
+    "front": "3NF?",
+    "back": "2NF and non-key columns depend only on the key, not on each other.",
+    "topicId": "normalization"
+  },
+  {
+    "id": "f6",
+    "front": "Update anomaly?",
+    "back": "Copies of one fact disagree after a partial update.",
+    "topicId": "normalization"
+  },
+  {
+    "id": "f7",
+    "front": "Denormalisation?",
+    "back": "Storing a fact in several places to make reads cheaper.",
+    "topicId": "denormalization"
+  },
+  {
+    "id": "f8",
+    "front": "Hot counter fix?",
+    "back": "Batch increments (e.g. Redis, flush periodically) or split into several rows and sum.",
+    "topicId": "denormalization"
+  },
+  {
+    "id": "f9",
+    "front": "Query-first modelling steps?",
+    "back": "List queries and rates, find hot paths, normalise, index, denormalise only where needed.",
+    "topicId": "query-first"
+  },
+  {
+    "id": "f10",
+    "front": "Cassandra rule?",
+    "back": "One table per query; each query names its partition.",
+    "topicId": "wide-column"
+  },
+  {
+    "id": "f11",
+    "front": "Why a time bucket in the partition key?",
+    "back": "It caps partition size and spreads a growing entity across nodes.",
+    "topicId": "wide-column"
+  },
+  {
+    "id": "f12",
+    "front": "Surrogate vs natural key?",
+    "back": "Use a generated ID as primary key and put a unique constraint on the natural key.",
+    "topicId": "keys"
+  },
+  {
+    "id": "f13",
+    "front": "Why sortable IDs?",
+    "back": "Time-ordered IDs keep inserts together in B-trees and allow sorting by ID.",
+    "topicId": "keys"
+  }
+]

@@ -1,0 +1,178 @@
+## Why it matters
+
+A data model outlives the code that uses it. Services get rewritten, frameworks change, but the tables and partition keys you choose in week one are still there years later, holding billions of rows that are expensive to reshape. Discord has written about storing messages in Cassandra partitioned by channel and time bucket, and about the hot partitions it hit when some channels grew enormous. That's a modelling decision showing up as an operational problem. In interviews, "data model" is one of the seven steps of every design, and the interviewer wants to see you derive it from the queries, not draw boxes for every noun in the prompt.
+
+<Callout type="analogy" title="Organising a library">
+A normalised database is a library with one master catalogue: each book is described once, and every list (by author, by topic, by shelf) just points at that one entry. Fix a typo and it's fixed everywhere. A denormalised model is a bookshop that prints the full blurb on every shelf label, in every themed display and in every catalogue. Browsing is faster, because you never walk to the master catalogue, but when the publisher changes a title, someone has to find and reprint every copy of the label.
+</Callout>
+
+## Entities, relationships and keys
+
+<DepthStamp depth="deep" />
+
+Start with the **entities** (things you store: users, posts, orders) and the **relationships** between them:
+
+- **One-to-one:** a user has one profile.
+- **One-to-many:** a user writes many posts. Put `user_id` on the posts table.
+- **Many-to-many:** users like many posts and posts are liked by many users. Use a **join table** `likes(user_id, post_id)`.
+
+Every table needs a **primary key**: a column (or columns) that uniquely identifies a row. A <Term slug="foreign-key">foreign key</Term> is a column that refers to another table's primary key, and the database can enforce that it points at something real.
+
+```sql
+CREATE TABLE users (id bigint PRIMARY KEY, email text UNIQUE NOT NULL, name text);
+CREATE TABLE posts (id bigint PRIMARY KEY, user_id bigint NOT NULL REFERENCES users(id),
+                    body text, created_at timestamptz NOT NULL);
+CREATE TABLE likes (user_id bigint REFERENCES users(id), post_id bigint REFERENCES posts(id),
+                    created_at timestamptz NOT NULL, PRIMARY KEY (user_id, post_id));
+```
+
+The composite primary key on `likes` does real work: it makes "like the same post twice" impossible.
+
+## Normalisation
+
+<DepthStamp depth="deep" />
+
+<Term slug="normalization">Normalisation</Term> means organising tables so that each fact is stored once. It is described in "normal forms". You need the first three:
+
+**First normal form (1NF):** each column holds a single value, and there are no repeating groups.
+
+| ❌ orders | | ✅ order_items | |
+|---|---|---|---|
+| id | items | order_id | sku |
+| 991 | "p-7, p-9, p-12" | 991 | p-7 |
+| | | 991 | p-9 |
+
+A comma-separated list in a column can't be indexed, joined or constrained.
+
+**Second normal form (2NF):** 1NF, and every non-key column depends on the **whole** primary key, not part of it. In `order_items(order_id, sku, qty, product_name)`, `product_name` depends only on `sku`, so it belongs in `products`.
+
+**Third normal form (3NF):** 2NF, and non-key columns depend **only** on the key, not on other non-key columns. In `orders(id, customer_id, customer_email)`, the email depends on the customer, not the order, so it belongs in `customers`.
+
+A common summary: every non-key column should depend on "the key, the whole key, and nothing but the key".
+
+Why bother? Normalisation prevents **update anomalies**: if the customer's email is copied onto 300 orders and you update 299 of them, the data now disagrees with itself, and no query can tell you which copy is right.
+
+## Denormalisation
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="denormalization">Denormalisation</Term> means deliberately storing a fact in more than one place to make reads cheaper. Typical forms:
+
+- **Copied columns:** store `author_name` on each post so the feed doesn't join `users`.
+- **Precomputed counts:** keep `like_count` on `posts` instead of `COUNT(*)` over `likes` on every view.
+- **Materialised views or summary tables:** daily sales per store, refreshed by a job.
+
+### Worked example: the like counter
+
+A post page shows its like count. A viral post has 2 million likes, and the page gets 5,000 views a second.
+
+- **Normalised:** each view runs `SELECT COUNT(*) FROM likes WHERE post_id = ?`. Even with an index, counting 2 million index entries takes real time, and 5,000 times a second means about **10 billion index entries scanned per second**. That won't work.
+- **Denormalised:** `posts.like_count` is incremented when someone likes, so each view reads one integer. Reads become trivial; each like now does **two** writes (insert the like, increment the counter), ideally in one transaction.
+
+The new problem: the counter on one viral row becomes a **hot row**, with thousands of increments a second contending for the same lock. Real systems batch increments (count in Redis, flush every few seconds) or split the counter into several rows and sum them. Every denormalisation buys read speed with write complexity.
+
+<Callout type="analogy" title="The scoreboard at a match">
+Nobody in the stadium recounts every goal from the match footage to know the score. There's a scoreboard, and someone updates it each time a goal goes in. Reading it is instant for 60,000 fans. But if the person updating it misses a goal, the board is wrong until someone checks the footage. A denormalised counter is that scoreboard; the `likes` table is the footage.
+</Callout>
+
+## Query-first modelling
+
+<DepthStamp depth="deep" />
+
+A good model starts from **how data will be read and written**, not from a diagram of nouns. The process:
+
+1. **List the queries and their rates.** "Show a user's feed: 50k/s. Post: 2k/s. Show a post with comments: 20k/s."
+2. **Find the hot paths.** The 50k/s feed matters far more than the admin report run once a day.
+3. **Model the entities in normalised form** (for a relational store) as the source of truth.
+4. **Add indexes** for each hot query's filter and sort.
+5. **Denormalise only where a hot query needs it**, and decide how the copy stays in sync.
+
+For a relational database you can often stop at step 4. For a NoSQL store, query-first is not optional, as the next part shows.
+
+Practitioners genuinely disagree on how far to push this in relational databases. One camp models the domain cleanly first and lets indexes and the query planner do the work, arguing that queries change faster than the domain does. The other camp shapes tables around the hottest reads from day one. Both are defensible; the usual compromise is a normalised source of truth plus a small number of read-optimised copies you can rebuild from it.
+
+## Modelling for a wide-column store
+
+<DepthStamp depth="deep" />
+
+Cassandra-style stores have no joins and are only fast when a query names a **partition**. So the rule flips: **one table per query**, each with a key chosen for that query.
+
+The primary key has two parts:
+
+```sql
+CREATE TABLE messages_by_channel (
+  channel_id  bigint,
+  bucket      int,        -- e.g. days since epoch
+  message_id  timeuuid,
+  author_id   bigint,
+  body        text,
+  PRIMARY KEY ((channel_id, bucket), message_id)
+) WITH CLUSTERING ORDER BY (message_id DESC);
+```
+
+- **Partition key** `(channel_id, bucket)`: decides which nodes store the rows. All messages for one channel on one day live together.
+- **Clustering key** `message_id`: sorts rows within the partition, newest first, so "latest 50 messages" is one sequential read.
+
+Why the `bucket`? Without it, one channel's partition grows forever. A busy channel with 10 million messages of about 1 KB each would be a **10 GB partition**, far above the size Cassandra handles comfortably, and it would sit on the same few nodes forever, making them hot. Adding a day bucket caps each partition at one day of messages.
+
+Need "all messages by author X"? That's a different query, so it gets a different table, `messages_by_author`, written at the same time. Writes double; each read stays a single-partition lookup.
+
+<Callout type="analogy" title="Filing by the question you'll ask">
+An office that only ever asks "what did client X send this month?" files folders by client, then month. If the boss also asks "what came in on Tuesday?", the office keeps a second set of copies filed by date. It's more paper, but no one ever has to search every drawer. Wide-column modelling is that office.
+</Callout>
+
+## Choosing keys
+
+<DepthStamp depth="tradeoffs" />
+
+Some rules that apply to both worlds:
+
+- **Surrogate vs natural keys:** a generated ID (`bigint`, UUID) never changes; a natural key (email) might. Use surrogate primary keys and put a unique constraint on the natural one.
+- **Sortable IDs:** time-ordered IDs (Snowflake-style or UUIDv7) keep new rows together in B-tree indexes and let you sort by ID.
+- **Partition keys should spread load and match queries:** high cardinality (many distinct values), no single value much hotter than the rest, and present in every hot query.
+
+<TradeoffBox title="Normalised vs denormalised" items={[
+  { gain: "Normalised: each fact stored once, no update anomalies", cost: "Reads need joins, which cost more on hot paths" },
+  { gain: "Denormalised: hot reads are a single lookup", cost: "Every copy must be kept in sync on write" },
+  { gain: "Query-first NoSQL tables: every read hits one partition", cost: "Writes fan out to one table per query" },
+  { gain: "Time buckets cap partition size", cost: "Reads spanning buckets need several queries" }
+]} />
+
+<NotWhenBox title="Denormalising" items={[
+  "Before measuring: a join on indexed columns is often fast enough.",
+  "For data that changes often and is copied widely, like a user's display name on millions of rows.",
+  "When the copy has no clear owner or sync mechanism: it will drift."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Normalisation is always the right design." right="It's the right default for a source of truth. Hot read paths often need targeted denormalisation, with a plan for keeping copies in sync." />
+
+<Misconception wrong="NoSQL means you don't need a data model." right="Wide-column and key-value stores need more up-front modelling, because every query must be planned into the keys." />
+
+<Misconception wrong="One table per entity is the goal in Cassandra." right="In Cassandra the goal is one table per query, partitioned for that query." />
+
+## Interview angle
+
+<InterviewAngle title="Data modelling" questions={[
+  "Walk me through the schema for this system.",
+  "How would you show like counts on a viral post?",
+  "What is your partition key, and what happens to the biggest partition?",
+  "Where did you denormalise, and how do the copies stay correct?"
+]}>
+Derive the model from the queries you listed in the API step. Show primary keys, the key indexes, and one deliberate denormalisation with its sync plan. For NoSQL stores, name the partition and clustering keys and estimate the largest partition. Interviewers reward "I'd store the count on the post and batch increments, because counting 2 million rows per view won't work" far more than a perfect ER diagram.
+</InterviewAngle>
+
+## Practice
+
+1. Normalise this to 3NF: `orders(id, customer_id, customer_email, sku, product_name, qty, price)`.
+2. Design Cassandra tables for a photo app: "latest photos by user" and "latest photos with tag X". Choose partition and clustering keys and estimate the biggest partition.
+3. A post table copies `author_name`. A user renames themselves. List three ways to update the copies and the cost of each.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

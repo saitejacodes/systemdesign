@@ -1,0 +1,27 @@
+[
+  {
+    "id": "c1",
+    "text": "I can design 5 resource URIs for a new product without verbs in paths.",
+    "topicId": "resources"
+  },
+  {
+    "id": "c2",
+    "text": "I can say which HTTP methods are safe and which are idempotent, and why it matters for retries.",
+    "topicId": "verbs"
+  },
+  {
+    "id": "c3",
+    "text": "I can pick the right status code for common success and failure cases.",
+    "topicId": "status-codes"
+  },
+  {
+    "id": "c4",
+    "text": "I can explain why cursor pagination beats offset at scale and write the keyset query.",
+    "topicId": "pagination"
+  },
+  {
+    "id": "c5",
+    "text": "I can tell breaking from non-breaking API changes and plan a migration.",
+    "topicId": "versioning"
+  }
+]

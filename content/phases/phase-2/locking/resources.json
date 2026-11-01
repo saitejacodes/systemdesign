@@ -1,0 +1,41 @@
+[
+  {
+    "id": "pg-locking",
+    "title": "PostgreSQL: Explicit Locking",
+    "author": "PostgreSQL Global Development Group",
+    "kind": "docs",
+    "url": "https://www.postgresql.org/docs/current/explicit-locking.html",
+    "why": "Row and table lock modes, FOR UPDATE variants and deadlocks.",
+    "topicIds": [
+      "basics",
+      "pessimistic",
+      "deadlocks"
+    ],
+    "free": true
+  },
+  {
+    "id": "kleppmann-locking",
+    "title": "How to do distributed locking",
+    "author": "Martin Kleppmann",
+    "kind": "blog",
+    "url": "https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html",
+    "why": "Leases, process pauses and fencing tokens explained.",
+    "topicIds": [
+      "distributed"
+    ],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 7 covers lost updates, locks and compare-and-set.",
+    "topicIds": [
+      "optimistic",
+      "pessimistic"
+    ],
+    "free": false
+  }
+]

@@ -1,0 +1,92 @@
+[
+  {
+    "id": "f1",
+    "front": "Index?",
+    "back": "A separate sorted (or hashed) structure of some columns with pointers to rows, kept in sync on writes.",
+    "topicId": "basics"
+  },
+  {
+    "id": "f2",
+    "front": "Sequential scan?",
+    "back": "Reading every row of a table to answer a query.",
+    "topicId": "basics"
+  },
+  {
+    "id": "f3",
+    "front": "B-tree shape?",
+    "back": "Wide, shallow, balanced tree of pages; leaves sorted and linked for range scans.",
+    "topicId": "b-tree"
+  },
+  {
+    "id": "f4",
+    "front": "Why B-trees are shallow?",
+    "back": "Each page holds hundreds of keys, so 100M keys need about 3 levels.",
+    "topicId": "b-tree"
+  },
+  {
+    "id": "f5",
+    "front": "LSM write path?",
+    "back": "Memtable + log, flush to immutable SSTables, merge by compaction.",
+    "topicId": "lsm"
+  },
+  {
+    "id": "f6",
+    "front": "Bloom filter?",
+    "back": "A compact structure that says a key is definitely not in a set, letting reads skip files.",
+    "topicId": "lsm"
+  },
+  {
+    "id": "f7",
+    "front": "Leftmost prefix rule?",
+    "back": "A composite index serves filters on its first column(s), in order.",
+    "topicId": "composite"
+  },
+  {
+    "id": "f8",
+    "front": "Composite column order?",
+    "back": "Equality columns first, then the range or sort column.",
+    "topicId": "composite"
+  },
+  {
+    "id": "f9",
+    "front": "Covering index?",
+    "back": "Includes every column a query needs, so the table isn't touched (Index Only Scan).",
+    "topicId": "covering"
+  },
+  {
+    "id": "f10",
+    "front": "Write amplification?",
+    "back": "Bytes written to storage ÷ bytes the app wrote; each index adds to it.",
+    "topicId": "costs"
+  },
+  {
+    "id": "f11",
+    "front": "Low selectivity?",
+    "back": "Most rows match the filter, so an index doesn't help.",
+    "topicId": "costs"
+  },
+  {
+    "id": "f12",
+    "front": "Partial index?",
+    "back": "Indexes only rows matching a condition, e.g. WHERE status = 'failed'.",
+    "topicId": "costs"
+  },
+  {
+    "id": "f13",
+    "front": "Expression index?",
+    "back": "Indexes a computed value, like lower(email), so queries using it can use the index.",
+    "topicId": "costs"
+  },
+  {
+    "id": "f14",
+    "front": "EXPLAIN vs EXPLAIN ANALYZE?",
+    "back": "EXPLAIN shows the planned route; ANALYZE runs it and shows real times and rows.",
+    "topicId": "explain"
+  },
+  {
+    "id": "f15",
+    "front": "Signs of a missing index in a plan?",
+    "back": "Seq Scan on a big table with millions of Rows Removed by Filter.",
+    "topicId": "explain"
+  }
+]

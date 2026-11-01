@@ -1,0 +1,80 @@
+[
+  {
+    "id": "f1",
+    "front": "Problem with hash mod N?",
+    "back": "Changing N remaps most keys (≈80% from 4→5, ≈90% from 10→9).",
+    "topicId": "mod-n"
+  },
+  {
+    "id": "f2",
+    "front": "Consistent hashing?",
+    "back": "Nodes and keys hashed onto one ring; each key goes to the first node clockwise.",
+    "topicId": "ring"
+  },
+  {
+    "id": "f3",
+    "front": "Keys moved when a node joins?",
+    "back": "About 1/N: only the new node's arc.",
+    "topicId": "ring"
+  },
+  {
+    "id": "f4",
+    "front": "Keys moved when a node leaves?",
+    "back": "Only that node's keys, to the next node clockwise.",
+    "topicId": "ring"
+  },
+  {
+    "id": "f5",
+    "front": "Ring lookup cost?",
+    "back": "O(log N) binary search over sorted positions.",
+    "topicId": "ring"
+  },
+  {
+    "id": "f6",
+    "front": "Virtual nodes?",
+    "back": "Each physical node placed at many ring positions.",
+    "topicId": "vnodes"
+  },
+  {
+    "id": "f7",
+    "front": "Why vnodes?",
+    "back": "Even out arc sizes, spread a failed node's load, and weight by capacity.",
+    "topicId": "vnodes"
+  },
+  {
+    "id": "f8",
+    "front": "Vnode cost?",
+    "back": "Bigger ring (N × V entries) and more metadata to update.",
+    "topicId": "vnodes"
+  },
+  {
+    "id": "f9",
+    "front": "Preference list?",
+    "back": "The next R distinct physical nodes clockwise that store a key's replicas.",
+    "topicId": "replication"
+  },
+  {
+    "id": "f10",
+    "front": "Where consistent hashing is used?",
+    "back": "Dynamo, Cassandra, Riak, cache clients (ketama), load balancers (e.g. Maglev's variant).",
+    "topicId": "uses"
+  },
+  {
+    "id": "f11",
+    "front": "Rendezvous hashing?",
+    "back": "Score each node per key, pick the highest; no ring, O(N) per lookup.",
+    "topicId": "uses"
+  },
+  {
+    "id": "f12",
+    "front": "Jump consistent hash?",
+    "back": "Tiny, memoryless and even; nodes only added or removed at the end of a list.",
+    "topicId": "uses"
+  },
+  {
+    "id": "f13",
+    "front": "What consistent hashing doesn't fix?",
+    "back": "Hot keys: it balances keys, not traffic.",
+    "topicId": "uses"
+  }
+]

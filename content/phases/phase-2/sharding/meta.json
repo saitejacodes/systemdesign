@@ -1,0 +1,51 @@
+{
+  "id": "p2-sharding",
+  "phase": 2,
+  "slug": "sharding",
+  "title": "Sharding",
+  "order": 13,
+  "week": 5,
+  "estimatedMinutes": 65,
+  "topics": [
+    {
+      "id": "when",
+      "title": "What sharding is, and when to do it",
+      "depth": "deep"
+    },
+    {
+      "id": "strategies",
+      "title": "Range, hash and directory sharding",
+      "depth": "deep"
+    },
+    {
+      "id": "shard-key",
+      "title": "Choosing a shard key",
+      "depth": "deep"
+    },
+    {
+      "id": "hot-shards",
+      "title": "Hot shards and the celebrity problem",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "cross-shard",
+      "title": "Cross-shard queries and transactions",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "resharding",
+      "title": "Resharding",
+      "depth": "tradeoffs"
+    }
+  ],
+  "simulatorIds": [
+    "sharding",
+    "consistent-hashing"
+  ],
+  "practiceCaseStudyIds": [
+    "url-shortener"
+  ],
+  "prerequisites": [
+    "p2-replication"
+  ]
+}

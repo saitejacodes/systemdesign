@@ -1,0 +1,51 @@
+{
+  "id": "p2-object-storage",
+  "phase": 2,
+  "slug": "object-storage",
+  "title": "Object storage",
+  "order": 16,
+  "week": 6,
+  "estimatedMinutes": 50,
+  "topics": [
+    {
+      "id": "types",
+      "title": "Block, file and object storage",
+      "depth": "deep"
+    },
+    {
+      "id": "s3-model",
+      "title": "The S3-style model",
+      "depth": "deep"
+    },
+    {
+      "id": "not-in-db",
+      "title": "Why files don't go in the database",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "presigned",
+      "title": "Presigned URLs",
+      "depth": "deep"
+    },
+    {
+      "id": "multipart",
+      "title": "Multipart upload",
+      "depth": "deep"
+    },
+    {
+      "id": "lifecycle",
+      "title": "Storage classes and lifecycle",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "cdn",
+      "title": "Serving through a CDN",
+      "depth": "deep"
+    }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": [
+    "p2-sql-vs-nosql"
+  ]
+}

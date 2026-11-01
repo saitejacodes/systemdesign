@@ -1,0 +1,326 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "What does a generated gRPC client stub do?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Stores data in a database"
+      },
+      {
+        "id": "b",
+        "text": "Serialises arguments, sends them, and decodes the reply so a remote call looks like a function call"
+      },
+      {
+        "id": "c",
+        "text": "Balances load across servers"
+      },
+      {
+        "id": "d",
+        "text": "Encrypts the disk"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The stub hides the network round trip. (a), (c) and (d) are other components' jobs.",
+    "topicId": "rpc",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "Why can you rename a protobuf field without breaking old clients?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Protobuf ignores all changes"
+      },
+      {
+        "id": "b",
+        "text": "Only field tag numbers go on the wire, not names"
+      },
+      {
+        "id": "c",
+        "text": "Old clients re-download the schema"
+      },
+      {
+        "id": "d",
+        "text": "gRPC adds the name in a header"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The tag is the contract; names exist only in generated code. (a), (c) and (d) are false.",
+    "topicId": "protobuf",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "scenario",
+    "prompt": "What went wrong?",
+    "scenario": "A team deleted field `string nickname = 4;` and later added `string email = 4;`. Old mobile clients started showing email addresses as nicknames.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The new field needs a default value"
+      },
+      {
+        "id": "b",
+        "text": "Tag 4 was reused, so old clients decode the new field's bytes as the old one"
+      },
+      {
+        "id": "c",
+        "text": "Protobuf can't add fields"
+      },
+      {
+        "id": "d",
+        "text": "The server needs HTTP/3"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Reusing a tag corrupts data for old readers. Removed tags must be `reserved`. Adding a field with a fresh tag (a, c) is fine.",
+    "topicId": "protobuf",
+    "difficulty": 3
+  },
+  {
+    "id": "q4",
+    "type": "single",
+    "prompt": "About how big is `{id: 12345, name: \"Ada\", active: true}` in protobuf vs the 39-byte JSON?",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 10 bytes"
+      },
+      {
+        "id": "b",
+        "text": "About 39 bytes"
+      },
+      {
+        "id": "c",
+        "text": "About 80 bytes"
+      },
+      {
+        "id": "d",
+        "text": "About 2 bytes"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "3 + 5 + 2 bytes: tag and value for each field, no names or punctuation.",
+    "topicId": "protobuf",
+    "difficulty": 1
+  },
+  {
+    "id": "q5",
+    "type": "scenario",
+    "prompt": "Why, and what fixes it?",
+    "scenario": "Three gRPC backends sit behind a layer 4 load balancer. One client sends 20,000 calls a second over a single connection. Backend 1 is at 95% CPU while backends 2 and 3 are idle.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Server 1 is faster; nothing to fix"
+      },
+      {
+        "id": "b",
+        "text": "The L4 balancer pins each long-lived HTTP/2 connection to one backend; use an L7 proxy like Envoy or client-side balancing"
+      },
+      {
+        "id": "c",
+        "text": "gRPC needs sticky sessions turned off"
+      },
+      {
+        "id": "d",
+        "text": "Increase TCP keepalive"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "L4 balances connections, and one connection carries all the calls. (a) misreads it, (c) and (d) don't change per-connection pinning.",
+    "topicId": "http2",
+    "difficulty": 3
+  },
+  {
+    "id": "q6",
+    "type": "single",
+    "prompt": "Which call kind fits a chat where both sides send messages at any time?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Unary"
+      },
+      {
+        "id": "b",
+        "text": "Server streaming"
+      },
+      {
+        "id": "c",
+        "text": "Client streaming"
+      },
+      {
+        "id": "d",
+        "text": "Bidirectional streaming"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "Both sides stream independently. The others stream one way or not at all.",
+    "topicId": "streaming",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "multi",
+    "prompt": "Which are real gRPC call kinds? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Unary"
+      },
+      {
+        "id": "b",
+        "text": "Server streaming"
+      },
+      {
+        "id": "c",
+        "text": "Client streaming"
+      },
+      {
+        "id": "d",
+        "text": "Broadcast to all clients"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "gRPC has unary, server, client and bidirectional streaming. Broadcast (d) is something you build on top.",
+    "topicId": "streaming",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "prompt": "What should inventory do?",
+    "scenario": "Checkout gave the whole request 500 ms. Pricing used 480 ms and then called inventory, passing on the remaining 20 ms. Inventory's typical database query takes 60 ms.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Do the work anyway and return late"
+      },
+      {
+        "id": "b",
+        "text": "Fail fast with DEADLINE_EXCEEDED since the caller has nearly given up"
+      },
+      {
+        "id": "c",
+        "text": "Retry pricing"
+      },
+      {
+        "id": "d",
+        "text": "Double the deadline"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Propagated deadlines let downstream services skip work nobody will wait for. (a) wastes capacity; (c) and (d) aren't inventory's to change.",
+    "topicId": "deadlines",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "single",
+    "prompt": "Which gRPC status is usually safe to retry with backoff?",
+    "options": [
+      {
+        "id": "a",
+        "text": "INVALID_ARGUMENT"
+      },
+      {
+        "id": "b",
+        "text": "PERMISSION_DENIED"
+      },
+      {
+        "id": "c",
+        "text": "UNAVAILABLE"
+      },
+      {
+        "id": "d",
+        "text": "NOT_FOUND"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "UNAVAILABLE signals a transient failure. The others will fail the same way again.",
+    "topicId": "deadlines",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "Why can't a browser call a gRPC server directly?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Browsers don't support TLS"
+      },
+      {
+        "id": "b",
+        "text": "JavaScript can't control HTTP/2 framing or read the trailers gRPC uses; gRPC-Web plus a proxy is needed"
+      },
+      {
+        "id": "c",
+        "text": "gRPC only works on port 22"
+      },
+      {
+        "id": "d",
+        "text": "Protobuf can't be parsed in JavaScript"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Browser fetch APIs hide framing and trailers. (a), (c) and (d) are false.",
+    "topicId": "browser",
+    "difficulty": 2
+  },
+  {
+    "id": "q11",
+    "type": "single",
+    "prompt": "Which style gives the best HTTP/CDN caching for public read-heavy data?",
+    "options": [
+      {
+        "id": "a",
+        "text": "gRPC"
+      },
+      {
+        "id": "b",
+        "text": "GraphQL over POST"
+      },
+      {
+        "id": "c",
+        "text": "REST with GET"
+      },
+      {
+        "id": "d",
+        "text": "Bidirectional streaming"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "REST GETs have unique URLs that HTTP caches understand. gRPC and POST GraphQL don't.",
+    "topicId": "comparison",
+    "difficulty": 2
+  }
+]

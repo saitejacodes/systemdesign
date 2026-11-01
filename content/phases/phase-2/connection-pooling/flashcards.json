@@ -1,0 +1,74 @@
+[
+  {
+    "id": "f1",
+    "front": "Cost of a new DB connection?",
+    "back": "TCP + TLS handshakes, authentication and server session setup.",
+    "topicId": "cost"
+  },
+  {
+    "id": "f2",
+    "front": "Postgres connection model?",
+    "back": "One OS process per connection, with its own memory.",
+    "topicId": "cost"
+  },
+  {
+    "id": "f3",
+    "front": "Connection pool?",
+    "back": "A set of open connections lent to requests and returned after use.",
+    "topicId": "pools"
+  },
+  {
+    "id": "f4",
+    "front": "Key pool settings?",
+    "back": "Max size, min idle, acquire timeout, idle timeout, max lifetime.",
+    "topicId": "pools"
+  },
+  {
+    "id": "f5",
+    "front": "Total DB connections formula?",
+    "back": "App instances × pool size per instance (+ workers and tools).",
+    "topicId": "exhaustion"
+  },
+  {
+    "id": "f6",
+    "front": "Autoscaling trap?",
+    "back": "More app instances multiply connections past max_connections.",
+    "topicId": "exhaustion"
+  },
+  {
+    "id": "f7",
+    "front": "Connection leak signature?",
+    "back": "Pool usage climbs steadily regardless of traffic until it's exhausted.",
+    "topicId": "exhaustion"
+  },
+  {
+    "id": "f8",
+    "front": "Serverless + Postgres?",
+    "back": "Each concurrent invocation may open a connection; use a pooler or proxy.",
+    "topicId": "exhaustion"
+  },
+  {
+    "id": "f9",
+    "front": "Pool sizing starting point?",
+    "back": "About (cores × 2) + spindles total connections, then measure.",
+    "topicId": "sizing"
+  },
+  {
+    "id": "f10",
+    "front": "Little's Law for pools?",
+    "back": "Busy connections ≈ queries per second × average query time.",
+    "topicId": "sizing"
+  },
+  {
+    "id": "f11",
+    "front": "PgBouncer?",
+    "back": "A lightweight Postgres pooler that multiplexes many client connections onto few server ones.",
+    "topicId": "poolers"
+  },
+  {
+    "id": "f12",
+    "front": "Transaction pooling caveat?",
+    "back": "Session state (SET, advisory locks, LISTEN/NOTIFY) doesn't survive between transactions.",
+    "topicId": "poolers"
+  }
+]

@@ -1,0 +1,92 @@
+[
+  {
+    "id": "f1",
+    "front": "ACID?",
+    "back": "Atomicity, Consistency, Isolation, Durability.",
+    "topicId": "acid"
+  },
+  {
+    "id": "f2",
+    "front": "Atomicity?",
+    "back": "All of a transaction's writes happen or none do.",
+    "topicId": "acid"
+  },
+  {
+    "id": "f3",
+    "front": "Durability?",
+    "back": "Committed data survives crashes, via the write-ahead log.",
+    "topicId": "acid"
+  },
+  {
+    "id": "f4",
+    "front": "Dirty read?",
+    "back": "Reading another transaction's uncommitted write.",
+    "topicId": "anomalies"
+  },
+  {
+    "id": "f5",
+    "front": "Non-repeatable read?",
+    "back": "Reading the same row twice and getting different committed values.",
+    "topicId": "anomalies"
+  },
+  {
+    "id": "f6",
+    "front": "Phantom read?",
+    "back": "A repeated range query returns a different set of rows.",
+    "topicId": "anomalies"
+  },
+  {
+    "id": "f7",
+    "front": "Lost update?",
+    "back": "Two read-modify-write cycles; one write overwrites the other.",
+    "topicId": "anomalies"
+  },
+  {
+    "id": "f8",
+    "front": "Write skew?",
+    "back": "Two transactions read the same data, write different rows, and together break a rule.",
+    "topicId": "anomalies"
+  },
+  {
+    "id": "f9",
+    "front": "Read Committed?",
+    "back": "Each statement sees data committed before it started. Prevents dirty reads only.",
+    "topicId": "levels"
+  },
+  {
+    "id": "f10",
+    "front": "Repeatable Read (snapshot)?",
+    "back": "The whole transaction sees one snapshot. Still allows write skew.",
+    "topicId": "levels"
+  },
+  {
+    "id": "f11",
+    "front": "Serializable?",
+    "back": "Results as if transactions ran one at a time; conflicting ones are aborted and must retry.",
+    "topicId": "levels"
+  },
+  {
+    "id": "f12",
+    "front": "Default isolation levels?",
+    "back": "Postgres: Read Committed. MySQL InnoDB: Repeatable Read.",
+    "topicId": "levels"
+  },
+  {
+    "id": "f13",
+    "front": "MVCC?",
+    "back": "Multiple row versions; each transaction reads its snapshot, so readers and writers don't block.",
+    "topicId": "mvcc"
+  },
+  {
+    "id": "f14",
+    "front": "MVCC cost?",
+    "back": "Old versions use space until cleanup; long transactions block cleanup.",
+    "topicId": "mvcc"
+  },
+  {
+    "id": "f15",
+    "front": "Cheapest fix for double-booking?",
+    "back": "A UNIQUE constraint on the booked resource.",
+    "topicId": "choosing"
+  }
+]

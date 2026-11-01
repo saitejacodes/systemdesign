@@ -1,0 +1,22 @@
+[
+  {
+    "id": "c1",
+    "text": "I can use SELECT … FOR UPDATE, NOWAIT and SKIP LOCKED correctly.",
+    "topicId": "pessimistic"
+  },
+  {
+    "id": "c2",
+    "text": "I can implement optimistic locking with a version column.",
+    "topicId": "optimistic"
+  },
+  {
+    "id": "c3",
+    "text": "I can choose between optimistic and pessimistic locking for a scenario.",
+    "topicId": "optimistic"
+  },
+  {
+    "id": "c4",
+    "text": "I can explain a deadlock and prevent it with lock ordering.",
+    "topicId": "deadlocks"
+  }
+]

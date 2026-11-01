@@ -1,0 +1,44 @@
+{
+  "id": "p2-transactions",
+  "phase": 2,
+  "slug": "transactions",
+  "title": "Transactions and isolation",
+  "order": 10,
+  "week": 4,
+  "estimatedMinutes": 70,
+  "topics": [
+    {
+      "id": "acid",
+      "title": "ACID",
+      "depth": "deep"
+    },
+    {
+      "id": "anomalies",
+      "title": "The anomalies",
+      "depth": "deep"
+    },
+    {
+      "id": "levels",
+      "title": "Isolation levels",
+      "depth": "deep"
+    },
+    {
+      "id": "mvcc",
+      "title": "MVCC",
+      "depth": "deep"
+    },
+    {
+      "id": "choosing",
+      "title": "Choosing a level",
+      "depth": "tradeoffs"
+    }
+  ],
+  "simulatorIds": [
+    "isolation-lab",
+    "sql-sandbox"
+  ],
+  "practiceCaseStudyIds": [],
+  "prerequisites": [
+    "p2-indexing"
+  ]
+}

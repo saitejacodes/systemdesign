@@ -1,0 +1,296 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "What is a key strength of relational databases?",
+    "options": [
+      {
+        "id": "a",
+        "text": "They can only look up by key"
+      },
+      {
+        "id": "b",
+        "text": "Flexible queries with joins, plus multi-row transactions and constraints"
+      },
+      {
+        "id": "c",
+        "text": "They never need indexes"
+      },
+      {
+        "id": "d",
+        "text": "They have no schema"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Joins, ACID transactions and constraints are the relational strengths. (a), (c) and (d) are false.",
+    "topicId": "relational",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "What is the main cost of embedding customer data inside each order document?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Orders become unreadable"
+      },
+      {
+        "id": "b",
+        "text": "The data is duplicated, so updates must touch many documents or accept old copies"
+      },
+      {
+        "id": "c",
+        "text": "Documents can't nest"
+      },
+      {
+        "id": "d",
+        "text": "You can't fetch one order"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Embedding trades update cost and duplication for fast single reads.",
+    "topicId": "document",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "Which query can a pure key-value store NOT answer efficiently?",
+    "options": [
+      {
+        "id": "a",
+        "text": "GET session:abc"
+      },
+      {
+        "id": "b",
+        "text": "PUT cart:42"
+      },
+      {
+        "id": "c",
+        "text": "Find all sessions belonging to user 42, unless that's stored as its own key"
+      },
+      {
+        "id": "d",
+        "text": "DELETE flag:x"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Key-value stores only look up by key; queries by value need another key or index.",
+    "topicId": "key-value",
+    "difficulty": 1
+  },
+  {
+    "id": "q4",
+    "type": "single",
+    "prompt": "In Cassandra, what does the clustering key control?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Which node holds the data"
+      },
+      {
+        "id": "b",
+        "text": "The sort order of rows within a partition"
+      },
+      {
+        "id": "c",
+        "text": "Encryption"
+      },
+      {
+        "id": "d",
+        "text": "The replication factor"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Partition key → node; clustering key → order inside the partition.",
+    "topicId": "wide-column",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "scenario",
+    "prompt": "Which store fits best?",
+    "scenario": "A chat app writes 200,000 messages a second. Every read is 'the latest 50 messages in conversation X'. There are no cross-conversation queries.",
+    "options": [
+      {
+        "id": "a",
+        "text": "A single MySQL server"
+      },
+      {
+        "id": "b",
+        "text": "A wide-column store partitioned by conversation ID and clustered by time"
+      },
+      {
+        "id": "c",
+        "text": "A graph database"
+      },
+      {
+        "id": "d",
+        "text": "A key-value store with one key for all messages"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Append-heavy, time-ordered reads per conversation, at huge volume, is the wide-column sweet spot. One key for everything (d) is a hot key.",
+    "topicId": "wide-column",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "single",
+    "prompt": "When does a graph database clearly beat relational joins?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Single-row lookups by ID"
+      },
+      {
+        "id": "b",
+        "text": "Multi-hop relationship queries (three or more hops)"
+      },
+      {
+        "id": "c",
+        "text": "Summing a column"
+      },
+      {
+        "id": "d",
+        "text": "Storing images"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Traversing adjacency avoids exploding join costs at many hops. The others aren't graph problems.",
+    "topicId": "graph",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "prompt": "Which store should hold the ledger?",
+    "scenario": "A fintech app moves money between accounts. A transfer must debit one account and credit another atomically, and balances must never go negative.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Redis, because it's fastest"
+      },
+      {
+        "id": "b",
+        "text": "A relational database with transactions and constraints"
+      },
+      {
+        "id": "c",
+        "text": "A wide-column store with eventual consistency"
+      },
+      {
+        "id": "d",
+        "text": "A document store without transactions"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Money needs atomic multi-row updates and constraints. Speed (a) or write scale (c) doesn't matter if a transfer can half-apply.",
+    "topicId": "access-patterns",
+    "difficulty": 3
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "prompt": "Which store fits the leaderboard?",
+    "scenario": "A game updates 50,000 player scores a second and shows the top 100 on every screen.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Postgres with ORDER BY on every request"
+      },
+      {
+        "id": "b",
+        "text": "Redis sorted sets (ZINCRBY, ZREVRANGE)"
+      },
+      {
+        "id": "c",
+        "text": "A graph database"
+      },
+      {
+        "id": "d",
+        "text": "Object storage"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Sorted sets keep scores ordered as they change, making increments and top-N reads cheap.",
+    "topicId": "access-patterns",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "multi",
+    "prompt": "Which are reasons to add a second database to a system? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "An access pattern the main store can't serve well, like full-text search"
+      },
+      {
+        "id": "b",
+        "text": "A hot key-value workload like sessions"
+      },
+      {
+        "id": "c",
+        "text": "Because NoSQL is newer"
+      },
+      {
+        "id": "d",
+        "text": "Because every service should have three databases"
+      }
+    ],
+    "correct": [
+      "a",
+      "b"
+    ],
+    "explanation": "Add a store for a pattern that needs it (polyglot persistence). Novelty (c) and rules of thumb (d) aren't reasons.",
+    "topicId": "access-patterns",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "What does 'schemaless' usually mean in practice?",
+    "options": [
+      {
+        "id": "a",
+        "text": "There is no schema anywhere"
+      },
+      {
+        "id": "b",
+        "text": "The schema lives in application code, which must handle every stored shape"
+      },
+      {
+        "id": "c",
+        "text": "The database validates every field"
+      },
+      {
+        "id": "d",
+        "text": "Data can't change"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The structure still exists; it's enforced by code instead of the database.",
+    "topicId": "access-patterns",
+    "difficulty": 2
+  }
+]

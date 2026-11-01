@@ -1,0 +1,160 @@
+## Why it matters
+
+The database that takes your orders is the wrong place to ask "what was revenue by country, by week, for the last two years?". That question reads hundreds of millions of rows; run it on the production database and every checkout slows down while it runs. So companies split their data work in two: **OLTP** systems that handle many small, fast transactions, and **OLAP** systems that scan huge amounts of data to answer analytical questions. The split shapes storage layout, hardware and architecture, and it explains why products like Snowflake, BigQuery, ClickHouse and Redshift exist alongside Postgres and MySQL. Interviewers expect you to keep analytics off the transactional path and to know what a column store is.
+
+<Callout type="analogy" title="The till and the accountant">
+A shop's till (OLTP) handles one customer at a time, fast: scan, pay, receipt, next. Nobody would stop the queue so the accountant can read every receipt from the past year. Instead, at the end of each day the receipts are boxed up and sent to the accountant's office (the warehouse), laid out so they can be totted up by column: all the totals in one pile, all the dates in another. The till is built for speed per customer; the office is built for adding up millions of numbers.
+</Callout>
+
+## OLTP vs OLAP
+
+<DepthStamp depth="deep" />
+
+<Term slug="oltp">OLTP</Term> (online transaction processing) and <Term slug="olap">OLAP</Term> (online analytical processing) are two different workloads:
+
+| | OLTP | OLAP |
+|---|---|---|
+| Typical query | Fetch or update one order by ID | Sum revenue by region by month |
+| Rows touched per query | A few | Millions to billions |
+| Columns touched | Most of a row | A few of many |
+| Writes | Many small inserts and updates | Bulk loads, mostly append |
+| Users | Your application, thousands of requests/s | Analysts, dashboards, ML jobs |
+| Latency goal | Milliseconds | Seconds to minutes is fine |
+| Storage layout | Row-oriented | Column-oriented |
+| Examples | PostgreSQL, MySQL, DynamoDB | Snowflake, BigQuery, Redshift, ClickHouse |
+
+The core of the difference is which way you read the table: OLTP reads **across** a row; OLAP reads **down** a column.
+
+## Row vs column storage
+
+<DepthStamp depth="deep" />
+
+A **row store** writes each row's values together on disk:
+
+```
+[1, 2026-11-01, "IN", 4200, ...] [2, 2026-11-01, "US", 1599, ...] [3, ...]
+```
+
+Fetching order 2 reads one contiguous chunk: perfect for OLTP.
+
+A <Term slug="columnar-storage">column store</Term> writes each column's values together:
+
+```
+id:      [1, 2, 3, ...]
+date:    [2026-11-01, 2026-11-01, 2026-11-01, ...]
+country: ["IN", "US", "IN", ...]
+amount:  [4200, 1599, 300, ...]
+```
+
+`SELECT sum(amount) FROM orders WHERE date >= '2026-01-01'` now reads only the `date` and `amount` columns and skips the other 48.
+
+### Worked example: scanning a billion orders
+
+An orders table has **1 billion rows** and **50 columns** averaging **8 bytes**: about **400 GB**.
+
+- **Row store:** to sum one column for the year, it reads every row in full: about **400 GB**.
+- **Column store:** it reads two columns: 1 billion × 2 × 8 bytes = **16 GB**, before compression.
+- **With compression:** columns hold similar values side by side, so they compress very well. If they shrink by, say, 5×, the scan is about **3 GB**. At a few GB per second per node, spread over several nodes, that's a query of a second or two instead of minutes.
+
+Why columns compress so well:
+
+- **Dictionary encoding:** `country` has about 200 distinct values; store each as a small integer code.
+- **Run-length encoding:** sorted by date, the `date` column is long runs of the same value: "2026-11-01 × 3,000,000".
+- **Vectorised execution:** the engine processes columns in batches with tight CPU loops, often using SIMD instructions.
+
+The cost: **writing or updating one row** touches every column file. Column stores batch writes and are slow at single-row updates, which is why they're the wrong choice for OLTP.
+
+<Callout type="analogy" title="Reading a spreadsheet sideways">
+To check one customer's record, you read their row left to right. To total the "amount" column, you'd rather the spreadsheet were printed one column per page, so you only pick up the one page you need. Row stores print by row; column stores print by column. Each makes one way of reading fast and the other slow.
+</Callout>
+
+## Getting data from OLTP to OLAP
+
+<DepthStamp depth="tradeoffs" />
+
+Analytical systems are fed from the operational ones:
+
+- **ETL** (extract, transform, load): pull data from production, clean and reshape it, then load it into the warehouse, traditionally as a nightly batch.
+- **ELT:** load raw data first, then transform it inside the warehouse with SQL, using the warehouse's own compute. Common with modern cloud warehouses.
+- **<Term slug="change-data-capture">Change data capture</Term> (CDC):** stream every insert, update and delete from the database's replication log (as in the replication section) into the analytics system within seconds or minutes, instead of nightly.
+
+Run extracts from a **read replica**, never from the primary, so analytics can't slow down transactions.
+
+Some products try to remove the split altogether. **HTAP** (hybrid transactional/analytical processing) databases, such as TiDB with its columnar TiFlash replicas or SingleStore, keep a row copy for transactions and a column copy for analytics inside one system, kept in sync automatically. Opinions differ on how far this goes: supporters point to fresher analytics and one fewer pipeline; sceptics note that at large scale, teams still want analytics on separate hardware with separate budgets and access controls. For most designs, a separate analytics path remains the safe default, and HTAP is worth mentioning when fresh, real-time analytics on operational data is a stated requirement.
+
+Warehouses often organise data as a **star schema**: a central **fact table** of events (orders, with numeric measures like amount) surrounded by **dimension tables** (customers, products, dates) used to filter and group. Facts are huge and append-only; dimensions are small.
+
+## Warehouse, lake and lakehouse
+
+<DepthStamp depth="awareness" />
+
+- A <Term slug="data-warehouse">data warehouse</Term> stores cleaned, structured data in tables, queried with SQL, with storage and query engine managed together. Examples: Snowflake, BigQuery, Amazon Redshift.
+- A <Term slug="data-lake">data lake</Term> stores raw files of any kind (logs, JSON, images, CSV, and columnar files such as **Parquet**) cheaply in object storage, and lets various engines (Spark, Trino, others) query them. Flexible and cheap, but without care it becomes a "data swamp" of files nobody trusts.
+- A **lakehouse** adds warehouse-like features on top of lake files: open **table formats** such as Apache Iceberg, Delta Lake and Apache Hudi track which files make up a table, and add transactions, schema evolution and time travel. The goal is one copy of data in object storage that both SQL analytics and ML can use.
+
+The labels blur in practice: warehouses read lake files, and lakehouses offer SQL. What matters is the pattern: **columnar files, cheap storage, separate compute that scales on demand**.
+
+## Time-series databases
+
+<DepthStamp depth="awareness" />
+
+Metrics, sensor readings, prices and logs are **time-series**: values stamped with a time, mostly appended, mostly queried over recent time ranges. A <Term slug="time-series-database">time-series database</Term> is optimised for that:
+
+- **Data is partitioned by time**, so old chunks can be compressed, moved to cheap storage or dropped wholesale.
+- **Specialised compression:** timestamps arrive at regular intervals and values change slowly, so storing differences between neighbours (delta and delta-of-delta encoding, as described in Facebook's Gorilla paper) shrinks data dramatically.
+- **Downsampling:** keep 10-second resolution for a week, 1-minute averages for a month, hourly averages for years.
+- **Retention policies** delete data past its useful age automatically.
+- **Built-in time functions:** rate, moving averages, gap filling.
+
+Examples: Prometheus (monitoring metrics), InfluxDB, TimescaleDB (a PostgreSQL extension), and column stores like ClickHouse, which are often used for time-series and log analytics too.
+
+### Worked example: metrics volume
+
+A fleet of **2,000 servers** reports **500 metrics** each every **10 seconds**: 2,000 × 500 ÷ 10 = **100,000 points a second**, or about **8.6 billion points a day**. At 16 bytes a point uncompressed that's about **138 GB a day**. Time-series compression commonly gets this down to a few bytes or less per point, so the same day might take well under 30 GB, and downsampling older data shrinks it further. A general-purpose row store would struggle with both the write rate and the storage.
+
+<TradeoffBox title="OLTP vs OLAP tradeoffs" items={[
+  { gain: "Row stores: fast single-row reads and updates with transactions", cost: "Full scans over billions of rows are slow and hurt live traffic" },
+  { gain: "Column stores: scan only the columns needed, highly compressed", cost: "Slow single-row updates; writes are batched" },
+  { gain: "CDC feeds analytics within minutes", cost: "Another pipeline to run, monitor and keep in schema sync" },
+  { gain: "Lakes and lakehouses: one cheap copy for SQL and ML", cost: "Needs governance, table formats and discipline to stay trustworthy" }
+]} />
+
+<NotWhenBox title="A separate analytics store" items={[
+  "Small data that fits comfortably on a Postgres read replica: run reports there.",
+  "Operational queries needing up-to-the-millisecond data and single-row updates.",
+  "Before anyone actually needs the analytics: start with replica queries and add a warehouse when they hurt."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A column store is just a faster database." right="It's faster for scans over a few columns and slower for single-row reads and updates. Each layout suits a different workload." />
+
+<Misconception wrong="Running analytics on the production primary is fine at night." right="Global users mean there's no quiet night, and long scans also hold snapshots and compete for cache. Use a replica or a separate store." />
+
+<Misconception wrong="A data lake is just a folder of files." right="Without schemas, table formats and governance it becomes a 'data swamp'. Lakehouse table formats exist to fix that." />
+
+## Interview angle
+
+<InterviewAngle title="OLTP vs OLAP" questions={[
+  "Where do your analytics and dashboards run?",
+  "Why is a column store faster for 'sum revenue by month'?",
+  "How does data get from your database into the warehouse?",
+  "How would you store metrics from 10,000 servers?"
+]}>
+Keep the OLTP database for the product and draw a separate analytics path: CDC or batch extracts from a replica into a column-oriented warehouse or lakehouse. Explain the speed-up with bytes scanned (two columns, not fifty) and compression. For metrics, name a time-series store with downsampling and retention, and size the write rate.
+</InterviewAngle>
+
+## Practice
+
+1. A table has 2 billion rows and 80 columns of 8 bytes. How many bytes does a row store scan to sum one column, and a column store reading two columns?
+2. Design the path from a Postgres orders database to a daily revenue dashboard. Where does CDC fit, and where would you run transformations?
+3. 5,000 IoT devices send 20 readings a second. Compute points per day and propose resolution tiers for 7 days, 90 days and 3 years.
+4. Your CEO wants a live dashboard of orders per minute. Would you query the warehouse, stream CDC into a column store, or use an HTAP database? Justify it with freshness, load and cost.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

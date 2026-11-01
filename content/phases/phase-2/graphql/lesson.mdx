@@ -1,0 +1,205 @@
+## Why it matters
+
+Facebook built GraphQL in 2012 for its mobile News Feed and open-sourced it in 2015. The problem was concrete: a feed item pulls data from a user, their friends, photos, comments and likes, and every screen and app version wanted a slightly different slice. With REST that meant either dozens of tailor-made endpoints or phones making many round trips over slow mobile networks. GraphQL lets the client describe exactly the data it needs in one request. That power comes with real costs in caching, security and server performance, and knowing both sides is what interviewers look for.
+
+<Callout type="analogy" title="Set menu vs ordering à la carte">
+A REST endpoint is a set menu: `/users/42` always brings the same plate, whether you wanted all of it or just the bread. Need dessert too? Order another set menu (another request). GraphQL is à la carte: you hand the waiter one list ("the user's name, their last three orders, and each order's total") and get exactly that on one tray. The kitchen, though, now has to cope with any combination anyone can dream up, including someone ordering the entire menu ten times over.
+</Callout>
+
+## Schema, queries and mutations
+
+<DepthStamp depth="deep" />
+
+<Term slug="graphql">GraphQL</Term> is a query language and a runtime. The server publishes a **schema**: a typed description of everything clients can ask for.
+
+```graphql
+type User   { id: ID!, name: String!, orders(first: Int): [Order!]! }
+type Order  { id: ID!, total: Int!, items: [Item!]! }
+type Query  { user(id: ID!): User }
+type Mutation { placeOrder(input: OrderInput!): Order! }
+```
+
+`!` means non-null. `Query` is the entry point for reads, `Mutation` for writes, and `Subscription` (supported by many servers) for pushed updates.
+
+A client sends a query shaped like the response it wants, usually as a POST to a single endpoint such as `/graphql`:
+
+```graphql
+query { user(id: "42") { name orders(first: 3) { id total } } }
+```
+
+```json
+{ "data": { "user": { "name": "Ada", "orders": [ { "id": "o1", "total": 4200 }, { "id": "o2", "total": 1599 }, { "id": "o3", "total": 300 } ] } } }
+```
+
+Each field in the schema is backed by a **resolver**, a function that knows how to fetch that field. The GraphQL engine walks the query tree and calls resolvers for each field it contains.
+
+Because the schema is typed and introspectable, tools can generate client types, autocomplete queries and validate requests before they reach your code. That developer experience is a big part of GraphQL's popularity.
+
+## Over-fetching and under-fetching
+
+<DepthStamp depth="deep" />
+
+GraphQL's main selling point is fixing two REST problems:
+
+- **Over-fetching:** `GET /users/42` returns 40 fields when the screen shows two. On a phone, those wasted bytes cost battery and time.
+- **Under-fetching:** the screen needs the user, their orders and each order's items, so the client calls `/users/42`, then `/users/42/orders`, then `/orders/{id}/items` for each order. Each call is a round trip, and on a 150 ms mobile link, three sequential round trips are almost half a second.
+
+### Worked example: a profile screen on mobile
+
+A profile screen shows a user's name, their 3 latest orders, and the item count for each.
+
+| | REST | GraphQL |
+|---|---|---|
+| Requests | 1 user + 1 order list + 3 item lists = 5 | 1 |
+| Sequential round trips | 3 (user → orders → items in parallel) | 1 |
+| Network time at 150 ms RTT | ≈ 450 ms | ≈ 150 ms |
+| Bytes | Full user, full orders, full items | Only the requested fields |
+
+The server still does the same lookups; GraphQL moves the joining from the client (over a slow network) to the server (over a fast data-centre network). That is a good trade for mobile and for screens that pull from many services.
+
+## The N+1 problem and DataLoader
+
+<DepthStamp depth="deep" />
+
+Resolvers run per field, per object. Naively, this query:
+
+```graphql
+{ orders(first: 50) { id customer { name } } }
+```
+
+runs **1** query for the 50 orders, then the `customer` resolver runs **50** times, one query each: 51 database round trips. This is the <Term slug="n-plus-one">N+1 problem</Term>, and in GraphQL it appears everywhere a list has a nested field.
+
+The standard fix is **batching**. A <Term slug="dataloader">DataLoader</Term> collects every `load(customerId)` call made during one tick of the event loop, then issues a single `SELECT … WHERE id IN (…)`, and hands each resolver its row. It also caches per request, so the same customer isn't loaded twice in one query.
+
+```
+Without batching: 1 + 50 queries
+With DataLoader:  1 + 1 queries
+```
+
+<Callout type="analogy" title="The waiter with a notepad">
+Without DataLoader, the waiter walks to the kitchen every time one diner orders a drink: 50 diners, 50 trips. With DataLoader, the waiter goes round the whole table writing everything on a notepad, then makes one trip. Same drinks, one walk.
+</Callout>
+
+## Why caching is harder
+
+<DepthStamp depth="tradeoffs" />
+
+REST gets HTTP caching almost for free: `GET /products/7` has a unique URL, so browsers, CDNs and reverse proxies can cache it using `Cache-Control` and `ETag`.
+
+GraphQL usually sends every query as a POST to one URL with the query in the body. To a CDN, every request looks the same and none of them are cacheable. Teams work around this in several ways:
+
+- **Client-side normalised caches** (for example in Apollo Client or Relay) store objects by type and ID, so a `User:42` fetched by one query can satisfy another.
+- **Server-side caching per resolver or per object**, with something like Redis.
+- **GET requests for queries** with the query in the URL, which lets HTTP caches work again, but long queries make long URLs.
+- **Persisted queries**, below, which give each query a short, stable ID.
+
+<Callout type="analogy" title="Sealed envelopes at the post office">
+A CDN caching REST is a post office sorting by the address on the envelope: same address, same pile, easy. GraphQL hands the post office thousands of envelopes all addressed to "/graphql", with the real instructions sealed inside. The clerk can't sort what they can't read, so everything goes straight to the origin. Persisted queries print a short, unique code on the outside of each envelope, and sorting works again.
+</Callout>
+
+## Persisted queries
+
+<DepthStamp depth="tradeoffs" />
+
+With <Term slug="persisted-query">persisted queries</Term>, the client registers its queries ahead of time (often at build time) and sends only a hash or ID at runtime:
+
+```
+GET /graphql?id=sha256:3f2a...&variables={"id":"42"}
+```
+
+Benefits:
+
+- **Smaller requests:** a hash instead of several kilobytes of query text.
+- **Cacheable:** a GET with a stable URL works with CDNs again.
+- **Safer:** in "allow-list" mode the server rejects any query it hasn't seen, which blocks attackers from sending arbitrary expensive queries.
+
+The cost is a build step and a registry that must stay in sync with deployed clients.
+
+## Protecting the server
+
+<DepthStamp depth="tradeoffs" />
+
+A schema with relationships lets a client write a query like `user { friends { friends { friends { posts { comments { … } } } } } }` that fans out to millions of resolver calls. Public GraphQL APIs defend themselves with:
+
+- **Depth limits:** reject queries nested deeper than, say, 10 levels.
+- **Cost analysis:** give each field a cost, multiply by list sizes (`first: 100`), and reject or rate-limit by total cost. GitHub's GraphQL API, for example, rate-limits by calculated points rather than by request count.
+- **Required pagination:** every list field takes `first`/`after` with a maximum.
+- **Timeouts** per request and per resolver.
+
+### Worked example: pricing a query
+
+Give every object a cost of 1 and multiply by the page size of each list on the way down:
+
+```graphql
+{ user(id: "42") {                 # 1
+    friends(first: 100) {          # 100
+      posts(first: 10) {           # 100 × 10 = 1,000
+        comments(first: 20) { id } # 1,000 × 20 = 20,000
+} } } }
+```
+
+The total is about 21,101 objects. If anonymous users get a budget of 1,000 points per query and 10,000 per minute, the server rejects this query before running a single resolver, and tells the client the cost so it can ask for smaller pages. The same query with `friends(first: 10)` costs about 2,111 points and is still rejected; with `comments(first: 5)` as well it drops to about 611 and passes. Cost analysis turns "is this query dangerous?" into arithmetic the server does in microseconds by reading the query, not by running it.
+
+<Callout type="analogy" title="The all-you-can-eat buffet with a plate size">
+An open GraphQL endpoint is an all-you-can-eat buffet. Most diners take a sensible plate. One diner piles up the entire dessert table, sits down, and comes back for more, and nobody else gets cake. Depth limits say "one plate, stacked no higher than this". Cost analysis weighs the plate at the till before you sit down. Persisted queries go further: there is no buffet any more, only a printed menu of dishes the kitchen has already agreed to cook.
+</Callout>
+
+## When NOT to use GraphQL
+
+<DepthStamp depth="tradeoffs" />
+
+GraphQL is excellent when many clients need different, nested views of shared data. It is often the wrong tool when:
+
+- **There is one client and a few simple resources.** REST plus good endpoints is less machinery.
+- **Responses must be cached by a CDN** (public, mostly-static content).
+- **Most traffic is service-to-service** with fixed request shapes: gRPC is faster and simpler.
+- **You need file uploads or streaming large binaries:** possible, but awkward compared with plain HTTP.
+- **The team can't invest in the server side:** schema design, DataLoader everywhere, cost limits and monitoring per field.
+
+A common middle ground is a GraphQL layer in front of REST or gRPC services, serving front-end clients only. That is effectively a backend-for-frontend, covered in the API gateway section.
+
+<TradeoffBox title="GraphQL tradeoffs" items={[
+  { gain: "Clients fetch exactly the fields they need in one round trip", cost: "The server must handle arbitrary query shapes, including expensive ones" },
+  { gain: "A typed, introspectable schema powers tooling and codegen", cost: "Schema design and deprecation become ongoing work" },
+  { gain: "Resolvers can join many back-end services behind one endpoint", cost: "N+1 queries unless every list path is batched" },
+  { gain: "One endpoint simplifies client networking", cost: "HTTP and CDN caching mostly stop working without persisted queries" }
+]} />
+
+<NotWhenBox title="Choosing GraphQL" items={[
+  "A single client with a handful of resources: REST is simpler.",
+  "Public, cache-heavy content served from a CDN: REST GETs cache naturally.",
+  "Internal high-throughput RPC between services: gRPC fits better."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="GraphQL is a database or replaces SQL." right="GraphQL is an API query language. Resolvers still fetch from databases, caches or other services." />
+
+<Misconception wrong="GraphQL makes the backend faster." right="It reduces client round trips and bytes. Without batching it often makes the backend slower, through N+1 queries." />
+
+<Misconception wrong="GraphQL can't be cached." right="HTTP caching is harder by default, but normalised client caches, resolver caches and persisted queries over GET all work." />
+
+## Interview angle
+
+<InterviewAngle title="GraphQL" questions={[
+  "When would you pick GraphQL over REST for this product?",
+  "What is the N+1 problem and how do you fix it?",
+  "How do you stop a client from sending a query that takes the server down?",
+  "How do you cache GraphQL responses?"
+]}>
+Frame it as a trade: client flexibility and fewer round trips, in exchange for server complexity and harder caching. Always mention DataLoader-style batching, depth and cost limits, and persisted queries. A strong answer says where GraphQL sits: usually at the edge for front-end clients, with gRPC or REST between services behind it.
+</InterviewAngle>
+
+## Practice
+
+1. Write a schema for a blog with users, posts and comments. Mark which list fields need pagination arguments.
+2. Count database queries for `{ posts(first: 20) { author { name } comments(first: 5) { author { name } } } }` with and without DataLoader.
+3. Design a cost model for that schema and pick a per-minute budget for anonymous users.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

@@ -1,0 +1,80 @@
+[
+  {
+    "id": "f1",
+    "front": "Lock?",
+    "back": "A marker a transaction holds on data to control others' access until it ends.",
+    "topicId": "basics"
+  },
+  {
+    "id": "f2",
+    "front": "Shared vs exclusive lock?",
+    "back": "Shared: many readers, no writers. Exclusive: one holder only.",
+    "topicId": "basics"
+  },
+  {
+    "id": "f3",
+    "front": "Pessimistic locking?",
+    "back": "Lock before reading for update (SELECT … FOR UPDATE); others wait.",
+    "topicId": "pessimistic"
+  },
+  {
+    "id": "f4",
+    "front": "NOWAIT vs SKIP LOCKED?",
+    "back": "NOWAIT errors if locked; SKIP LOCKED skips locked rows.",
+    "topicId": "pessimistic"
+  },
+  {
+    "id": "f5",
+    "front": "Hot-row throughput limit?",
+    "back": "1 second ÷ lock hold time, e.g. 5 ms → 200/s.",
+    "topicId": "pessimistic"
+  },
+  {
+    "id": "f6",
+    "front": "Fix a hot inventory row?",
+    "back": "Split into bucket rows or use an atomic conditional UPDATE.",
+    "topicId": "pessimistic"
+  },
+  {
+    "id": "f7",
+    "front": "Optimistic locking?",
+    "back": "No lock on read; UPDATE … WHERE version = read_version; 0 rows means conflict.",
+    "topicId": "optimistic"
+  },
+  {
+    "id": "f8",
+    "front": "When optimistic fits?",
+    "back": "Rare conflicts and long user think-time.",
+    "topicId": "optimistic"
+  },
+  {
+    "id": "f9",
+    "front": "Optimistic weakness?",
+    "back": "Retry storms under high contention.",
+    "topicId": "optimistic"
+  },
+  {
+    "id": "f10",
+    "front": "Deadlock?",
+    "back": "Two transactions each hold a lock the other needs, so both wait forever.",
+    "topicId": "deadlocks"
+  },
+  {
+    "id": "f11",
+    "front": "Deadlock prevention?",
+    "back": "Consistent lock order, short transactions, lock all at once, retry on error.",
+    "topicId": "deadlocks"
+  },
+  {
+    "id": "f12",
+    "front": "Lease?",
+    "back": "A lock that expires automatically if the holder stops renewing it.",
+    "topicId": "distributed"
+  },
+  {
+    "id": "f13",
+    "front": "Fencing token?",
+    "back": "An increasing number checked by storage so stale lock holders can't write.",
+    "topicId": "distributed"
+  }
+]

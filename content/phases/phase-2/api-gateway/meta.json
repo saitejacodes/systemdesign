@@ -1,0 +1,56 @@
+{
+  "id": "p2-api-gateway",
+  "phase": 2,
+  "slug": "api-gateway",
+  "title": "API gateway",
+  "order": 4,
+  "week": 3,
+  "estimatedMinutes": 45,
+  "topics": [
+    {
+      "id": "basics",
+      "title": "What a gateway is",
+      "depth": "deep"
+    },
+    {
+      "id": "routing",
+      "title": "Routing",
+      "depth": "deep"
+    },
+    {
+      "id": "auth",
+      "title": "Authentication and authorisation",
+      "depth": "deep"
+    },
+    {
+      "id": "cross-cutting",
+      "title": "Rate limiting and cross-cutting concerns",
+      "depth": "deep"
+    },
+    {
+      "id": "aggregation",
+      "title": "Aggregation",
+      "depth": "deep"
+    },
+    {
+      "id": "bff",
+      "title": "Backend for frontend",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "spof",
+      "title": "The gateway as a single point of failure",
+      "depth": "tradeoffs"
+    }
+  ],
+  "simulatorIds": [
+    "rate-limiter"
+  ],
+  "practiceCaseStudyIds": [
+    "rate-limiter-service"
+  ],
+  "prerequisites": [
+    "p1-reverse-proxy",
+    "p2-rest"
+  ]
+}

@@ -1,0 +1,295 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "Which storage type should hold a database's own data files?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Object storage"
+      },
+      {
+        "id": "b",
+        "text": "Block storage"
+      },
+      {
+        "id": "c",
+        "text": "A CDN"
+      },
+      {
+        "id": "d",
+        "text": "Email"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Databases need low-latency random writes to a mounted volume.",
+    "topicId": "types",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "What does object storage give up compared with a filesystem?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Durability"
+      },
+      {
+        "id": "b",
+        "text": "In-place updates, appends and renames"
+      },
+      {
+        "id": "c",
+        "text": "HTTP access"
+      },
+      {
+        "id": "d",
+        "text": "Metadata"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Objects are replaced whole; there's no POSIX semantics.",
+    "topicId": "types",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "What is a 'folder' in S3?",
+    "options": [
+      {
+        "id": "a",
+        "text": "A real directory"
+      },
+      {
+        "id": "b",
+        "text": "A key prefix; the namespace is flat"
+      },
+      {
+        "id": "c",
+        "text": "A separate bucket"
+      },
+      {
+        "id": "d",
+        "text": "A storage class"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Slashes are just characters in keys.",
+    "topicId": "s3-model",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "What's the best change?",
+    "scenario": "A photo app stores images in a Postgres bytea column. The table is 14 TB, nightly backups take 9 hours, a new replica takes 3 days to build, and the cache hit rate for user rows has collapsed.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Add more database replicas"
+      },
+      {
+        "id": "b",
+        "text": "Move images to object storage and keep only metadata (key, size, owner) in the database"
+      },
+      {
+        "id": "c",
+        "text": "Compress the images in the table"
+      },
+      {
+        "id": "d",
+        "text": "Shard the images table"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Bytes in object storage, metadata in the DB. Replicas and shards copy or spread the same problem.",
+    "topicId": "not-in-db",
+    "difficulty": 3
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "What does a presigned URL let a client do?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Read any object in the bucket forever"
+      },
+      {
+        "id": "b",
+        "text": "Perform one specific operation on one object directly with storage, until it expires"
+      },
+      {
+        "id": "c",
+        "text": "Bypass authentication in your API"
+      },
+      {
+        "id": "d",
+        "text": "Change the bucket policy"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "It's scoped to a method, key and expiry, signed by your service.",
+    "topicId": "presigned",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "What fixes the bottleneck?",
+    "scenario": "App servers proxy every upload to object storage. During evening peaks they hit their network limits and slow mobile uploads hold thousands of connections open.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Bigger app servers"
+      },
+      {
+        "id": "b",
+        "text": "Presigned URLs so clients upload directly to object storage; the API only issues URLs and records metadata"
+      },
+      {
+        "id": "c",
+        "text": "A larger database"
+      },
+      {
+        "id": "d",
+        "text": "Lower image quality"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Taking the bytes out of the app path removes the bandwidth and memory pressure.",
+    "topicId": "presigned",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "single",
+    "prompt": "Why use multipart upload for a 10 GB file?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It's the only way to set metadata"
+      },
+      {
+        "id": "b",
+        "text": "Parts upload in parallel and a failure retries one part, not the whole file"
+      },
+      {
+        "id": "c",
+        "text": "It encrypts the file"
+      },
+      {
+        "id": "d",
+        "text": "It makes the object smaller"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Parallelism and resumability. (S3 also caps a single PUT at 5 GB.)",
+    "topicId": "multipart",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "single",
+    "prompt": "What happens to an unfinished multipart upload's parts?",
+    "options": [
+      {
+        "id": "a",
+        "text": "They're deleted instantly"
+      },
+      {
+        "id": "b",
+        "text": "They stay stored (and billed) until aborted, so a lifecycle rule should clean them up"
+      },
+      {
+        "id": "c",
+        "text": "They become public"
+      },
+      {
+        "id": "d",
+        "text": "They're merged automatically"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Abort incomplete uploads with a lifecycle rule.",
+    "topicId": "multipart",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "scenario",
+    "prompt": "Why did costs rise?",
+    "scenario": "To save money you moved all objects older than 7 days to an infrequent-access class. Analytics jobs read last month's files daily. The bill went up.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Archive is always more expensive"
+      },
+      {
+        "id": "b",
+        "text": "Infrequent-access classes charge per GB retrieved (and have minimum durations), and these files are still read often"
+      },
+      {
+        "id": "c",
+        "text": "Lifecycle rules are broken"
+      },
+      {
+        "id": "d",
+        "text": "The CDN stopped caching"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Cheaper storage with retrieval fees only pays off for data that's rarely read.",
+    "topicId": "lifecycle",
+    "difficulty": 3
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "Why use content-hashed, versioned object keys behind a CDN?",
+    "options": [
+      {
+        "id": "a",
+        "text": "They're shorter"
+      },
+      {
+        "id": "b",
+        "text": "A changed file gets a new key, so long cache lifetimes are safe with no purges"
+      },
+      {
+        "id": "c",
+        "text": "CDNs require them"
+      },
+      {
+        "id": "d",
+        "text": "They encrypt the file"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Immutable keys make caching simple and correct.",
+    "topicId": "cdn",
+    "difficulty": 2
+  }
+]

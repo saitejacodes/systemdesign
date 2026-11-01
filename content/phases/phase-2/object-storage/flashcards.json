@@ -1,0 +1,80 @@
+[
+  {
+    "id": "f1",
+    "front": "Block vs file vs object storage?",
+    "back": "Block: raw disk for one machine. File: shared paths over NFS/SMB. Object: flat key → object over HTTP.",
+    "topicId": "types"
+  },
+  {
+    "id": "f2",
+    "front": "Object storage tradeoff?",
+    "back": "Near-unlimited scale and durability; no in-place updates; higher latency per request.",
+    "topicId": "types"
+  },
+  {
+    "id": "f3",
+    "front": "Bucket, key, object?",
+    "back": "A bucket holds objects; each object is bytes + metadata under a unique key.",
+    "topicId": "s3-model"
+  },
+  {
+    "id": "f4",
+    "front": "S3 folders?",
+    "back": "Just key prefixes; the namespace is flat.",
+    "topicId": "s3-model"
+  },
+  {
+    "id": "f5",
+    "front": "S3 consistency?",
+    "back": "Strong read-after-write for all operations since December 2020.",
+    "topicId": "s3-model"
+  },
+  {
+    "id": "f6",
+    "front": "Files in the database: why not?",
+    "back": "Expensive storage, slow backups and replicas, cache pollution, and serving through app servers.",
+    "topicId": "not-in-db"
+  },
+  {
+    "id": "f7",
+    "front": "Standard upload pattern?",
+    "back": "Bytes in object storage, metadata (key, owner, size) in the database.",
+    "topicId": "not-in-db"
+  },
+  {
+    "id": "f8",
+    "front": "Presigned URL?",
+    "back": "A URL signed by your service allowing one operation on one object until it expires.",
+    "topicId": "presigned"
+  },
+  {
+    "id": "f9",
+    "front": "Multipart upload steps?",
+    "back": "Initiate, upload parts (parallel, retryable), complete.",
+    "topicId": "multipart"
+  },
+  {
+    "id": "f10",
+    "front": "S3 multipart limits?",
+    "back": "Parts 5 MB–5 GB, up to 10,000 parts, objects up to 5 TB; single PUT max 5 GB.",
+    "topicId": "multipart"
+  },
+  {
+    "id": "f11",
+    "front": "Lifecycle rule?",
+    "back": "Automatically moves or deletes objects by age or prefix.",
+    "topicId": "lifecycle"
+  },
+  {
+    "id": "f12",
+    "front": "Cold-storage catch?",
+    "back": "Retrieval fees, minimum storage durations, slow archive restores.",
+    "topicId": "lifecycle"
+  },
+  {
+    "id": "f13",
+    "front": "CDN + object storage?",
+    "back": "Bucket as private origin, CDN at the edge, versioned keys with long cache lifetimes.",
+    "topicId": "cdn"
+  }
+]

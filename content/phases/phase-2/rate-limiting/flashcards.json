@@ -1,0 +1,92 @@
+[
+  {
+    "id": "f1",
+    "front": "Rate limiter?",
+    "back": "Caps requests per client per period and rejects or delays the rest.",
+    "topicId": "why"
+  },
+  {
+    "id": "f2",
+    "front": "Five reasons to rate-limit?",
+    "back": "Overload, abuse, cost of paid dependencies, fairness between tenants, business plans.",
+    "topicId": "why"
+  },
+  {
+    "id": "f3",
+    "front": "Token bucket?",
+    "back": "Up to B tokens, refilled at R/s; each request spends one. Allows bursts up to B.",
+    "topicId": "algorithms"
+  },
+  {
+    "id": "f4",
+    "front": "Leaky bucket?",
+    "back": "A queue drained at a fixed rate R. Smooth output, added delay.",
+    "topicId": "algorithms"
+  },
+  {
+    "id": "f5",
+    "front": "Fixed window weakness?",
+    "back": "Up to 2× the limit around a window boundary.",
+    "topicId": "algorithms"
+  },
+  {
+    "id": "f6",
+    "front": "Sliding window log?",
+    "back": "Store every timestamp in the window; exact but memory-heavy.",
+    "topicId": "algorithms"
+  },
+  {
+    "id": "f7",
+    "front": "Sliding window counter formula?",
+    "back": "previous × (1 − elapsed fraction) + current.",
+    "topicId": "algorithms"
+  },
+  {
+    "id": "f8",
+    "front": "Per-server limits with N servers?",
+    "back": "A client can get up to N × the limit.",
+    "topicId": "distributed"
+  },
+  {
+    "id": "f9",
+    "front": "Why INCR, not GET then SET?",
+    "back": "INCR is atomic; GET+SET races and lets extra requests through.",
+    "topicId": "distributed"
+  },
+  {
+    "id": "f10",
+    "front": "Why a Lua script in Redis?",
+    "back": "Redis runs the whole script atomically, so multi-step algorithms are race-free.",
+    "topicId": "distributed"
+  },
+  {
+    "id": "f11",
+    "front": "Fail open vs fail closed?",
+    "back": "Open: allow all when the limiter is down (availability). Closed: reject all (safety).",
+    "topicId": "distributed"
+  },
+  {
+    "id": "f12",
+    "front": "Layers of rate limiting?",
+    "back": "Edge per IP, gateway per key/user, services for business operations, outbound before paid dependencies.",
+    "topicId": "placement"
+  },
+  {
+    "id": "f13",
+    "front": "Concurrency limit?",
+    "back": "Caps requests in flight at once, protecting against slow, expensive calls.",
+    "topicId": "placement"
+  },
+  {
+    "id": "f14",
+    "front": "Rate-limit response?",
+    "back": "429 Too Many Requests + Retry-After, plus remaining-quota headers.",
+    "topicId": "response"
+  },
+  {
+    "id": "f15",
+    "front": "Client side of rate limits?",
+    "back": "Exponential backoff with jitter.",
+    "topicId": "response"
+  }
+]

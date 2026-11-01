@@ -1,0 +1,53 @@
+[
+  {
+    "id": "pg-ha",
+    "title": "PostgreSQL: High Availability, Load Balancing, and Replication",
+    "author": "PostgreSQL Global Development Group",
+    "kind": "docs",
+    "url": "https://www.postgresql.org/docs/current/high-availability.html",
+    "why": "Streaming replication, synchronous standbys and failover in Postgres.",
+    "topicIds": [
+      "leader-follower",
+      "sync-async"
+    ],
+    "free": true
+  },
+  {
+    "id": "github-oct21",
+    "title": "October 21 post-incident analysis",
+    "author": "GitHub",
+    "kind": "blog",
+    "url": "https://github.blog/2018-10-30-oct21-post-incident-analysis/",
+    "why": "A real cross-region failover after a network partition and the cost of conflicting writes.",
+    "topicIds": [
+      "failover"
+    ],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 5 is the clearest treatment of replication lag, multi-leader and quorums.",
+    "topicIds": [
+      "lag",
+      "multi-leader",
+      "leaderless"
+    ],
+    "free": false
+  },
+  {
+    "id": "dynamo-paper",
+    "title": "Dynamo: Amazon's Highly Available Key-value Store",
+    "author": "DeCandia et al.",
+    "kind": "paper",
+    "url": "https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf",
+    "why": "The paper behind leaderless quorum replication.",
+    "topicIds": [
+      "leaderless"
+    ],
+    "free": true
+  }
+]

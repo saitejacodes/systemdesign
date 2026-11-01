@@ -1,0 +1,197 @@
+## Why it matters
+
+Two customers buy the last concert ticket at the same moment. Both see "1 left", both pay, and the venue now has to tell one of them their ticket doesn't exist. A bank processes two withdrawals at once and the balance only goes down by one of them. These are not exotic bugs; they happen whenever two requests touch the same data at the same time and the code assumes it is alone. Transactions and isolation levels are the database's tools for this, and most production databases do **not** default to the strictest setting: PostgreSQL defaults to Read Committed and MySQL's InnoDB to Repeatable Read. Knowing exactly which anomalies your isolation level allows is the difference between "it worked in testing" and "it works under load".
+
+<Callout type="analogy" title="The shared shopping list">
+A family keeps one shopping list on the fridge. Without rules, chaos: Mum reads "milk" and heads out; Dad reads "milk" too and also buys it (lost update); a child crosses out "eggs" then changes their mind, but Gran already saw it crossed out and didn't buy any (dirty read). Isolation levels are house rules about when you can see other people's pencil marks, and whether you have to hold the list while you shop.
+</Callout>
+
+## ACID
+
+<DepthStamp depth="deep" />
+
+A <Term slug="transaction">transaction</Term> groups several reads and writes into one unit. Relational databases promise four properties, known as <Term slug="acid">ACID</Term>:
+
+- **Atomicity:** all of the transaction's writes happen, or none do. If the server crashes after debiting one account but before crediting the other, the debit is rolled back.
+- **Consistency:** the transaction moves the database from one valid state to another, respecting constraints (no negative balance if there's a `CHECK`, no order pointing at a missing customer). This is partly the application's job: the database enforces only the rules you declared.
+- **Isolation:** concurrent transactions don't see each other's half-finished work, to a degree set by the **isolation level**. This is where almost all the subtlety lives.
+- **Durability:** once committed, the data survives a crash, because it was written to a log on disk (the write-ahead log) before the commit returned.
+
+```sql
+BEGIN;
+UPDATE accounts SET balance = balance - 100 WHERE id = 1;
+UPDATE accounts SET balance = balance + 100 WHERE id = 2;
+COMMIT;   -- both happen, or (on error / ROLLBACK) neither does
+```
+
+## The anomalies
+
+<DepthStamp depth="deep" />
+
+Each anomaly below is shown as two transactions, T1 and T2, interleaved over time.
+
+### Dirty read
+
+T2 reads data that T1 has written but **not committed**. If T1 rolls back, T2 acted on data that never existed.
+
+| Time | T1 | T2 |
+|---|---|---|
+| 1 | `UPDATE accounts SET balance = 0 WHERE id = 1` (was 500) | |
+| 2 | | `SELECT balance … id = 1` → **0** |
+| 3 | `ROLLBACK` (balance is 500 again) | |
+| 4 | | Declines a payment for "insufficient funds" |
+
+### Non-repeatable read
+
+T1 reads a row twice and gets different values, because T2 committed a change in between.
+
+| Time | T1 | T2 |
+|---|---|---|
+| 1 | `SELECT price FROM products WHERE id = 7` → 100 | |
+| 2 | | `UPDATE products SET price = 120 WHERE id = 7; COMMIT` |
+| 3 | `SELECT price … id = 7` → **120** | |
+
+A report that reads a value at the start and again at the end now disagrees with itself.
+
+### Phantom read
+
+T1 runs the same **range** query twice and gets a different set of rows, because T2 inserted (or deleted) a row matching the condition.
+
+| Time | T1 | T2 |
+|---|---|---|
+| 1 | `SELECT count(*) FROM bookings WHERE room = 12 AND day = '11-05'` → 0 | |
+| 2 | | `INSERT INTO bookings (room, day) VALUES (12, '11-05'); COMMIT` |
+| 3 | `SELECT count(*) …` → **1** | |
+
+### Lost update
+
+Both transactions read a value, compute a new one in application code, and write it back. One write silently overwrites the other.
+
+| Time | T1 | T2 |
+|---|---|---|
+| 1 | `SELECT balance … id = 1` → 500 | |
+| 2 | | `SELECT balance … id = 1` → 500 |
+| 3 | `UPDATE … SET balance = 400` (500 − 100); `COMMIT` | |
+| 4 | | `UPDATE … SET balance = 400` (500 − 100); `COMMIT` |
+
+Two withdrawals of 100, but the balance is **400, not 300**. 100 has vanished. The simplest fix here is an atomic update: `UPDATE accounts SET balance = balance - 100 WHERE id = 1`, which reads and writes in one step.
+
+### Write skew
+
+Two transactions read the **same** data, each makes a decision based on it, and each writes a **different** row. Neither overwrote the other, yet together they break a rule. The classic example: a hospital requires at least one doctor on call.
+
+| Time | T1 (Alice) | T2 (Bob) |
+|---|---|---|
+| 1 | `SELECT count(*) FROM doctors WHERE on_call` → 2 | |
+| 2 | | `SELECT count(*) FROM doctors WHERE on_call` → 2 |
+| 3 | "2 ≥ 2, I can leave": `UPDATE doctors SET on_call = false WHERE name = 'Alice'; COMMIT` | |
+| 4 | | "2 ≥ 2, I can leave": `UPDATE doctors SET on_call = false WHERE name = 'Bob'; COMMIT` |
+
+Now **nobody** is on call. Each transaction was correct on its own snapshot. Double-booking a room, two users claiming the same username, and overspending a shared budget are all write skew.
+
+<Callout type="analogy" title="Two people, one last seat">
+Two friends text each other "is the last seat on the bus still free?" and both see "yes" on the app. Each books a different leg of the journey for the same seat. Neither changed the other's booking, so no single write looks wrong, but the bus is now double-booked. That's write skew: the rule ("one person per seat") spans rows that neither transaction touched together.
+</Callout>
+
+## Isolation levels
+
+<DepthStamp depth="deep" />
+
+The SQL standard defines four <Term slug="isolation-level">isolation levels</Term> by which anomalies they forbid:
+
+| Level | Dirty read | Non-repeatable read | Phantom |
+|---|---|---|---|
+| Read Uncommitted | possible | possible | possible |
+| Read Committed | prevented | possible | possible |
+| Repeatable Read | prevented | prevented | possible (per the standard) |
+| Serializable | prevented | prevented | prevented |
+
+Real databases differ from the table, so always check yours:
+
+- **PostgreSQL:** default **Read Committed**. Read Uncommitted behaves like Read Committed. Repeatable Read is implemented as snapshot isolation and also prevents phantoms; it detects lost updates by failing one transaction with a serialisation error, but **still allows write skew**. Serializable (serialisable snapshot isolation) prevents write skew too.
+- **MySQL InnoDB:** default **Repeatable Read**, with consistent snapshots for plain reads and locks for locking reads.
+
+What each level means in practice:
+
+- **Read Committed:** each statement sees data committed before **that statement** started. Prevents dirty reads; allows everything else, including lost updates in read-modify-write code.
+- **Repeatable Read / snapshot isolation:** the whole transaction sees one snapshot taken at its start. Great for reports and backups.
+- **Serializable:** the result is as if transactions ran one at a time. Prevents every anomaly above. The cost is that the database may **abort** transactions that would conflict, so your code must **retry** them.
+
+<Callout type="analogy" title="Photographs and live video">
+Read Committed is watching live video: each time you look, you see the latest state. Repeatable Read is taking a photograph when you start and working only from that photo, which never changes under you, but other people may be working from different photos. Serializable is a strict queue at a single desk: everyone gets served as if one at a time, and anyone who tries to jump the queue is sent back to the end.
+</Callout>
+
+## MVCC
+
+<DepthStamp depth="deep" />
+
+How can a database give every transaction its own snapshot without making readers wait for writers? <Term slug="mvcc">MVCC</Term> (multi-version concurrency control) keeps **several versions** of each row.
+
+- Every row version records which transaction created it (and, in Postgres, which deleted or replaced it).
+- An `UPDATE` doesn't overwrite in place; it writes a **new version** and marks the old one as replaced.
+- Each transaction (or statement) has a **snapshot**: the set of transactions committed when it started. It sees only versions created by those.
+- Old versions nobody can see any more are cleaned up later (Postgres's `VACUUM`; InnoDB's purge of its undo log).
+
+The headline benefit: **readers never block writers and writers never block readers**. A 10-minute report reads its snapshot while thousands of updates continue. The costs are extra storage for old versions and background cleanup; a transaction left open for hours stops cleanup and makes tables bloat.
+
+### Worked example: a long report under MVCC
+
+A nightly report scans 50 million orders and takes 20 minutes. Meanwhile, 2,000 orders a second are updated.
+
+- **Without MVCC (locking reads):** the report would either block those updates for 20 minutes or see a mix of before and after values.
+- **With MVCC at Repeatable Read:** the report sees exactly the state at its start. The 2,000 × 1,200 s = **2.4 million** updated rows each keep an old version alive until the report finishes, so the table temporarily holds millions of extra row versions. That's the price of a consistent report without blocking anyone, and why long-running transactions should run on a replica.
+
+## Choosing a level
+
+<DepthStamp depth="tradeoffs" />
+
+- **Read Committed** is fine for most web requests, as long as you avoid read-modify-write in application code. Use atomic updates (`SET x = x - 1`), constraints, or explicit locks (next section).
+- **Repeatable Read** for reports and multi-step reads that must agree with themselves.
+- **Serializable** where invariants span rows (bookings, on-call rules, budgets) and you can't express them as a single constraint. Wrap the transaction in a retry loop for serialisation failures.
+- Prefer **database constraints** where possible: a `UNIQUE (room, day)` index stops double-booking at any isolation level.
+
+<TradeoffBox title="Isolation tradeoffs" items={[
+  { gain: "Read Committed: high concurrency, few aborts", cost: "Allows lost updates and write skew in read-modify-write code" },
+  { gain: "Snapshot isolation: consistent reads with no reader-writer blocking", cost: "Still allows write skew; old versions must be cleaned up" },
+  { gain: "Serializable: no anomalies", cost: "Aborted transactions that must be retried, and lower throughput under contention" },
+  { gain: "Constraints catch violations at any level", cost: "Only for rules expressible as a constraint" }
+]} />
+
+<NotWhenBox title="Using Serializable everywhere" items={[
+  "High-contention hot rows with no retry logic: users will see errors.",
+  "Simple single-row updates that an atomic UPDATE or a constraint already protects.",
+  "Long analytical queries: run them at Repeatable Read on a replica."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Wrapping code in a transaction makes it safe from concurrency bugs." right="At the default Read Committed level, lost updates and write skew still happen. Isolation level, atomic updates, constraints or locks decide safety." />
+
+<Misconception wrong="Repeatable Read prevents all anomalies." right="Snapshot-based Repeatable Read still allows write skew. Only Serializable prevents it." />
+
+<Misconception wrong="The C in ACID means the database guarantees your business rules." right="The database enforces only declared constraints. Rules you didn't encode are the application's job." />
+
+## Interview angle
+
+<InterviewAngle title="Transactions" questions={[
+  "Two users book the last seat at once. What happens, and how do you prevent it?",
+  "What is write skew and which isolation level prevents it?",
+  "What is MVCC and why don't readers block writers?",
+  "What isolation level does your database default to?"
+]}>
+Name the anomaly precisely ("this is a lost update", "this is write skew"), then give the cheapest correct fix: an atomic update, a unique constraint, SELECT … FOR UPDATE, or Serializable with retries. Knowing that Postgres defaults to Read Committed, and that snapshot isolation allows write skew, separates strong candidates.
+</InterviewAngle>
+
+## Practice
+
+1. Write the two-transaction timeline for two users claiming the username "ada" at the same time. Which fix is simplest?
+2. Under Postgres Repeatable Read, what happens in the lost-update example? Under Read Committed?
+3. A transaction has been open for 6 hours on a busy table. What happens to the table, and why?
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

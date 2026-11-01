@@ -1,0 +1,50 @@
+{
+  "id": "p2-sql-vs-nosql",
+  "phase": 2,
+  "slug": "sql-vs-nosql",
+  "title": "SQL vs NoSQL",
+  "order": 7,
+  "week": 4,
+  "estimatedMinutes": 55,
+  "topics": [
+    {
+      "id": "relational",
+      "title": "Relational databases",
+      "depth": "deep"
+    },
+    {
+      "id": "document",
+      "title": "Document stores",
+      "depth": "deep"
+    },
+    {
+      "id": "key-value",
+      "title": "Key-value stores",
+      "depth": "deep"
+    },
+    {
+      "id": "wide-column",
+      "title": "Wide-column stores",
+      "depth": "deep"
+    },
+    {
+      "id": "graph",
+      "title": "Graph databases",
+      "depth": "awareness"
+    },
+    {
+      "id": "access-patterns",
+      "title": "Choosing by access pattern",
+      "depth": "tradeoffs"
+    }
+  ],
+  "simulatorIds": [
+    "sql-sandbox"
+  ],
+  "practiceCaseStudyIds": [
+    "url-shortener"
+  ],
+  "prerequisites": [
+    "p1-estimation"
+  ]
+}

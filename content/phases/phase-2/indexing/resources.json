@@ -1,0 +1,41 @@
+[
+  {
+    "id": "use-the-index",
+    "title": "Use The Index, Luke",
+    "author": "Markus Winand",
+    "kind": "free-book",
+    "url": "https://use-the-index-luke.com/",
+    "why": "A free, practical guide to SQL indexing for developers.",
+    "topicIds": [
+      "b-tree",
+      "composite",
+      "covering"
+    ],
+    "free": true
+  },
+  {
+    "id": "pg-explain",
+    "title": "PostgreSQL: Using EXPLAIN",
+    "author": "PostgreSQL Global Development Group",
+    "kind": "docs",
+    "url": "https://www.postgresql.org/docs/current/using-explain.html",
+    "why": "How to read plan nodes, costs and actual times.",
+    "topicIds": [
+      "explain"
+    ],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 3 explains B-trees, LSM trees and SSTables from first principles.",
+    "topicIds": [
+      "lsm",
+      "b-tree"
+    ],
+    "free": false
+  }
+]

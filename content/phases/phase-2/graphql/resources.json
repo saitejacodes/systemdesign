@@ -1,0 +1,39 @@
+[
+  {
+    "id": "graphql-learn",
+    "title": "Learn GraphQL",
+    "author": "GraphQL Foundation",
+    "kind": "docs",
+    "url": "https://graphql.org/learn/",
+    "why": "The official introduction to schemas, queries, mutations and execution.",
+    "topicIds": [
+      "schema",
+      "fetching"
+    ],
+    "free": true
+  },
+  {
+    "id": "dataloader",
+    "title": "DataLoader",
+    "author": "GraphQL Foundation",
+    "kind": "repo",
+    "url": "https://github.com/graphql/dataloader",
+    "why": "The reference batching and caching utility, with a clear README on how batching works.",
+    "topicIds": [
+      "n-plus-one"
+    ],
+    "free": true
+  },
+  {
+    "id": "github-graphql-limits",
+    "title": "GitHub GraphQL API: rate limits and query limits",
+    "author": "GitHub",
+    "kind": "docs",
+    "url": "https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api",
+    "why": "A real public API's point-based cost limits and node limits.",
+    "topicIds": [
+      "protection"
+    ],
+    "free": true
+  }
+]

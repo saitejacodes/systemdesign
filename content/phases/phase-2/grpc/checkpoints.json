@@ -1,0 +1,22 @@
+[
+  {
+    "id": "c1",
+    "text": "I can write a .proto file and explain which schema changes are safe.",
+    "topicId": "protobuf"
+  },
+  {
+    "id": "c2",
+    "text": "I can explain why gRPC needs L7 or client-side load balancing.",
+    "topicId": "http2"
+  },
+  {
+    "id": "c3",
+    "text": "I can explain deadline propagation with a numeric example.",
+    "topicId": "deadlines"
+  },
+  {
+    "id": "c4",
+    "text": "I can compare REST, GraphQL and gRPC and pick one for a scenario.",
+    "topicId": "comparison"
+  }
+]

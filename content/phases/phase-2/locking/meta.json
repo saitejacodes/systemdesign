@@ -1,0 +1,44 @@
+{
+  "id": "p2-locking",
+  "phase": 2,
+  "slug": "locking",
+  "title": "Locking",
+  "order": 11,
+  "week": 4,
+  "estimatedMinutes": 50,
+  "topics": [
+    {
+      "id": "basics",
+      "title": "Locks in a database",
+      "depth": "deep"
+    },
+    {
+      "id": "pessimistic",
+      "title": "Pessimistic locking",
+      "depth": "deep"
+    },
+    {
+      "id": "optimistic",
+      "title": "Optimistic locking",
+      "depth": "deep"
+    },
+    {
+      "id": "deadlocks",
+      "title": "Deadlocks",
+      "depth": "deep"
+    },
+    {
+      "id": "distributed",
+      "title": "Beyond one database",
+      "depth": "awareness"
+    }
+  ],
+  "simulatorIds": [
+    "isolation-lab",
+    "sql-sandbox"
+  ],
+  "practiceCaseStudyIds": [],
+  "prerequisites": [
+    "p2-transactions"
+  ]
+}

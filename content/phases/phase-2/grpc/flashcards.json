@@ -1,0 +1,80 @@
+[
+  {
+    "id": "f1",
+    "front": "RPC?",
+    "back": "Calling a function on another machine as if it were local, via generated client and server stubs.",
+    "topicId": "rpc"
+  },
+  {
+    "id": "f2",
+    "front": "Biggest danger of RPC?",
+    "back": "It makes a slow, failure-prone network call look like a cheap local call.",
+    "topicId": "rpc"
+  },
+  {
+    "id": "f3",
+    "front": "Protobuf field tag?",
+    "back": "The number after each field (= 1); it, not the name, identifies the field on the wire.",
+    "topicId": "protobuf"
+  },
+  {
+    "id": "f4",
+    "front": "Safe protobuf changes?",
+    "back": "Add fields with new tags, rename fields. Never reuse or renumber a tag; mark removed ones reserved.",
+    "topicId": "protobuf"
+  },
+  {
+    "id": "f5",
+    "front": "Why is protobuf smaller than JSON?",
+    "back": "It sends tags and binary values, not field names, quotes and braces.",
+    "topicId": "protobuf"
+  },
+  {
+    "id": "f6",
+    "front": "What HTTP/2 features does gRPC use?",
+    "back": "Multiplexed streams on one connection, binary framing, header compression, trailers.",
+    "topicId": "http2"
+  },
+  {
+    "id": "f7",
+    "front": "Why do L4 load balancers struggle with gRPC?",
+    "back": "They balance connections, and one long-lived HTTP/2 connection carries all of a client's calls.",
+    "topicId": "http2"
+  },
+  {
+    "id": "f8",
+    "front": "Two ways to load-balance gRPC?",
+    "back": "An L7 HTTP/2-aware proxy (e.g. Envoy) or client-side load balancing.",
+    "topicId": "http2"
+  },
+  {
+    "id": "f9",
+    "front": "Four gRPC call kinds?",
+    "back": "Unary, server streaming, client streaming, bidirectional streaming.",
+    "topicId": "streaming"
+  },
+  {
+    "id": "f10",
+    "front": "Deadline propagation?",
+    "back": "Each downstream call carries the time left from the original deadline, so no one works past it.",
+    "topicId": "deadlines"
+  },
+  {
+    "id": "f11",
+    "front": "Retryable gRPC status?",
+    "back": "UNAVAILABLE (with backoff, for idempotent calls). Not INVALID_ARGUMENT or PERMISSION_DENIED.",
+    "topicId": "deadlines"
+  },
+  {
+    "id": "f12",
+    "front": "gRPC-Web?",
+    "back": "A browser-friendly variant translated to gRPC by a proxy; supports unary and server streaming only.",
+    "topicId": "browser"
+  },
+  {
+    "id": "f13",
+    "front": "Where does gRPC usually sit?",
+    "back": "Between internal services; REST or GraphQL faces browsers and third parties.",
+    "topicId": "comparison"
+  }
+]

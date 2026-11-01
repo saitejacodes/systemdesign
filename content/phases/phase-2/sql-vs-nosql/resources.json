@@ -1,0 +1,41 @@
+[
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 2 compares relational, document and graph models in depth.",
+    "topicIds": [
+      "relational",
+      "document",
+      "graph"
+    ],
+    "free": false
+  },
+  {
+    "id": "dynamo-paper",
+    "title": "Dynamo: Amazon's Highly Available Key-value Store",
+    "author": "DeCandia et al.",
+    "kind": "paper",
+    "url": "https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf",
+    "why": "The 2007 paper behind many key-value and wide-column designs.",
+    "topicIds": [
+      "key-value",
+      "wide-column"
+    ],
+    "free": true
+  },
+  {
+    "id": "cassandra-docs",
+    "title": "Apache Cassandra documentation",
+    "author": "Apache Software Foundation",
+    "kind": "docs",
+    "url": "https://cassandra.apache.org/doc/latest/",
+    "why": "The data modelling guide covers query-first design with partition and clustering keys.",
+    "topicIds": [
+      "wide-column"
+    ],
+    "free": true
+  }
+]

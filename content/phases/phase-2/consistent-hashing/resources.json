@@ -1,0 +1,39 @@
+[
+  {
+    "id": "karger-1997",
+    "title": "Consistent Hashing and Random Trees",
+    "author": "Karger et al.",
+    "kind": "paper",
+    "url": "https://dl.acm.org/doi/10.1145/258533.258660",
+    "why": "The 1997 paper that introduced consistent hashing for web caching.",
+    "topicIds": [
+      "ring"
+    ],
+    "free": false
+  },
+  {
+    "id": "dynamo-paper",
+    "title": "Dynamo: Amazon's Highly Available Key-value Store",
+    "author": "DeCandia et al.",
+    "kind": "paper",
+    "url": "https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf",
+    "why": "Section 4 covers partitioning on a ring, virtual nodes and preference lists.",
+    "topicIds": [
+      "vnodes",
+      "replication"
+    ],
+    "free": true
+  },
+  {
+    "id": "jump-hash",
+    "title": "A Fast, Minimal Memory, Consistent Hash Algorithm",
+    "author": "John Lamping, Eric Veach",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/1406.2294",
+    "why": "Jump consistent hash in a few lines of code.",
+    "topicIds": [
+      "uses"
+    ],
+    "free": true
+  }
+]

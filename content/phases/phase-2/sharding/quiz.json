@@ -1,0 +1,326 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "What does sharding scale that replication doesn't?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Reads only"
+      },
+      {
+        "id": "b",
+        "text": "Writes and storage"
+      },
+      {
+        "id": "c",
+        "text": "Network bandwidth to clients"
+      },
+      {
+        "id": "d",
+        "text": "DNS"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Each shard holds part of the data and takes part of the writes.",
+    "topicId": "when",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "multi",
+    "prompt": "Which should you usually try before sharding? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Fixing slow queries and indexes"
+      },
+      {
+        "id": "b",
+        "text": "Read replicas and caching"
+      },
+      {
+        "id": "c",
+        "text": "Moving unrelated tables to their own databases"
+      },
+      {
+        "id": "d",
+        "text": "Rewriting in a new language"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "Shard last. Rewriting (d) doesn't address data volume.",
+    "topicId": "when",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "One server handles 10,000 writes/s. Peak is 45,000 writes/s. What's the minimum number of shards for writes?",
+    "options": [
+      {
+        "id": "a",
+        "text": "4"
+      },
+      {
+        "id": "b",
+        "text": "5"
+      },
+      {
+        "id": "c",
+        "text": "10"
+      },
+      {
+        "id": "d",
+        "text": "45"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "45,000 ÷ 10,000 = 4.5, so at least 5, plus headroom.",
+    "topicId": "when",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "single",
+    "prompt": "What's the main weakness of sharding by creation timestamp ranges?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Range queries are slow"
+      },
+      {
+        "id": "b",
+        "text": "All new writes go to the newest shard, making it hot"
+      },
+      {
+        "id": "c",
+        "text": "It can't use indexes"
+      },
+      {
+        "id": "d",
+        "text": "It needs a directory"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Sequential keys concentrate writes.",
+    "topicId": "strategies",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "With hash(key) mod N, about what share of keys move when N goes from 4 to 5?",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 20%"
+      },
+      {
+        "id": "b",
+        "text": "About 50%"
+      },
+      {
+        "id": "c",
+        "text": "About 80%"
+      },
+      {
+        "id": "d",
+        "text": "None"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Only keys whose mod-4 and mod-5 results match stay put. Consistent hashing moves about 1/5.",
+    "topicId": "strategies",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "Which shard key is best?",
+    "scenario": "A B2B SaaS product has 40,000 customer companies. Every query in the app filters by the customer company, and a company's data is often updated together in one transaction.",
+    "options": [
+      {
+        "id": "a",
+        "text": "country"
+      },
+      {
+        "id": "b",
+        "text": "signup_date"
+      },
+      {
+        "id": "c",
+        "text": "tenant_id"
+      },
+      {
+        "id": "d",
+        "text": "plan_type"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Every query is per tenant and tenant data should stay together. Country and plan have low cardinality; signup date makes a hot newest shard.",
+    "topicId": "shard-key",
+    "difficulty": 3
+  },
+  {
+    "id": "q7",
+    "type": "single",
+    "prompt": "Why should a shard key never change?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Keys are encrypted"
+      },
+      {
+        "id": "b",
+        "text": "Changing it means moving the row to a different shard, a cross-shard operation"
+      },
+      {
+        "id": "c",
+        "text": "Indexes break"
+      },
+      {
+        "id": "d",
+        "text": "It slows reads"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Rows live where their key says.",
+    "topicId": "shard-key",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "prompt": "What's the most effective first step?",
+    "scenario": "Shard 7 is at 95% CPU; the other 31 shards are at 30%. Investigation shows one musician with 80 million followers lives on shard 7, and each new post gets millions of reads.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Re-hash all users with a new function"
+      },
+      {
+        "id": "b",
+        "text": "Cache the celebrity's hot posts and add read replicas to that shard"
+      },
+      {
+        "id": "c",
+        "text": "Reduce the number of shards"
+      },
+      {
+        "id": "d",
+        "text": "Move the celebrity to every shard"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The problem is one hot key, not uneven hashing. Caching and replicas absorb reads; key-splitting helps writes.",
+    "topicId": "hot-shards",
+    "difficulty": 3
+  },
+  {
+    "id": "q9",
+    "type": "scenario",
+    "prompt": "What is happening, and what is a good fix?",
+    "scenario": "Orders are sharded by customer_id across 64 shards. The merchant dashboard runs `WHERE merchant_id = ?` and its p99 is 30× higher than customer queries, and it multiplies database load.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The network is slow; add bandwidth"
+      },
+      {
+        "id": "b",
+        "text": "Scatter-gather: the query lacks the shard key, so it hits all 64 shards and waits for the slowest; add an orders_by_merchant table sharded by merchant_id"
+      },
+      {
+        "id": "c",
+        "text": "Too few shards; add more"
+      },
+      {
+        "id": "d",
+        "text": "Indexes are missing on customer_id"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Without the shard key every shard is asked, so latency is the slowest of 64 and load is ×64. A secondary table keyed by merchant serves it from one shard. More shards (c) makes it worse.",
+    "topicId": "cross-shard",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "Why do most sharded designs avoid two-phase commit?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It's not secure"
+      },
+      {
+        "id": "b",
+        "text": "It's slow, and a coordinator failure can leave shards waiting"
+      },
+      {
+        "id": "c",
+        "text": "It only works with NoSQL"
+      },
+      {
+        "id": "d",
+        "text": "It needs a directory"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Keep transactions within one shard by choosing the key well.",
+    "topicId": "cross-shard",
+    "difficulty": 2
+  },
+  {
+    "id": "q11",
+    "type": "single",
+    "prompt": "Why create many more logical shards than servers?",
+    "options": [
+      {
+        "id": "a",
+        "text": "To use more disk"
+      },
+      {
+        "id": "b",
+        "text": "So growth means moving whole logical shards between servers, without re-splitting rows"
+      },
+      {
+        "id": "c",
+        "text": "To avoid replication"
+      },
+      {
+        "id": "d",
+        "text": "To make queries scatter"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Only the mapping changes when servers are added.",
+    "topicId": "resharding",
+    "difficulty": 2
+  }
+]

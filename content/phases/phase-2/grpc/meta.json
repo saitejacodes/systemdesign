@@ -1,0 +1,52 @@
+{
+  "id": "p2-grpc",
+  "phase": 2,
+  "slug": "grpc",
+  "title": "gRPC",
+  "order": 3,
+  "week": 3,
+  "estimatedMinutes": 50,
+  "topics": [
+    {
+      "id": "rpc",
+      "title": "Remote procedure calls",
+      "depth": "deep"
+    },
+    {
+      "id": "protobuf",
+      "title": "Protocol Buffers",
+      "depth": "deep"
+    },
+    {
+      "id": "http2",
+      "title": "HTTP/2 and load balancing",
+      "depth": "deep"
+    },
+    {
+      "id": "streaming",
+      "title": "Unary and streaming calls",
+      "depth": "deep"
+    },
+    {
+      "id": "deadlines",
+      "title": "Deadlines, status codes and retries",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "browser",
+      "title": "gRPC in the browser",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "comparison",
+      "title": "REST vs GraphQL vs gRPC",
+      "depth": "tradeoffs"
+    }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": [
+    "p2-rest",
+    "p2-graphql"
+  ]
+}

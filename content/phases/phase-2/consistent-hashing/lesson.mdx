@@ -1,0 +1,163 @@
+## Why it matters
+
+Suppose a cache cluster has 10 nodes and you place keys with `hash(key) mod 10`. One node dies, you now compute `mod 9`, and about 90% of keys suddenly map to a different node. Almost every request misses the cache at once and falls through to the database, which may not survive the flood. Consistent hashing was introduced in a 1997 paper by Karger and colleagues for exactly this kind of distributed web caching, and the idea later became central to Amazon's Dynamo, Apache Cassandra, many memcached client libraries and several load balancers. It's one of the few algorithms nearly every system design interview expects you to explain from scratch.
+
+<Callout type="analogy" title="Seats around a round table">
+Imagine guests (keys) and waiters (nodes) seated around a big round table. Each guest is served by the first waiter sitting clockwise from them. If a waiter leaves, only the guests that waiter served move on to the next waiter along; everyone else keeps theirs. If a new waiter sits down, they take over only the guests between themselves and the previous waiter. Compare a canteen where your waiter is "ticket number mod number of waiters": one waiter goes home and nearly everyone is reassigned.
+</Callout>
+
+## The problem with mod N
+
+<DepthStamp depth="deep" />
+
+Plain hashing maps a key to a node with `node = hash(key) mod N`. It spreads keys evenly, which is why it's the first thing people try. The trouble is **changing N**.
+
+A key stays on the same node only if `hash mod N` equals `hash mod (N+1)`. For N = 4 going to 5, that's true for only 4 out of every 20 hash values, so about **80% of keys move**. Going from 10 to 9 nodes moves about 90%.
+
+| Change | Keys that move with `mod N` | With consistent hashing |
+|---|---|---|
+| 4 → 5 nodes | ≈ 80% | ≈ 20% (1/5) |
+| 10 → 11 nodes | ≈ 91% | ≈ 9% (1/11) |
+| 10 → 9 nodes (one fails) | ≈ 90% | ≈ 10% (only the failed node's keys) |
+
+For a cache, moved keys are misses. For a sharded database, moved keys mean copying data across the network. Either way, `mod N` turns a routine scaling event into an incident.
+
+## The hash ring
+
+<DepthStamp depth="deep" />
+
+<Term slug="consistent-hashing">Consistent hashing</Term> maps both **nodes and keys** onto the same circular space, often the 2³² values of a 32-bit hash, wrapping from the largest value back to zero:
+
+1. Hash each node's ID (`hash("node-A")`) to get its position on the ring.
+2. Hash each key to get its position.
+3. A key belongs to the **first node clockwise** from it.
+
+```
+                 0 / 2³²
+          node-A ●
+        k1 ·         · k4      k1 → node-B (next clockwise)
+  node-D ●              ● node-B
+        k3 ·         · k2      k2 → node-C
+          node-C ●
+```
+
+Finding the owner is a binary search over the sorted node positions: O(log N) per lookup. The whole idea fits in a few lines:
+
+```ts
+const ring = nodes.map((n) => ({ pos: hash32(n), node: n })).sort((a, b) => a.pos - b.pos);
+
+function owner(key: string) {
+  const h = hash32(key);
+  const i = ring.findIndex((p) => p.pos >= h);  // first node clockwise (binary search in production)
+  return ring[i === -1 ? 0 : i].node;           // past the largest position, wrap to the start
+}
+```
+
+Every client that builds the ring from the same node list with the same hash function gets the same answer, with no coordination per request. That's also the catch: if two clients disagree about membership (one has heard that node C left, the other hasn't), they send the same key to different nodes. Real systems spread membership through a gossip protocol or a coordination service so views converge quickly.
+
+When **a node is added**, it lands somewhere on the ring and takes over only the keys between itself and the previous node counter-clockwise. When **a node is removed**, its keys go to the next node clockwise. Every other key stays exactly where it was. On average only **1/N** of keys move, the minimum possible.
+
+<Figure caption="FIG. 14.1 · ADDING NODE E ONLY MOVES THE KEYS BETWEEN D AND E">
+<Diagram label="Ring with nodes A to D; new node E takes keys from its clockwise neighbour only" chart={`flowchart LR
+  D["node-D"] -->|"keys in (D, E]"| E["node-E (new)"]
+  E -->|"keys in (E, A]"| A["node-A (was serving D→A)"]
+  A --> B["node-B unchanged"]
+  B --> C["node-C unchanged"]`} />
+</Figure>
+
+## Virtual nodes
+
+<DepthStamp depth="deep" />
+
+With only a few points on the ring, the gaps between them are uneven by chance. With 4 nodes placed at random, one node can easily own twice the ring space of another, and so get twice the keys and traffic. Removing a node also dumps its entire load onto **one** neighbour.
+
+<Term slug="virtual-node">Virtual nodes</Term> (vnodes) fix both problems. Each physical node is placed on the ring many times, as `node-A#0`, `node-A#1`, … `node-A#199`:
+
+- **Smoother spread:** with V points per node, each node's share is the sum of many small arcs, so the imbalance shrinks roughly in proportion to 1/√V. A few points per node can be off by 50% or more; a hundred or more typically brings nodes within roughly ±10% of each other.
+- **Failure load spreads out:** when node A dies, its 200 small arcs are inherited by many different nodes, not one neighbour.
+- **Weighted capacity:** a machine with twice the RAM gets twice the vnodes.
+
+The cost is a bigger ring to store and search (N × V entries) and more metadata to move when nodes change. Cassandra, for instance, assigns each node several tokens (configured by `num_tokens`) for this reason.
+
+### Worked example: adding a fifth cache node
+
+A cache cluster has 4 nodes, 200 vnodes each, holding 100 million keys, with a 95% hit rate in front of a database that receives the other 5% of 200,000 reads a second: **10,000 database reads a second**.
+
+- **Add a fifth node with `mod N`:** about 80 million keys now map to a new node. For a while, around 80% of reads miss. The database jumps from 10,000 to roughly **160,000+ reads a second**: likely an outage.
+- **Add it with consistent hashing:** the new node's 200 vnodes take about 1/5 of the ring, so about **20 million** keys move. Misses rise to roughly 5% + 20% × 95% ≈ 24%, about **48,000 database reads a second** at first, falling as the new node warms up. Still a spike, but survivable, and you can make it smaller by adding the new node's vnodes gradually.
+
+<Callout type="analogy" title="Sprinkling instead of stacking">
+If each waiter sits in just one seat, one gap in the table can be huge, and when a waiter leaves, all their guests pile onto one neighbour. Now let each waiter sit in 200 small seats spread all around the table. Each covers lots of small stretches, so the total work evens out, and when one waiter leaves, their guests are shared by everyone.
+</Callout>
+
+## Replication on the ring
+
+<DepthStamp depth="deep" />
+
+In Dynamo-style stores, each key is stored on the **next R distinct physical nodes** clockwise (skipping extra vnodes of a node already chosen). With R = 3, a key owned by node B is also stored on C and D. That list is the key's **preference list**. Reads and writes go to those nodes with the quorum rules from the replication section, and when a node joins or leaves, only the preference lists around it change.
+
+## Where it's used
+
+<DepthStamp depth="tradeoffs" />
+
+- **Distributed databases:** Amazon Dynamo, Cassandra, ScyllaDB and Riak partition data on a ring.
+- **Caches:** many memcached and Redis client libraries use consistent hashing (the "ketama" scheme is a well-known example) to pick a node for each key, so adding a cache node doesn't empty the whole cache.
+- **Load balancers:** sending the same user or connection to the same backend (session affinity) while tolerating backend changes. Google's Maglev load balancer uses its own consistent hashing variant designed for even spread and fast lookups.
+- **Sharded systems:** logical-shard placement, CDN request routing, distributed queues.
+
+Related algorithms solve the same problem with different tradeoffs:
+
+- **Rendezvous (highest random weight) hashing:** for each key, hash it with every node and pick the highest score. No ring to store, perfect minimal movement, but O(N) per lookup.
+- **Jump consistent hash** (Lamping and Veach, Google, 2014): a few lines of code, no memory, very even, but nodes can only be added or removed at the end of a numbered list, so it suits shard numbers better than arbitrary named servers.
+
+<TradeoffBox title="Consistent hashing tradeoffs" items={[
+  { gain: "Only about 1/N of keys move when a node joins or leaves", cost: "A ring structure to store, search and keep in sync on every client" },
+  { gain: "Virtual nodes even out load and spread failure impact", cost: "N × V ring entries and more metadata changes" },
+  { gain: "Weights via vnode count support mixed hardware", cost: "Still blind to traffic: one hot key overloads one node" },
+  { gain: "Decentralised: any client can compute ownership", cost: "Every client must see the same membership, or keys go to different nodes" }
+]} />
+
+<NotWhenBox title="Consistent hashing" items={[
+  "A fixed number of shards that never changes: plain mod N (or a lookup table) is simpler.",
+  "When keys need range queries: hashing scatters neighbours across nodes.",
+  "To fix a hot key: it balances keys, not traffic. Cache or split the key instead."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Consistent hashing balances load perfectly." right="Without enough virtual nodes, random placement is quite uneven, and even with them, one very popular key still lands on one node." />
+
+<Misconception wrong="With consistent hashing, no keys move when you add a node." right="About 1/N of keys move to the new node; the point is that nothing else moves." />
+
+<Misconception wrong="Consistent hashing is a hash function." right="It's a placement scheme. It uses an ordinary hash function (such as MurmurHash or a truncated MD5) to put nodes and keys on the ring." />
+
+## Interview angle
+
+<InterviewAngle title="Consistent hashing" questions={[
+  "Why not just use hash(key) mod N?",
+  "Explain how a key finds its node on the ring.",
+  "Why do we need virtual nodes?",
+  "How does replication work on the ring?"
+]}>
+Start with the `mod N` failure and its numbers (about 80% of keys move from 4 to 5 nodes), then draw the ring and show a key walking clockwise. Add vnodes to fix uneven arcs and failure load, and mention weights. For stores, extend to the preference list of R distinct nodes. Close by saying it balances keys, not traffic, so hot keys need separate handling.
+</InterviewAngle>
+
+## Practice
+
+1. With 6 nodes and `mod N`, roughly what fraction of keys move when one node fails? With consistent hashing?
+2. Nodes sit at positions 10, 40, 70 and 90 on a 0–99 ring. Which node owns keys at 5, 45, 89 and 95? Add a node at 55: which keys move?
+3. A cluster mixes 64 GB and 128 GB cache nodes. How would you assign vnodes?
+
+## Try it
+
+Start with one vnode per node to see the uneven spread, raise it to 100, then add a fifth node and compare keys moved with `key % N`.
+
+<Simulator id="consistent-hashing" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

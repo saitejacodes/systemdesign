@@ -1,0 +1,297 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "What distinguishes an API gateway from a plain reverse proxy?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It stores data"
+      },
+      {
+        "id": "b",
+        "text": "It understands APIs: routes, keys, users, quotas and versions"
+      },
+      {
+        "id": "c",
+        "text": "It only works with gRPC"
+      },
+      {
+        "id": "d",
+        "text": "It replaces DNS"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A gateway is an API-aware reverse proxy. (a), (c) and (d) are false.",
+    "topicId": "basics",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "Why route at the gateway instead of letting clients call services directly?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Services can be split, moved or versioned without changing clients"
+      },
+      {
+        "id": "b",
+        "text": "It makes services faster"
+      },
+      {
+        "id": "c",
+        "text": "It removes the need for databases"
+      },
+      {
+        "id": "d",
+        "text": "Clients can't use DNS"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Routing hides the internal layout. The others aren't benefits of routing.",
+    "topicId": "routing",
+    "difficulty": 1
+  },
+  {
+    "id": "q3",
+    "type": "scenario",
+    "prompt": "What is the flaw?",
+    "scenario": "A gateway verifies JWTs and forwards `X-User-Id`. The orders service trusts the header and cancels any order ID it receives. User 42 cancels user 77's order by changing the ID in the URL.",
+    "options": [
+      {
+        "id": "a",
+        "text": "JWTs can't be verified at the gateway"
+      },
+      {
+        "id": "b",
+        "text": "The orders service must still check that the user owns the order; the gateway only proves identity"
+      },
+      {
+        "id": "c",
+        "text": "The gateway should use API keys instead"
+      },
+      {
+        "id": "d",
+        "text": "Nothing; this is correct"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Authentication at the edge, authorisation in the service. Only orders knows who owns order 991. (a) is false; (c) doesn't fix it.",
+    "topicId": "auth",
+    "difficulty": 3
+  },
+  {
+    "id": "q4",
+    "type": "single",
+    "prompt": "What must the gateway do with an `X-User-Id` header sent by the client?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Forward it unchanged"
+      },
+      {
+        "id": "b",
+        "text": "Strip it and set its own from the verified credential"
+      },
+      {
+        "id": "c",
+        "text": "Log it and ignore the JWT"
+      },
+      {
+        "id": "d",
+        "text": "Return 500"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Otherwise clients could impersonate anyone. (a) is the vulnerability; (c) and (d) are wrong.",
+    "topicId": "auth",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "multi",
+    "prompt": "Which concerns usually belong in the gateway? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "TLS termination"
+      },
+      {
+        "id": "b",
+        "text": "Per-API-key rate limiting"
+      },
+      {
+        "id": "c",
+        "text": "Calculating an order's discount"
+      },
+      {
+        "id": "d",
+        "text": "Attaching a trace ID"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "d"
+    ],
+    "explanation": "Shared, business-free concerns go to the gateway. Discounts (c) need business data and belong in a service.",
+    "topicId": "cross-cutting",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "Roughly how long does the gateway-aggregated call take?",
+    "scenario": "A phone has a 100 ms round trip to your data centre. The home screen needs 4 services taking 30, 50, 120 and 20 ms. The gateway calls all four in parallel.",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 640 ms"
+      },
+      {
+        "id": "b",
+        "text": "About 230 ms"
+      },
+      {
+        "id": "c",
+        "text": "About 100 ms"
+      },
+      {
+        "id": "d",
+        "text": "About 50 ms"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "One phone round trip (100 ms) plus the slowest parallel call (120 ms) plus small internal hops ≈ 230 ms. (a) is the sequential sum; (c) and (d) ignore the services.",
+    "topicId": "aggregation",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "single",
+    "prompt": "How do you stop one slow dependency from slowing an aggregated response?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Call services sequentially"
+      },
+      {
+        "id": "b",
+        "text": "Set a per-dependency timeout and return a partial response"
+      },
+      {
+        "id": "c",
+        "text": "Remove the gateway"
+      },
+      {
+        "id": "d",
+        "text": "Cache everything forever"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A timeout bounds the wait; the screen renders without the slow part. (a) makes it worse; (c) and (d) don't address it.",
+    "topicId": "aggregation",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "prompt": "Which pattern fits?",
+    "scenario": "Your shared gateway has grown hundreds of rules like 'if TV app, add 4K artwork; if iOS v3, drop field X'. Every client team waits on the gateway team to ship.",
+    "options": [
+      {
+        "id": "a",
+        "text": "One shared gateway with per-client if-statements"
+      },
+      {
+        "id": "b",
+        "text": "A backend for frontend per client type, owned by each client team"
+      },
+      {
+        "id": "c",
+        "text": "Let clients call services directly"
+      },
+      {
+        "id": "d",
+        "text": "Merge the apps into one"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "BFFs let each client shape its data without coordinating every change. (a) is the problem being described.",
+    "topicId": "bff",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "single",
+    "prompt": "What most helps a gateway avoid being a single point of failure?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Running one large instance"
+      },
+      {
+        "id": "b",
+        "text": "Several stateless instances across zones, with shared state in a store like Redis and gradual config rollouts"
+      },
+      {
+        "id": "c",
+        "text": "Putting business logic in it"
+      },
+      {
+        "id": "d",
+        "text": "Disabling health checks"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Redundancy plus statelessness, and careful config deploys. (a) is a SPOF; (c) and (d) increase risk.",
+    "topicId": "spof",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "Two independent gateway instances each have 99.9% availability. What is the best-case availability of the pair?",
+    "options": [
+      {
+        "id": "a",
+        "text": "99.9%"
+      },
+      {
+        "id": "b",
+        "text": "99.99%"
+      },
+      {
+        "id": "c",
+        "text": "99.9999%"
+      },
+      {
+        "id": "d",
+        "text": "100%"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Both down at once: 0.001 × 0.001 = 0.000001. Correlated failures make the real number lower.",
+    "topicId": "spof",
+    "difficulty": 3
+  }
+]

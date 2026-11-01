@@ -1,0 +1,86 @@
+[
+  {
+    "id": "f1",
+    "front": "Inverted index?",
+    "back": "Map from each term to a sorted postings list of documents containing it.",
+    "topicId": "inverted-index"
+  },
+  {
+    "id": "f2",
+    "front": "AND / OR query on an inverted index?",
+    "back": "Intersect (AND) or union (OR) the postings lists, then rank.",
+    "topicId": "inverted-index"
+  },
+  {
+    "id": "f3",
+    "front": "Analyser steps?",
+    "back": "Character filters, tokenisation, token filters (lowercase, stop words, stemming, synonyms, folding).",
+    "topicId": "analysis"
+  },
+  {
+    "id": "f4",
+    "front": "Stemming?",
+    "back": "Reducing words to a root, e.g. running → run.",
+    "topicId": "analysis"
+  },
+  {
+    "id": "f5",
+    "front": "Fuzzy matching?",
+    "back": "Matching terms within an edit distance (usually 1–2) to handle typos.",
+    "topicId": "analysis"
+  },
+  {
+    "id": "f6",
+    "front": "TF?",
+    "back": "Term frequency: how often the term appears in the document.",
+    "topicId": "relevance"
+  },
+  {
+    "id": "f7",
+    "front": "IDF?",
+    "back": "log(N / documents containing the term): rare terms count more.",
+    "topicId": "relevance"
+  },
+  {
+    "id": "f8",
+    "front": "BM25?",
+    "back": "TF-IDF with saturating term frequency and length normalisation; Lucene's default.",
+    "topicId": "relevance"
+  },
+  {
+    "id": "f9",
+    "front": "Elasticsearch shards and replicas?",
+    "back": "An index is split into primary shards (each a Lucene index), each copied to replica shards.",
+    "topicId": "elasticsearch"
+  },
+  {
+    "id": "f10",
+    "front": "Search flow in Elasticsearch?",
+    "back": "Coordinator scatters to every shard, each scores locally, coordinator merges top N and fetches docs.",
+    "topicId": "elasticsearch"
+  },
+  {
+    "id": "f11",
+    "front": "Source of truth with search?",
+    "back": "The database; the search index is a derived, rebuildable copy.",
+    "topicId": "elasticsearch"
+  },
+  {
+    "id": "f12",
+    "front": "Trie?",
+    "back": "A prefix tree where strings sharing a prefix share a path.",
+    "topicId": "typeahead"
+  },
+  {
+    "id": "f13",
+    "front": "Precomputed top-k?",
+    "back": "Each trie node stores its k most popular completions, rebuilt offline.",
+    "topicId": "typeahead"
+  },
+  {
+    "id": "f14",
+    "front": "Typeahead load reducers?",
+    "back": "Client debouncing, caching short prefixes, in-memory replicas.",
+    "topicId": "typeahead"
+  }
+]

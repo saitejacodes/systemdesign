@@ -1,0 +1,86 @@
+[
+  {
+    "id": "f1",
+    "front": "Idempotent?",
+    "back": "Doing it once or many times leaves the same state.",
+    "topicId": "meaning"
+  },
+  {
+    "id": "f2",
+    "front": "Idempotent HTTP methods?",
+    "back": "GET, PUT, DELETE (and HEAD, OPTIONS). POST and PATCH aren't by default.",
+    "topicId": "meaning"
+  },
+  {
+    "id": "f3",
+    "front": "Three things a timeout can hide?",
+    "back": "Never arrived; arrived and crashed midway; finished but the response was lost.",
+    "topicId": "retries"
+  },
+  {
+    "id": "f4",
+    "front": "Idempotency key?",
+    "back": "A client-generated unique ID for one logical operation, sent with every retry of it.",
+    "topicId": "keys"
+  },
+  {
+    "id": "f5",
+    "front": "When does the client create the key?",
+    "back": "Once per user intent (e.g. tapping Pay), reused on every retry.",
+    "topicId": "keys"
+  },
+  {
+    "id": "f6",
+    "front": "Key reused with different parameters?",
+    "back": "Reject it: compare a stored request hash.",
+    "topicId": "keys"
+  },
+  {
+    "id": "f7",
+    "front": "Idempotency key table columns?",
+    "back": "Client scope, key, request hash, status, stored response, created time.",
+    "topicId": "storage"
+  },
+  {
+    "id": "f8",
+    "front": "Concurrent retries with the same key?",
+    "back": "Unique constraint picks one winner; others see in_progress and get 409.",
+    "topicId": "storage"
+  },
+  {
+    "id": "f9",
+    "front": "Crash safety for the key?",
+    "back": "Write the effect and the done status in one transaction.",
+    "topicId": "storage"
+  },
+  {
+    "id": "f10",
+    "front": "External side effects?",
+    "back": "Pass a downstream idempotency key and track progress in steps.",
+    "topicId": "payments"
+  },
+  {
+    "id": "f11",
+    "front": "Why do keys expire?",
+    "back": "Storage grows forever otherwise; providers keep them hours to days.",
+    "topicId": "payments"
+  },
+  {
+    "id": "f12",
+    "front": "At-least-once delivery?",
+    "back": "A message may be delivered more than once if acks are lost.",
+    "topicId": "consumers"
+  },
+  {
+    "id": "f13",
+    "front": "Idempotent consumer?",
+    "back": "Handles duplicate messages safely via a dedupe table or naturally idempotent effects.",
+    "topicId": "consumers"
+  },
+  {
+    "id": "f14",
+    "front": "'Exactly once' in practice?",
+    "back": "At-least-once delivery plus idempotent processing.",
+    "topicId": "consumers"
+  }
+]

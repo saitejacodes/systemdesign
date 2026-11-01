@@ -1,0 +1,40 @@
+[
+  {
+    "id": "pg-iso",
+    "title": "PostgreSQL: Transaction Isolation",
+    "author": "PostgreSQL Global Development Group",
+    "kind": "docs",
+    "url": "https://www.postgresql.org/docs/current/transaction-iso.html",
+    "why": "Exactly what each level does in Postgres, including where it differs from the standard.",
+    "topicIds": [
+      "levels",
+      "anomalies"
+    ],
+    "free": true
+  },
+  {
+    "id": "jepsen-consistency",
+    "title": "Consistency Models",
+    "author": "Jepsen",
+    "kind": "docs",
+    "url": "https://jepsen.io/consistency",
+    "why": "A clickable map of isolation and consistency models and how they relate.",
+    "topicIds": [
+      "levels"
+    ],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 7 covers transactions, anomalies and snapshot isolation in depth.",
+    "topicIds": [
+      "anomalies",
+      "mvcc"
+    ],
+    "free": false
+  }
+]

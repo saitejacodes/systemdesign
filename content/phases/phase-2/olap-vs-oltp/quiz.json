@@ -1,0 +1,297 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "Which is an OLTP query?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Revenue by country for two years"
+      },
+      {
+        "id": "b",
+        "text": "Update the status of order 991"
+      },
+      {
+        "id": "c",
+        "text": "Average session length by week"
+      },
+      {
+        "id": "d",
+        "text": "Top 100 products by sales last quarter"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "OLTP touches a few rows fast. The others scan large amounts of data.",
+    "topicId": "workloads",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "Why is a column store fast for `SUM(amount)` over a year?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It caches everything in RAM"
+      },
+      {
+        "id": "b",
+        "text": "It reads only the needed columns, which compress well, instead of whole rows"
+      },
+      {
+        "id": "c",
+        "text": "It uses B-tree indexes"
+      },
+      {
+        "id": "d",
+        "text": "It skips the WHERE clause"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Bytes scanned drop from all columns to a few, then compression shrinks them further.",
+    "topicId": "columnar",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "1 billion rows, 50 columns of 8 bytes. About how much does a column store read for a query on 2 columns, before compression?",
+    "options": [
+      {
+        "id": "a",
+        "text": "400 GB"
+      },
+      {
+        "id": "b",
+        "text": "16 GB"
+      },
+      {
+        "id": "c",
+        "text": "8 GB"
+      },
+      {
+        "id": "d",
+        "text": "800 MB"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "1e9 × 2 × 8 bytes = 16 GB, versus about 400 GB for a row store.",
+    "topicId": "columnar",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "Why is this a poor fit?",
+    "scenario": "A team moves the live shopping-cart table into a column-oriented warehouse so dashboards can query it directly. Adding an item to a cart now takes over a second, and update throughput collapses.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Column stores can't store JSON"
+      },
+      {
+        "id": "b",
+        "text": "Column stores are slow at frequent single-row updates: each touches every column and writes are batched; keep carts in an OLTP store"
+      },
+      {
+        "id": "c",
+        "text": "The cart table needs more columns"
+      },
+      {
+        "id": "d",
+        "text": "Column stores don't support primary keys"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Column layouts trade single-row write speed for scan speed. Shopping carts are a classic OLTP workload.",
+    "topicId": "columnar",
+    "difficulty": 3
+  },
+  {
+    "id": "q5",
+    "type": "multi",
+    "prompt": "Which help column stores compress and scan fast? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Dictionary encoding"
+      },
+      {
+        "id": "b",
+        "text": "Run-length encoding of sorted columns"
+      },
+      {
+        "id": "c",
+        "text": "Vectorised execution"
+      },
+      {
+        "id": "d",
+        "text": "Storing each row's values together"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "Storing rows together (d) is the row-store layout.",
+    "topicId": "columnar",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "What should you change?",
+    "scenario": "A finance dashboard runs a 6-minute GROUP BY over 300 million orders on the production Postgres primary every 15 minutes. Checkout p99 latency triples while it runs.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Add more CPU to the primary"
+      },
+      {
+        "id": "b",
+        "text": "Move reporting off the primary: CDC or batch extracts from a replica into a column-oriented warehouse"
+      },
+      {
+        "id": "c",
+        "text": "Run the report at midnight on the primary"
+      },
+      {
+        "id": "d",
+        "text": "Add indexes on every column"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Long analytical scans compete with transactions. A separate analytics path removes the contention. Midnight (c) isn't quiet for global users.",
+    "topicId": "pipelines",
+    "difficulty": 3
+  },
+  {
+    "id": "q7",
+    "type": "single",
+    "prompt": "What is change data capture (CDC)?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Nightly CSV exports"
+      },
+      {
+        "id": "b",
+        "text": "Streaming inserts, updates and deletes from the database's log into other systems"
+      },
+      {
+        "id": "c",
+        "text": "A backup tool"
+      },
+      {
+        "id": "d",
+        "text": "A type of index"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "CDC reads the replication log and streams changes within seconds or minutes.",
+    "topicId": "pipelines",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "single",
+    "prompt": "What do lakehouse table formats like Apache Iceberg and Delta Lake add to files in object storage?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Faster disks"
+      },
+      {
+        "id": "b",
+        "text": "Table metadata with transactions, schema evolution and time travel"
+      },
+      {
+        "id": "c",
+        "text": "Row-oriented storage"
+      },
+      {
+        "id": "d",
+        "text": "Email alerts"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "They make a set of files behave like a reliable table.",
+    "topicId": "warehouse-lake",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "scenario",
+    "prompt": "Which design fits?",
+    "scenario": "A fleet of 3,000 servers sends 400 metrics each every 10 seconds. Dashboards show the last hour at full resolution and the last year as hourly averages.",
+    "options": [
+      {
+        "id": "a",
+        "text": "A row-store table with one row per reading, kept forever"
+      },
+      {
+        "id": "b",
+        "text": "A time-series database with time partitioning, compression, downsampling and retention"
+      },
+      {
+        "id": "c",
+        "text": "A graph database"
+      },
+      {
+        "id": "d",
+        "text": "Object storage only, with no query engine"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Time-series stores are built for high append rates, time-range queries and ageing data out.",
+    "topicId": "time-series",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "2,000 servers × 500 metrics every 10 seconds is how many points per second?",
+    "options": [
+      {
+        "id": "a",
+        "text": "10,000"
+      },
+      {
+        "id": "b",
+        "text": "100,000"
+      },
+      {
+        "id": "c",
+        "text": "1,000,000"
+      },
+      {
+        "id": "d",
+        "text": "1,000"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "2,000 × 500 ÷ 10 = 100,000.",
+    "topicId": "time-series",
+    "difficulty": 2
+  }
+]

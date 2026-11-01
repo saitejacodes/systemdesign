@@ -1,0 +1,56 @@
+{
+  "id": "p2-indexing",
+  "phase": 2,
+  "slug": "indexing",
+  "title": "Indexing",
+  "order": 9,
+  "week": 4,
+  "estimatedMinutes": 60,
+  "topics": [
+    {
+      "id": "basics",
+      "title": "What an index is",
+      "depth": "deep"
+    },
+    {
+      "id": "b-tree",
+      "title": "B-trees",
+      "depth": "deep"
+    },
+    {
+      "id": "lsm",
+      "title": "LSM trees",
+      "depth": "deep"
+    },
+    {
+      "id": "composite",
+      "title": "Composite indexes and the leftmost prefix",
+      "depth": "deep"
+    },
+    {
+      "id": "covering",
+      "title": "Covering indexes",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "costs",
+      "title": "Write amplification and when indexes hurt",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "explain",
+      "title": "Reading EXPLAIN",
+      "depth": "deep"
+    }
+  ],
+  "simulatorIds": [
+    "index-visualizer",
+    "sql-sandbox"
+  ],
+  "practiceCaseStudyIds": [
+    "url-shortener"
+  ],
+  "prerequisites": [
+    "p2-data-modeling"
+  ]
+}

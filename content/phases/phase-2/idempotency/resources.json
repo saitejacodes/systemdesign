@@ -1,0 +1,40 @@
+[
+  {
+    "id": "stripe-idem",
+    "title": "Idempotent requests",
+    "author": "Stripe",
+    "kind": "docs",
+    "url": "https://docs.stripe.com/api/idempotent_requests",
+    "why": "A production idempotency key implementation, with its exact rules.",
+    "topicIds": [
+      "keys",
+      "payments"
+    ],
+    "free": true
+  },
+  {
+    "id": "brandur-idem",
+    "title": "Implementing Stripe-like Idempotency Keys in Postgres",
+    "author": "Brandur Leach",
+    "kind": "blog",
+    "url": "https://brandur.org/idempotency-keys",
+    "why": "A deep walkthrough of key tables, recovery points and atomic phases.",
+    "topicIds": [
+      "storage",
+      "payments"
+    ],
+    "free": true
+  },
+  {
+    "id": "ietf-idem-key",
+    "title": "The Idempotency-Key HTTP Header Field (draft)",
+    "author": "IETF HTTPAPI Working Group",
+    "kind": "docs",
+    "url": "https://datatracker.ietf.org/doc/draft-ietf-httpapi-idempotency-key-header/",
+    "why": "The draft standard for the header.",
+    "topicIds": [
+      "keys"
+    ],
+    "free": true
+  }
+]

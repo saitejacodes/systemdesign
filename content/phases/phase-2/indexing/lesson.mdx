@@ -1,0 +1,207 @@
+## Why it matters
+
+The single most common reason a production database falls over is a query without the right index. It works fine in development with 1,000 rows, then the table reaches 100 million rows and the same query reads all of them, every time, thousands of times a second. Adding one index can turn a 10-second query into a 1-millisecond one. Adding the wrong ten indexes can halve your write throughput. Knowing how indexes work, which ones a query can use, and how to read the database's plan is one of the most practical skills in backend engineering.
+
+<Callout type="analogy" title="The index at the back of a book">
+To find every mention of "TCP" in a 900-page textbook, you could read all 900 pages (a full table scan). Or you could turn to the index at the back, find "TCP: 42, 117, 388", and go straight there. The index costs extra pages and the publisher has to update it for every new edition, which is the write cost. And if the index is sorted by surname but you're looking up by first name, it's useless. That's the leftmost-prefix rule, in one sentence.
+</Callout>
+
+## What an index is
+
+<DepthStamp depth="deep" />
+
+An <Term slug="index">index</Term> is a separate data structure that stores some columns of a table in sorted (or hashed) order, with a pointer to each full row. The database keeps it updated on every insert, update and delete.
+
+Without an index, `SELECT * FROM orders WHERE customer_id = 42` must read every row: a **sequential scan**. With an index on `customer_id`, it jumps to the matching entries and fetches only those rows.
+
+### Worked example: scan vs index
+
+A table has 100 million rows of about 100 bytes: roughly **10 GB**.
+
+- **Sequential scan:** reading 10 GB at around 1 GB/s from fast storage takes about **10 seconds**, per query.
+- **B-tree index:** with each index page holding a few hundred keys (say 500), the tree depth is about log₅₀₀(100,000,000) ≈ **3 levels**. Finding one key takes 3–4 page reads, most of which are already cached in memory. That's well under a **millisecond**.
+
+That's a difference of four orders of magnitude, from one `CREATE INDEX`.
+
+## B-trees
+
+<DepthStamp depth="deep" />
+
+The default index in PostgreSQL, MySQL (InnoDB), SQL Server and most relational databases is the <Term slug="b-tree">B-tree</Term> (specifically a B+ tree): a wide, shallow, balanced tree of fixed-size pages.
+
+```
+                [ 300 | 600 ]
+        ┌────────────┼────────────┐
+  [100|200]     [400|500]     [700|800]
+   /  |  \       /  |  \       /  |  \
+ leaves, sorted, linked left-to-right → row pointers
+```
+
+- **Lookups** walk from the root to a leaf: a few page reads.
+- **Range queries** (`BETWEEN`, `>`, `ORDER BY`) find the first leaf and then walk along the linked leaves in order.
+- **Writes update pages in place.** Inserting into a full page splits it in two. Random inserts (like random UUIDs) scatter writes across the whole tree, which is why time-ordered IDs insert more efficiently.
+
+B-trees are **read-optimised**: every lookup is a short, predictable walk.
+
+## LSM trees
+
+<DepthStamp depth="deep" />
+
+An <Term slug="lsm-tree">LSM tree</Term> (log-structured merge tree) is built for **write-heavy** workloads. It's used by Cassandra, RocksDB, LevelDB, ScyllaDB and many others.
+
+1. Writes go to an in-memory sorted structure (the **memtable**) and to an append-only log for crash safety.
+2. When the memtable fills, it is written to disk as an immutable sorted file (an **SSTable**). This is one sequential write, which disks and SSDs handle very fast.
+3. Background **compaction** merges SSTables, dropping overwritten and deleted values.
+
+Reads must check the memtable and possibly several SSTables. **Bloom filters** (a compact structure that says "this key is definitely not in this file") let the database skip most files.
+
+| | B-tree | LSM tree |
+|---|---|---|
+| Writes | Update pages in place (random I/O) | Append, flush sequentially |
+| Reads | One tree walk | Memtable + several files (Bloom filters help) |
+| Space | Some empty space in pages | Old versions until compaction |
+| Background work | Little | Compaction uses CPU and disk |
+| Typical in | Postgres, MySQL | Cassandra, RocksDB |
+
+<Callout type="analogy" title="Filing cabinet vs inbox trays">
+A B-tree is a perfectly alphabetised filing cabinet: finding a file is quick, but every new document means opening the right drawer and squeezing it into place. An LSM tree is a stack of inbox trays: new documents go straight on top of today's tray (fast), and every night an assistant merges the trays into sorted piles (compaction). Finding something means checking a few trays, but a sticky note on each tray ("no invoices from Acme in here", the Bloom filter) means you rarely search them all.
+</Callout>
+
+## Composite indexes and the leftmost prefix
+
+<DepthStamp depth="deep" />
+
+A <Term slug="composite-index">composite index</Term> covers several columns, sorted by the first, then by the second within the first, and so on, like a phone book sorted by surname, then first name.
+
+```sql
+CREATE INDEX idx_orders_cust_date ON orders (customer_id, created_at);
+```
+
+The index can be used for queries that filter on a **leftmost prefix** of its columns:
+
+| Query filter | Uses the index? |
+|---|---|
+| `customer_id = 42` | ✅ first column |
+| `customer_id = 42 AND created_at > '2026-10-01'` | ✅ both columns, range on the last |
+| `customer_id = 42 ORDER BY created_at DESC LIMIT 20` | ✅ and no sort needed: rows come out in order |
+| `created_at > '2026-10-01'` | ❌ skips the first column (a full index scan at best) |
+
+Column order rules of thumb:
+
+- **Equality columns first, then the range or sort column.** `(customer_id, created_at)` serves "this customer's recent orders"; `(created_at, customer_id)` mostly doesn't.
+- One composite index often replaces several single-column ones.
+
+## Covering indexes
+
+<DepthStamp depth="tradeoffs" />
+
+Normally the database finds matching entries in the index, then fetches each full row from the table: one extra random read per row. A <Term slug="covering-index">covering index</Term> contains **every column the query needs**, so the table is never touched. PostgreSQL shows this as an **Index Only Scan**.
+
+```sql
+-- Query: SELECT created_at, total FROM orders WHERE customer_id = 42 ORDER BY created_at DESC LIMIT 20;
+CREATE INDEX idx_cover ON orders (customer_id, created_at) INCLUDE (total);
+```
+
+For a query that returns 20 rows, that saves up to 20 random reads. It makes the index bigger, so use it for hot queries only.
+
+## Write amplification and when indexes hurt
+
+<DepthStamp depth="tradeoffs" />
+
+Every index is a second copy of some data that must be updated on every write. <Term slug="write-amplification">Write amplification</Term> is the ratio of bytes actually written to storage to bytes the application asked to write.
+
+- A table with **5 indexes** turns each insert into **6** structure updates: the row plus 5 index entries.
+- An update to an indexed column changes the index too; in Postgres, even an update to an unindexed column may need new index entries unless it qualifies for a "HOT" (heap-only tuple) update.
+- In LSM trees, compaction rewrites the same data several times as files are merged, so write amplification of 10× or more is common, traded for fast sequential writes.
+
+Indexes hurt when:
+
+- **The table is write-heavy** and the index serves a rare query.
+- **Low selectivity:** an index on `status` where 95% of rows are `'active'` won't help `WHERE status = 'active'`, because reading 95% of the table through an index is slower than scanning it. (A **partial index**, `WHERE status = 'failed'`, can index just the rare value.)
+- **Duplicates:** `(a)` is redundant if `(a, b)` exists.
+- **Functions hide columns:** `WHERE lower(email) = 'x'` can't use an index on `email`; it needs an **expression index** on `lower(email)`.
+- **Memory:** indexes compete with data for the cache.
+
+## Reading EXPLAIN
+
+<DepthStamp depth="deep" />
+
+`EXPLAIN` shows the plan the database chose; `EXPLAIN ANALYZE` actually runs the query and shows real times and row counts. Before an index:
+
+```
+EXPLAIN ANALYZE SELECT * FROM orders WHERE customer_id = 42;
+
+Seq Scan on orders  (cost=0.00..183400.00 rows=48 width=72)
+                    (actual time=0.03..812.4 rows=51 loops=1)
+  Filter: (customer_id = 42)
+  Rows Removed by Filter: 9999949
+Execution Time: 812.5 ms
+```
+
+After `CREATE INDEX ON orders (customer_id)`:
+
+```
+Index Scan using orders_customer_id_idx on orders  (cost=0.43..52.1 rows=48 width=72)
+                    (actual time=0.02..0.11 rows=51 loops=1)
+  Index Cond: (customer_id = 42)
+Execution Time: 0.14 ms
+```
+
+What to look for:
+
+- **Seq Scan** on a big table with a selective filter → a missing index. "Rows Removed by Filter" in the millions is the giveaway.
+- **Index Scan / Index Only Scan** → the index is used; Index Only means it's covering.
+- **Bitmap Heap Scan** → the index found many rows, which are fetched in page order. Normal for medium selectivity.
+- **Estimated vs actual rows** far apart → stale statistics; run `ANALYZE`.
+- **Sort** with a large row count → an index matching the `ORDER BY` might remove it.
+- **Nested Loop** over many rows → check the inner side has an index.
+
+<Callout type="analogy" title="The satnav's route preview">
+EXPLAIN is the satnav showing its route before you drive. If it says "take the country lanes for 400 miles" when there's a motorway, you know something's wrong: maybe it doesn't know the motorway exists (missing index) or its map is out of date (stale statistics). EXPLAIN ANALYZE is driving the route and logging the real time at every junction.
+</Callout>
+
+<TradeoffBox title="Indexing tradeoffs" items={[
+  { gain: "Lookups and range scans in milliseconds instead of seconds", cost: "Every index slows inserts, updates and deletes" },
+  { gain: "Composite indexes serve filter and sort at once", cost: "Only for queries using their leftmost prefix" },
+  { gain: "Covering indexes skip the table entirely", cost: "Bigger indexes using more disk and cache" },
+  { gain: "LSM trees absorb huge write rates", cost: "Reads check several files and compaction rewrites data" }
+]} />
+
+<NotWhenBox title="Adding an index" items={[
+  "Low-selectivity columns where most rows match: the planner will scan anyway.",
+  "Write-heavy tables for a query that runs once a day: let it be slow, or run it on a replica.",
+  "A column already covered as the leftmost part of another index."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="More indexes always make a database faster." right="Each index speeds some reads and slows every write. Unused indexes are pure cost." />
+
+<Misconception wrong="An index on (a, b) helps any query on b." right="It helps queries that filter on a, or on a and b. A filter on b alone can't use the sorted order." />
+
+<Misconception wrong="If an index exists, the database will use it." right="The planner skips indexes when it estimates a scan is cheaper, such as for low-selectivity filters or tiny tables. Check with EXPLAIN." />
+
+## Interview angle
+
+<InterviewAngle title="Indexing" questions={[
+  "This query is slow. How do you find out why?",
+  "Which index would you add for 'a user's latest 20 orders'?",
+  "B-tree or LSM tree for this workload?",
+  "Why might adding an index make the system slower?"
+]}>
+Say "EXPLAIN ANALYZE first", then read the plan out loud: seq scan, rows removed, estimated vs actual. Propose a specific composite index with the column order justified (equality first, then sort). For storage engines, tie the choice to the read/write mix. Always mention the write cost of every index you add.
+</InterviewAngle>
+
+## Practice
+
+1. For `WHERE tenant_id = ? AND status = ? ORDER BY created_at DESC LIMIT 50`, design the best index and say which query variants it won't serve.
+2. A table has 8 indexes and 20,000 inserts a second. Estimate the index writes per second and suggest which indexes to question first.
+3. Read this plan line and diagnose it: `Seq Scan on users (rows=1) (actual rows=1) Rows Removed by Filter: 4,000,000`.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "c1",
+    "text": "I can describe the five main database families and an example of each.",
+    "topicId": "relational"
+  },
+  {
+    "id": "c2",
+    "text": "I can choose a store from a list of access patterns and say what it gives up.",
+    "topicId": "access-patterns"
+  },
+  {
+    "id": "c3",
+    "text": "I can explain partition and clustering keys.",
+    "topicId": "wide-column"
+  },
+  {
+    "id": "c4",
+    "text": "I can fill in a decision table for eight common use cases.",
+    "topicId": "access-patterns"
+  }
+]

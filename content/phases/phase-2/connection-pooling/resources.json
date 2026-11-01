@@ -1,0 +1,39 @@
+[
+  {
+    "id": "hikari-sizing",
+    "title": "About Pool Sizing",
+    "author": "Brett Wooldridge (HikariCP)",
+    "kind": "docs",
+    "url": "https://github.com/brettwooldridge/HikariCP/wiki/About-Pool-Sizing",
+    "why": "Why smaller pools are faster, with the cores-based starting formula.",
+    "topicIds": [
+      "sizing"
+    ],
+    "free": true
+  },
+  {
+    "id": "pgbouncer",
+    "title": "PgBouncer",
+    "author": "PgBouncer project",
+    "kind": "docs",
+    "url": "https://www.pgbouncer.org/",
+    "why": "Pooling modes, configuration and the features each mode supports.",
+    "topicIds": [
+      "poolers"
+    ],
+    "free": true
+  },
+  {
+    "id": "pg-conn-settings",
+    "title": "PostgreSQL: Connections and Authentication",
+    "author": "PostgreSQL Global Development Group",
+    "kind": "docs",
+    "url": "https://www.postgresql.org/docs/current/runtime-config-connection.html",
+    "why": "max_connections and related server settings.",
+    "topicIds": [
+      "exhaustion",
+      "cost"
+    ],
+    "free": true
+  }
+]

@@ -1,0 +1,210 @@
+## Why it matters
+
+Every public API is one buggy script away from an outage. A customer's retry loop with no backoff, a scraper, a credential-stuffing attack, or one big tenant's batch job can send more traffic than the whole system was sized for, and without limits that one client degrades service for everyone. Stripe has written publicly about running several layers of limiting in production: a per-user request-rate limiter, a limiter on concurrent requests, and load shedders that drop low-priority traffic when the fleet is under strain. Rate limiting is also one of the most common interview questions on its own ("design a rate limiter"), so you need to know the algorithms, how to run them across many servers, and where to put them.
+
+<Callout type="analogy" title="The nightclub bouncer with a clicker">
+A club holds 300 people. The bouncer doesn't care who is famous: when the clicker says 300, the next person waits on the pavement. That is rate limiting. A good bouncer also tells you how long the wait is ("about ten minutes") instead of just shoving you back, which is what `Retry-After` does. A bad club has one bouncer per door, each with their own clicker, and lets 900 people in through three doors. That is the distributed rate-limiting problem.
+</Callout>
+
+## Why limit at all
+
+<DepthStamp depth="deep" />
+
+A <Term slug="rate-limiter">rate limiter</Term> caps how many requests a client can make in a period of time and rejects or delays the rest. It protects you from:
+
+- **Overload:** a spike from one client can't eat capacity planned for everyone.
+- **Abuse:** brute-force logins, scraping and spam become slow and expensive.
+- **Cost:** calls that hit a paid downstream (SMS, an LLM, a card network) are capped.
+- **Fairness:** on shared infrastructure, one tenant can't starve the others (the "noisy neighbour" problem).
+- **Business plans:** free tier gets 1,000 calls a day, paid gets 100,000.
+
+The "client" is whatever you key on: user ID, API key, IP address, or a combination. IPs are a weak key on their own, because many users share one (offices, mobile carriers) and attackers can rotate through many.
+
+## The five algorithms
+
+<DepthStamp depth="deep" />
+
+### Token bucket
+
+A <Term slug="token-bucket">token bucket</Term> holds up to **B** tokens and refills at **R** tokens a second. Each request takes one token; with no token, the request is rejected.
+
+- **Allows bursts** up to B, then a steady R per second.
+- **State:** two numbers per client (tokens, last refill time). Refill is computed lazily on each request: `tokens = min(B, tokens + R × elapsed)`.
+- **Used widely:** AWS API Gateway throttling, for example, is described in terms of a rate and a burst.
+
+Worked example: B = 10, R = 2 per second. A client idle for a minute has a full bucket. It sends 15 requests at once: 10 succeed, 5 are rejected. One second later 2 more tokens have arrived, so 2 more requests can go.
+
+### Leaky bucket
+
+A <Term slug="leaky-bucket">leaky bucket</Term> is a queue that drains at a fixed rate. Requests join the queue (or are dropped if it's full) and leave at exactly R a second.
+
+- **Smooths output perfectly:** the downstream sees a steady flow, never a burst.
+- **Adds delay:** a burst waits in the queue instead of being served now.
+- **Good for:** protecting something fragile that needs an even rate, like a legacy system or an outbound email provider.
+
+<Callout type="analogy" title="Coins and a funnel">
+Token bucket: an arcade gives you a coin every 30 seconds, up to a pocketful of 10. Save them up and you can play 10 games in a row, then you wait for coins. Leaky bucket: a funnel with a small hole. Pour in a bucket of water and it still comes out the bottom as the same thin stream. The first lets people burst; the second never does.
+</Callout>
+
+### Fixed window counter
+
+Count requests per client per clock window (`user:42:2026-11-01T10:05`). If the count passes the limit, reject until the next window.
+
+- **Simplest and cheapest:** one counter per client per window.
+- **Boundary problem:** a limit of 100 a minute allows 100 requests at 10:05:59 and another 100 at 10:06:00: **200 requests in two seconds**, double the intended rate.
+
+### Sliding window log
+
+Store the timestamp of every request. On each new request, drop timestamps older than the window and count what's left.
+
+- **Exact:** no boundary problem at all.
+- **Expensive:** memory grows with the limit. At 100 requests a minute and roughly 8 bytes a timestamp, that's about 800 bytes per active user, or around 800 MB for a million users, before data-structure overhead.
+
+### Sliding window counter
+
+Keep the counts for the current and previous fixed windows, and weight the previous one by how much of it still overlaps the sliding window:
+
+```
+estimate = previous × (1 − elapsed_fraction) + current
+```
+
+Worked example: limit 100 a minute. The previous minute had 80 requests, the current minute has 30 so far, and we are 15 seconds (25%) into it. Estimate = 80 × 0.75 + 30 = **90**, so the request is allowed. At 45 seconds in with 50 current requests, the estimate is 80 × 0.25 + 50 = 70.
+
+- **Cheap:** two counters per client.
+- **Close to exact:** it assumes the previous window's requests were evenly spread, which smooths out most of the boundary problem.
+
+<Figure caption="FIG. 5.1 · FIXED WINDOW LETS 2× THROUGH AT THE BOUNDARY">
+<Diagram label="Timeline showing 100 requests at the end of one window and 100 at the start of the next" chart={`flowchart LR
+  A["10:05:00–10:05:58<br/>0 requests"] --> B["10:05:59<br/>100 requests ✓"]
+  B --> C["10:06:00<br/>100 requests ✓"]
+  C --> D["200 in 2 s<br/>limit was 100/min"]`} />
+</Figure>
+
+### Comparing them
+
+| Algorithm | Bursts | Accuracy | Memory per client | Notes |
+|---|---|---|---|---|
+| Token bucket | Allowed up to B | Good | 2 numbers | The usual default |
+| Leaky bucket | Queued, smoothed | Exact output rate | Queue | Adds latency |
+| Fixed window | Up to 2× at boundary | Weak | 1 counter | Simplest |
+| Sliding log | No | Exact | 1 timestamp per request | Memory-heavy |
+| Sliding counter | Mostly no | Approximate | 2 counters | Good balance |
+
+## Distributed rate limiting
+
+<DepthStamp depth="deep" />
+
+With one server, a counter in memory is enough. With ten app servers behind a load balancer, each one only sees about a tenth of a client's traffic. If each keeps its own limit of 100 a minute, the client really gets about **1,000**.
+
+The usual fix is a **shared counter** in a fast store, most often Redis. The obvious implementation has a race:
+
+```
+count = GET user:42     # two servers both read 99
+if count < 100:
+    SET user:42 count+1 # both write 100; 101 requests got through
+```
+
+Redis runs each command atomically, so use `INCR`, which increments and returns the new value in one step:
+
+```
+n = INCR rl:user:42:202611011005
+if n == 1: EXPIRE rl:user:42:202611011005 60
+if n > 100: reject
+```
+
+There is still a small gap: if the server crashes between `INCR` and `EXPIRE`, the key never expires. Wrapping the logic in a **Lua script** fixes that and makes richer algorithms safe, because Redis runs a whole script without interleaving other commands. A token bucket in Lua reads tokens and timestamp, refills, decides, and writes back in one atomic step.
+
+Costs and choices:
+
+- **Latency:** every request now pays a round trip to Redis, typically well under a millisecond in the same zone, but not free.
+- **Availability:** if Redis is down, do you **fail open** (allow everything, risk overload) or **fail closed** (reject everything, certain outage)? Most public APIs fail open for normal limits and closed for security-critical ones like login attempts.
+- **Hot keys:** one huge tenant's counter lives on one Redis shard. Shard by client key and watch for hot spots.
+- **Approximate local limits:** some systems give each server a local bucket with a slice of the limit and sync periodically. Cheaper, less exact.
+
+<Callout type="analogy" title="Three doors, one clicker">
+Back at the club: three doors with three bouncers each counting to 300 lets in 900 people. The fix is one shared clicker, say on a screen all three can see, where each bouncer presses the button and reads the new number in a single motion (that's `INCR`). If they each read the number first and then pressed later, two of them would both see 299 and both let someone in.
+</Callout>
+
+## Where to put the limiter
+
+<DepthStamp depth="tradeoffs" />
+
+Limits work best in layers:
+
+1. **Edge / CDN / WAF:** crude per-IP limits that stop floods before they reach you.
+2. **API gateway:** per API key or per user, per plan. This is the most common answer in interviews.
+3. **Inside services:** limits on expensive operations ("5 password resets an hour", "10 exports a day") that need business context.
+4. **Before costly dependencies:** outbound limits so you never exceed a partner's quota.
+
+Also limit **concurrency**, not just rate: 100 requests a second of 10 ms reads is easy; 100 a second of 30-second reports is not. Stripe's concurrent-request limiter exists for exactly this reason.
+
+## Telling the client
+
+<DepthStamp depth="tradeoffs" />
+
+A rejected request should get **`429 Too Many Requests`** (defined in RFC 6585), not a 500 or a silent drop, along with:
+
+- **`Retry-After`:** seconds to wait (or a date), so well-behaved clients back off precisely.
+- **Remaining-quota headers:** many APIs send `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`; GitHub's API is one example. An IETF draft proposes standard `RateLimit` header fields for the same purpose.
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 12
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 0
+```
+
+Clients should retry with **exponential backoff and jitter**. Without jitter, a thousand clients rejected at the same second all retry at the same second, and the spike repeats.
+
+<TradeoffBox title="Rate limiting tradeoffs" items={[
+  { gain: "Token bucket allows natural bursts with tiny state", cost: "A full bucket lets B requests hit at once" },
+  { gain: "Sliding log is exact", cost: "Memory grows with every request in the window" },
+  { gain: "A shared Redis counter gives one true limit across servers", cost: "A network round trip per request and a new dependency to fail open or closed" },
+  { gain: "Limits at the gateway protect every service at once", cost: "The gateway can't see business context like 'expensive export'" }
+]} />
+
+<NotWhenBox title="Choosing a limiter" items={[
+  "Fixed window when attackers can time requests around the boundary.",
+  "Leaky bucket for interactive APIs where queueing delay hurts users.",
+  "Per-server in-memory limits when clients are spread across many servers and the limit must be accurate.",
+  "IP address as the only key for logged-in users: users share IPs and attackers rotate them."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Rate limiting is only for stopping attackers." right="Most limit hits in practice come from buggy clients and runaway scripts. Limits protect capacity and fairness as much as security." />
+
+<Misconception wrong="Each server enforcing 100/min means the client gets 100/min." right="With N servers and per-server counters, the client gets up to N × 100. Shared state (or a split quota) is needed for one true limit." />
+
+<Misconception wrong="Reading a counter and then writing it back is fine in Redis." right="Two servers can read the same value between your GET and SET. Use atomic INCR or a Lua script." />
+
+## Interview angle
+
+<InterviewAngle title="Rate limiting" questions={[
+  "Design a rate limiter for an API with 10 million users.",
+  "Compare token bucket and sliding window counter.",
+  "How do you enforce one limit across 50 app servers?",
+  "What happens to your limiter when Redis goes down?"
+]}>
+Start by asking what is being limited (per user, per key, per IP), the limit, and whether bursts are acceptable. Pick token bucket or sliding window counter and say why. Put it in the gateway with Redis as shared state, show the atomic INCR or Lua step, and say what you do when Redis fails. Finish with the response: 429, Retry-After, and client backoff with jitter. Estimate memory: two counters per active user is tiny; a log per user is not.
+</InterviewAngle>
+
+## Practice
+
+1. A token bucket has B = 20, R = 5 per second. A client sends 30 requests at t = 0 and 10 more at t = 2 s. How many succeed in total?
+2. Work out the sliding-window-counter estimate for: limit 60 a minute, previous window 50, current 20, 40 seconds into the window. Allowed?
+3. Write the steps of a Redis Lua token bucket. Which values does it read and write?
+
+## Try it
+
+Run the boundary pattern and watch the fixed window lane let through twice its limit, then switch to shared counters across three servers.
+
+<Simulator id="rate-limiter" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

@@ -1,0 +1,92 @@
+[
+  {
+    "id": "f1",
+    "front": "Leader-follower?",
+    "back": "All writes to one leader; followers stream its log and serve reads.",
+    "topicId": "leader-follower"
+  },
+  {
+    "id": "f2",
+    "front": "Is replication a backup?",
+    "back": "No: mistakes replicate instantly. Keep point-in-time backups.",
+    "topicId": "leader-follower"
+  },
+  {
+    "id": "f3",
+    "front": "Sync replication?",
+    "back": "Ack after followers confirm: no loss, but slow and blocked by a dead follower.",
+    "topicId": "sync-async"
+  },
+  {
+    "id": "f4",
+    "front": "Async replication?",
+    "back": "Ack immediately: fast, but unreplicated writes are lost on failover.",
+    "topicId": "sync-async"
+  },
+  {
+    "id": "f5",
+    "front": "Semi-sync?",
+    "back": "Wait for at least one follower's ack; the rest async.",
+    "topicId": "sync-async"
+  },
+  {
+    "id": "f6",
+    "front": "Replication lag?",
+    "back": "How far a follower is behind the leader.",
+    "topicId": "lag"
+  },
+  {
+    "id": "f7",
+    "front": "Read-your-writes fix?",
+    "back": "Read the user's own data from the leader, for a window, or after their last write's log position.",
+    "topicId": "lag"
+  },
+  {
+    "id": "f8",
+    "front": "Monotonic reads fix?",
+    "back": "Pin each user to one follower.",
+    "topicId": "lag"
+  },
+  {
+    "id": "f9",
+    "front": "Failover steps?",
+    "back": "Detect, choose the freshest follower, redirect clients, fence the old leader.",
+    "topicId": "failover"
+  },
+  {
+    "id": "f10",
+    "front": "Split brain?",
+    "back": "Two nodes both act as leader and accept writes, usually after a partition.",
+    "topicId": "failover"
+  },
+  {
+    "id": "f11",
+    "front": "Split brain defences?",
+    "back": "Majority (quorum) election, fencing with epochs, old leader steps down.",
+    "topicId": "failover"
+  },
+  {
+    "id": "f12",
+    "front": "Multi-leader?",
+    "back": "Several write leaders (often per region) replicating asynchronously; conflicts must be resolved.",
+    "topicId": "multi-leader"
+  },
+  {
+    "id": "f13",
+    "front": "Home region?",
+    "back": "Each record's writes go to one owning region, avoiding conflicts.",
+    "topicId": "multi-leader"
+  },
+  {
+    "id": "f14",
+    "front": "Quorum rule?",
+    "back": "W + R > N means read and write sets overlap.",
+    "topicId": "leaderless"
+  },
+  {
+    "id": "f15",
+    "front": "Read repair?",
+    "back": "A read that finds a stale replica writes the newer value back to it.",
+    "topicId": "leaderless"
+  }
+]

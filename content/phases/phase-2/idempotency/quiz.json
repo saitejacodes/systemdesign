@@ -1,0 +1,296 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "Which operation is idempotent?",
+    "options": [
+      {
+        "id": "a",
+        "text": "ADD 10 TO balance"
+      },
+      {
+        "id": "b",
+        "text": "SET balance = 100"
+      },
+      {
+        "id": "c",
+        "text": "POST /payments"
+      },
+      {
+        "id": "d",
+        "text": "INSERT a new row with a generated ID"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Repeating SET leaves the same state. The others add or create again.",
+    "topicId": "meaning",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "A second DELETE /carts/7 returns 404 instead of 204. Is DELETE still idempotent?",
+    "options": [
+      {
+        "id": "a",
+        "text": "No, the response changed"
+      },
+      {
+        "id": "b",
+        "text": "Yes, idempotency is about the resulting state, not the response"
+      },
+      {
+        "id": "c",
+        "text": "Only if the cart is recreated"
+      },
+      {
+        "id": "d",
+        "text": "Only over HTTPS"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The state (cart gone) is the same. (a) confuses responses with state.",
+    "topicId": "meaning",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "After a timeout, what can't the client know?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Its own IP"
+      },
+      {
+        "id": "b",
+        "text": "Whether the server never got the request, crashed midway, or finished and lost the response"
+      },
+      {
+        "id": "c",
+        "text": "The server's TLS version"
+      },
+      {
+        "id": "d",
+        "text": "Which load balancer was used"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "All three cases look like a timeout. The others are knowable or irrelevant.",
+    "topicId": "retries",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "What is the bug?",
+    "scenario": "A mobile app sends `Idempotency-Key: uuid()` inside its HTTP retry wrapper, so each attempt gets a fresh UUID. Customers are still double-charged after timeouts.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Keys should be integers"
+      },
+      {
+        "id": "b",
+        "text": "The client generates a new key on every retry, so the server can't recognise retries"
+      },
+      {
+        "id": "c",
+        "text": "The server should store keys forever"
+      },
+      {
+        "id": "d",
+        "text": "Stripe doesn't support retries"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A key must be created once per user intent and reused on every attempt. (a) and (c) aren't the problem; (d) is false.",
+    "topicId": "keys",
+    "difficulty": 3
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "A request arrives with a used key but a different amount. What should the server do?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Process it as a new payment"
+      },
+      {
+        "id": "b",
+        "text": "Return the stored response"
+      },
+      {
+        "id": "c",
+        "text": "Reject it with an error because the key was reused for a different request"
+      },
+      {
+        "id": "d",
+        "text": "Delete the old key"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Comparing a request hash catches key reuse. Returning the old response (b) would hide a client bug.",
+    "topicId": "keys",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "What should the second request receive?",
+    "scenario": "Two retries with the same key arrive within 2 ms. The first claimed the key and is waiting on the card network. The second finds the key with status `in_progress`.",
+    "options": [
+      {
+        "id": "a",
+        "text": "A second charge"
+      },
+      {
+        "id": "b",
+        "text": "409 Conflict (or similar), because the first attempt is still in progress; retry shortly"
+      },
+      {
+        "id": "c",
+        "text": "The stored response, which doesn't exist yet"
+      },
+      {
+        "id": "d",
+        "text": "500 Internal Server Error"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The key exists with status in_progress. Doing the work again (a) double-charges; there's no stored response yet (c).",
+    "topicId": "storage",
+    "difficulty": 3
+  },
+  {
+    "id": "q7",
+    "type": "single",
+    "prompt": "What makes claiming a key safe when two retries arrive at once?",
+    "options": [
+      {
+        "id": "a",
+        "text": "A unique constraint with INSERT … ON CONFLICT DO NOTHING"
+      },
+      {
+        "id": "b",
+        "text": "Checking with SELECT first"
+      },
+      {
+        "id": "c",
+        "text": "A longer timeout"
+      },
+      {
+        "id": "d",
+        "text": "Using GET instead of POST"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "The database enforces one winner atomically. SELECT-then-INSERT (b) races.",
+    "topicId": "storage",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "single",
+    "prompt": "Roughly how many key rows does 1,000 payments/s with a 24-hour TTL keep?",
+    "options": [
+      {
+        "id": "a",
+        "text": "86,000"
+      },
+      {
+        "id": "b",
+        "text": "8.6 million"
+      },
+      {
+        "id": "c",
+        "text": "86 million"
+      },
+      {
+        "id": "d",
+        "text": "8.6 billion"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "1,000 × 86,400 ≈ 86 million.",
+    "topicId": "storage",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "scenario",
+    "prompt": "Which approach handles the crash correctly?",
+    "scenario": "Your server charges the card network, then crashes before saving `status = done`. The client retries with the same key.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Ignore it; crashes are rare"
+      },
+      {
+        "id": "b",
+        "text": "Pass a key derived from the idempotency key to the card network and track progress steps, so a retry resumes without charging again"
+      },
+      {
+        "id": "c",
+        "text": "Charge the card again on retry"
+      },
+      {
+        "id": "d",
+        "text": "Store keys only in memory"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "External calls can't join your DB transaction, so the downstream must deduplicate too. (a), (c) and (d) risk double charges or lost state.",
+    "topicId": "payments",
+    "difficulty": 3
+  },
+  {
+    "id": "q10",
+    "type": "multi",
+    "prompt": "Which make a queue consumer safe against duplicate messages? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Store processed message IDs in the same transaction as the effect"
+      },
+      {
+        "id": "b",
+        "text": "Use naturally idempotent operations like 'set status PAID'"
+      },
+      {
+        "id": "c",
+        "text": "Trust the queue's exactly-once claim"
+      },
+      {
+        "id": "d",
+        "text": "Increment counters on every message"
+      }
+    ],
+    "correct": [
+      "a",
+      "b"
+    ],
+    "explanation": "Dedupe tables and naturally idempotent effects both work. (c) and (d) break on redelivery.",
+    "topicId": "consumers",
+    "difficulty": 2
+  }
+]

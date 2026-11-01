@@ -1,0 +1,86 @@
+[
+  {
+    "id": "f1",
+    "front": "What makes a good REST URI?",
+    "back": "A plural noun naming a resource (/orders/9001); verbs come from the HTTP method; nest only for real ownership.",
+    "topicId": "resources"
+  },
+  {
+    "id": "f2",
+    "front": "Safe vs idempotent?",
+    "back": "Safe: doesn't change state (GET, HEAD). Idempotent: repeating it has the same effect as once (GET, PUT, DELETE).",
+    "topicId": "verbs"
+  },
+  {
+    "id": "f3",
+    "front": "Is POST idempotent?",
+    "back": "No. A retried POST can create a duplicate; use an idempotency key.",
+    "topicId": "verbs"
+  },
+  {
+    "id": "f4",
+    "front": "Is DELETE idempotent if the second call returns 404?",
+    "back": "Yes. Idempotency is about server state, not identical responses.",
+    "topicId": "verbs"
+  },
+  {
+    "id": "f5",
+    "front": "401 vs 403?",
+    "back": "401: not authenticated. 403: authenticated but not allowed.",
+    "topicId": "status-codes"
+  },
+  {
+    "id": "f6",
+    "front": "4xx vs 5xx retry rule?",
+    "back": "4xx: change the request, don't retry as-is. 5xx (and 429): you may retry with backoff.",
+    "topicId": "status-codes"
+  },
+  {
+    "id": "f7",
+    "front": "What does 201 Created include?",
+    "back": "A Location header with the new resource's URI (and usually its body).",
+    "topicId": "status-codes"
+  },
+  {
+    "id": "f8",
+    "front": "Two problems with deep OFFSET?",
+    "back": "It scans and discards every skipped row, and inserts shift pages so items repeat or vanish.",
+    "topicId": "pagination"
+  },
+  {
+    "id": "f9",
+    "front": "Cursor pagination SQL shape?",
+    "back": "WHERE (created_at, id) < (:ts, :id) ORDER BY created_at DESC, id DESC LIMIT n, with an index on (created_at, id).",
+    "topicId": "pagination"
+  },
+  {
+    "id": "f10",
+    "front": "Why a tie-breaker in the cursor?",
+    "back": "Rows with equal sort values could be skipped or repeated at page boundaries without a unique column.",
+    "topicId": "pagination"
+  },
+  {
+    "id": "f11",
+    "front": "Sparse fieldsets?",
+    "back": "?fields=id,total lets clients request only the fields they need.",
+    "topicId": "filtering"
+  },
+  {
+    "id": "f12",
+    "front": "Four versioning strategies?",
+    "back": "URI (/v2), header (Accept or custom), date-based per account (Stripe-Version), or additive-only with no versions.",
+    "topicId": "versioning"
+  },
+  {
+    "id": "f13",
+    "front": "Breaking changes?",
+    "back": "Removing or renaming a field, changing a type, adding a required parameter. Adding optional fields or endpoints is safe.",
+    "topicId": "versioning"
+  },
+  {
+    "id": "f14",
+    "front": "HATEOAS in one line?",
+    "back": "Responses carry links to the next possible actions, so clients navigate by following them.",
+    "topicId": "hateoas"
+  }
+]

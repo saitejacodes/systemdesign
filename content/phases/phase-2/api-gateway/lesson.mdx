@@ -1,0 +1,181 @@
+## Why it matters
+
+When Netflix moved from a monolith to hundreds of microservices, it hit a problem every such company meets: TVs, phones, game consoles and browsers all needed data from many services, and every device had different needs and network conditions. Letting each device call dozens of internal services directly would have exposed the whole internal layout, multiplied round trips over slow home networks, and copied authentication logic into every service. Netflix put an edge layer in front (its open-source gateway, Zuul, is one result) and later let device teams own their own server-side adapters. That edge layer is an **API gateway**, and almost every microservice design you draw in an interview will have one.
+
+<Callout type="analogy" title="The hotel front desk">
+A big hotel has a laundry, a kitchen, a spa, housekeeping and a garage, each run by a different team. Guests don't wander into the kitchen to order breakfast. They go to the front desk, which checks they are actually a guest (authentication), knows which department handles what (routing), stops someone ordering 400 towels a minute (rate limiting), and can book dinner, spa and taxi in one conversation (aggregation). The departments can reorganise behind the desk without guests noticing. But if the front desk closes, nobody gets anything, which is why real hotels never have just one clerk.
+</Callout>
+
+## What a gateway is
+
+<DepthStamp depth="deep" />
+
+An <Term slug="api-gateway">API gateway</Term> is a reverse proxy that sits between clients and your back-end services and handles the concerns every request shares. Clients see one host, `api.example.com`; behind it there may be fifty services.
+
+```
+Mobile / Web / Partners
+        │
+   ┌────▼─────┐   TLS, auth, rate limits, routing, logging
+   │ Gateway  │
+   └┬───┬───┬─┘
+    │   │   │
+ users orders search ...
+```
+
+Compared with the plain reverse proxy from Phase 1, a gateway knows about **APIs**: it understands routes, API keys, users, quotas and versions, not just hosts and ports. Common products include Kong, AWS API Gateway, Apigee, and gateways built on Envoy or NGINX.
+
+## Routing
+
+<DepthStamp depth="deep" />
+
+The simplest job is mapping public paths to internal services:
+
+| Public route | Internal service |
+|---|---|
+| `GET /v1/users/*` | `users-svc:8080` |
+| `POST /v1/orders` | `orders-svc:8080` |
+| `GET /v1/search` | `search-svc:9000` |
+| `/v2/orders/*` | `orders-v2-svc:8080` (new version) |
+
+Routing at the gateway lets you split a service, move it, or run two versions side by side without changing any client. It is also where **canary releases** often happen: send 5% of `/v1/orders` traffic to the new build and watch its error rate.
+
+The gateway may also **translate protocols**: accept REST/JSON from the outside world and call internal services over gRPC.
+
+## Authentication and authorisation
+
+<DepthStamp depth="deep" />
+
+Every request needs an answer to "who is this?". Doing it once at the edge means:
+
+1. The gateway checks the credential: an API key, a session cookie, or a <Term slug="jwt">JWT</Term> (a signed token the gateway can verify locally without calling an auth service).
+2. If it's invalid, the request is rejected with `401` before it touches any service.
+3. If it's valid, the gateway forwards the request with trusted identity headers, such as `X-User-Id: 42`, and strips any copy of those headers the client tried to send.
+
+Services behind the gateway still make their own **authorisation** decisions ("may user 42 cancel order 991?"), because only the orders service knows who owns order 991. The gateway answers "who are you?"; services answer "are you allowed?". Leaving all authorisation to the gateway is a classic mistake: one missing rule and everything behind it is open.
+
+<Callout type="analogy" title="Wristbands at a festival">
+At the festival gate, security checks your ticket once and gives you a wristband. Every stage and bar inside just looks at the wristband instead of checking tickets again. But the VIP tent still checks whether your wristband is the VIP colour. The gate handles identity; each area handles access.
+</Callout>
+
+## Rate limiting and other cross-cutting concerns
+
+<DepthStamp depth="deep" />
+
+Because all traffic passes through it, the gateway is the natural place for:
+
+- **Rate limiting and quotas:** 100 requests a minute per API key, 10,000 a day on the free plan, answered with `429 Too Many Requests`. The algorithms are covered in the next section.
+- **TLS termination:** decrypt once at the edge.
+- **Request validation:** reject malformed JSON or oversized bodies early.
+- **Logging, metrics and tracing:** one place to record every request and attach a trace ID that services pass along.
+- **Response caching** for safe, popular GETs.
+- **CORS** headers for browser clients.
+
+The rule of thumb: put a concern in the gateway if it is the **same for every service** and doesn't need business data. Anything that needs to know what an order is belongs in the service.
+
+## Aggregation
+
+<DepthStamp depth="deep" />
+
+A mobile home screen might need the user profile, recent orders, recommendations and unread notifications: four services. **Aggregation** (sometimes called API composition) means the client makes one call and the gateway, or a service behind it, fans out to all four and merges the answers.
+
+### Worked example: a home screen over 4G
+
+Assume a 100 ms round trip between the phone and the data centre, and these internal service times (inside the data centre, round trips are about 1 ms):
+
+| Service | Time |
+|---|---|
+| Profile | 20 ms |
+| Orders | 45 ms |
+| Recommendations | 80 ms |
+| Notifications | 15 ms |
+
+**Client calls each service itself, one after another:** 4 × 100 ms of network + (20 + 45 + 80 + 15) = 400 + 160 = **560 ms**.
+
+**Client calls all four in parallel:** 100 ms + the slowest (80 ms) ≈ **180 ms**, but the phone now opens four requests, and every app version must know four internal APIs.
+
+**Gateway aggregates in parallel:** 100 ms (one phone round trip) + 80 ms (slowest service) + a few ms of internal hops ≈ **185 ms**, with one request from the phone and internal APIs hidden.
+
+The lesson: aggregation's latency is the **slowest** dependency, not the sum, as long as calls run in parallel. That is also its risk. If recommendations sometimes take 2 s, the whole screen does too, unless the aggregator sets a timeout (say 150 ms) and returns the screen without recommendations. Partial responses are a design decision, not an accident.
+
+## Backend for frontend (BFF)
+
+<DepthStamp depth="tradeoffs" />
+
+One shared gateway serving the TV, the phone and the web soon fills with special cases: "if client is iOS v4, drop field X". The <Term slug="bff">backend for frontend</Term> pattern, described by Sam Newman, gives **each client type its own thin back end**, owned by the team that builds that client:
+
+```
+iOS app ──► iOS BFF ─┐
+Web app ──► Web BFF ─┼──► users, orders, recs, ...
+TV app  ──► TV BFF  ─┘
+```
+
+Each BFF shapes data exactly for its screens: the TV BFF sends big artwork and few fields, the mobile BFF sends small images and paginates aggressively. A shared gateway layer in front can still handle TLS, auth and rate limits.
+
+The cost is duplication: three BFFs may each reimplement "build the home screen". Teams usually accept that, because the alternative is one gateway that every client team has to coordinate on for every change. GraphQL is often used as a single flexible BFF instead.
+
+<Callout type="analogy" title="Personal shoppers">
+A department store with one information desk has to explain everything to everyone. A store with personal shoppers gives each kind of customer someone who knows exactly what they like: the shopper for parents heads straight to school uniforms, the one for runners goes to trainers. Same store, same stock rooms, different guides. That is a BFF per client.
+</Callout>
+
+## The gateway as a single point of failure
+
+<DepthStamp depth="tradeoffs" />
+
+If every request goes through the gateway, a gateway outage is a total outage. It is a textbook <Term slug="single-point-of-failure">single point of failure</Term> unless you design it out:
+
+- **Run several stateless instances** behind a load balancer, across availability zones. If one instance is up 99.9% of the time and failures are independent, two instances are both down only 0.1% × 0.1% = 0.0001% of the time. Real failures are often correlated (a bad config pushed to all of them), so this is a ceiling, not a promise.
+- **Keep it stateless:** rate-limit counters and sessions live in a shared store such as Redis, so any instance can serve any request.
+- **Roll out config gradually:** a broken route table pushed everywhere at once is the most common way gateways take down whole sites.
+- **Keep it thin:** every piece of business logic in the gateway is code that every request depends on.
+
+The gateway also adds a network hop to every request, typically small inside a data centre, plus its own processing. For most systems that's a fair price for one place to enforce security.
+
+<TradeoffBox title="API gateway tradeoffs" items={[
+  { gain: "One place for TLS, auth, rate limits, logging and routing", cost: "Every request depends on it: it must be redundant and carefully deployed" },
+  { gain: "Internal services can split, move or change protocol invisibly", cost: "An extra network hop and processing on every request" },
+  { gain: "Aggregation cuts client round trips to one", cost: "Aggregated latency is set by the slowest dependency unless you add timeouts" },
+  { gain: "BFFs let each client team move fast", cost: "Duplicated composition logic across BFFs" }
+]} />
+
+<NotWhenBox title="Using an API gateway" items={[
+  "A single monolith with one client: a plain reverse proxy or load balancer is enough.",
+  "Putting business rules (pricing, permissions on specific records) in the gateway: those belong in services.",
+  "Internal service-to-service calls: those usually go through a service mesh or direct client-side balancing, not the edge gateway."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="If the gateway authenticates requests, services don't need any security checks." right="The gateway proves identity. Services must still check whether that identity may do this specific thing to this specific record." />
+
+<Misconception wrong="An API gateway and a load balancer are the same thing." right="A load balancer spreads traffic across copies of one service. A gateway routes by API path to many services and adds auth, quotas and transformation. Gateways usually sit behind or include load balancing." />
+
+<Misconception wrong="Aggregating four calls makes a screen four times slower." right="Run in parallel, aggregation costs the slowest call, not the sum, and saves the client several slow round trips." />
+
+## Interview angle
+
+<InterviewAngle title="API gateway" questions={[
+  "What responsibilities belong in the gateway and which belong in services?",
+  "How do you stop the gateway from being a single point of failure?",
+  "What is a BFF and when would you use one?",
+  "How would you build a mobile home screen that depends on four services?"
+]}>
+Draw the gateway early in any design with more than one service, then say exactly what it does: TLS, auth, rate limiting, routing. Say it is horizontally scaled and stateless. When asked about aggregation, give the max-not-sum latency argument and say what happens when one dependency is slow (timeout plus a partial response). Mentioning BFFs when there are several client types shows you have seen how real teams split ownership.
+</InterviewAngle>
+
+## Practice
+
+1. List the routes, auth method and rate limits for a gateway in front of a food-delivery app with customer, restaurant and courier clients.
+2. Redo the home-screen example with a 300 ms satellite round trip. How much does aggregation save now?
+3. Recommendations has a p99 of 1.5 s. Pick a timeout for it in the aggregator and describe what the client shows when it fires.
+
+## Try it
+
+<Simulator id="rate-limiter" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

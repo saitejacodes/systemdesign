@@ -1,0 +1,46 @@
+{
+  "id": "p2-graphql",
+  "phase": 2,
+  "slug": "graphql",
+  "title": "GraphQL",
+  "order": 2,
+  "week": 3,
+  "estimatedMinutes": 50,
+  "topics": [
+    {
+      "id": "schema",
+      "title": "Schema, queries and mutations",
+      "depth": "deep"
+    },
+    {
+      "id": "fetching",
+      "title": "Over-fetching and under-fetching",
+      "depth": "deep"
+    },
+    {
+      "id": "n-plus-one",
+      "title": "The N+1 problem and DataLoader",
+      "depth": "deep"
+    },
+    {
+      "id": "caching",
+      "title": "Caching and persisted queries",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "protection",
+      "title": "Protecting the server",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "when-not",
+      "title": "When not to use GraphQL",
+      "depth": "tradeoffs"
+    }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": [
+    "p2-rest"
+  ]
+}

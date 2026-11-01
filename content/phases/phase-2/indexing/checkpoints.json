@@ -1,0 +1,27 @@
+[
+  {
+    "id": "c1",
+    "text": "I can explain how a B-tree finds a key and serves a range.",
+    "topicId": "b-tree"
+  },
+  {
+    "id": "c2",
+    "text": "I can compare B-trees and LSM trees for a workload.",
+    "topicId": "lsm"
+  },
+  {
+    "id": "c3",
+    "text": "I can design a composite index and apply the leftmost-prefix rule.",
+    "topicId": "composite"
+  },
+  {
+    "id": "c4",
+    "text": "I can explain when an index hurts.",
+    "topicId": "costs"
+  },
+  {
+    "id": "c5",
+    "text": "I can read an EXPLAIN ANALYZE plan and spot a missing index.",
+    "topicId": "explain"
+  }
+]

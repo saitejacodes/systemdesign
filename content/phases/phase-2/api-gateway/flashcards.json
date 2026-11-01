@@ -1,0 +1,74 @@
+[
+  {
+    "id": "f1",
+    "front": "API gateway?",
+    "back": "An API-aware reverse proxy that is the single entry point for clients and handles shared concerns.",
+    "topicId": "basics"
+  },
+  {
+    "id": "f2",
+    "front": "Gateway routing?",
+    "back": "Mapping public paths and versions to internal services, so they can change without clients noticing.",
+    "topicId": "routing"
+  },
+  {
+    "id": "f3",
+    "front": "Canary at the gateway?",
+    "back": "Sending a small share of traffic (e.g. 5%) to a new version and watching its errors.",
+    "topicId": "routing"
+  },
+  {
+    "id": "f4",
+    "front": "Gateway vs service security?",
+    "back": "Gateway authenticates (who are you?); services authorise (may you do this to this record?).",
+    "topicId": "auth"
+  },
+  {
+    "id": "f5",
+    "front": "Identity headers?",
+    "back": "The gateway sets X-User-Id from the verified token and strips any client-sent copy.",
+    "topicId": "auth"
+  },
+  {
+    "id": "f6",
+    "front": "Rule for gateway concerns?",
+    "back": "Same for every service and needs no business data: TLS, auth, rate limits, logging, CORS.",
+    "topicId": "cross-cutting"
+  },
+  {
+    "id": "f7",
+    "front": "Aggregation?",
+    "back": "One client call; the gateway fans out to several services in parallel and merges the results.",
+    "topicId": "aggregation"
+  },
+  {
+    "id": "f8",
+    "front": "Aggregation latency?",
+    "back": "One client round trip plus the slowest parallel dependency, not the sum.",
+    "topicId": "aggregation"
+  },
+  {
+    "id": "f9",
+    "front": "Slow dependency in aggregation?",
+    "back": "Per-dependency timeout plus a partial response.",
+    "topicId": "aggregation"
+  },
+  {
+    "id": "f10",
+    "front": "BFF?",
+    "back": "Backend for frontend: one thin back end per client type, owned by that client's team.",
+    "topicId": "bff"
+  },
+  {
+    "id": "f11",
+    "front": "BFF cost?",
+    "back": "Duplicated composition logic across BFFs.",
+    "topicId": "bff"
+  },
+  {
+    "id": "f12",
+    "front": "Make the gateway not a SPOF?",
+    "back": "Multiple stateless instances across zones, shared state in Redis, gradual config rollouts, keep it thin.",
+    "topicId": "spof"
+  }
+]

@@ -1,0 +1,297 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "With hash(key) mod N, about what share of keys move when one of 10 nodes fails?",
+    "options": [
+      {
+        "id": "a",
+        "text": "10%"
+      },
+      {
+        "id": "b",
+        "text": "50%"
+      },
+      {
+        "id": "c",
+        "text": "90%"
+      },
+      {
+        "id": "d",
+        "text": "0%"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Going from mod 10 to mod 9 remaps about 90% of keys.",
+    "topicId": "mod-n",
+    "difficulty": 2
+  },
+  {
+    "id": "q2",
+    "type": "scenario",
+    "prompt": "What caused the outage?",
+    "scenario": "A 4-node cache uses `hash(key) % 4`. You add a fifth node during peak and change to `% 5`. Database reads jump from 10,000/s to over 150,000/s and it falls over.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The new node was faulty"
+      },
+      {
+        "id": "b",
+        "text": "mod N remapped about 80% of keys, so the cache emptied at once and the database was flooded"
+      },
+      {
+        "id": "c",
+        "text": "Too many vnodes"
+      },
+      {
+        "id": "d",
+        "text": "The hash function was slow"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Changing N reassigns most keys; every reassigned key is a miss. Consistent hashing would have moved about 20%.",
+    "topicId": "mod-n",
+    "difficulty": 3
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "On a consistent hashing ring, which node owns a key?",
+    "options": [
+      {
+        "id": "a",
+        "text": "The node with the closest ID number"
+      },
+      {
+        "id": "b",
+        "text": "The first node clockwise from the key's position"
+      },
+      {
+        "id": "c",
+        "text": "A random node"
+      },
+      {
+        "id": "d",
+        "text": "The node with most free memory"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Walk clockwise from the key to the first node.",
+    "topicId": "ring",
+    "difficulty": 1
+  },
+  {
+    "id": "q4",
+    "type": "single",
+    "prompt": "About what fraction of keys move when a node is added to N existing nodes?",
+    "options": [
+      {
+        "id": "a",
+        "text": "None"
+      },
+      {
+        "id": "b",
+        "text": "About 1/(N+1)"
+      },
+      {
+        "id": "c",
+        "text": "About half"
+      },
+      {
+        "id": "d",
+        "text": "All of them"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The new node takes only the arc between itself and its predecessor.",
+    "topicId": "ring",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "How is the owner of a key found efficiently?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Scan every key"
+      },
+      {
+        "id": "b",
+        "text": "Binary search over the sorted node positions"
+      },
+      {
+        "id": "c",
+        "text": "Ask every node"
+      },
+      {
+        "id": "d",
+        "text": "Use mod N"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "O(log N) lookup over sorted ring positions.",
+    "topicId": "ring",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "single",
+    "prompt": "What problem do virtual nodes solve?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Slow hash functions"
+      },
+      {
+        "id": "b",
+        "text": "Uneven arcs from few random positions, and one neighbour absorbing a failed node's whole load"
+      },
+      {
+        "id": "c",
+        "text": "Replication lag"
+      },
+      {
+        "id": "d",
+        "text": "Hot keys"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Many small arcs per node even out load and spread failure impact. They don't fix hot keys (d).",
+    "topicId": "vnodes",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "prompt": "How should you configure the cluster?",
+    "scenario": "A cache cluster mixes 64 GB and 128 GB nodes. Each currently has 100 vnodes, so the small nodes fill up and evict long before the big ones.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Same vnode count for all"
+      },
+      {
+        "id": "b",
+        "text": "Give the 128 GB nodes about twice as many vnodes as the 64 GB nodes"
+      },
+      {
+        "id": "c",
+        "text": "Put the big nodes at fixed positions"
+      },
+      {
+        "id": "d",
+        "text": "Use mod N"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Vnode count acts as a weight, so share of keys follows capacity.",
+    "topicId": "vnodes",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "prompt": "Why didn't consistent hashing help, and what does?",
+    "scenario": "Your consistent-hashed cache has 200 vnodes per node and an even key spread, but one node is at 100% CPU during a product launch. All its traffic is for one key: `product:launch-page`.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Too few vnodes; add more"
+      },
+      {
+        "id": "b",
+        "text": "It balances keys, not traffic: one hot key always lands on one node; cache it locally or split it"
+      },
+      {
+        "id": "c",
+        "text": "The ring is broken"
+      },
+      {
+        "id": "d",
+        "text": "Switch to mod N"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "No placement scheme spreads one key's traffic. Local caching or key-splitting does.",
+    "topicId": "uses",
+    "difficulty": 3
+  },
+  {
+    "id": "q9",
+    "type": "single",
+    "prompt": "In Dynamo-style stores with R = 3, where are a key's replicas?",
+    "options": [
+      {
+        "id": "a",
+        "text": "On 3 random nodes"
+      },
+      {
+        "id": "b",
+        "text": "On the next 3 distinct physical nodes clockwise (the preference list)"
+      },
+      {
+        "id": "c",
+        "text": "On the 3 largest nodes"
+      },
+      {
+        "id": "d",
+        "text": "On every node"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Walk clockwise, skipping extra vnodes of nodes already chosen.",
+    "topicId": "replication",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "multi",
+    "prompt": "Where is consistent hashing commonly used? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Dynamo-style databases like Cassandra"
+      },
+      {
+        "id": "b",
+        "text": "Cache client libraries choosing a memcached node"
+      },
+      {
+        "id": "c",
+        "text": "Load balancers needing stable backend affinity"
+      },
+      {
+        "id": "d",
+        "text": "Sorting a list in memory"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "All three spread keys over changing sets of nodes. Sorting (d) isn't a placement problem.",
+    "topicId": "uses",
+    "difficulty": 2
+  }
+]

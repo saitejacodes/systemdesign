@@ -1,0 +1,22 @@
+[
+  {
+    "id": "c1",
+    "text": "I can calculate total connections across a fleet and spot the autoscaling trap.",
+    "topicId": "exhaustion"
+  },
+  {
+    "id": "c2",
+    "text": "I can size a pool from cores and Little's Law.",
+    "topicId": "sizing"
+  },
+  {
+    "id": "c3",
+    "text": "I can configure pool timeouts and explain why each matters.",
+    "topicId": "pools"
+  },
+  {
+    "id": "c4",
+    "text": "I can explain PgBouncer's modes and what transaction pooling breaks.",
+    "topicId": "poolers"
+  }
+]

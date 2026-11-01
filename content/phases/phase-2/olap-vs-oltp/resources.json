@@ -1,0 +1,40 @@
+[
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 3's section on column-oriented storage and data warehousing.",
+    "topicIds": [
+      "columnar",
+      "workloads"
+    ],
+    "free": false
+  },
+  {
+    "id": "clickhouse-docs",
+    "title": "ClickHouse documentation",
+    "author": "ClickHouse",
+    "kind": "docs",
+    "url": "https://clickhouse.com/docs",
+    "why": "A column store's own explanation of columnar storage and compression.",
+    "topicIds": [
+      "columnar",
+      "time-series"
+    ],
+    "free": true
+  },
+  {
+    "id": "parquet",
+    "title": "Apache Parquet",
+    "author": "Apache Software Foundation",
+    "kind": "docs",
+    "url": "https://parquet.apache.org/",
+    "why": "The columnar file format underneath most data lakes.",
+    "topicIds": [
+      "warehouse-lake"
+    ],
+    "free": true
+  }
+]

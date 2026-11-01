@@ -1,0 +1,27 @@
+[
+  {
+    "id": "c1",
+    "text": "I can explain leader-follower replication and what it scales.",
+    "topicId": "leader-follower"
+  },
+  {
+    "id": "c2",
+    "text": "I can compare sync, async and semi-sync and estimate data loss on async failover.",
+    "topicId": "sync-async"
+  },
+  {
+    "id": "c3",
+    "text": "I can explain read-your-writes and monotonic reads and fix each.",
+    "topicId": "lag"
+  },
+  {
+    "id": "c4",
+    "text": "I can describe failover and how quorum election and fencing prevent split brain.",
+    "topicId": "failover"
+  },
+  {
+    "id": "c5",
+    "text": "I can apply W + R > N to a leaderless design.",
+    "topicId": "leaderless"
+  }
+]

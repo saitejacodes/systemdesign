@@ -1,0 +1,176 @@
+## Why it matters
+
+"Which database?" is one of the first real decisions in any design, and one of the hardest to undo. Amazon's 2007 Dynamo paper described why the shopping cart, a service that had to accept writes even during failures, moved to a simple key-value design, and that paper helped start the wave of "NoSQL" databases. Yet many of the largest systems in the world still run their core data on relational databases: much of Shopify, GitHub and Stack Overflow, for instance, has been built on MySQL or SQL Server. The interview question is never "is SQL or NoSQL better?". It is "given these access patterns, which store fits, and what do you give up?".
+
+<Callout type="analogy" title="Kitchen storage">
+A relational database is a professional kitchen's labelled shelves: every jar has a place, a label and a recipe card linking it to others, so a chef can combine anything with anything. A key-value store is a coat check: hand over a ticket, get one coat back instantly, but you can't ask "show me all the blue coats". A document store is a set of lunchboxes, each packed with everything one person needs. A wide-column store is a warehouse of numbered aisles built for forklifts moving huge volumes along fixed routes. A graph database is a map of who knows whom. Each kitchen is fast at what it was built for, and painful at everything else.
+</Callout>
+
+## Relational databases
+
+<DepthStamp depth="deep" />
+
+A <Term slug="relational-database">relational database</Term> stores data in **tables** of rows and columns with a fixed **schema**, and links tables with **foreign keys**. You query it with SQL, and the database plans how to answer: which indexes to use, which order to join in.
+
+```sql
+SELECT o.id, o.total, c.name
+FROM orders o JOIN customers c ON c.id = o.customer_id
+WHERE o.created_at > now() - interval '7 days';
+```
+
+Strengths:
+
+- **Flexible queries:** joins, aggregates and filters on any column, including questions nobody planned for.
+- **Transactions:** multi-row, multi-table changes that are all-or-nothing (ACID, covered in the transactions section).
+- **Constraints:** the database enforces uniqueness, foreign keys and types, so bad data can't get in.
+- **Maturity:** decades of tooling, operations knowledge and engineers who know it.
+
+Weaknesses:
+
+- **Scaling writes past one machine** usually means sharding by hand, which is hard (see the sharding section). Distributed SQL databases such as Google Spanner and CockroachDB exist to close this gap, at the cost of more complex operations and higher write latency.
+- **Schema changes** on huge tables need care and tooling.
+
+Examples: PostgreSQL, MySQL, SQL Server, Oracle, SQLite.
+
+## Document stores
+
+<DepthStamp depth="deep" />
+
+A <Term slug="document-store">document store</Term> keeps each record as a self-contained document, usually JSON-like, that can nest objects and arrays:
+
+```json
+{ "_id": "order-991", "customer": { "id": 42, "name": "Ada" },
+  "items": [ { "sku": "p-7", "qty": 2, "price": 1999 } ],
+  "status": "paid" }
+```
+
+Reading one order is one fetch, with no joins. Documents in the same collection don't need identical fields, which suits data whose shape varies (product catalogues where a TV and a T-shirt have different attributes).
+
+The cost: data you'd normally keep in one place gets **copied** into many documents. If Ada changes her name, every order that embeds it needs an update, or you accept that old orders show the old name (which, for orders, may be exactly what you want). Queries across documents ("total sales per customer") are weaker than SQL joins. Examples: MongoDB, Couchbase, and Postgres's `jsonb` columns inside a relational database.
+
+## Key-value stores
+
+<DepthStamp depth="deep" />
+
+A <Term slug="key-value-store">key-value store</Term> does one thing: `GET key`, `PUT key value`, `DELETE key`. The value is opaque to the store.
+
+- **Very fast and simple to scale:** hash the key to pick a node, done.
+- **No queries by value:** "find all sessions for user 42" is impossible unless you also store that as its own key.
+
+Typical uses: sessions, caches, feature flags, shopping carts, rate-limit counters. Examples: Redis (in memory, with richer types like lists and sorted sets), Memcached, DynamoDB (key-value with document features), etcd.
+
+## Wide-column stores
+
+<DepthStamp depth="deep" />
+
+A <Term slug="wide-column-store">wide-column store</Term> such as Apache Cassandra, ScyllaDB or Google Bigtable organises data by a **partition key** (which node holds it) and a **clustering key** (the sort order inside the partition):
+
+```
+partition: user_id=42
+  ├── 2026-11-01T10:05  "liked post 7"
+  ├── 2026-11-01T10:02  "followed user 9"
+  └── 2026-10-31T22:40  "posted photo 3"
+```
+
+All of user 42's events sit together on the same nodes, sorted by time, so "the last 50 events for user 42" is one fast sequential read. These stores are built for **huge write volumes** spread across many machines, with tunable consistency and no single leader to bottleneck.
+
+The rule is that you **design tables around queries**: each query you need usually gets its own table, partitioned for that query. Ad-hoc queries that don't match a partition key mean scanning the whole cluster. The data modelling section shows how.
+
+## Graph databases
+
+<DepthStamp depth="awareness" />
+
+A <Term slug="graph-database">graph database</Term> (Neo4j, Amazon Neptune) stores **nodes** and **edges** directly, and follows edges without joining tables. It shines when the questions are about relationships many hops deep: "friends of friends who like jazz", fraud rings sharing devices, permission inheritance.
+
+Worked example: a user has 300 friends, each with 300 friends. "Friends of friends" touches up to 300 × 300 = **90,000** edges. In SQL that's a self-join of a friendships table on itself, which a good index makes workable at two hops; at three or four hops (27 million, 8 billion paths) relational joins become impractical, while a graph database walks adjacency lists from the starting node and can stop early. Most products never need more than two hops, which is why many teams model graphs in SQL until they truly can't.
+
+## Choosing by access pattern
+
+<DepthStamp depth="tradeoffs" />
+
+The right question is not "SQL or NoSQL?" but **"how will this data be read and written?"** List the queries first, then ask:
+
+- Do I need **joins or ad-hoc queries** across entities? → Relational.
+- Do I need **multi-record transactions** (money, inventory)? → Relational (or a store with real transactions).
+- Is every read **by one key**? → Key-value.
+- Is each read a **whole aggregate** with a varying shape? → Document.
+- Is it **append-heavy, time-ordered, and huge**, read by partition? → Wide-column.
+- Are the questions about **multi-hop relationships**? → Graph.
+
+<Callout type="analogy" title="Pick the vehicle for the route">
+You don't choose between a bicycle, a van, a lorry and a train by asking which is "best". You ask what you're carrying and where. One parcel across town: bicycle (key-value). A family's shopping in one trip: van (document). A thousand tonnes on a fixed line every hour: freight train (wide-column). Anything to anywhere with a driver who can improvise: a lorry with a good map (relational). The route decides the vehicle.
+</Callout>
+
+### Decision table: 8 use cases
+
+| Use case | Main access pattern | Good fit | Why |
+|---|---|---|---|
+| Bank ledger and transfers | Multi-row atomic updates, audits | Relational | ACID transactions and constraints are non-negotiable |
+| User sessions | GET/PUT by session ID, expire after inactivity | Key-value (Redis) | One key per read, built-in TTL, sub-millisecond |
+| Product catalogue with varied attributes | Fetch one product with all its attributes; filter in search | Document (or relational + `jsonb`) | Shape varies by category; one fetch per page |
+| Chat message history | Append; read latest N per conversation | Wide-column (Cassandra) | Partition by conversation, cluster by time, huge write volume |
+| Social "people you may know" | 2–3 hop relationship traversal | Graph (or relational at 2 hops) | Questions are about paths, not rows |
+| E-commerce orders and inventory | Transactions across order, stock and payment | Relational | Stock must never go negative; joins for reports |
+| IoT sensor readings | Massive time-ordered writes, range reads per device | Wide-column or time-series DB | Partition by device, cluster by time |
+| Leaderboard | Increment scores, read top 100 | Key-value with sorted sets (Redis) | `ZINCRBY` and `ZREVRANGE` are built for it |
+
+Notice that most real systems use **several** stores: Postgres for orders, Redis for sessions and leaderboards, Elasticsearch for search, S3 for images. This is called **polyglot persistence**. The cost is more systems to run and keep in sync, so add a store only when the main one genuinely can't serve the pattern.
+
+## What "NoSQL" actually gives up
+
+<DepthStamp depth="tradeoffs" />
+
+"NoSQL" is a loose label for non-relational stores. Most trade some of these for scale and simplicity:
+
+- **Joins:** you denormalise instead, and keep copies in sync yourself.
+- **Multi-item transactions:** limited or absent in many stores (though MongoDB and DynamoDB now offer transactions with limits).
+- **Ad-hoc queries:** you get fast queries **you planned for**, and slow or impossible ones you didn't.
+- **Schema enforcement:** "schemaless" usually means the schema lives in application code, which still has to handle every old shape ever written.
+
+And the lines are blurring: Postgres stores and indexes JSON well, MongoDB has transactions, DynamoDB has secondary indexes. Pick by access pattern and operational fit, not by label.
+
+<TradeoffBox title="SQL vs NoSQL tradeoffs" items={[
+  { gain: "Relational: any query, joins, transactions, constraints", cost: "Scaling writes beyond one machine needs sharding or distributed SQL" },
+  { gain: "Key-value: simplest, fastest, scales by hashing", cost: "Can only look up by key" },
+  { gain: "Document: one fetch per aggregate, flexible shape", cost: "Duplicated data and weaker cross-document queries" },
+  { gain: "Wide-column: massive write throughput across nodes", cost: "Tables must be designed per query; ad-hoc queries scan everything" }
+]} />
+
+<NotWhenBox title="Choosing NoSQL" items={[
+  "Because 'it scales' when your data fits on one Postgres server for years: one machine handles a lot.",
+  "For money, inventory or anything needing multi-record atomic updates without real transactions.",
+  "When you don't know your query patterns yet: relational keeps options open."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="NoSQL is faster than SQL." right="Each is fast for the access pattern it was designed for. A key lookup on an indexed Postgres table is also sub-millisecond on warm data." />
+
+<Misconception wrong="Schemaless means no schema." right="The schema moves into application code, which must handle every shape of document ever stored." />
+
+<Misconception wrong="Relational databases can't scale." right="They scale reads with replicas and writes with sharding or distributed SQL. Many very large sites run on them; it just takes deliberate work." />
+
+## Interview angle
+
+<InterviewAngle title="SQL vs NoSQL" questions={[
+  "Which database would you use for this system, and why?",
+  "What would you lose by moving the orders table to Cassandra?",
+  "Your chat app stores messages in Postgres and writes are hitting limits. What now?",
+  "Why might you use more than one database?"
+]}>
+List the main queries first, then choose. Say what each choice gives up: "Cassandra gives me write throughput partitioned by conversation, and I give up joins and ad-hoc queries, which I don't need for chat history." Defaulting to Postgres for transactional core data, with a specialised store where a pattern demands it, is a strong, defensible position.
+</InterviewAngle>
+
+## Practice
+
+1. For a food-delivery app, list five queries and pick a store for each.
+2. Your product catalogue has 40 categories with different attributes. Argue for a document store, then for Postgres with `jsonb`. Which would you choose?
+3. A ride-sharing app stores every GPS ping (4 per second per active driver, 500,000 active drivers). How many writes a second is that, and which store fits?
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

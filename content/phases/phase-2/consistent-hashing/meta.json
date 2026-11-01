@@ -1,0 +1,45 @@
+{
+  "id": "p2-consistent-hashing",
+  "phase": 2,
+  "slug": "consistent-hashing",
+  "title": "Consistent hashing",
+  "order": 14,
+  "week": 5,
+  "estimatedMinutes": 45,
+  "topics": [
+    {
+      "id": "mod-n",
+      "title": "The problem with mod N",
+      "depth": "deep"
+    },
+    {
+      "id": "ring",
+      "title": "The hash ring",
+      "depth": "deep"
+    },
+    {
+      "id": "vnodes",
+      "title": "Virtual nodes",
+      "depth": "deep"
+    },
+    {
+      "id": "replication",
+      "title": "Replication on the ring",
+      "depth": "deep"
+    },
+    {
+      "id": "uses",
+      "title": "Where it's used",
+      "depth": "tradeoffs"
+    }
+  ],
+  "simulatorIds": [
+    "consistent-hashing"
+  ],
+  "practiceCaseStudyIds": [
+    "url-shortener"
+  ],
+  "prerequisites": [
+    "p2-sharding"
+  ]
+}

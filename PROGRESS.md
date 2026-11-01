@@ -8,7 +8,7 @@
 - [x] 05 Simulator Framework
 - [x] 06 Phase 1 Content
 - [x] 07 Phase 1 Simulators
-- [ ] 08 Phase 2 Content
+- [x] 08 Phase 2 Content
 - [ ] 09 Phase 2 Simulators + SQL Sandbox
 - [ ] 10 Phase 3 Content
 - [ ] 11 Phase 3 Simulators

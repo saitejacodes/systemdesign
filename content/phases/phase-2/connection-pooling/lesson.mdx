@@ -1,0 +1,171 @@
+## Why it matters
+
+A common way for a healthy PostgreSQL database to go down has nothing to do with slow queries: it simply runs out of connections. The team scales the app from 10 servers to 60 during a traffic spike, each server opens its own 20 connections, and the database, configured for a few hundred, starts refusing new ones with "too many clients". The app scaled; the database became the bottleneck in a way no CPU graph predicted. Connection pools, and poolers like PgBouncer in front of the database, exist to stop this, and sizing them well is counter-intuitive: the right pool is usually much **smaller** than people expect.
+
+<Callout type="analogy" title="Taxis at the airport">
+Without a pool, every passenger calls a brand-new taxi from across the city, waits for it to arrive (the connection handshake), rides for two minutes, and sends it home. With a pool, a rank of taxis waits at the kerb: you take the front one, ride, and it rejoins the back of the queue. The rank needs to be big enough that people rarely wait, but if you let 5,000 taxis queue at a terminal built for 200, they jam the roads and nobody gets anywhere. That jam is what too many database connections do to the database itself.
+</Callout>
+
+## What a connection costs
+
+<DepthStamp depth="deep" />
+
+A database connection is not just a socket. Opening one typically means:
+
+1. A TCP handshake (one round trip), and a TLS handshake if encrypted (another).
+2. Authentication (often another round trip or two, and password hashing on the server).
+3. The database setting up a session.
+
+In **PostgreSQL**, each connection is served by its **own operating-system process** on the server, with its own memory for sorting, hashing and caches. Hundreds of idle connections still take memory, and thousands of active ones spend time context-switching and contending for locks and shared buffers. MySQL uses a thread per connection, which is cheaper but has the same scaling shape.
+
+So two costs grow with connections:
+
+- **Setup latency:** opening a fresh connection for every request can easily take longer than the query it runs, especially across zones with TLS.
+- **Server overhead:** throughput rises with connections only up to a point, then falls as the database spends more time juggling sessions than running queries.
+
+### Worked example: connect per request vs pooled
+
+Take an app server talking to a database in another availability zone, with a **2 ms** round trip and a typical query time of **1 ms**.
+
+- **New connection per request:** TCP handshake (1 round trip) + TLS 1.3 (1 round trip) + authentication (about 2 round trips with SCRAM password auth) + the query (1 round trip plus 1 ms) ≈ 5 × 2 ms + 1 ms = **11 ms**, plus the server forking a new process.
+- **Pooled connection:** the query round trip plus execution ≈ **3 ms**.
+
+At 2,000 requests a second, connecting per request means the database also handles **2,000 new sessions a second**, each with its own process start and authentication work. Pooling removes nearly all of that.
+
+## Connection pools
+
+<DepthStamp depth="deep" />
+
+A <Term slug="connection-pool">connection pool</Term> keeps a set of open connections and lends them out:
+
+```ts
+const pool = new Pool({ max: 10, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 2_000 });
+
+const { rows } = await pool.query("SELECT * FROM users WHERE id = $1", [42]);
+// borrowed, used, returned to the pool automatically
+```
+
+Key settings:
+
+- **Maximum size:** the most connections the pool will open.
+- **Minimum idle:** connections kept warm even when quiet.
+- **Acquire timeout:** how long a request waits for a free connection before failing. Without one, a saturated pool turns into an ever-growing queue of stuck requests.
+- **Idle timeout and max lifetime:** close connections that sit unused, and recycle old ones so they don't outlive firewalls, load balancer timeouts or failovers.
+
+Pools also matter during **failover**. When a database leader is replaced, every pooled connection to the old one is dead, but the pool may not notice until it tries to use them. Good pools validate connections (a cheap check before lending, or on a timer), and a max lifetime of, say, 30 minutes ensures that connections pointed at an old address eventually get replaced even if nothing errors. Apps should treat "connection closed" errors as retryable for idempotent queries.
+
+When every connection is busy, new requests **wait in the pool's queue**. That's a feature: it keeps the database working at its efficient concurrency instead of drowning it.
+
+## Why databases run out of connections
+
+<DepthStamp depth="deep" />
+
+The total number of connections hitting a database is:
+
+```
+total = app instances × pool size per instance (+ workers, cron jobs, admin tools…)
+```
+
+### Worked example: the autoscaling trap
+
+- PostgreSQL `max_connections` = **300**.
+- Each app instance has a pool of **20**.
+- Normally **10** instances run: 10 × 20 = **200** connections. Fine.
+- A traffic spike autoscales to **25** instances: 25 × 20 = **500** connections wanted. The database refuses the extra 200, and those instances throw errors on every request that needs a new connection.
+
+Raising `max_connections` to 500 might hide the error, but 500 active Postgres processes on a 16-core server mostly wait for each other. The real fix is to cap the **total**: smaller per-instance pools, or a shared pooler in front of the database (below), so adding app instances doesn't add database connections.
+
+Other ways to run out:
+
+- **Connection leaks:** code that borrows a connection and never returns it on an error path. The pool slowly drains to zero.
+- **Long transactions** holding connections while waiting on slow external calls. Never call an HTTP API while holding a transaction open.
+- **Serverless functions:** each concurrent invocation may open its own connection, so 1,000 concurrent invocations means 1,000 connections. Serverless platforms usually need a pooler or a database proxy.
+
+## Sizing a pool
+
+<DepthStamp depth="tradeoffs" />
+
+The intuition many people have, "more connections means more throughput", is wrong past a small number. A database server can only actively run about as many queries in parallel as it has CPU cores (plus some for queries waiting on disk). More connections than that don't run faster; they queue **inside the database**, where queueing is more expensive than queueing in the app's pool.
+
+A widely cited starting point, from PostgreSQL's community wiki and repeated in the HikariCP pool's documentation:
+
+```
+connections ≈ (CPU cores × 2) + effective spindle count
+```
+
+For a 16-core database on SSDs, that suggests around **32–40 connections in total**, across all app instances, for maximum throughput. That's a starting point to measure from, not a law; workloads with lots of I/O waits can use more.
+
+Another way to reason about it is <Term slug="littles-law">Little's Law</Term> from Phase 1: **connections needed ≈ queries per second × average query time**.
+
+- 4,000 queries a second × 5 ms average = **20 connections busy** on average.
+- Allow headroom for bursts and slower queries: perhaps 30–40.
+
+Then divide across instances: 40 total ÷ 10 instances = **4 per instance**, which surprises people used to defaults of 10 or 20.
+
+<Callout type="analogy" title="Checkout lanes">
+A supermarket with 8 tills doesn't serve more customers by letting 200 people crowd round the tills at once; it serves fewer, because cashiers get distracted and trolleys collide. It works best with one queue that feeds 8 tills in order. The pool is that orderly queue, and the tills are the database's CPU cores.
+</Callout>
+
+## Poolers like PgBouncer
+
+<DepthStamp depth="awareness" />
+
+When there are many app instances, each with its own pool, the totals still add up. A **connection pooler** sits between apps and the database and multiplexes many client connections onto a few server connections. <Term slug="pgbouncer">PgBouncer</Term> is the most common for PostgreSQL; Amazon RDS Proxy and others play the same role.
+
+```
+200 app instances × 10 client conns ──► PgBouncer ──► 40 real Postgres connections
+```
+
+PgBouncer has three modes:
+
+- **Session pooling:** a client keeps one server connection for its whole session. Safe for everything, but saves little.
+- **Transaction pooling:** a client gets a server connection only for the duration of each transaction, then gives it back. This is the common choice and gives the biggest savings. The catch: anything that depends on a session surviving between transactions, such as session-level `SET` variables, advisory locks held across transactions, `LISTEN/NOTIFY`, and (in older PgBouncer versions) prepared statements, may not behave as expected.
+- **Statement pooling:** a connection per statement; multi-statement transactions aren't allowed.
+
+A pooler is also a new hop and a new component to run redundantly; it shouldn't become a single point of failure.
+
+<TradeoffBox title="Connection pooling tradeoffs" items={[
+  { gain: "Reused connections skip handshake and auth latency", cost: "Pools must be tuned: size, timeouts, max lifetime" },
+  { gain: "Small pools keep the database at its efficient concurrency", cost: "Requests queue in the app when the pool is busy" },
+  { gain: "A pooler caps total connections however many app instances run", cost: "Transaction pooling breaks session-level features; one more component to run" },
+  { gain: "Acquire timeouts fail fast under overload", cost: "Users see errors instead of slow pages when the database is saturated" }
+]} />
+
+<NotWhenBox title="Bigger pools" items={[
+  "As a fix for slow queries: more connections make a saturated database slower.",
+  "Per instance on autoscaled fleets: total connections grow with every new instance.",
+  "To work around a connection leak: find and fix the leak."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="More connections means more database throughput." right="Throughput peaks around a small multiple of the database's cores, then falls as connections contend with each other." />
+
+<Misconception wrong="Each app server should have a pool of 100 to be safe." right="Total connections = instances × pool size. Size the total for the database, then divide across instances." />
+
+<Misconception wrong="A pooler is invisible to the application." right="In transaction pooling mode, session state doesn't survive between transactions, which can break some features." />
+
+## Interview angle
+
+<InterviewAngle title="Connection pooling" questions={[
+  "The app autoscaled and the database started rejecting connections. Why?",
+  "How big should a connection pool be?",
+  "What is PgBouncer and what does transaction pooling break?",
+  "How do serverless functions talk to Postgres safely?"
+]}>
+Give the formula total = instances × pool size, then size from the database's side: cores and Little's Law, not "as many as possible". Mention acquire timeouts, leaks and long transactions as the other ways pools drain. For many instances or serverless, add a pooler in transaction mode and name its limitations.
+</InterviewAngle>
+
+## Practice
+
+1. 3,000 queries a second at an average of 8 ms. How many connections are busy on average? Pick a total pool size and split it across 12 instances.
+2. A database allows 400 connections. You run 30 instances with pools of 15 and 5 workers with pools of 10. What happens if instances autoscale to 40?
+3. List three application features that might break when moving from session to transaction pooling.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

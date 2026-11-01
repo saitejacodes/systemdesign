@@ -1,0 +1,39 @@
+[
+  {
+    "id": "s3-guide",
+    "title": "What is Amazon S3?",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html",
+    "why": "Buckets, keys, consistency, durability and storage classes.",
+    "topicIds": [
+      "s3-model",
+      "lifecycle"
+    ],
+    "free": true
+  },
+  {
+    "id": "s3-presigned",
+    "title": "Sharing objects with presigned URLs",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html",
+    "why": "How presigned URLs are created and limited.",
+    "topicIds": [
+      "presigned"
+    ],
+    "free": true
+  },
+  {
+    "id": "s3-multipart",
+    "title": "Uploading and copying objects using multipart upload",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpuoverview.html",
+    "why": "The multipart workflow and its limits.",
+    "topicIds": [
+      "multipart"
+    ],
+    "free": true
+  }
+]

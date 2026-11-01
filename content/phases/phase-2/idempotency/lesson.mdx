@@ -1,0 +1,172 @@
+## Why it matters
+
+A customer taps "Pay" on a phone in a lift. The request reaches your server, the card is charged, and then the signal drops before the response comes back. The app sees a timeout. Should it retry? If it does and your API isn't idempotent, the customer is charged twice. If it doesn't, the customer may think the payment failed and pay again some other way. Networks lose responses all the time, so every system that moves money, sends messages or creates orders has to answer this. Stripe's API solves it with an `Idempotency-Key` header, and the same idea runs through queues, webhooks and every "exactly once" claim you will ever hear.
+
+<Callout type="analogy" title="The lift button">
+Pressing a lift call button five times doesn't summon five lifts. The first press registers the call; every later press just confirms "yes, already called". That is idempotency: doing it again has no extra effect. A vending machine is the opposite: press "buy" twice and you get two cans and pay twice. Most API endpoints start out as vending machines. The job of this section is to turn the dangerous ones into lift buttons.
+</Callout>
+
+## What idempotent means
+
+<DepthStamp depth="deep" />
+
+An operation is <Term slug="idempotency">idempotent</Term> if doing it once or many times leaves the system in the same state. As the REST section showed, HTTP defines `GET`, `PUT` and `DELETE` as idempotent and `POST` as not:
+
+| Operation | Idempotent? | Why |
+|---|---|---|
+| `SET balance = 100` | Yes | Second run sets 100 again |
+| `ADD 10 TO balance` | No | Second run adds another 10 |
+| `PUT /users/42 {name: "Ada"}` | Yes | Replaces with the same value |
+| `DELETE /carts/7` | Yes | Already gone after the first time (the status code may differ, the state doesn't) |
+| `POST /payments {amount: 50}` | No | Each call creates a new payment |
+
+Idempotency is about **state**, not responses. A second `DELETE` might return `404` instead of `204`; the server's data is the same either way.
+
+## Why retries are unavoidable
+
+<DepthStamp depth="deep" />
+
+When a request times out, the client cannot tell which of three things happened:
+
+1. The request never reached the server.
+2. The server got it and crashed before finishing.
+3. The server finished, and the **response** was lost.
+
+From the client's side all three look identical. The only safe options are to give up (and maybe lose a real order) or to retry. Retrying is right, as long as the server can recognise a retry and avoid doing the work twice.
+
+### Worked example: how many double charges?
+
+Suppose an app sends 10 million payment requests a day, and (as an illustrative assumption) 0.1% of them time out on the client after the server has already charged the card. That is **10,000 requests a day** where a blind retry charges twice. Even at 0.01%, it is 1,000 angry customers a day and 1,000 refunds to process. Disabling retries instead turns those 10,000 into "did my payment go through?" support tickets. Neither is acceptable; idempotency keys are the way out.
+
+## Idempotency keys
+
+<DepthStamp depth="deep" />
+
+An <Term slug="idempotency-key">idempotency key</Term> is a unique ID the **client** generates for one logical operation and sends with every attempt of it:
+
+```http
+POST /v1/payments
+Idempotency-Key: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+Content-Type: application/json
+
+{ "amount": 5000, "currency": "usd", "card": "tok_..." }
+```
+
+The server remembers each key and what happened. If the same key arrives again, it returns the **stored result** instead of charging again. The client must create the key **once per user intent** (when the user taps "Pay"), not once per HTTP attempt, and reuse it for every retry. A random UUID is the usual choice.
+
+Stripe documents this behaviour publicly: it saves the status code and body of the first request for a key, including failures, returns that same result for later requests with the key, rejects a reuse of the key with different parameters, and lets keys be removed after at least 24 hours. There is also an IETF draft that standardises the `Idempotency-Key` header.
+
+<Callout type="analogy" title="The coat-check ticket">
+You hand your coat over and get ticket 47. Come back with ticket 47 ten times and you get the same coat ten times, not ten coats. Turn up with ticket 47 asking for a different coat and the attendant says "that's not what this ticket is for". The ticket is the idempotency key: it ties every visit back to the one original hand-over.
+</Callout>
+
+## Storing results safely
+
+<DepthStamp depth="deep" />
+
+The server needs a table of keys, scoped per client so two customers can't collide:
+
+```sql
+CREATE TABLE idempotency_keys (
+  user_id       bigint      NOT NULL,
+  key           text        NOT NULL,
+  request_hash  text        NOT NULL,   -- hash of method, path and body
+  status        text        NOT NULL,   -- 'in_progress' | 'done'
+  response_code int,
+  response_body jsonb,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, key)
+);
+```
+
+The flow for each request:
+
+1. **Claim the key:** `INSERT … ON CONFLICT DO NOTHING`. The primary key makes this atomic, so if two retries arrive at the same moment, only one insert wins.
+2. **If the insert won:** do the work, then save the response and set `status = 'done'`.
+3. **If the key existed and is `done`:** compare `request_hash`. Same request → return the stored response. Different request → `422` (key reused for something else).
+4. **If the key existed and is `in_progress`:** another attempt is running right now. Return `409 Conflict` and let the client retry shortly.
+
+The hard part is **step 2 crashing halfway**. If the payment row and the key's `done` status are written in the **same database transaction**, they succeed or fail together. If the work includes an external call, such as charging a card through a payment network, you can't put that in your transaction. The standard answers are:
+
+- **Pass an idempotency key downstream** too, so the card network also deduplicates (most payment providers support this).
+- **Record progress in steps** (for example "charge created", "receipt sent") so a retry resumes from the last completed step instead of starting over. Brandur Leach's write-up on idempotency keys in Postgres describes this pattern in detail.
+
+### Worked example: sizing the key store
+
+At 1,000 payments a second with keys kept for 24 hours: 1,000 × 86,400 ≈ **86 million rows**. At roughly 500 bytes a row including the stored response, that's about **43 GB**. That's fine for one Postgres table with a daily cleanup job, or a Redis set with a 24-hour TTL if you only need the key and a short response. Keeping keys forever would grow by about 16 TB a year, which is why every provider expires them.
+
+## Safe retries for payments
+
+<DepthStamp depth="deep" />
+
+Putting it together, a safe payment flow looks like this:
+
+1. The user taps "Pay". The app generates key `K` and stores it with the pending order on the device.
+2. The app sends `POST /payments` with `Idempotency-Key: K`. On a timeout or `5xx`, it retries with **the same K**, using exponential backoff with jitter.
+3. The server claims `K`, creates the payment row and calls the card network with its own key derived from `K`, then stores the response, all recoverable if it crashes partway.
+4. Retries with `K` get the stored response. The customer is charged exactly once, even though the request may have been sent several times.
+
+Note what the client must not do: generate a new key per retry (that defeats the whole system), or retry `4xx` validation errors (they will fail the same way).
+
+## Idempotent consumers
+
+<DepthStamp depth="awareness" />
+
+The same problem appears in messaging, covered fully in Phase 3. Most message queues and webhook senders promise **at-least-once delivery**: if they don't get an acknowledgement, they send the message again. So a consumer may see "order 991 paid" twice.
+
+An <Term slug="idempotent-consumer">idempotent consumer</Term> handles duplicates safely, in one of two ways:
+
+- **Deduplicate by message ID:** keep a `processed_messages` table and, in the same transaction as the side effect, insert the message ID. A duplicate hits the unique constraint and is skipped.
+- **Make the operation naturally idempotent:** "set order 991 status to PAID" is safe to repeat; "add 1 to paid-orders counter" is not.
+
+This is why "exactly-once delivery" is usually really **at-least-once delivery plus idempotent processing**: the message may arrive more than once, but its effect happens once.
+
+<Callout type="analogy" title="The office stamp">
+An accounts clerk gets the same invoice twice, once by email and once by post. A careful clerk stamps each invoice number in a ledger when paying it, and checks the ledger before paying anything. The second copy finds the stamp and goes in the bin. That ledger is the processed-messages table.
+</Callout>
+
+<TradeoffBox title="Idempotency tradeoffs" items={[
+  { gain: "Clients can retry freely after timeouts without double effects", cost: "A key table, a lookup on every write and a cleanup job" },
+  { gain: "Storing the first response makes retries cheap and consistent", cost: "Stored responses use space and must expire" },
+  { gain: "In-transaction key writes make crashes safe", cost: "External side effects need their own downstream keys or step tracking" },
+  { gain: "Idempotent consumers make at-least-once queues safe", cost: "Every consumer must be written with duplicates in mind" }
+]} />
+
+<NotWhenBox title="Idempotency keys" items={[
+  "Naturally idempotent operations (PUT with a full replacement, SET to a value): no key needed.",
+  "Reads (GET): they don't change state, so retries are already safe.",
+  "Generating a new key on every retry: that's no idempotency at all."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="POST can never be made safe to retry." right="POST isn't idempotent by default, but an idempotency key makes a specific POST safe to repeat." />
+
+<Misconception wrong="Idempotent means every call returns the same response." right="It means the state ends up the same. A second DELETE may return 404 instead of 204, and that's still idempotent." />
+
+<Misconception wrong="Our queue guarantees exactly-once, so consumers don't need to handle duplicates." right="Most real 'exactly once' is at-least-once delivery plus idempotent processing. Design consumers for duplicates." />
+
+## Interview angle
+
+<InterviewAngle title="Idempotency" questions={[
+  "A payment request times out. What does the client do, and how do you avoid a double charge?",
+  "Where do you store idempotency keys and for how long?",
+  "Two retries with the same key arrive at the same millisecond. What happens?",
+  "How do you make a queue consumer safe against duplicate messages?"
+]}>
+Name the three cases a timeout hides, then say "idempotency key, generated per user intent, reused on every retry". Show the table with a unique constraint, the in-progress state for concurrent retries, and the request-hash check for key reuse. Mention passing keys downstream for external calls, a TTL for cleanup, and at-least-once plus dedupe for consumers. This topic comes up in almost every payments, orders or booking design.
+</InterviewAngle>
+
+## Practice
+
+1. List which of these are idempotent: `POST /likes`, `PUT /likes/{postId}`, `DELETE /likes/{postId}`, `PATCH /counter {op: "increment"}`.
+2. Draw the sequence when retry 1 and retry 2 with the same key arrive while the original is still `in_progress`.
+3. Size the key store for 5,000 orders a second with a 48-hour TTL and 300-byte rows.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "c1",
+    "text": "I can tell OLTP and OLAP workloads apart and give examples of each.",
+    "topicId": "workloads"
+  },
+  {
+    "id": "c2",
+    "text": "I can explain why column stores are fast for analytics and calculate bytes scanned.",
+    "topicId": "columnar"
+  },
+  {
+    "id": "c3",
+    "text": "I can design a pipeline from an OLTP database to a warehouse.",
+    "topicId": "pipelines"
+  },
+  {
+    "id": "c4",
+    "text": "I can size a metrics workload and choose a time-series store.",
+    "topicId": "time-series"
+  }
+]

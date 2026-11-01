@@ -1,0 +1,189 @@
+## Why it matters
+
+Type "red runing shoes" into a shop and you expect, within a tenth of a second, a ranked list of red running shoes, despite the typo, out of millions of products. A SQL `LIKE '%red%'` can't do that: it can't use a normal index, has no idea which results are better, and knows nothing about typos or plurals. Search engines solve it with a different data structure, the inverted index, plus scoring rules for relevance. Elasticsearch and OpenSearch, both built on the Apache Lucene library, power search for a huge range of products, and "design typeahead" or "design search for X" are classic interview questions.
+
+<Callout type="analogy" title="The index at the back of every book in a library">
+Imagine a library where, instead of each book having its own index, there's one giant index for the whole building: "dragon: book 12 p.4, book 97 p.230, book 4,051 p.17…". To find books about dragons and castles, you look up both words and take the books that appear in both lists. That giant index is an inverted index. Relevance ranking is the librarian's judgement about which of those books to hand you first: the one that mentions dragons forty times, or the one where "dragon" appears once in a footnote?
+</Callout>
+
+## The inverted index
+
+<DepthStamp depth="deep" />
+
+A normal ("forward") index maps a document to its words. An <Term slug="inverted-index">inverted index</Term> maps each **term** to the list of documents that contain it, called a **postings list**:
+
+```
+doc 1: "red running shoes"
+doc 2: "blue running jacket"
+doc 3: "red jacket"
+
+term      postings
+red     → [1, 3]
+running → [1, 2]
+shoes   → [1]
+blue    → [2]
+jacket  → [2, 3]
+```
+
+A query `red jacket` looks up both postings lists and combines them: **AND** gives the intersection [3]; **OR** gives the union [1, 2, 3], to be ranked. Postings are kept sorted by document ID, so intersecting two lists is a fast merge, and they're heavily compressed. Real indexes also store **positions** (for phrase queries like `"running shoes"`) and **term frequencies** (for scoring).
+
+### Worked example: why not LIKE?
+
+A product table has **50 million rows**. `WHERE title LIKE '%jacket%'` can't use a B-tree index (the wildcard at the start defeats it), so it scans all 50 million titles on every search: seconds per query, and no ranking. With an inverted index, "jacket" is one lookup returning, say, 200,000 document IDs, which are then scored and the top 20 returned, typically in **tens of milliseconds**.
+
+## Tokenisation and analysis
+
+<DepthStamp depth="deep" />
+
+Before text goes into the index, an **analyser** turns it into terms. The **same** analysis runs on queries, so they match:
+
+1. **Character filtering:** strip HTML, normalise characters.
+2. <Term slug="tokenization">Tokenisation</Term>: split into tokens, usually on whitespace and punctuation: `"Running-Shoes!"` → `Running`, `Shoes`.
+3. **Token filters:**
+   - **Lowercasing:** `Running` → `running`.
+   - **Stop words** (optional): drop very common words like "the", "a".
+   - **Stemming:** reduce words to a root: `running`, `runs` → `run`. Language-specific.
+   - **Synonyms:** `sneakers` ↔ `trainers`.
+   - **Folding:** `café` → `cafe`.
+
+Choices here decide what matches. Stem too aggressively and "university" and "universe" may collide; don't stem and "shoe" misses "shoes".
+
+**Typos** are handled separately with **fuzzy matching**: find terms within an **edit distance** (insertions, deletions, substitutions) of 1 or 2. `runing` is one edit from `running`.
+
+## Relevance: TF-IDF and BM25
+
+<DepthStamp depth="deep" />
+
+Matching finds candidates; **ranking** decides the order. The classic intuition, <Term slug="tf-idf">TF-IDF</Term>, combines two ideas:
+
+- **Term frequency (TF):** a document that mentions "jacket" 5 times is probably more about jackets than one that mentions it once.
+- **Inverse document frequency (IDF):** rare terms are more informative. "the" appears in every document and tells you nothing; "gore-tex" appears in few and tells you a lot. `IDF = log(N / documents containing the term)`.
+
+Worked example with **1,000,000** documents:
+
+| Term | Documents containing it | IDF = log₁₀(1,000,000 ÷ n) |
+|---|---|---|
+| jacket | 10,000 | log₁₀(100) = **2** |
+| waterproof | 1,000 | log₁₀(1,000) = **3** |
+| the | 1,000,000 | log₁₀(1) = **0** |
+
+For the query "waterproof jacket", a document mentioning "waterproof" once gets more credit than one mentioning "jacket" once, because "waterproof" is rarer.
+
+<Term slug="bm25">BM25</Term> is the refined version used by default in Lucene, and therefore in Elasticsearch and OpenSearch. It keeps TF and IDF but adds two fixes:
+
+- **Term frequency saturates:** the 20th "jacket" adds far less than the 2nd. That stops keyword stuffing from winning. (Controlled by a parameter usually called k1.)
+- **Length normalisation:** a match in a 10-word title counts for more than the same match in a 5,000-word page. (Controlled by a parameter b.)
+
+In practice, ranking is usually BM25 **plus business signals**: popularity, recency, ratings, stock, personalisation, often combined by a learned model. Many systems now also add **vector (semantic) search** to match meaning rather than exact words, covered in Phase 6.
+
+<Callout type="analogy" title="Who to ask at a party">
+You want advice on rock climbing. Someone who mentions climbing a lot is a good bet (term frequency), but after the tenth mention it's clear they're keen and an eleventh doesn't tell you more (saturation). A mention of "belay devices" is worth more than a mention of "outdoors", because fewer people say it (inverse document frequency). And someone who brings up climbing in a two-minute chat is more focused than someone who mentions it once in a three-hour monologue (length normalisation). That's BM25.
+</Callout>
+
+## Elasticsearch architecture
+
+<DepthStamp depth="deep" />
+
+<Term slug="elasticsearch">Elasticsearch</Term> wraps Lucene in a distributed system:
+
+- An **index** (like a table) is split into **primary shards**; each shard is a complete Lucene index holding a subset of documents.
+- Each primary shard has **replica shards** on other nodes, for fault tolerance and to serve more searches.
+- A **cluster** of nodes holds the shards; a master node manages which shard lives where.
+
+A search goes to a **coordinating node**, which:
+
+1. **Scatters** the query to one copy (primary or replica) of every shard.
+2. Each shard finds and scores its local top results.
+3. The coordinator **gathers** them, merges the top N, then fetches those documents.
+
+Indexing writes to the primary shard, which forwards to replicas. New documents become searchable after a **refresh** (by default about once a second), which is why Elasticsearch is called **near-real-time**.
+
+Sizing: Elastic's guidance has generally been to aim for shards of roughly tens of gigabytes (commonly 10–50 GB). A 600 GB index might use 15–20 primary shards, each with one replica, spread over enough nodes for the replicas to sit on different machines from their primaries.
+
+The usual architecture keeps the **database as the source of truth** and treats the search cluster as a derived copy: changes flow from the database to the index through a queue or change-data-capture stream, and the index can be rebuilt from scratch if needed.
+
+## Typeahead
+
+<DepthStamp depth="deep" />
+
+<Term slug="typeahead">Typeahead</Term> (autocomplete) suggests completions as the user types. It has a much tighter budget than search: a new request on every keystroke, ideally answered in **well under 100 ms** end to end, so it can't run a full search each time.
+
+### Tries
+
+A <Term slug="trie">trie</Term> (prefix tree) stores strings character by character, so all words sharing a prefix share a path:
+
+```
+(root)
+  └─ r
+     └─ e
+        ├─ d ●            "red"
+        └─ s
+           └─ t ●         "rest"
+              └─ a ...    "restaurant"
+```
+
+Finding everything that starts with `res` means walking three nodes and then exploring below. The problem is the exploring: under `r` there may be millions of completions, and ranking them on every keystroke is too slow.
+
+### Precomputed top-k
+
+The standard fix: at each trie node, **store the top k completions** (say k = 10) for that prefix, ranked by popularity. A keystroke becomes "walk to the node, return its list": a handful of memory lookups.
+
+```
+node "res" → [restaurants near me, restaurant, resume template, resident evil, …]
+```
+
+The top-k lists are rebuilt **offline** (for example hourly or daily) from query logs, because recomputing them on every search is expensive. Very recent trends can be blended in from a smaller, frequently updated layer.
+
+### Worked example: sizing typeahead
+
+Suppose there are **10 million distinct popular queries** averaging **20 characters**. The trie has at most 200 million nodes, and in practice far fewer because prefixes are shared. Storing 10 suggestions per node as references to query IDs (4 bytes each) is 40 bytes per node; at, say, 50 million real nodes that's about **2 GB** of top-k data, which fits in memory on a single server, so the whole service can be replicated many times for throughput. If users type 5 characters per search and there are **20,000 searches a second**, that's around **100,000 typeahead requests a second**, best served from memory on many replicas, with browser-side debouncing (waiting about 100–200 ms after the last keystroke) and caching of short prefixes.
+
+<Callout type="analogy" title="The dictionary's thumb tabs">
+A printed dictionary has tabs for each letter so your thumb lands near "R" instantly; that's the trie. Now imagine every tab also had a sticky note listing the ten words people look up most from that point: "re… → restaurant, recipe, return policy". You'd almost never need to open the dictionary at all. That sticky note is the precomputed top-k.
+</Callout>
+
+<TradeoffBox title="Search tradeoffs" items={[
+  { gain: "Inverted indexes answer term queries over millions of documents in milliseconds", cost: "A separate system to run, fed by a pipeline from the source of truth" },
+  { gain: "Analysis (stemming, synonyms, fuzzy) finds what users meant", cost: "Every analysis choice can also create wrong matches" },
+  { gain: "BM25 gives good relevance without training data", cost: "Real ranking needs business signals and tuning on top" },
+  { gain: "Precomputed top-k makes typeahead a memory lookup", cost: "Suggestions lag behind trends until the next rebuild" }
+]} />
+
+<NotWhenBox title="A dedicated search engine" items={[
+  "Exact lookups by ID or a few structured filters: a database index is simpler.",
+  "As the source of truth: indexes are derived and can lose or lag writes; keep the database authoritative.",
+  "A small dataset: Postgres full-text search (tsvector with a GIN index) may be enough."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Search is just SQL LIKE on a bigger server." right="LIKE with a leading wildcard scans every row and can't rank. Search engines use inverted indexes and relevance scoring." />
+
+<Misconception wrong="A search index can be the primary database." right="Search clusters are usually a derived copy, refreshed near-real-time and rebuildable from the source of truth." />
+
+<Misconception wrong="Typeahead runs a search on every keystroke." right="Good typeahead serves precomputed top-k completions per prefix from memory, plus debouncing and caching." />
+
+## Interview angle
+
+<InterviewAngle title="Search and typeahead" questions={[
+  "Design search for an e-commerce catalogue.",
+  "How does an inverted index work?",
+  "How is relevance computed?",
+  "Design typeahead for a search box with 100,000 requests a second."
+]}>
+For search: database as source of truth, change stream into an Elasticsearch-style index with shards and replicas, analysers for stemming and typos, BM25 plus business signals for ranking. For typeahead: a trie with precomputed top-k per prefix, rebuilt offline from query logs, served from memory on many replicas, with debouncing and caching of short prefixes. Size both with numbers.
+</InterviewAngle>
+
+## Practice
+
+1. Build the inverted index by hand for: "cheap flights to rome", "rome hotels", "cheap hotels". Answer `cheap AND hotels`.
+2. With 2 million documents, compute the IDF (log base 10) of a term in 2,000 of them and one in 200,000. Which matters more for ranking?
+3. Size a typeahead service for 5 million popular queries with 8 suggestions per node. Where would you store it, and how often would you rebuild it?
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

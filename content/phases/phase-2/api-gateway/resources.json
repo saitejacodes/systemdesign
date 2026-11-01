@@ -1,0 +1,40 @@
+[
+  {
+    "id": "bff-newman",
+    "title": "Backends For Frontends",
+    "author": "Sam Newman",
+    "kind": "blog",
+    "url": "https://samnewman.io/patterns/architectural/bff/",
+    "why": "The original write-up of the BFF pattern, with its tradeoffs.",
+    "topicIds": [
+      "bff"
+    ],
+    "free": true
+  },
+  {
+    "id": "ms-apigateway",
+    "title": "Pattern: API Gateway / Backends for Frontends",
+    "author": "Chris Richardson",
+    "kind": "docs",
+    "url": "https://microservices.io/patterns/apigateway.html",
+    "why": "A concise pattern description with variations and drawbacks.",
+    "topicIds": [
+      "basics",
+      "aggregation"
+    ],
+    "free": true
+  },
+  {
+    "id": "netflix-zuul",
+    "title": "Zuul",
+    "author": "Netflix",
+    "kind": "repo",
+    "url": "https://github.com/Netflix/zuul",
+    "why": "Netflix's open-source edge gateway, with docs on filters and routing.",
+    "topicIds": [
+      "routing",
+      "cross-cutting"
+    ],
+    "free": true
+  }
+]

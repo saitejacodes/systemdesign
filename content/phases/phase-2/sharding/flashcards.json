@@ -1,0 +1,80 @@
+[
+  {
+    "id": "f1",
+    "front": "Sharding?",
+    "back": "Splitting one logical table across nodes; each row lives on one shard by its shard key.",
+    "topicId": "when"
+  },
+  {
+    "id": "f2",
+    "front": "Shard last: what first?",
+    "back": "Indexes and queries, vertical scaling, replicas and caching, functional splits, archiving.",
+    "topicId": "when"
+  },
+  {
+    "id": "f3",
+    "front": "Range sharding?",
+    "back": "Contiguous key ranges per shard; local range queries, risk of hot spots.",
+    "topicId": "strategies"
+  },
+  {
+    "id": "f4",
+    "front": "Hash sharding?",
+    "back": "hash(key) picks the shard; even spread, scattered range queries.",
+    "topicId": "strategies"
+  },
+  {
+    "id": "f5",
+    "front": "Directory sharding?",
+    "back": "A lookup service maps keys to shards; flexible, but must be fast and available.",
+    "topicId": "strategies"
+  },
+  {
+    "id": "f6",
+    "front": "mod N resharding problem?",
+    "back": "Changing N moves most keys (about 80% from 4 to 5).",
+    "topicId": "strategies"
+  },
+  {
+    "id": "f7",
+    "front": "Good shard key?",
+    "back": "High cardinality, even load, matches hot queries, keeps related data together, never changes.",
+    "topicId": "shard-key"
+  },
+  {
+    "id": "f8",
+    "front": "Celebrity problem?",
+    "back": "One very popular key overloads its shard regardless of hashing.",
+    "topicId": "hot-shards"
+  },
+  {
+    "id": "f9",
+    "front": "Hot key fixes?",
+    "back": "Cache, replicas for that shard, split the key with suffixes, isolate big tenants.",
+    "topicId": "hot-shards"
+  },
+  {
+    "id": "f10",
+    "front": "Scatter-gather?",
+    "back": "Send a query to every shard and merge; latency = slowest shard, load × N.",
+    "topicId": "cross-shard"
+  },
+  {
+    "id": "f11",
+    "front": "Two-phase commit?",
+    "back": "Coordinator asks all shards to prepare, then commit; slow and blocking on coordinator failure.",
+    "topicId": "cross-shard"
+  },
+  {
+    "id": "f12",
+    "front": "Logical shards?",
+    "back": "Many more shards than servers, mapped by a small table; move shards, not rows.",
+    "topicId": "resharding"
+  },
+  {
+    "id": "f13",
+    "front": "Online resharding steps?",
+    "back": "Copy, catch up on changes, verify, cut over, keep a rollback.",
+    "topicId": "resharding"
+  }
+]

@@ -1,0 +1,41 @@
+[
+  {
+    "id": "vitess-docs",
+    "title": "Vitess documentation",
+    "author": "Vitess Authors",
+    "kind": "docs",
+    "url": "https://vitess.io/docs/",
+    "why": "How a production MySQL sharding layer handles keys, routing and resharding.",
+    "topicIds": [
+      "strategies",
+      "resharding"
+    ],
+    "free": true
+  },
+  {
+    "id": "instagram-ids",
+    "title": "Sharding & IDs at Instagram",
+    "author": "Instagram Engineering",
+    "kind": "blog",
+    "url": "https://instagram-engineering.com/sharding-ids-at-instagram-1cf5a71e5a5c",
+    "why": "Thousands of logical shards on Postgres and time-sortable IDs.",
+    "topicIds": [
+      "resharding",
+      "shard-key"
+    ],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 6 covers partitioning strategies, hot spots and rebalancing.",
+    "topicIds": [
+      "strategies",
+      "hot-shards"
+    ],
+    "free": false
+  }
+]

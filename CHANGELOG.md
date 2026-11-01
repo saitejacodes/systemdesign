@@ -61,3 +61,10 @@
 - Each has 2–3 machine-checked challenges, a 5-step tour and model tests. Embedded in their lessons; S-04 and S-05 sit in load-balancers under "Related simulators".
 - Framework: challenges can end early (`done`), actions refresh metric cards while paused, the 3-column simulator layout starts at xl (the canvas was 128 px wide at ~1100 px), and status-tone blocks use ink text so they read in Blueprint.
 - Verify: open each /simulators/<id>, press Play, try a challenge. `pnpm test` (93 tests), `pnpm test:e2e` (all 5 routes in the smoke test).
+
+## Prompt 08 · Phase 2 content
+- All 18 Phase 2 sections (weeks 3–6), each with lesson, quiz, flashcards, checkpoints and resources: REST, GraphQL, gRPC, API gateway, rate limiting, idempotency, SQL vs NoSQL, data modeling, indexing, transactions, locking, replication, sharding, consistent hashing, connection pooling, object storage, search, OLAP vs OLTP.
+- Every lesson: why it matters, one H2 per topic with depth stamps, analogy callouts, worked examples with numbers, tradeoff and not-when boxes, misconceptions, interview angle and a Practice list. Highlights: the five rate-limiting algorithms with a Redis INCR/Lua section, a two-transaction timeline for each isolation anomaly plus MVCC, an 8-row SQL vs NoSQL decision table, EXPLAIN before/after plans, a REST vs GraphQL vs gRPC table, typeahead sizing with precomputed top-k.
+- Embeds: rate-limiter in rate-limiting and api-gateway; consistent-hashing in sharding and consistent-hashing (registry sectionIds updated). Future simulators (sql-sandbox, isolation-lab, index-visualizer, replication, sharding) are listed in meta.json only.
+- 76 new glossary terms (192 total).
+- Verify: open /phase/2 and any section; `pnpm test` (content volume, topic and glossary checks), `pnpm test:e2e` (all 18 routes in the smoke test).

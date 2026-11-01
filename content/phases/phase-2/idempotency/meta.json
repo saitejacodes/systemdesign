@@ -1,0 +1,46 @@
+{
+  "id": "p2-idempotency",
+  "phase": 2,
+  "slug": "idempotency",
+  "title": "Idempotency",
+  "order": 6,
+  "week": 3,
+  "estimatedMinutes": 45,
+  "topics": [
+    {
+      "id": "meaning",
+      "title": "What idempotent means",
+      "depth": "deep"
+    },
+    {
+      "id": "retries",
+      "title": "Why retries are unavoidable",
+      "depth": "deep"
+    },
+    {
+      "id": "keys",
+      "title": "Idempotency keys",
+      "depth": "deep"
+    },
+    {
+      "id": "storage",
+      "title": "Storing results safely",
+      "depth": "deep"
+    },
+    {
+      "id": "payments",
+      "title": "Safe retries for payments",
+      "depth": "deep"
+    },
+    {
+      "id": "consumers",
+      "title": "Idempotent consumers",
+      "depth": "awareness"
+    }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": [
+    "p2-rest"
+  ]
+}

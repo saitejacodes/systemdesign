@@ -1,0 +1,74 @@
+[
+  {
+    "id": "f1",
+    "front": "GraphQL schema?",
+    "back": "A typed description of every type, field and entry point (Query, Mutation, Subscription) clients can use.",
+    "topicId": "schema"
+  },
+  {
+    "id": "f2",
+    "front": "Resolver?",
+    "back": "The function that fetches one field's value; the engine calls resolvers while walking the query.",
+    "topicId": "schema"
+  },
+  {
+    "id": "f3",
+    "front": "Over-fetching?",
+    "back": "Receiving fields you don't need, e.g. a full user object to show one name.",
+    "topicId": "fetching"
+  },
+  {
+    "id": "f4",
+    "front": "Under-fetching?",
+    "back": "Needing several requests (round trips) to assemble one screen.",
+    "topicId": "fetching"
+  },
+  {
+    "id": "f5",
+    "front": "What does GraphQL move from client to server?",
+    "back": "The joining of related data, from a slow mobile network to the fast data-centre network.",
+    "topicId": "fetching"
+  },
+  {
+    "id": "f6",
+    "front": "N+1 problem?",
+    "back": "1 query for a list, then 1 more query per item for a nested field.",
+    "topicId": "n-plus-one"
+  },
+  {
+    "id": "f7",
+    "front": "DataLoader?",
+    "back": "Batches keys requested in one tick into one query (WHERE id IN …) and caches per request.",
+    "topicId": "n-plus-one"
+  },
+  {
+    "id": "f8",
+    "front": "Why is GraphQL HTTP caching hard?",
+    "back": "Most queries are POSTs to one URL, so HTTP caches can't tell them apart.",
+    "topicId": "caching"
+  },
+  {
+    "id": "f9",
+    "front": "Persisted query?",
+    "back": "A pre-registered query sent by hash or ID; smaller, cacheable via GET, and allow-listable.",
+    "topicId": "caching"
+  },
+  {
+    "id": "f10",
+    "front": "Normalised client cache?",
+    "back": "Stores objects by type and ID so one query's result can satisfy another.",
+    "topicId": "caching"
+  },
+  {
+    "id": "f11",
+    "front": "Three defences against expensive queries?",
+    "back": "Depth limits, cost analysis (fields × list sizes), mandatory pagination with max page sizes (plus timeouts).",
+    "topicId": "protection"
+  },
+  {
+    "id": "f12",
+    "front": "When not GraphQL?",
+    "back": "One simple client, CDN-cached public content, or high-volume internal RPC.",
+    "topicId": "when-not"
+  }
+]

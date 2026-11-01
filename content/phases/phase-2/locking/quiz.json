@@ -1,0 +1,295 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "Does a plain SELECT under MVCC lock the rows it reads in Postgres?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Yes, exclusively"
+      },
+      {
+        "id": "b",
+        "text": "Yes, with a shared lock"
+      },
+      {
+        "id": "c",
+        "text": "No, plain SELECTs take no row locks"
+      },
+      {
+        "id": "d",
+        "text": "Only on indexed columns"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "That's why read-then-write isn't protected without FOR UPDATE or a version check.",
+    "topicId": "basics",
+    "difficulty": 2
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "What does SELECT … FOR UPDATE do?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Updates the row"
+      },
+      {
+        "id": "b",
+        "text": "Locks the selected rows so other lockers wait until commit"
+      },
+      {
+        "id": "c",
+        "text": "Reads uncommitted data"
+      },
+      {
+        "id": "d",
+        "text": "Creates an index"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "It takes a row lock up front, making read-check-write safe.",
+    "topicId": "pessimistic",
+    "difficulty": 1
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "Which Postgres clause lets each worker grab the next unlocked job without waiting?",
+    "options": [
+      {
+        "id": "a",
+        "text": "NOWAIT"
+      },
+      {
+        "id": "b",
+        "text": "SKIP LOCKED"
+      },
+      {
+        "id": "c",
+        "text": "FOR SHARE"
+      },
+      {
+        "id": "d",
+        "text": "LIMIT 1"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "SKIP LOCKED skips rows other transactions hold. NOWAIT errors instead.",
+    "topicId": "pessimistic",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "What's the best way to raise throughput?",
+    "scenario": "A flash sale decrements one inventory row with SELECT … FOR UPDATE. Each transaction holds the lock for 5 ms. Sales cap at about 200 a second, even with 40 app servers.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Add more app servers"
+      },
+      {
+        "id": "b",
+        "text": "Split the stock into many bucket rows (or use an atomic conditional UPDATE) to remove the single hot row"
+      },
+      {
+        "id": "c",
+        "text": "Use Read Uncommitted"
+      },
+      {
+        "id": "d",
+        "text": "Increase lock_timeout"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The single row lock serialises everything; more servers just queue more. Buckets let transactions run in parallel.",
+    "topicId": "pessimistic",
+    "difficulty": 3
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "In optimistic locking, how does a write detect a conflict?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It waits for a lock"
+      },
+      {
+        "id": "b",
+        "text": "UPDATE … WHERE id = ? AND version = ? changes 0 rows"
+      },
+      {
+        "id": "c",
+        "text": "The database emails the user"
+      },
+      {
+        "id": "d",
+        "text": "It reads uncommitted data"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A version mismatch means someone else committed first.",
+    "topicId": "optimistic",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "Which approach fits?",
+    "scenario": "A wiki lets users edit a page for up to 20 minutes before saving. Two people editing the same page at once is rare but happens.",
+    "options": [
+      {
+        "id": "a",
+        "text": "SELECT … FOR UPDATE held while the user edits"
+      },
+      {
+        "id": "b",
+        "text": "Optimistic locking with a version column; on conflict, show a merge screen"
+      },
+      {
+        "id": "c",
+        "text": "Table locks"
+      },
+      {
+        "id": "d",
+        "text": "No concurrency control"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Never hold DB locks over user think-time. Conflicts are rare, so optimistic fits.",
+    "topicId": "optimistic",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "prompt": "Why is throughput collapsing?",
+    "scenario": "300 concurrent requests update one counter row with optimistic version checks and retry on conflict. CPU is at 100% and fewer than 5% of attempts succeed.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Optimistic locking under high contention: most writes fail the version check and retry, wasting work"
+      },
+      {
+        "id": "b",
+        "text": "The database is out of disk"
+      },
+      {
+        "id": "c",
+        "text": "Indexes are missing"
+      },
+      {
+        "id": "d",
+        "text": "Deadlocks"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "With hundreds of writers on one row, nearly every attempt conflicts. Pessimistic locking or removing the hot row works better.",
+    "topicId": "optimistic",
+    "difficulty": 3
+  },
+  {
+    "id": "q8",
+    "type": "single",
+    "prompt": "What's the most effective way to prevent deadlocks in transfers between accounts?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Longer transactions"
+      },
+      {
+        "id": "b",
+        "text": "Always lock accounts in a consistent order, such as lower ID first"
+      },
+      {
+        "id": "c",
+        "text": "Disable deadlock detection"
+      },
+      {
+        "id": "d",
+        "text": "Use more indexes"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Consistent ordering removes cycles.",
+    "topicId": "deadlocks",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "single",
+    "prompt": "What does PostgreSQL do when it detects a deadlock?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Waits forever"
+      },
+      {
+        "id": "b",
+        "text": "Aborts one of the transactions with an error"
+      },
+      {
+        "id": "c",
+        "text": "Restarts the server"
+      },
+      {
+        "id": "d",
+        "text": "Commits both"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The victim must be retried by the application.",
+    "topicId": "deadlocks",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "Why does a distributed lock need a fencing token?",
+    "options": [
+      {
+        "id": "a",
+        "text": "To encrypt the lock"
+      },
+      {
+        "id": "b",
+        "text": "So storage can reject writes from a holder whose lease expired during a pause"
+      },
+      {
+        "id": "c",
+        "text": "To make the lock faster"
+      },
+      {
+        "id": "d",
+        "text": "To avoid using a lease"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A paused process may still believe it holds the lock; an increasing token lets storage spot stale holders.",
+    "topicId": "distributed",
+    "difficulty": 3
+  }
+]

@@ -1,0 +1,39 @@
+[
+  {
+    "id": "grpc-intro",
+    "title": "Introduction to gRPC",
+    "author": "gRPC Authors",
+    "kind": "docs",
+    "url": "https://grpc.io/docs/what-is-grpc/introduction/",
+    "why": "The official overview of services, stubs and protobuf.",
+    "topicIds": [
+      "rpc",
+      "streaming"
+    ],
+    "free": true
+  },
+  {
+    "id": "protobuf-docs",
+    "title": "Protocol Buffers documentation",
+    "author": "Google",
+    "kind": "docs",
+    "url": "https://protobuf.dev/",
+    "why": "Language guide, encoding details and the rules for updating message types.",
+    "topicIds": [
+      "protobuf"
+    ],
+    "free": true
+  },
+  {
+    "id": "grpc-deadlines",
+    "title": "gRPC and Deadlines",
+    "author": "gRPC Authors",
+    "kind": "blog",
+    "url": "https://grpc.io/blog/deadlines/",
+    "why": "Why every call should set a deadline, with examples.",
+    "topicIds": [
+      "deadlines"
+    ],
+    "free": true
+  }
+]

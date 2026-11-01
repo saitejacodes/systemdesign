@@ -1,0 +1,86 @@
+[
+  {
+    "id": "f1",
+    "front": "OLTP?",
+    "back": "Many small, fast transactions touching a few rows; row stores like Postgres.",
+    "topicId": "workloads"
+  },
+  {
+    "id": "f2",
+    "front": "OLAP?",
+    "back": "Analytical queries scanning millions of rows over a few columns; column stores like BigQuery.",
+    "topicId": "workloads"
+  },
+  {
+    "id": "f3",
+    "front": "Row store layout?",
+    "back": "Each row's values stored together; fast single-row access.",
+    "topicId": "columnar"
+  },
+  {
+    "id": "f4",
+    "front": "Column store layout?",
+    "back": "Each column's values stored together; fast scans of a few columns.",
+    "topicId": "columnar"
+  },
+  {
+    "id": "f5",
+    "front": "Why columns compress well?",
+    "back": "Similar values sit together: dictionary and run-length encoding.",
+    "topicId": "columnar"
+  },
+  {
+    "id": "f6",
+    "front": "Column store weakness?",
+    "back": "Slow single-row updates; writes are batched.",
+    "topicId": "columnar"
+  },
+  {
+    "id": "f7",
+    "front": "ETL vs ELT?",
+    "back": "ETL transforms before loading; ELT loads raw data and transforms inside the warehouse.",
+    "topicId": "pipelines"
+  },
+  {
+    "id": "f8",
+    "front": "CDC?",
+    "back": "Change data capture: stream every change from the database log to other systems.",
+    "topicId": "pipelines"
+  },
+  {
+    "id": "f9",
+    "front": "Star schema?",
+    "back": "A large fact table of events joined to small dimension tables.",
+    "topicId": "pipelines"
+  },
+  {
+    "id": "f10",
+    "front": "Data warehouse?",
+    "back": "Structured, cleaned tables queried with SQL, storage and compute managed together.",
+    "topicId": "warehouse-lake"
+  },
+  {
+    "id": "f11",
+    "front": "Data lake?",
+    "back": "Raw files (often Parquet) in object storage, queried by many engines.",
+    "topicId": "warehouse-lake"
+  },
+  {
+    "id": "f12",
+    "front": "Lakehouse?",
+    "back": "Table formats (Iceberg, Delta, Hudi) adding transactions and schemas to lake files.",
+    "topicId": "warehouse-lake"
+  },
+  {
+    "id": "f13",
+    "front": "Time-series DB features?",
+    "back": "Time partitioning, delta compression, downsampling, retention policies, time functions.",
+    "topicId": "time-series"
+  },
+  {
+    "id": "f14",
+    "front": "Downsampling?",
+    "back": "Keeping lower-resolution aggregates for older data.",
+    "topicId": "time-series"
+  }
+]

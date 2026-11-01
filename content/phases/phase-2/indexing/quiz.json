@@ -1,0 +1,326 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "What does a query do without a usable index?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Fails"
+      },
+      {
+        "id": "b",
+        "text": "Reads every row (a sequential scan)"
+      },
+      {
+        "id": "c",
+        "text": "Uses a cache automatically"
+      },
+      {
+        "id": "d",
+        "text": "Returns nothing"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Without an index the database must check every row.",
+    "topicId": "basics",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "About how many levels does a B-tree with fan-out 500 need for 100 million keys?",
+    "options": [
+      {
+        "id": "a",
+        "text": "3"
+      },
+      {
+        "id": "b",
+        "text": "30"
+      },
+      {
+        "id": "c",
+        "text": "500"
+      },
+      {
+        "id": "d",
+        "text": "100,000"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "log₅₀₀(10⁸) ≈ 2.96, so about 3 levels.",
+    "topicId": "b-tree",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "Why do random UUID primary keys insert less efficiently into a B-tree than time-ordered IDs?",
+    "options": [
+      {
+        "id": "a",
+        "text": "UUIDs are longer to type"
+      },
+      {
+        "id": "b",
+        "text": "Random keys scatter inserts across all pages, causing more page splits and cache misses"
+      },
+      {
+        "id": "c",
+        "text": "B-trees can't store UUIDs"
+      },
+      {
+        "id": "d",
+        "text": "UUIDs disable indexes"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Ordered keys append near the right edge; random ones touch pages everywhere.",
+    "topicId": "b-tree",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "single",
+    "prompt": "What makes LSM trees fast for writes?",
+    "options": [
+      {
+        "id": "a",
+        "text": "They update pages in place"
+      },
+      {
+        "id": "b",
+        "text": "Writes go to memory and are flushed as sequential, immutable files"
+      },
+      {
+        "id": "c",
+        "text": "They skip durability"
+      },
+      {
+        "id": "d",
+        "text": "They have no indexes"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Memtable + sequential SSTable flushes avoid random writes. (a) describes B-trees.",
+    "topicId": "lsm",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "What do Bloom filters do in an LSM tree?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Compress values"
+      },
+      {
+        "id": "b",
+        "text": "Tell the reader a key is definitely not in a file, so it can skip it"
+      },
+      {
+        "id": "c",
+        "text": "Sort the memtable"
+      },
+      {
+        "id": "d",
+        "text": "Replicate data"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "They let reads skip most SSTables.",
+    "topicId": "lsm",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "Which query will NOT use the index efficiently?",
+    "scenario": "You have `CREATE INDEX ON orders (customer_id, created_at)`.",
+    "options": [
+      {
+        "id": "a",
+        "text": "WHERE customer_id = 42"
+      },
+      {
+        "id": "b",
+        "text": "WHERE customer_id = 42 AND created_at > '2026-10-01'"
+      },
+      {
+        "id": "c",
+        "text": "WHERE created_at > '2026-10-01'"
+      },
+      {
+        "id": "d",
+        "text": "WHERE customer_id = 42 ORDER BY created_at DESC LIMIT 20"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "It skips the leftmost column, so the sorted order doesn't help.",
+    "topicId": "composite",
+    "difficulty": 3
+  },
+  {
+    "id": "q7",
+    "type": "single",
+    "prompt": "What does a covering index avoid?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Writing to disk"
+      },
+      {
+        "id": "b",
+        "text": "Fetching full rows from the table, because the index has every needed column"
+      },
+      {
+        "id": "c",
+        "text": "Sorting the index"
+      },
+      {
+        "id": "d",
+        "text": "Using memory"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Index Only Scans skip the table lookups.",
+    "topicId": "covering",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "prompt": "Why didn't the index help?",
+    "scenario": "You added an index on `orders.status`. 92% of rows are 'complete'. `WHERE status = 'complete'` still shows a Seq Scan in EXPLAIN.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Indexes don't work on text"
+      },
+      {
+        "id": "b",
+        "text": "Low selectivity: 92% of rows match, so the planner scans instead; a partial index on rarer statuses would help those queries"
+      },
+      {
+        "id": "c",
+        "text": "The index is corrupted"
+      },
+      {
+        "id": "d",
+        "text": "Postgres needs a restart"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Reading most of a table through an index is slower than scanning it.",
+    "topicId": "costs",
+    "difficulty": 3
+  },
+  {
+    "id": "q9",
+    "type": "multi",
+    "prompt": "Which make an index likely to hurt more than help? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Very write-heavy table, index serves a rare report"
+      },
+      {
+        "id": "b",
+        "text": "Index (a) when (a, b) already exists"
+      },
+      {
+        "id": "c",
+        "text": "A selective filter on a hot query"
+      },
+      {
+        "id": "d",
+        "text": "Low-selectivity column"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "d"
+    ],
+    "explanation": "Write cost without benefit, redundancy and low selectivity all hurt. (c) is exactly what indexes are for.",
+    "topicId": "costs",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "scenario",
+    "prompt": "What does the plan tell you?",
+    "scenario": "EXPLAIN ANALYZE shows `Seq Scan on users ... Filter: (email = 'a@b.com') Rows Removed by Filter: 4999999 ... Execution Time: 640 ms`.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The query is fine"
+      },
+      {
+        "id": "b",
+        "text": "A missing index on email (or a function on it): the database scanned 5 million rows to find 1"
+      },
+      {
+        "id": "c",
+        "text": "Statistics are perfect"
+      },
+      {
+        "id": "d",
+        "text": "The table is empty"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Seq Scan plus millions of rows removed for one result means no usable index.",
+    "topicId": "explain",
+    "difficulty": 2
+  },
+  {
+    "id": "q11",
+    "type": "single",
+    "prompt": "Estimated rows = 10 but actual rows = 2,000,000. What's the likely cause?",
+    "options": [
+      {
+        "id": "a",
+        "text": "A missing index"
+      },
+      {
+        "id": "b",
+        "text": "Stale table statistics; run ANALYZE"
+      },
+      {
+        "id": "c",
+        "text": "Too much RAM"
+      },
+      {
+        "id": "d",
+        "text": "Network lag"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The planner's estimates come from statistics; big gaps mean they are out of date.",
+    "topicId": "explain",
+    "difficulty": 2
+  }
+]

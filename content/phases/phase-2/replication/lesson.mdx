@@ -1,0 +1,168 @@
+## Why it matters
+
+A single database server is a single point of failure and a single ceiling on reads. Replication, keeping copies of the same data on several machines, fixes both: if the main server dies, a copy takes over, and read traffic can spread across all the copies. Nearly every production database runs this way. But copies take time to catch up, and that gap produces some of the most confusing bugs users ever report: "I posted a comment and it disappeared", "my balance went up and then back down". GitHub has published a detailed post-incident report from 2018 in which a 43-second network partition triggered a cross-country database failover, and recovering from writes that existed on only one side took about a day. Replication is where distributed systems stop being theoretical.
+
+<Callout type="analogy" title="The head chef and the line cooks">
+A restaurant's head chef writes every new recipe change in a notebook and the line cooks copy each change into their own notebooks. Customers can ask any cook for a recipe (reads scale). Only the head chef can change one (one leader for writes). If a cook copies slowly, a customer may get yesterday's recipe (replication lag). If the head chef walks out, the most up-to-date cook takes over (failover), but anything the chef wrote that nobody had copied yet is lost. And if two cooks both think they're the new head chef, the kitchen ends up with two versions of every dish (split brain).
+</Callout>
+
+## Leader-follower replication
+
+<DepthStamp depth="deep" />
+
+The most common setup is <Term slug="leader-follower">leader-follower</Term> replication (also called primary-replica, or master-slave in older docs):
+
+1. **All writes go to the leader.** It applies them and records them in its replication log (Postgres's WAL, MySQL's binlog).
+2. **Followers stream the log** and apply the same changes in the same order.
+3. **Reads can go to any node**, with caveats about lag.
+
+```
+            writes
+  App ───────────────► Leader ──log──► Follower 1
+   │                      └────log──► Follower 2
+   └── reads ──► any of them
+```
+
+This scales **reads**, not writes: every write still goes through one leader, and every follower must apply every write. It's the default in PostgreSQL, MySQL, MongoDB replica sets and most managed database services.
+
+## Sync, async and semi-sync
+
+<DepthStamp depth="deep" />
+
+When does the leader tell the client "committed"?
+
+- **Synchronous:** after the follower(s) confirm they have the write. No committed write can be lost if the leader dies, but every write waits for the slowest follower, and if a synchronous follower is down, writes stall.
+- **Asynchronous:** immediately, without waiting. Fastest and most available, but writes the followers haven't received yet are **lost** if the leader dies.
+- **Semi-synchronous:** wait for **at least one** follower to acknowledge, and replicate to the rest asynchronously. MySQL offers this as a plugin mode; PostgreSQL can name one or more synchronous standbys. It bounds data loss without making every follower a bottleneck.
+
+### Worked example: what async failover loses
+
+A leader takes **5,000 writes a second**, and followers typically lag by **200 ms**. If the leader's disk dies and an async follower is promoted, about 5,000 × 0.2 = **1,000 recently committed writes** are lost: the clients were told "success", but the new leader never saw them.
+
+With semi-sync to one follower in the same region (adding perhaps a millisecond or two of round trip to each commit), promoting **that** follower loses nothing that was acknowledged. Synchronous replication to a follower in another region would cost a cross-region round trip, often tens of milliseconds, on every single write.
+
+## Replication lag and what users see
+
+<DepthStamp depth="deep" />
+
+<Term slug="replication-lag">Replication lag</Term> is how far a follower is behind the leader. Usually milliseconds; under heavy load, a long query or a network blip, seconds or minutes. Reading from a lagging follower causes three classic problems.
+
+### Read-your-writes
+
+A user updates their profile (to the leader), the page reloads and reads from a follower that hasn't caught up: **their change is gone**. They try again, and now there are two edits.
+
+Fixes for <Term slug="read-your-writes">read-your-writes</Term> consistency:
+
+- **Read the user's own data from the leader**: their profile, settings and recent posts. Other people's data can come from followers.
+- **Read from the leader for a short window** after the user writes, such as 10 seconds, tracked by a timestamp in their session.
+- **Track replication position:** remember the log position (LSN) of the user's last write, and only read from a follower that has reached it, else fall back to the leader.
+
+### Monotonic reads
+
+A user refreshes twice. The first read hits a fresh follower and shows a new comment; the second hits a lagging one and the comment **disappears**. Time seems to go backwards.
+
+<Term slug="monotonic-reads">Monotonic reads</Term> means a user never sees older data after newer data. Fix: **pin each user to one follower** (for example by hashing the user ID), so their reads come from a single, steadily advancing copy. If that follower dies, re-pin.
+
+### Consistent prefix reads
+
+In a chat, a follower shows Bob's answer before Alice's question because the messages arrived through different partitions. Keeping causally related writes on the same partition, or tracking causal order, prevents it. This mainly matters once data is sharded.
+
+<Callout type="analogy" title="Newspapers from different printers">
+Your town's news is printed by three presses, and each runs a few minutes behind the newsroom by a different amount. Buy a paper from press A at 9:00 and it reports the match result. Buy one from press B at 9:01 and it says the match hasn't finished. Nothing is wrong with any press; you just went to two of them. Monotonic reads is "always buy from the same newsagent".
+</Callout>
+
+## Failover
+
+<DepthStamp depth="tradeoffs" />
+
+When the leader fails, a follower must be **promoted**:
+
+1. **Detect** the failure, usually by missed heartbeats over a timeout (say, 10–30 seconds). Too short and a brief hiccup triggers a needless failover; too long and writes are down for longer.
+2. **Choose** the new leader, ideally the follower with the most recent data.
+3. **Reconfigure:** point clients (via DNS, a proxy, or a service registry) and the other followers at the new leader.
+4. **Fence the old leader**, so if it comes back it doesn't accept writes.
+
+Tools such as Patroni (PostgreSQL) and Orchestrator (MySQL) automate this, as do managed services.
+
+### Split brain
+
+<Term slug="split-brain">Split brain</Term> happens when two nodes both believe they are the leader and both accept writes. Usually a network partition causes it: the old leader is alive but cut off, the others promote a new one, and clients on each side keep writing. When the network heals, there are two conflicting histories, and some writes must be thrown away or merged by hand.
+
+Defences:
+
+- **Quorum-based election:** a node can only become leader with votes from a majority (for example 2 of 3). A minority partition can't elect anyone. Systems like etcd and ZooKeeper, built on consensus protocols, provide this.
+- **Fencing:** the new leader's authority comes with an increasing epoch number, and storage or proxies reject writes carrying an older one. In the bluntest form, "STONITH" (shoot the other node in the head) powers the old leader off.
+- **The old leader steps down** if it can't reach a majority.
+
+## Multi-leader replication
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="multi-leader">Multi-leader</Term> replication lets **several nodes accept writes**, typically one per data centre, and replicate to each other asynchronously.
+
+- **Pros:** writes are local in every region (low latency), and each region keeps working if the link between them breaks.
+- **Cons:** two regions can change the same record at the same time. Those **write conflicts** must be resolved: last-write-wins by timestamp (simple, but silently drops one write), merging (for example, sets of tags), or custom application logic. Collaborative editors use data types designed to merge automatically (CRDTs, covered in Phase 4).
+
+Multi-leader is powerful and hard to get right. Many teams avoid it by giving each record a **home region** that owns its writes.
+
+## Leaderless replication
+
+<DepthStamp depth="tradeoffs" />
+
+In <Term slug="leaderless-replication">leaderless</Term> replication, popularised by Amazon's Dynamo and used by Cassandra and Riak, the client (or a coordinator node) sends each write to **several replicas at once**, and reads from several too.
+
+With **N** replicas, a write must be acknowledged by **W** of them and a read must hear from **R** of them. If **W + R > N**, every read set overlaps every write set in at least one node, so a read will see the latest acknowledged write (given no concurrent writes or failures mid-operation).
+
+Worked example: N = 3, W = 2, R = 2. A write reaches replicas A and B; C is down. A read asks B and C: B has the new version, C the old one. The newer version wins, and the client (or a background process) writes it back to C. That repair is called **read repair**; background **anti-entropy** processes also compare replicas and fix differences.
+
+Tuning: W = 1 makes writes fast but risky; R = 1 makes reads fast but possibly stale. W = N means one dead replica blocks writes.
+
+<Callout type="analogy" title="Asking three friends to remember">
+You tell a secret to at least two of three friends, and later ask at least two of them what it was. Because two plus two is more than three, at least one friend you ask was also one you told, so you'll hear the latest version. If one friend wasn't there for the update, the others correct them.
+</Callout>
+
+<TradeoffBox title="Replication tradeoffs" items={[
+  { gain: "Leader-follower: simple, no write conflicts, reads scale", cost: "Writes are capped by one leader; failover is tricky" },
+  { gain: "Async: fast writes, followers can lag without blocking", cost: "Acknowledged writes can be lost on failover" },
+  { gain: "Multi-leader: local writes in every region", cost: "Concurrent writes conflict and must be resolved" },
+  { gain: "Leaderless with quorums: no failover, tolerates node loss", cost: "Tuning W/R, read repair, and weaker guarantees under concurrent writes" }
+]} />
+
+<NotWhenBox title="Reading from followers" items={[
+  "A user's own just-written data: read from the leader or track their last write position.",
+  "Balances, inventory checks or anything a decision depends on: read from the leader.",
+  "When lag is unmonitored: alert on lag before you route reads to followers."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Replication is a backup." right="Replication copies mistakes instantly: a DROP TABLE on the leader drops it on every follower. You still need point-in-time backups." />
+
+<Misconception wrong="Adding followers scales writes." right="Every follower applies every write. Followers scale reads; sharding scales writes." />
+
+<Misconception wrong="Failover is just promoting a follower." right="It also means fencing the old leader, redirecting clients, and accepting (or preventing) the loss of unreplicated writes." />
+
+## Interview angle
+
+<InterviewAngle title="Replication" questions={[
+  "A user edits their profile and the change disappears on refresh. Why, and how do you fix it?",
+  "Sync or async replication for this system?",
+  "What happens to in-flight writes when the leader dies?",
+  "What is split brain and how do you prevent it?"
+]}>
+Draw a leader with followers early, then say how reads are routed and what lag means for users. Name read-your-writes and monotonic reads with their fixes. For durability, compare async (fast, lossy) and semi-sync (bounded loss). For failover, mention detection timeouts, quorum election and fencing. For multi-region writes, explain why you'd choose a home region before reaching for multi-leader.
+</InterviewAngle>
+
+## Practice
+
+1. A leader takes 2,000 writes a second and followers lag 500 ms. How many acknowledged writes could async failover lose?
+2. Design read routing for a social app so users always see their own posts and timelines never go backwards.
+3. With N = 5, list every (W, R) pair that satisfies W + R > N. Which would you pick for a read-heavy workload?
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

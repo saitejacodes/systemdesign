@@ -1,0 +1,50 @@
+{
+  "id": "p2-data-modeling",
+  "phase": 2,
+  "slug": "data-modeling",
+  "title": "Data modeling",
+  "order": 8,
+  "week": 4,
+  "estimatedMinutes": 55,
+  "topics": [
+    {
+      "id": "entities",
+      "title": "Entities, relationships and keys",
+      "depth": "deep"
+    },
+    {
+      "id": "normalization",
+      "title": "Normalisation",
+      "depth": "deep"
+    },
+    {
+      "id": "denormalization",
+      "title": "Denormalisation",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "query-first",
+      "title": "Query-first modelling",
+      "depth": "deep"
+    },
+    {
+      "id": "wide-column",
+      "title": "Modelling for a wide-column store",
+      "depth": "deep"
+    },
+    {
+      "id": "keys",
+      "title": "Choosing keys",
+      "depth": "tradeoffs"
+    }
+  ],
+  "simulatorIds": [
+    "sql-sandbox"
+  ],
+  "practiceCaseStudyIds": [
+    "url-shortener"
+  ],
+  "prerequisites": [
+    "p2-sql-vs-nosql"
+  ]
+}

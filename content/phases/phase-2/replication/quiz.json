@@ -1,0 +1,325 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "In leader-follower replication, what do followers scale?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Writes"
+      },
+      {
+        "id": "b",
+        "text": "Reads"
+      },
+      {
+        "id": "c",
+        "text": "Both equally"
+      },
+      {
+        "id": "d",
+        "text": "Neither"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Every write still goes through the leader and every follower applies it.",
+    "topicId": "leader-follower",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "What's the main risk of asynchronous replication?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Slow writes"
+      },
+      {
+        "id": "b",
+        "text": "Acknowledged writes not yet copied are lost if the leader dies"
+      },
+      {
+        "id": "c",
+        "text": "Followers can't serve reads"
+      },
+      {
+        "id": "d",
+        "text": "It needs three data centres"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Async acks before followers have the data.",
+    "topicId": "sync-async",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "A leader takes 5,000 writes/s and async followers lag 200 ms. Roughly how many acknowledged writes could failover lose?",
+    "options": [
+      {
+        "id": "a",
+        "text": "10"
+      },
+      {
+        "id": "b",
+        "text": "1,000"
+      },
+      {
+        "id": "c",
+        "text": "25,000"
+      },
+      {
+        "id": "d",
+        "text": "None"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "5,000 × 0.2 s = 1,000.",
+    "topicId": "sync-async",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "single",
+    "prompt": "What does semi-synchronous replication wait for?",
+    "options": [
+      {
+        "id": "a",
+        "text": "All followers"
+      },
+      {
+        "id": "b",
+        "text": "At least one follower to acknowledge"
+      },
+      {
+        "id": "c",
+        "text": "No followers"
+      },
+      {
+        "id": "d",
+        "text": "A backup to finish"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "One ack bounds loss without waiting for every follower.",
+    "topicId": "sync-async",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "scenario",
+    "prompt": "Which guarantee is missing and what's a fix?",
+    "scenario": "A user changes their display name. The page reloads, reads from a follower, and shows the old name. Refreshing a few seconds later shows the new one.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Atomicity; use transactions"
+      },
+      {
+        "id": "b",
+        "text": "Read-your-writes; read the user's own data from the leader (or after their last write position)"
+      },
+      {
+        "id": "c",
+        "text": "Durability; add disks"
+      },
+      {
+        "id": "d",
+        "text": "Monotonic reads; add more followers"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The user's write hasn't reached the follower yet. Routing their own reads to the leader fixes it.",
+    "topicId": "lag",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "Which guarantee is broken and what fixes it?",
+    "scenario": "A user refreshes a thread twice. The first load shows 12 comments; the second shows 10. Reads are load-balanced randomly across 4 followers.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Read-your-writes; read from leader"
+      },
+      {
+        "id": "b",
+        "text": "Monotonic reads; pin each user to one follower"
+      },
+      {
+        "id": "c",
+        "text": "Split brain; add fencing"
+      },
+      {
+        "id": "d",
+        "text": "Durability; use sync replication"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Different followers at different lag make time go backwards. Pinning a user to one follower fixes it.",
+    "topicId": "lag",
+    "difficulty": 3
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "prompt": "What has happened and what prevents it?",
+    "scenario": "A network partition separates the leader from its two followers. The followers promote one of themselves. The old leader keeps accepting writes from app servers on its side. When the network heals, both have different new orders.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Replication lag; add followers"
+      },
+      {
+        "id": "b",
+        "text": "Split brain; require quorum-based election and fence the old leader"
+      },
+      {
+        "id": "c",
+        "text": "A deadlock; retry"
+      },
+      {
+        "id": "d",
+        "text": "Normal failover; nothing"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Two leaders accepted writes. Majority votes plus fencing stop a cut-off leader from acting.",
+    "topicId": "failover",
+    "difficulty": 3
+  },
+  {
+    "id": "q8",
+    "type": "single",
+    "prompt": "Why not set the failure-detection timeout to 1 second?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It's too slow"
+      },
+      {
+        "id": "b",
+        "text": "Brief hiccups would trigger needless failovers, each risking data loss and disruption"
+      },
+      {
+        "id": "c",
+        "text": "Databases forbid it"
+      },
+      {
+        "id": "d",
+        "text": "Heartbeats need 1 minute"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Too short a timeout causes flapping failovers.",
+    "topicId": "failover",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "single",
+    "prompt": "What's the main problem multi-leader replication introduces?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Writes become slower in every region"
+      },
+      {
+        "id": "b",
+        "text": "Concurrent writes to the same record in different leaders conflict"
+      },
+      {
+        "id": "c",
+        "text": "Reads stop working"
+      },
+      {
+        "id": "d",
+        "text": "It needs synchronous links"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Conflicts need resolution such as last-write-wins, merging or app logic.",
+    "topicId": "multi-leader",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "With N = 3, which W and R guarantee reads overlap the latest acknowledged write?",
+    "options": [
+      {
+        "id": "a",
+        "text": "W=1, R=1"
+      },
+      {
+        "id": "b",
+        "text": "W=2, R=2"
+      },
+      {
+        "id": "c",
+        "text": "W=1, R=2"
+      },
+      {
+        "id": "d",
+        "text": "W=3, R=0"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "W + R = 4 > 3. The others don't satisfy W + R > N.",
+    "topicId": "leaderless",
+    "difficulty": 2
+  },
+  {
+    "id": "q11",
+    "type": "multi",
+    "prompt": "How do leaderless systems repair stale replicas? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Read repair"
+      },
+      {
+        "id": "b",
+        "text": "Anti-entropy background processes"
+      },
+      {
+        "id": "c",
+        "text": "Failover"
+      },
+      {
+        "id": "d",
+        "text": "Deleting the stale node"
+      }
+    ],
+    "correct": [
+      "a",
+      "b"
+    ],
+    "explanation": "Read repair and anti-entropy both bring replicas back in sync. There's no leader to fail over.",
+    "topicId": "leaderless",
+    "difficulty": 2
+  }
+]

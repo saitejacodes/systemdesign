@@ -1,0 +1,184 @@
+## Why it matters
+
+Photos, videos, PDFs, backups, logs and machine-learning datasets make up most of the bytes many companies store, and almost none of them belong in a database. Amazon S3 launched in 2006 and its API became the de facto standard for this kind of storage: Google Cloud Storage, Azure Blob Storage, Cloudflare R2 and self-hosted systems like MinIO and Ceph all offer the same model, and many speak S3's API directly. AWS documents S3 Standard as designed for 99.999999999% ("eleven nines") durability. In nearly every design interview with user uploads (Instagram, YouTube, Dropbox, WhatsApp), the right answer starts with "the bytes go to object storage, the metadata goes in the database".
+
+<Callout type="analogy" title="The coat check at a huge venue">
+Object storage is a coat check for a stadium. You hand over a coat (the object), get a ticket with a unique code (the key), and later hand back the ticket to get exactly that coat. You can't ask the attendant to sew a new button on your coat while it hangs there; you take it out, change it, and check it in again (objects are replaced whole). There are no rooms or shelves you can rearrange, just one gigantic numbered rail, which is exactly why it can hold billions of coats and never run out of space.
+</Callout>
+
+## Block, file and object storage
+
+<DepthStamp depth="deep" />
+
+There are three ways to store bytes, and they suit different jobs:
+
+| | Block | File | Object |
+|---|---|---|---|
+| What you see | A raw disk of numbered blocks | Folders and files with paths | Flat buckets of key → object + metadata |
+| Access | Mounted by one machine; a filesystem or database sits on top | Mounted over the network (NFS, SMB) by many | HTTP API: `PUT`, `GET`, `DELETE` |
+| Update in place | Yes, any block | Yes, any byte range | No: replace the whole object |
+| Scale | One volume, sized in GB–TB | Shared, but directories and locking limit scale | Effectively unlimited objects |
+| Latency | Lowest (sub-millisecond) | Low | Higher (tens of ms per request) |
+| Typical use | Database data files, VM boot disks | Shared home directories, legacy apps | Media, backups, data lakes, static sites |
+| Examples | AWS EBS, local SSD | AWS EFS, NFS servers | S3, GCS, Azure Blob |
+
+<Term slug="object-storage">Object storage</Term> gives up in-place updates and POSIX semantics (renames, appends, locks) in exchange for near-unlimited scale, very high durability and a simple HTTP interface.
+
+## The S3-style model
+
+<DepthStamp depth="deep" />
+
+- A **bucket** is a named container: `acme-user-uploads`.
+- An **object** is the bytes plus **metadata** (content type, size, custom tags) stored under a **key**: `users/42/avatars/2026-11-01.jpg`.
+- The namespace is **flat**. The slashes only look like folders; "listing a folder" is listing keys with a **prefix**.
+- Objects are **immutable** once written: to change one, write a new version under the same key. Optional **versioning** keeps old versions.
+- S3 has offered **strong read-after-write consistency** for all operations since December 2020, so a `GET` after a successful `PUT` returns the new object.
+
+```http
+PUT /users/42/avatars/2026-11-01.jpg HTTP/1.1
+Host: acme-user-uploads.s3.amazonaws.com
+Content-Type: image/jpeg
+Content-Length: 284113
+```
+
+Durability comes from storing each object redundantly across several devices and facilities, with checksums and background repair, so losing a disk or even a data centre doesn't lose data.
+
+## Why files don't go in the database
+
+<DepthStamp depth="tradeoffs" />
+
+Databases can store blobs (`bytea`, `BLOB`), and for a few small files that's fine. At scale it hurts:
+
+- **Size and cost:** database storage is fast, replicated and expensive per GB. Every replica and backup carries every video.
+- **Backups and replication:** a 10 TB table of images makes backups take hours and new replicas take days to build.
+- **Memory:** large values crowd useful rows and indexes out of the database cache.
+- **Serving:** streaming a 200 MB video through the database and your app servers ties up connections and bandwidth for the whole download.
+
+The standard pattern is **bytes in object storage, metadata in the database**:
+
+```sql
+CREATE TABLE photos (
+  id          bigint PRIMARY KEY,
+  owner_id    bigint NOT NULL,
+  object_key  text   NOT NULL,      -- 'photos/42/9f3c….jpg'
+  bytes       bigint NOT NULL,
+  width int, height int,
+  created_at  timestamptz NOT NULL
+);
+```
+
+The database answers "which photos does user 42 have?"; object storage holds the photos.
+
+## Presigned URLs
+
+<DepthStamp depth="deep" />
+
+If every upload and download flows through your app servers, they become an expensive bandwidth pipe. A <Term slug="presigned-url">presigned URL</Term> lets the client talk to object storage **directly**, without making the bucket public:
+
+1. The client asks your API: "I want to upload a 3 MB JPEG."
+2. Your API checks the user is allowed, picks a key, and **signs** a URL with its own credentials. The URL encodes the bucket, key, allowed method, and an expiry (say 10 minutes).
+3. The client `PUT`s the file straight to the storage service using that URL.
+4. The client tells your API "done" (or storage sends an event), and the API records the metadata.
+
+Downloads work the same way: the API returns a short-lived signed `GET` URL for a private object.
+
+### Worked example: uploads through the app vs direct
+
+A photo app receives **10 million uploads a day** at an average of **2 MB**: **20 TB a day**, about 231 MB/s, or roughly **1.9 Gbit/s** on average, with peaks several times higher.
+
+- **Through app servers:** every byte goes client → app → storage, so app servers need that inbound and outbound bandwidth, plus memory or disk to buffer uploads, and slow mobile uploads hold connections open for seconds each.
+- **With presigned URLs:** the app handles only two small JSON calls per upload. The 20 TB a day goes straight to the storage service, which is built to absorb it.
+
+<Callout type="analogy" title="A visitor's pass">
+Instead of carrying every parcel into the warehouse yourself, the front desk writes a courier a one-time pass: "may deliver one parcel to bay 42, valid until 3:15". The courier drives straight to the bay. The desk stays in control of who gets in, without becoming a forklift. Presigned URLs are that pass.
+</Callout>
+
+## Multipart upload
+
+<DepthStamp depth="deep" />
+
+Uploading a 10 GB video in one request is fragile: if the connection drops at 9.5 GB, you start over. <Term slug="multipart-upload">Multipart upload</Term> splits the object into parts:
+
+1. **Initiate** the upload and get an upload ID.
+2. **Upload parts** independently, in parallel if you like, each with its own (presigned) URL. Retry any part that fails.
+3. **Complete** the upload by listing the parts; the service assembles them into one object.
+
+S3's documented limits: parts from 5 MB to 5 GB (the last part can be smaller), up to 10,000 parts, objects up to 5 TB, and a single `PUT` of at most 5 GB. A 10 GB video in 100 MB parts is **100 parts**; uploading 8 at a time cuts wall-clock time and a dropped connection costs one 100 MB part, not the whole file.
+
+Unfinished multipart uploads keep their parts (and their storage charges) until aborted, so set a lifecycle rule to clean them up.
+
+## Storage classes and lifecycle
+
+<DepthStamp depth="tradeoffs" />
+
+Most stored data is read often for a short while and rarely afterwards. Object stores offer **storage classes** that trade cheaper storage for slower or costlier access. In S3 these include Standard, Standard-Infrequent Access, Intelligent-Tiering (moves objects automatically by access pattern) and the Glacier archive classes, where retrieving data can take minutes to hours depending on the tier.
+
+**Lifecycle rules** move or delete objects automatically by age or prefix:
+
+```
+logs/*            → Infrequent Access after 30 days → archive after 90 → delete after 365
+uploads/tmp/*     → delete after 1 day
+incomplete multipart uploads → abort after 7 days
+```
+
+Two catches: infrequent and archive classes typically charge per GB retrieved and have minimum storage durations, so moving data that's still read often can cost more, not less. Check your provider's pricing page before designing tiers.
+
+## Serving through a CDN
+
+<DepthStamp depth="deep" />
+
+Object storage is the **origin**; a <Term slug="cdn">CDN</Term> sits in front of it to serve popular objects from edge locations near users:
+
+```
+User ──► CDN edge (cache hit: served in a few ms) ──miss──► object storage bucket
+```
+
+- Use **immutable, versioned keys** (`avatars/42/9f3c….jpg`, with a content hash in the name) and long `Cache-Control` max-ages. To change a picture, upload a new key and update the database row; no cache purge needed.
+- Keep the bucket **private** and let only the CDN read it (for example with an origin access identity or signed CDN URLs), so users can't bypass the CDN or hotlink everything.
+- Generate **thumbnails and video renditions** once, asynchronously after upload, and store each as its own object.
+
+<TradeoffBox title="Object storage tradeoffs" items={[
+  { gain: "Near-unlimited capacity with very high durability", cost: "Higher per-request latency than block or file storage" },
+  { gain: "Simple HTTP API; presigned URLs offload bandwidth from app servers", cost: "No in-place updates, appends or renames: objects are replaced whole" },
+  { gain: "Storage classes and lifecycle rules cut cost for cold data", cost: "Retrieval fees, minimum durations and slow archive restores" },
+  { gain: "Pairs naturally with a CDN for global delivery", cost: "Cache invalidation needs versioned keys and discipline" }
+]} />
+
+<NotWhenBox title="Object storage" items={[
+  "A database's own data files or anything needing low-latency random writes: use block storage.",
+  "Workloads that append to or edit files in place, like logs written line by line by one process.",
+  "Tiny values read constantly with sub-millisecond needs: use a database or cache."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="S3 has folders." right="The namespace is flat. Slashes are part of the key; 'folders' are prefixes shown by the console." />
+
+<Misconception wrong="Making a bucket public is the easy way to serve files." right="Keep buckets private and use presigned URLs or a CDN with restricted origin access. Public buckets are a common source of data leaks." />
+
+<Misconception wrong="Cheaper storage classes always save money." right="Infrequent and archive classes charge for retrieval and minimum storage time. Frequently read data can cost more there." />
+
+## Interview angle
+
+<InterviewAngle title="Object storage" questions={[
+  "Where do uploaded photos and videos go, and what goes in the database?",
+  "How do users upload a 5 GB video reliably?",
+  "How do you keep app servers out of the upload path?",
+  "How do you serve images fast worldwide and keep costs down?"
+]}>
+State the split early: bytes in object storage, metadata in the database. Then walk through presigned uploads, multipart for big files, async thumbnailing, CDN delivery with versioned keys, and lifecycle rules to tier or delete old data. Estimating daily upload volume and bandwidth (as in the worked example) shows why the app servers must stay out of the byte path.
+</InterviewAngle>
+
+## Practice
+
+1. A video app gets 500,000 uploads a day averaging 300 MB. Compute daily volume and average bandwidth. How many 100 MB parts is an average upload?
+2. Write lifecycle rules for a chat app's attachments: hot for 30 days, rarely read after, deleted after 2 years.
+3. Sequence-diagram a presigned upload, including how the database learns the upload finished.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

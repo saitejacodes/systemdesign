@@ -1,0 +1,22 @@
+[
+  {
+    "id": "c1",
+    "text": "I can calculate how many keys move with mod N.",
+    "topicId": "mod-n"
+  },
+  {
+    "id": "c2",
+    "text": "I can explain how keys are placed and found on a ring.",
+    "topicId": "ring"
+  },
+  {
+    "id": "c3",
+    "text": "I can explain why virtual nodes are needed and use them as weights.",
+    "topicId": "vnodes"
+  },
+  {
+    "id": "c4",
+    "text": "I can name where consistent hashing is used and its alternatives.",
+    "topicId": "uses"
+  }
+]

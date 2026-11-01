@@ -1,0 +1,41 @@
+[
+  {
+    "id": "ir-book",
+    "title": "Introduction to Information Retrieval",
+    "author": "Manning, Raghavan, Schütze",
+    "kind": "free-book",
+    "url": "https://nlp.stanford.edu/IR-book/",
+    "why": "The standard free textbook on inverted indexes, tokenisation and ranking.",
+    "topicIds": [
+      "inverted-index",
+      "relevance"
+    ],
+    "free": true
+  },
+  {
+    "id": "elastic-guide",
+    "title": "Elastic documentation",
+    "author": "Elastic",
+    "kind": "docs",
+    "url": "https://www.elastic.co/guide/index.html",
+    "why": "Elasticsearch concepts: indexes, shards, analysers and relevance.",
+    "topicIds": [
+      "elasticsearch",
+      "analysis"
+    ],
+    "free": true
+  },
+  {
+    "id": "pg-fts",
+    "title": "PostgreSQL: Full Text Search",
+    "author": "PostgreSQL Global Development Group",
+    "kind": "docs",
+    "url": "https://www.postgresql.org/docs/current/textsearch.html",
+    "why": "When built-in full-text search is enough.",
+    "topicIds": [
+      "inverted-index",
+      "analysis"
+    ],
+    "free": true
+  }
+]

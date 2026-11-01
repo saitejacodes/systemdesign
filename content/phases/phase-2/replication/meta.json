@@ -1,0 +1,50 @@
+{
+  "id": "p2-replication",
+  "phase": 2,
+  "slug": "replication",
+  "title": "Replication",
+  "order": 12,
+  "week": 5,
+  "estimatedMinutes": 65,
+  "topics": [
+    {
+      "id": "leader-follower",
+      "title": "Leader-follower replication",
+      "depth": "deep"
+    },
+    {
+      "id": "sync-async",
+      "title": "Sync, async and semi-sync",
+      "depth": "deep"
+    },
+    {
+      "id": "lag",
+      "title": "Replication lag and what users see",
+      "depth": "deep"
+    },
+    {
+      "id": "failover",
+      "title": "Failover and split brain",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "multi-leader",
+      "title": "Multi-leader replication",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "leaderless",
+      "title": "Leaderless replication",
+      "depth": "tradeoffs"
+    }
+  ],
+  "simulatorIds": [
+    "replication"
+  ],
+  "practiceCaseStudyIds": [
+    "url-shortener"
+  ],
+  "prerequisites": [
+    "p2-transactions"
+  ]
+}

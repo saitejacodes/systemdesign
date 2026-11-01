@@ -1,0 +1,326 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "Which URI best follows REST conventions for fetching one order?",
+    "options": [
+      {
+        "id": "a",
+        "text": "GET /getOrder?id=9001"
+      },
+      {
+        "id": "b",
+        "text": "GET /orders/9001"
+      },
+      {
+        "id": "c",
+        "text": "POST /orders/fetch"
+      },
+      {
+        "id": "d",
+        "text": "GET /order-service/mysql/9001"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Resources are nouns with their own URI; the method says what to do. (a) puts the verb in the path. (c) uses POST for a read, which is neither safe nor cacheable. (d) leaks implementation details into the contract.",
+    "topicId": "resources",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "Which method is idempotent but NOT safe?",
+    "options": [
+      {
+        "id": "a",
+        "text": "GET"
+      },
+      {
+        "id": "b",
+        "text": "POST"
+      },
+      {
+        "id": "c",
+        "text": "PUT"
+      },
+      {
+        "id": "d",
+        "text": "HEAD"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "PUT changes state, so it is not safe, but sending the same PUT twice leaves the same result. GET and HEAD are safe (and idempotent). POST is neither.",
+    "topicId": "verbs",
+    "difficulty": 1
+  },
+  {
+    "id": "q3",
+    "type": "scenario",
+    "prompt": "What should the client do?",
+    "scenario": "A mobile client sends POST /payments to charge $40. The connection times out before any response arrives. The client cannot tell whether the server processed it.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Retry the POST immediately; the server will deduplicate it"
+      },
+      {
+        "id": "b",
+        "text": "Never retry; tell the user the payment failed"
+      },
+      {
+        "id": "c",
+        "text": "Retry with the same idempotency key so the server can return the original result if it already ran"
+      },
+      {
+        "id": "d",
+        "text": "Switch to GET to check, then POST again without a key"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Retrying POST blindly can charge twice; refusing to retry loses payments that never reached the server. An idempotency key lets the server recognise the retry. (a) assumes deduplication that plain POST doesn't have. (d) has a race: the first request may still be in flight when you check.",
+    "topicId": "verbs",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "single",
+    "prompt": "A logged-in user tries to delete someone else's document. Which status code fits best?",
+    "options": [
+      {
+        "id": "a",
+        "text": "401 Unauthorized"
+      },
+      {
+        "id": "b",
+        "text": "403 Forbidden"
+      },
+      {
+        "id": "c",
+        "text": "400 Bad Request"
+      },
+      {
+        "id": "d",
+        "text": "500 Internal Server Error"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The caller is authenticated but not permitted: 403. 401 means missing or invalid credentials. 400 is for malformed requests. 500 blames the server for a correct refusal.",
+    "topicId": "status-codes",
+    "difficulty": 1
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "Why is returning 200 OK with {\"error\": ...} in the body a bad idea?",
+    "options": [
+      {
+        "id": "a",
+        "text": "JSON can't contain errors"
+      },
+      {
+        "id": "b",
+        "text": "Generic clients, proxies, retries and monitoring rely on the status code and will treat the failure as success"
+      },
+      {
+        "id": "c",
+        "text": "It makes the response larger"
+      },
+      {
+        "id": "d",
+        "text": "HTTP forbids bodies on 200"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Everything between client and server reads the status line: retry logic, caches, dashboards and alerts. (a), (c) and (d) are not true.",
+    "topicId": "status-codes",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "A social feed uses GET /feed?limit=20&offset=20 for page 2. Users on busy days report seeing the same post at the bottom of one page and the top of the next.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The CDN is caching pages"
+      },
+      {
+        "id": "b",
+        "text": "Offset pagination: a new post inserted at the top shifted every item down by one"
+      },
+      {
+        "id": "c",
+        "text": "The client sorts by ID"
+      },
+      {
+        "id": "d",
+        "text": "The database is eventually consistent"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "With OFFSET, an insert while you page shifts every row, so the last item of page 1 becomes the first of page 2. Cursor pagination anchors on the last item seen. (a) would show stale pages, not shifted ones. (c) and (d) don't produce this pattern on their own.",
+    "topicId": "pagination",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "single",
+    "prompt": "Why does cursor (keyset) pagination stay fast on deep pages?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It caches every page"
+      },
+      {
+        "id": "b",
+        "text": "With an index on the sort key, the database seeks straight to the position after the cursor instead of reading and discarding skipped rows"
+      },
+      {
+        "id": "c",
+        "text": "It returns fewer rows"
+      },
+      {
+        "id": "d",
+        "text": "It uses POST instead of GET"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "WHERE (created_at, id) < (cursor) uses the index to start at the right place. OFFSET must walk past every skipped row. (a), (c) and (d) aren't the reason.",
+    "topicId": "pagination",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "multi",
+    "prompt": "Which are true of cursor pagination? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "It cannot jump directly to page 37"
+      },
+      {
+        "id": "b",
+        "text": "It needs a unique tie-breaker in the sort key"
+      },
+      {
+        "id": "c",
+        "text": "Cursors should be treated as opaque by clients"
+      },
+      {
+        "id": "d",
+        "text": "It is slower than offset for the first page"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "No random access (a); without a tie-breaker, rows with equal timestamps can be skipped (b); opaque cursors let you change the encoding later (c). (d) is false: the first page costs about the same either way.",
+    "topicId": "pagination",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "single",
+    "prompt": "Why should an API whitelist which fields can be sorted and filtered?",
+    "options": [
+      {
+        "id": "a",
+        "text": "To reduce JSON size"
+      },
+      {
+        "id": "b",
+        "text": "Each filter or sort usually needs a supporting index; arbitrary ones invite slow full-table scans"
+      },
+      {
+        "id": "c",
+        "text": "Because HTTP limits query strings to 3 parameters"
+      },
+      {
+        "id": "d",
+        "text": "To support HATEOAS"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Unindexed sorts and filters turn into scans that can take a database down. (a) is unrelated. (c) is false. (d) is unrelated.",
+    "topicId": "filtering",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "scenario",
+    "prompt": "Which change can you ship without a new API version?",
+    "scenario": "Your public API returns user.name. Product wants to add the user's full legal name. Thousands of mobile apps that never update rely on the current response.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Rename the field to full_name"
+      },
+      {
+        "id": "b",
+        "text": "Add a new optional field full_name alongside name and document that clients should ignore unknown fields"
+      },
+      {
+        "id": "c",
+        "text": "Change name from a string to an object"
+      },
+      {
+        "id": "d",
+        "text": "Make a previously optional field required"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Additive, optional changes don't break clients that ignore unknown fields. Renaming (a), changing a type (c) and adding a requirement (d) all break existing clients.",
+    "topicId": "versioning",
+    "difficulty": 2
+  },
+  {
+    "id": "q11",
+    "type": "single",
+    "prompt": "What does HATEOAS add to a REST response?",
+    "options": [
+      {
+        "id": "a",
+        "text": "A version number"
+      },
+      {
+        "id": "b",
+        "text": "Links to the related resources and actions available next"
+      },
+      {
+        "id": "c",
+        "text": "A cache expiry"
+      },
+      {
+        "id": "d",
+        "text": "An error code"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Hypermedia controls let clients discover what they can do next by following links. Most practical JSON APIs skip this and document URIs instead.",
+    "topicId": "hateoas",
+    "difficulty": 3
+  }
+]

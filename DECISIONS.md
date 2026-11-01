@@ -70,3 +70,10 @@
 - The fixed-window challenge requires choosing the boundary-attack pattern: plain Poisson traffic can also slip 2× through by chance, which is true but not the lesson.
 - The token-burst challenge checks the measured burst (≥ 20 in one second) and that the refill rate is 5/s; average throughput alone can't distinguish R under bursty traffic with idle gaps.
 - Drill inputs are labelled as illustrative assumptions, not company figures.
+
+## Prompt 08
+- Section JSON was generated from compact per-section specs with a scratch script that also checks volumes, topic ids and glossary slugs; the lessons were written by hand.
+- Lessons embed `<Simulator>` only for simulators that exist (rate-limiter, consistent-hashing). Prompt 09's simulators are listed in meta.json `simulatorIds`, so they appear on the plan and section cards and become live when the registry gains them, without an embed that would link to a missing page.
+- Vendor-specific behaviour is stated with the vendor named (Postgres defaults to Read Committed, InnoDB to Repeatable Read; S3 limits and consistency as AWS documents them). Where only an illustrative number exists (timeout rates, per-server capacity) the lesson says it's an assumption.
+- Where practitioners disagree (how far to denormalise in relational stores, HTAP vs a separate analytics path), the lesson gives both sides.
+- The plan e2e test now checks week 7 for "Coming soon": weeks 3–6 are fully live.

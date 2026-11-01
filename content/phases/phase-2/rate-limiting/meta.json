@@ -1,0 +1,45 @@
+{
+  "id": "p2-rate-limiting",
+  "phase": 2,
+  "slug": "rate-limiting",
+  "title": "Rate limiting",
+  "order": 5,
+  "week": 3,
+  "estimatedMinutes": 60,
+  "topics": [
+    {
+      "id": "why",
+      "title": "Why limit at all",
+      "depth": "deep"
+    },
+    {
+      "id": "algorithms",
+      "title": "The five algorithms",
+      "depth": "deep"
+    },
+    {
+      "id": "distributed",
+      "title": "Distributed rate limiting",
+      "depth": "deep"
+    },
+    {
+      "id": "placement",
+      "title": "Where to put the limiter",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "response",
+      "title": "Telling the client",
+      "depth": "tradeoffs"
+    }
+  ],
+  "simulatorIds": [
+    "rate-limiter"
+  ],
+  "practiceCaseStudyIds": [
+    "rate-limiter-service"
+  ],
+  "prerequisites": [
+    "p2-api-gateway"
+  ]
+}

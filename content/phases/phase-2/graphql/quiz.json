@@ -1,0 +1,297 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "In GraphQL, what is a resolver?",
+    "options": [
+      {
+        "id": "a",
+        "text": "A cache in front of the database"
+      },
+      {
+        "id": "b",
+        "text": "A function that fetches the value for one field"
+      },
+      {
+        "id": "c",
+        "text": "The schema file"
+      },
+      {
+        "id": "d",
+        "text": "A DNS server for the API"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The engine calls a resolver for each field in the query. (a), (c) and (d) are different things.",
+    "topicId": "schema",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "What does the ! in `name: String!` mean?",
+    "options": [
+      {
+        "id": "a",
+        "text": "The field is deprecated"
+      },
+      {
+        "id": "b",
+        "text": "The field is required in mutations only"
+      },
+      {
+        "id": "c",
+        "text": "The field is never null"
+      },
+      {
+        "id": "d",
+        "text": "The field is indexed"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "! marks a non-null type. The others aren't GraphQL meanings of !.",
+    "topicId": "schema",
+    "difficulty": 1
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "Which problem is GraphQL mainly designed to solve?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Slow databases"
+      },
+      {
+        "id": "b",
+        "text": "Clients needing many round trips and receiving fields they don't use"
+      },
+      {
+        "id": "c",
+        "text": "TLS handshake latency"
+      },
+      {
+        "id": "d",
+        "text": "Server-side caching"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Under-fetching (many round trips) and over-fetching (unused fields). It doesn't speed up databases (a) or TLS (c), and it makes caching harder (d).",
+    "topicId": "fetching",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "What is happening and what is the standard fix?",
+    "scenario": "A query `{ products(first: 100) { id seller { name } } }` makes the database log show 101 SELECT statements per request.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The database needs more RAM"
+      },
+      {
+        "id": "b",
+        "text": "The N+1 problem: one query for the list plus one per item; batch with a DataLoader"
+      },
+      {
+        "id": "c",
+        "text": "The schema is too large; split it"
+      },
+      {
+        "id": "d",
+        "text": "Clients should cache more"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "1 + 100 queries is classic N+1 from per-object resolvers. DataLoader batches the 100 lookups into one IN query. (a), (c) and (d) don't address the query pattern.",
+    "topicId": "n-plus-one",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "How does DataLoader reduce queries?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It compresses SQL"
+      },
+      {
+        "id": "b",
+        "text": "It collects keys requested during one tick and loads them in one batched query, caching results per request"
+      },
+      {
+        "id": "c",
+        "text": "It runs resolvers on the client"
+      },
+      {
+        "id": "d",
+        "text": "It uses a CDN"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Batching plus per-request memoisation. The others don't describe DataLoader.",
+    "topicId": "n-plus-one",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "single",
+    "prompt": "Why don't CDNs cache GraphQL responses by default?",
+    "options": [
+      {
+        "id": "a",
+        "text": "GraphQL responses are binary"
+      },
+      {
+        "id": "b",
+        "text": "Queries are usually POSTs to one URL, so requests look identical and aren't cacheable"
+      },
+      {
+        "id": "c",
+        "text": "GraphQL forbids caching"
+      },
+      {
+        "id": "d",
+        "text": "CDNs can't parse JSON"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "HTTP caches key on method and URL; POST to /graphql gives them nothing to key on. (a), (c) and (d) are false.",
+    "topicId": "caching",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "multi",
+    "prompt": "What do persisted queries give you? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Smaller requests"
+      },
+      {
+        "id": "b",
+        "text": "CDN-cacheable GETs with stable URLs"
+      },
+      {
+        "id": "c",
+        "text": "An allow-list that blocks arbitrary queries"
+      },
+      {
+        "id": "d",
+        "text": "Automatic DataLoader batching"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "Hashes replace query text (a), stable GET URLs cache (b), and unknown queries can be rejected (c). Batching (d) is a separate server concern.",
+    "topicId": "caching",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "prompt": "Which defence most directly stops this?",
+    "scenario": "Your public GraphQL API lets anyone query `user { friends { friends { friends { posts { comments } } } } }`. One anonymous client's queries are taking down the database.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Enable HTTPS"
+      },
+      {
+        "id": "b",
+        "text": "Depth limits and query cost analysis that reject or rate-limit expensive queries"
+      },
+      {
+        "id": "c",
+        "text": "Add more database replicas"
+      },
+      {
+        "id": "d",
+        "text": "Switch to HTTP/2"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Cost and depth limits stop the query before it runs. HTTPS (a) and HTTP/2 (d) don't limit work. Replicas (c) only raise the ceiling an attacker can still exceed.",
+    "topicId": "protection",
+    "difficulty": 3
+  },
+  {
+    "id": "q9",
+    "type": "scenario",
+    "prompt": "Which API style fits best?",
+    "scenario": "A news site serves the same article JSON to millions of anonymous readers. Each article changes a few times a day. There is one client, the website.",
+    "options": [
+      {
+        "id": "a",
+        "text": "GraphQL, so it can evolve"
+      },
+      {
+        "id": "b",
+        "text": "REST with cacheable GETs behind a CDN"
+      },
+      {
+        "id": "c",
+        "text": "WebSockets"
+      },
+      {
+        "id": "d",
+        "text": "GraphQL subscriptions"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Public, read-heavy, cacheable content is exactly where HTTP caching shines and GraphQL's flexibility isn't needed. WebSockets and subscriptions are for pushed updates.",
+    "topicId": "when-not",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "Where does GraphQL most often sit in a larger system?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Inside the database"
+      },
+      {
+        "id": "b",
+        "text": "At the edge serving front-end clients, calling REST or gRPC services behind it"
+      },
+      {
+        "id": "c",
+        "text": "Between the load balancer and DNS"
+      },
+      {
+        "id": "d",
+        "text": "Inside each microservice's storage layer"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "GraphQL is commonly an aggregation layer for clients. The other placements don't make sense.",
+    "topicId": "when-not",
+    "difficulty": 2
+  }
+]

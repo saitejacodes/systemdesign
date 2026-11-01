@@ -1,0 +1,27 @@
+[
+  {
+    "id": "c1",
+    "text": "I can build an inverted index by hand and answer AND/OR queries.",
+    "topicId": "inverted-index"
+  },
+  {
+    "id": "c2",
+    "text": "I can explain tokenisation, stemming and fuzzy matching.",
+    "topicId": "analysis"
+  },
+  {
+    "id": "c3",
+    "text": "I can compute IDF and explain what BM25 adds.",
+    "topicId": "relevance"
+  },
+  {
+    "id": "c4",
+    "text": "I can describe how Elasticsearch shards, replicates and searches.",
+    "topicId": "elasticsearch"
+  },
+  {
+    "id": "c5",
+    "text": "I can design typeahead with a trie and precomputed top-k.",
+    "topicId": "typeahead"
+  }
+]

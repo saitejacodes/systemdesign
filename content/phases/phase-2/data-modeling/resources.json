@@ -1,0 +1,40 @@
+[
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapters 2 and 3 cover data models and how storage shapes them.",
+    "topicIds": [
+      "normalization",
+      "query-first"
+    ],
+    "free": false
+  },
+  {
+    "id": "pg-ddl",
+    "title": "PostgreSQL: Data Definition",
+    "author": "PostgreSQL Global Development Group",
+    "kind": "docs",
+    "url": "https://www.postgresql.org/docs/current/ddl.html",
+    "why": "Tables, constraints, keys and foreign keys in a real database.",
+    "topicIds": [
+      "entities",
+      "keys"
+    ],
+    "free": true
+  },
+  {
+    "id": "discord-trillions",
+    "title": "How Discord Stores Trillions of Messages",
+    "author": "Discord Engineering",
+    "kind": "blog",
+    "url": "https://discord.com/blog/how-discord-stores-trillions-of-messages",
+    "why": "Partitioning messages by channel and time bucket, and the hot partitions that followed.",
+    "topicIds": [
+      "wide-column"
+    ],
+    "free": true
+  }
+]

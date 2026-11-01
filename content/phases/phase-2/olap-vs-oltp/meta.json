@@ -1,0 +1,44 @@
+{
+  "id": "p2-olap-vs-oltp",
+  "phase": 2,
+  "slug": "olap-vs-oltp",
+  "title": "OLAP vs OLTP",
+  "order": 18,
+  "week": 6,
+  "estimatedMinutes": 50,
+  "topics": [
+    {
+      "id": "workloads",
+      "title": "OLTP vs OLAP",
+      "depth": "deep"
+    },
+    {
+      "id": "columnar",
+      "title": "Row vs column storage",
+      "depth": "deep"
+    },
+    {
+      "id": "pipelines",
+      "title": "Getting data from OLTP to OLAP",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "warehouse-lake",
+      "title": "Warehouse, lake and lakehouse",
+      "depth": "awareness"
+    },
+    {
+      "id": "time-series",
+      "title": "Time-series databases",
+      "depth": "awareness"
+    }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [
+    "typeahead"
+  ],
+  "prerequisites": [
+    "p2-indexing",
+    "p2-replication"
+  ]
+}

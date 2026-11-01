@@ -1,0 +1,324 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "What does an inverted index map?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Documents to their size"
+      },
+      {
+        "id": "b",
+        "text": "Each term to the list of documents containing it"
+      },
+      {
+        "id": "c",
+        "text": "Users to passwords"
+      },
+      {
+        "id": "d",
+        "text": "Shards to nodes"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Term → postings list.",
+    "topicId": "inverted-index",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "Why can't `WHERE title LIKE '%jacket%'` use a normal B-tree index?",
+    "options": [
+      {
+        "id": "a",
+        "text": "B-trees don't store text"
+      },
+      {
+        "id": "b",
+        "text": "A leading wildcard means there's no prefix to search the sorted order by"
+      },
+      {
+        "id": "c",
+        "text": "LIKE is deprecated"
+      },
+      {
+        "id": "d",
+        "text": "Indexes only work on numbers"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Without a known prefix the database must scan every row.",
+    "topicId": "inverted-index",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "Why must the same analyser run on queries and on documents?",
+    "options": [
+      {
+        "id": "a",
+        "text": "For speed"
+      },
+      {
+        "id": "b",
+        "text": "So query terms are normalised the same way as indexed terms and can match"
+      },
+      {
+        "id": "c",
+        "text": "It's required by HTTP"
+      },
+      {
+        "id": "d",
+        "text": "To compress the index"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "If documents are lowercased and stemmed but queries aren't, nothing matches.",
+    "topicId": "analysis",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "Which analysis feature is missing?",
+    "scenario": "Searching 'shoe' returns nothing, though hundreds of products are titled 'Running Shoes'. The index lowercases and splits on spaces only.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Stop words"
+      },
+      {
+        "id": "b",
+        "text": "Stemming (and possibly synonyms)"
+      },
+      {
+        "id": "c",
+        "text": "Sharding"
+      },
+      {
+        "id": "d",
+        "text": "Replication"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Stemming reduces 'shoes' to 'shoe' so both forms match.",
+    "topicId": "analysis",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "With 1,000,000 documents, what's the IDF (log base 10) of a term found in 1,000 of them?",
+    "options": [
+      {
+        "id": "a",
+        "text": "1"
+      },
+      {
+        "id": "b",
+        "text": "2"
+      },
+      {
+        "id": "c",
+        "text": "3"
+      },
+      {
+        "id": "d",
+        "text": "1,000"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "log₁₀(1,000,000 / 1,000) = log₁₀(1,000) = 3.",
+    "topicId": "relevance",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "single",
+    "prompt": "What does BM25 add on top of basic TF-IDF?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Vector embeddings"
+      },
+      {
+        "id": "b",
+        "text": "Term-frequency saturation and document-length normalisation"
+      },
+      {
+        "id": "c",
+        "text": "Spell checking"
+      },
+      {
+        "id": "d",
+        "text": "Sharding"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Repeated terms add diminishing credit, and long documents don't win just by being long.",
+    "topicId": "relevance",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "prompt": "Why, and what helps?",
+    "scenario": "Low-quality listings that repeat 'cheap phone case' 30 times in their description rank above popular, well-rated products in your search.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The index is corrupt"
+      },
+      {
+        "id": "b",
+        "text": "Raw term frequency rewards repetition; BM25's saturation limits it, and business signals like ratings and sales improve ranking"
+      },
+      {
+        "id": "c",
+        "text": "Too few shards"
+      },
+      {
+        "id": "d",
+        "text": "Typos"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Saturation stops stuffing from winning; real ranking blends BM25 with quality signals.",
+    "topicId": "relevance",
+    "difficulty": 3
+  },
+  {
+    "id": "q8",
+    "type": "single",
+    "prompt": "How does an Elasticsearch search reach all the data?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It reads the database"
+      },
+      {
+        "id": "b",
+        "text": "The coordinating node scatters the query to one copy of every shard and merges their top results"
+      },
+      {
+        "id": "c",
+        "text": "Only the primary shard of shard 0 is searched"
+      },
+      {
+        "id": "d",
+        "text": "It searches the client cache"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Scatter-gather across shards, then merge.",
+    "topicId": "elasticsearch",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "single",
+    "prompt": "Why is Elasticsearch called near-real-time?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It has a 1-hour delay"
+      },
+      {
+        "id": "b",
+        "text": "New documents become searchable after a periodic refresh, by default about once a second"
+      },
+      {
+        "id": "c",
+        "text": "It only searches yesterday's data"
+      },
+      {
+        "id": "d",
+        "text": "It uses GPS time"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Refresh makes recent writes visible.",
+    "topicId": "elasticsearch",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "scenario",
+    "prompt": "What design meets the latency target?",
+    "scenario": "A search box needs suggestions within 50 ms at 100,000 requests a second. Suggestions should reflect what people search for most.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Run a full BM25 search on every keystroke"
+      },
+      {
+        "id": "b",
+        "text": "Precompute the top-k completions for each prefix in a trie, rebuilt offline, served from memory on replicas, with client debouncing"
+      },
+      {
+        "id": "c",
+        "text": "Query the database with LIKE 'prefix%'"
+      },
+      {
+        "id": "d",
+        "text": "Send all queries to one server"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A memory lookup per keystroke fits the budget; full search per keystroke doesn't.",
+    "topicId": "typeahead",
+    "difficulty": 3
+  },
+  {
+    "id": "q11",
+    "type": "single",
+    "prompt": "Why store top-k completions at each trie node?",
+    "options": [
+      {
+        "id": "a",
+        "text": "To save disk"
+      },
+      {
+        "id": "b",
+        "text": "So a keystroke is a walk to the node plus returning its list, instead of exploring and ranking the whole subtree"
+      },
+      {
+        "id": "c",
+        "text": "Tries require it"
+      },
+      {
+        "id": "d",
+        "text": "To avoid caching"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Precomputation moves the ranking work offline.",
+    "topicId": "typeahead",
+    "difficulty": 2
+  }
+]

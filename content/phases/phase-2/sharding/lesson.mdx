@@ -1,0 +1,190 @@
+## Why it matters
+
+Replication copies all the data to every node, so it scales reads but not writes or storage: every replica still holds everything and applies every write. When one machine can no longer hold the data or absorb the writes, you have to **split** the data across machines. That's sharding, and it's how systems with billions of users store their tables. Instagram described in 2012 how it split its PostgreSQL data into thousands of logical shards mapped onto far fewer physical servers, so data could be moved later without re-splitting. YouTube built Vitess to shard MySQL, and it's now an open-source project. Sharding is also the step in a design that is hardest to undo, so interviewers watch closely how you choose a shard key.
+
+<Callout type="analogy" title="Splitting a giant phone book">
+A city's phone book gets too heavy to lift, so the printer splits it into volumes. Split A–F, G–M, N–S, T–Z and most people find their volume instantly, but "Smith" makes one volume enormous (a hot shard). Split by the last digit of the phone number and every volume is the same size, but now "everyone named Smith" means opening all ten books (a cross-shard query). When the city doubles, you have to reprint and redistribute (resharding). The whole art of sharding is choosing how to split the book.
+</Callout>
+
+## What sharding is, and when to do it
+
+<DepthStamp depth="deep" />
+
+<Term slug="sharding">Sharding</Term> (also called horizontal partitioning) splits one logical table into pieces, called **shards**, each stored on a different database node. Each row lives on exactly one shard (plus that shard's replicas), chosen by its **shard key**.
+
+```
+              router / app logic: shard = f(user_id)
+             ┌───────────┼───────────┬───────────┐
+          shard 0     shard 1     shard 2     shard 3
+        users 0..   users ..     users ..     users ..
+       (+replicas) (+replicas) (+replicas) (+replicas)
+```
+
+Sharding is powerful and expensive. Joins, transactions, unique constraints and schema changes that were easy on one node become hard across many. So the usual advice is **shard last**. Before sharding:
+
+1. **Optimise queries and indexes.** Many "we need to shard" moments are one missing index.
+2. **Scale up:** a single modern server with lots of RAM and fast SSDs handles a great deal.
+3. **Add read replicas and caching** to take reads off the leader.
+4. **Split by function:** move unrelated tables (analytics, logs, sessions) to their own databases.
+5. **Archive** cold data.
+
+Shard when the **write rate** or the **data size** genuinely exceeds what one leader can handle, with headroom for growth.
+
+### Worked example: how many shards?
+
+Assume (illustrative numbers for your own hardware) that one database leader comfortably handles **10,000 writes a second** and **2 TB** of data. The system expects:
+
+- **40,000 writes a second** at peak → at least 4 shards for writes.
+- **6 TB today, growing 3 TB a year** → 3 shards now, 6 within a year, for storage.
+
+The write load says 4 and storage says 6 within a year, so plan for 8 to leave room. Better still, create **256 logical shards** and place 32 on each of 8 servers. Growing to 16 servers then means moving whole logical shards, not re-splitting rows.
+
+## Range, hash and directory sharding
+
+<DepthStamp depth="deep" />
+
+### Range-based
+
+Each shard owns a contiguous range of keys: users A–F, G–M, and so on, or dates January–March.
+
+- **Range queries are efficient:** "all orders from last week" hits one or two shards.
+- **Hot spots are easy to create:** sharding by timestamp sends every new write to the newest shard. Sharding by name puts "S" on a crowded shard.
+
+Used by systems like HBase, Bigtable, and range-partitioned databases such as CockroachDB, which split ranges automatically as they grow.
+
+### Hash-based
+
+Apply a hash to the key and use it to pick a shard: `shard = hash(user_id) mod N`, or better, consistent hashing.
+
+- **Even spread:** similar keys land on different shards, so sequential IDs don't create hot spots.
+- **Range queries scatter:** "users who signed up last week" must ask every shard.
+- **`mod N` reshards badly:** changing N from 4 to 5 changes the shard for about 80% of keys. <Term slug="consistent-hashing">Consistent hashing</Term> moves only about 1/N (here, about 20%). The next section covers it in depth.
+
+### Directory-based
+
+A **lookup service** stores which shard holds each key (or each range, or each tenant).
+
+- **Most flexible:** move one big customer to its own shard by updating one directory row.
+- **The directory is critical infrastructure:** it must be fast (cached heavily) and highly available, or nothing can be found.
+
+Many real systems mix them: hash users to one of 4,096 logical shards (hash), and keep a small table mapping logical shards to physical servers (directory).
+
+<Callout type="analogy" title="Three ways to assign lockers">
+Range: lockers by surname, A–F in row 1. Easy to find a whole family; terrible when a coach of Smiths arrives. Hash: lockers by a scrambled number from your ticket, so everyone is spread evenly, but a family is scattered across the building. Directory: the front desk keeps a book of who's in which locker. Total flexibility, as long as the front desk is always staffed.
+</Callout>
+
+## Choosing a shard key
+
+<DepthStamp depth="deep" />
+
+The <Term slug="shard-key">shard key</Term> is the most important decision in sharding. A good one:
+
+- **Has high cardinality:** many distinct values, so data can spread across many shards. "Country" has about 200 values and one of them may hold a third of your users.
+- **Spreads load evenly:** no single value gets far more traffic than others.
+- **Matches your hottest queries:** if most queries say "for user X", shard by user ID, and those queries hit exactly one shard.
+- **Keeps related data together:** a user's orders, addresses and settings on the user's shard can be joined and updated in one local transaction.
+- **Never changes:** moving a row because its key changed is a cross-shard operation.
+
+Examples:
+
+| System | Good shard key | Why |
+|---|---|---|
+| Multi-tenant SaaS | `tenant_id` | Every query is per tenant; tenant data stays together |
+| Chat | `conversation_id` | Messages in one conversation are read together |
+| Social posts | `author_id` | "Posts by user X" hits one shard; timelines are built separately |
+| URL shortener | short code (hashed) | Every read is a single-key lookup |
+| Orders | `customer_id` | Customer order history is one shard; global reports run elsewhere |
+
+## Hot shards and the celebrity problem
+
+<DepthStamp depth="tradeoffs" />
+
+Even a well-hashed key can produce a <Term slug="hot-shard">hot shard</Term> when one **value** is far more popular than the rest. A celebrity with 100 million followers can generate more traffic to their shard than thousands of ordinary users combined: every follower reading their posts, liking them and commenting.
+
+Fixes, roughly from simplest:
+
+- **Cache the hot data** in front of the database. A celebrity's latest posts are read millions of times and rarely change.
+- **Add replicas for the hot shard** to spread its reads.
+- **Split the hot key:** append a suffix (`celebrity_42#0` … `celebrity_42#9`) so writes like likes or comments spread across 10 shards; reads gather all 10.
+- **Isolate big tenants:** move them to dedicated shards with a directory entry.
+
+Detect it first: per-shard metrics for QPS, CPU and size, and alerts when one shard runs far above the median.
+
+## Cross-shard queries and transactions
+
+<DepthStamp depth="tradeoffs" />
+
+Anything that doesn't include the shard key must ask **every shard**, a pattern called **scatter-gather**: send the query to all N, wait for all of them, and merge. Its latency is set by the **slowest** shard, and its load is multiplied by N. With 64 shards, one such query costs 64 queries.
+
+Options:
+
+- **Choose the key so hot queries don't scatter.**
+- **Secondary index tables** sharded by the other key: `orders_by_merchant`, maintained alongside `orders` sharded by customer.
+- **Copy data to an analytics store** for global reports and aggregates (see OLAP vs OLTP).
+
+Transactions across shards are harder still. Updating two shards atomically needs a protocol such as **two-phase commit** (2PC), where a coordinator asks every shard to prepare and then to commit. It is slow, and a coordinator failure can leave shards waiting. Most designs avoid it: keep each transaction inside one shard by choosing the key well, or use sagas (a sequence of local transactions with compensating actions, covered in Phase 4).
+
+## Resharding
+
+<DepthStamp depth="tradeoffs" />
+
+Eventually shards fill up. <Term slug="resharding">Resharding</Term> means moving data to a new layout while the system stays online. Common strategies:
+
+- **Logical shards from day one:** create many more logical shards than servers (for example 1,024), and move whole logical shards between servers. No row is re-hashed; only the mapping changes.
+- **Consistent hashing:** adding a node takes over a slice of the ring, moving roughly 1/N of keys.
+- **Split ranges:** in range sharding, split a big range in two and move one half.
+- **Double-write and backfill:** write to old and new locations, copy existing data in the background, verify, switch reads, then stop writing to the old one.
+
+Every strategy needs the same safety steps: copy, catch up on changes made during the copy, verify, then cut over, with a way to roll back.
+
+<TradeoffBox title="Sharding tradeoffs" items={[
+  { gain: "Writes and storage scale with the number of shards", cost: "Joins, unique constraints and transactions across shards become hard" },
+  { gain: "Hash sharding spreads load evenly", cost: "Range queries must scatter to every shard" },
+  { gain: "Range sharding keeps range queries local", cost: "Sequential keys create a hot newest shard" },
+  { gain: "Directories allow moving any key anywhere", cost: "The directory must be fast and highly available" }
+]} />
+
+<NotWhenBox title="Sharding" items={[
+  "Before indexing, caching, read replicas and vertical scaling have been tried.",
+  "When the shard key would be low-cardinality (country, status) or change over time.",
+  "When the main workload needs ad-hoc joins across all data: use an analytics store for those."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Sharding and replication are the same thing." right="Replication copies all data to every node (scales reads, adds availability). Sharding splits data across nodes (scales writes and storage). Real systems do both: each shard is replicated." />
+
+<Misconception wrong="hash(key) mod N is fine for sharding." right="It spreads load evenly, but changing N moves most keys. Use logical shards or consistent hashing." />
+
+<Misconception wrong="A good hash function prevents hot shards." right="It spreads keys evenly, not traffic. One very popular key still overloads its shard." />
+
+## Interview angle
+
+<InterviewAngle title="Sharding" questions={[
+  "When would you shard, and what would you try first?",
+  "What is your shard key, and why?",
+  "How do you handle a celebrity user?",
+  "How do you add shards without downtime?"
+]}>
+Say "shard last" and list what you'd do first. Then estimate how many shards the numbers need, pick a shard key and justify it against your top queries, and name the queries that will scatter. Mention logical shards for resharding, caching or key-splitting for hot keys, and keeping transactions within a shard. Draw replicas inside each shard.
+</InterviewAngle>
+
+## Practice
+
+1. A system needs 120,000 writes a second and 30 TB, growing 10 TB a year. With the per-server limits from the worked example, how many shards today and in two years?
+2. Pick a shard key for an e-commerce platform with customers, merchants and orders. List one query that scatters and how you'd serve it.
+3. With 4 shards using `mod N`, about how many of 1 million keys move when you go to 5? With consistent hashing?
+
+## Try it
+
+Add a fifth node and compare how many keys move with consistent hashing against `key % N`.
+
+<Simulator id="consistent-hashing" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

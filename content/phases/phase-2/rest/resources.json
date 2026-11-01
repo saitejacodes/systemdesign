@@ -1,0 +1,54 @@
+[
+  {
+    "id": "fielding-rest",
+    "title": "Architectural Styles and the Design of Network-based Software Architectures (Chapter 5: REST)",
+    "author": "Roy Fielding",
+    "kind": "paper",
+    "url": "https://ics.uci.edu/~fielding/pubs/dissertation/top.htm",
+    "why": "The original definition of REST, including the constraints most APIs only partly follow.",
+    "topicIds": [
+      "resources",
+      "hateoas"
+    ],
+    "free": true
+  },
+  {
+    "id": "rfc9110",
+    "title": "RFC 9110: HTTP Semantics",
+    "author": "IETF",
+    "kind": "docs",
+    "url": "https://www.rfc-editor.org/rfc/rfc9110",
+    "why": "The authoritative definitions of methods, safety, idempotency and status codes.",
+    "topicIds": [
+      "verbs",
+      "status-codes"
+    ],
+    "free": true
+  },
+  {
+    "id": "stripe-pagination",
+    "title": "Stripe API reference: Pagination",
+    "author": "Stripe",
+    "kind": "docs",
+    "url": "https://docs.stripe.com/api/pagination",
+    "why": "A widely copied public example of cursor-style pagination with starting_after and ending_before.",
+    "topicIds": [
+      "pagination"
+    ],
+    "free": true
+  },
+  {
+    "id": "ms-api-guidelines",
+    "title": "Microsoft REST API Guidelines",
+    "author": "Microsoft",
+    "kind": "repo",
+    "url": "https://github.com/microsoft/api-guidelines",
+    "why": "Detailed, practical rules for URIs, errors, pagination and versioning from a large API program.",
+    "topicIds": [
+      "resources",
+      "versioning",
+      "filtering"
+    ],
+    "free": true
+  }
+]

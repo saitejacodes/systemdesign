@@ -1,0 +1,43 @@
+{
+  "id": "p2-connection-pooling",
+  "phase": 2,
+  "slug": "connection-pooling",
+  "title": "Connection pooling",
+  "order": 15,
+  "week": 5,
+  "estimatedMinutes": 40,
+  "topics": [
+    {
+      "id": "cost",
+      "title": "What a connection costs",
+      "depth": "deep"
+    },
+    {
+      "id": "pools",
+      "title": "Connection pools",
+      "depth": "deep"
+    },
+    {
+      "id": "exhaustion",
+      "title": "Why databases run out of connections",
+      "depth": "deep"
+    },
+    {
+      "id": "sizing",
+      "title": "Sizing a pool",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "poolers",
+      "title": "Poolers like PgBouncer",
+      "depth": "awareness"
+    }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [
+    "url-shortener"
+  ],
+  "prerequisites": [
+    "p2-replication"
+  ]
+}
