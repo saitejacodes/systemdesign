@@ -55,3 +55,8 @@
 - The Web Worker path is not built yet. shortcut: every model ticks on the main thread; add a worker runner when a model opts in with `worker: true` and can't hold 60 fps.
 - Registry entries list `challengeIds` statically so progress can use them without loading the module. registry.test.ts checks they match the module.
 - Uppercase mono labels wrap Greek letters in `.greek` (no text-transform), so μ never renders as M.
+
+## Prompt 06
+- Seven Phase 1 sections (DNS through realtime) were drafted in Antigravity, then rewritten and fact-checked here. Unverifiable company stats were replaced or removed rather than kept.
+- Analogies use a new `analogy` Callout type instead of a separate component, so they share the box styling and the MDX stays simple.
+- Lessons that embed simulators not built yet (Prompt 07) keep the `<Simulator id>` tag; the embed falls back to the plain simulator card until the registry has the id.

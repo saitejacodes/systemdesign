@@ -1,0 +1,92 @@
+[
+  {
+    "id": "f1",
+    "front": "Reverse proxy vs forward proxy?",
+    "back": "Reverse sits in front of servers (hides servers from clients). Forward sits in front of clients (hides clients from servers).",
+    "topicId": "reverse-vs-forward"
+  },
+  {
+    "id": "f2",
+    "front": "Five common roles of a reverse proxy?",
+    "back": "TLS termination, load balancing, caching, compression, and static file serving. Also: rate limiting, request routing, response buffering.",
+    "topicId": "proxy-roles"
+  },
+  {
+    "id": "f3",
+    "front": "Reverse proxy vs load balancer?",
+    "back": "A load balancer distributes traffic. A reverse proxy may also load-balance, but adds TLS termination, caching, compression, buffering and routing. Many tools do both.",
+    "topicId": "proxy-roles"
+  },
+  {
+    "id": "f4",
+    "front": "What is TLS offload?",
+    "back": "Terminating TLS at the reverse proxy. Traffic to backends is plain HTTP. Centralises cert management and frees app server CPU.",
+    "topicId": "proxy-tls-compression"
+  },
+  {
+    "id": "f5",
+    "front": "Response buffering?",
+    "back": "The proxy reads the backend's response quickly, frees the backend connection, then streams to the (possibly slow) client. Backend handles more concurrent requests.",
+    "topicId": "proxy-tls-compression"
+  },
+  {
+    "id": "f6",
+    "front": "gzip vs Brotli compression?",
+    "back": "Both compress text (HTML, CSS, JS, JSON). Brotli achieves better ratios but is slower at high levels. Most proxies use moderate Brotli (level 4–6).",
+    "topicId": "proxy-tls-compression"
+  },
+  {
+    "id": "f7",
+    "front": "What is Nginx?",
+    "back": "A widely-used open-source reverse proxy and web server. Efficient at static file serving, TLS termination, compression and load balancing.",
+    "topicId": "proxy-roles"
+  },
+  {
+    "id": "f8",
+    "front": "What is Envoy?",
+    "back": "A modern reverse proxy (CNCF project, created at Lyft). Designed for microservices: supports HTTP/2, gRPC, retries, circuit breaking, tracing, and integrates with service meshes.",
+    "topicId": "proxy-roles"
+  },
+  {
+    "id": "f9",
+    "front": "What is a sidecar proxy?",
+    "back": "A small proxy deployed alongside each service instance. Handles mTLS, retries, circuit breaking and tracing without application code changes.",
+    "topicId": "sidecar-proxy"
+  },
+  {
+    "id": "f10",
+    "front": "What is a service mesh?",
+    "back": "A control plane (Istio, Linkerd) managing sidecar proxies across all services. Provides uniform security, observability and traffic control.",
+    "topicId": "sidecar-proxy"
+  },
+  {
+    "id": "f11",
+    "front": "When is a service mesh worth it?",
+    "back": "Large microservice deployments (dozens+ services, multiple teams). Too much complexity for small setups.",
+    "topicId": "sidecar-proxy"
+  },
+  {
+    "id": "f12",
+    "front": "What is an ingress controller?",
+    "back": "A reverse proxy that manages external access to services in a Kubernetes cluster, handling TLS, routing, and virtual hosting.",
+    "topicId": "proxy-roles"
+  },
+  {
+    "id": "f13",
+    "front": "Without a buffering proxy, how long does a 200 KB response hold a worker for a 50 KB/s client?",
+    "back": "About 4 s, even though the real work took 20 ms. With buffering the worker is free in ~20 ms.",
+    "topicId": "proxy-tls-compression"
+  },
+  {
+    "id": "f14",
+    "front": "What is a Slowloris attack?",
+    "back": "Opening many connections and trickling data very slowly to tie up every server worker; a buffering, event-driven proxy absorbs it.",
+    "topicId": "proxy-tls-compression"
+  },
+  {
+    "id": "f15",
+    "front": "When must you turn proxy buffering off?",
+    "back": "For streaming responses: server-sent events, long polling, large downloads, streamed LLM tokens.",
+    "topicId": "proxy-tls-compression"
+  }
+]

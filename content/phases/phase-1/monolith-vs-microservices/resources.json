@@ -1,0 +1,5 @@
+[
+  { "id": "fowler-microservices", "title": "Microservices", "author": "James Lewis and Martin Fowler", "kind": "blog", "url": "https://martinfowler.com/articles/microservices.html", "why": "The article that defined the term: business-capability services, decentralised data and the costs that come with them.", "topicIds": ["microservice-benefits", "microservice-costs"], "free": true },
+  { "id": "fowler-monolith-first", "title": "MonolithFirst", "author": "Martin Fowler", "kind": "blog", "url": "https://martinfowler.com/bliki/MonolithFirst.html", "why": "Short argument for starting with a monolith and splitting once boundaries are understood.", "topicIds": ["when-not-microservices", "modular-monolith"], "free": true },
+  { "id": "fowler-conways-law", "title": "Conway's Law", "author": "Martin Fowler", "kind": "blog", "url": "https://martinfowler.com/bliki/ConwaysLaw.html", "why": "Explains Conway's law and the inverse Conway manoeuvre with practical examples.", "topicIds": ["conways-law"], "free": true }
+]

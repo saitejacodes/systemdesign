@@ -1,0 +1,6 @@
+[
+  { "id": "cloudflare-tls", "title": "What is TLS (Transport Layer Security)?", "author": "Cloudflare Learning Center", "kind": "docs", "url": "https://www.cloudflare.com/learning/ssl/transport-layer-security-tls/", "why": "Clear explanation of TLS handshake, certificates and the difference between TLS and SSL.", "topicIds": ["tls-provides", "tls-handshake"], "free": true },
+  { "id": "tls13-rfc", "title": "RFC 8446: The Transport Layer Security (TLS) Protocol Version 1.3", "author": "IETF", "kind": "docs", "url": "https://datatracker.ietf.org/doc/html/rfc8446", "why": "The TLS 1.3 specification. Sections 1–2 give a readable overview of the protocol goals and handshake.", "topicIds": ["tls-handshake"], "free": true },
+  { "id": "letsencrypt", "title": "How It Works", "author": "Let's Encrypt", "kind": "docs", "url": "https://letsencrypt.org/how-it-works/", "why": "Explains the ACME protocol and automated certificate issuance that made free TLS certificates standard.", "topicIds": ["tls-certificates"], "free": true }
+]
+

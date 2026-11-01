@@ -1,0 +1,19 @@
+{
+  "id": "p1-dns",
+  "phase": 1,
+  "slug": "dns",
+  "title": "DNS: the internet's phone book",
+  "order": 6,
+  "week": 2,
+  "estimatedMinutes": 45,
+  "topics": [
+    { "id": "dns-resolution", "title": "DNS resolution chain", "depth": "deep" },
+    { "id": "dns-records", "title": "Record types", "depth": "deep" },
+    { "id": "dns-ttl", "title": "TTL tradeoffs", "depth": "tradeoffs" },
+    { "id": "dns-load-balancing", "title": "DNS-based load balancing and GeoDNS", "depth": "tradeoffs" },
+    { "id": "dns-anycast", "title": "Anycast", "depth": "awareness" }
+  ],
+  "simulatorIds": ["request-journey"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-client-server"]
+}

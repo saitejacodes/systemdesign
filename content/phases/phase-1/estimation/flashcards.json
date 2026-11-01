@@ -1,0 +1,17 @@
+[
+  { "id": "f1", "front": "Seconds per day (estimation)?", "back": "86,400 ≈ 10⁵.", "topicId": "estimation-method" },
+  { "id": "f2", "front": "The five estimation steps?", "back": "State assumptions → load (avg and peak QPS, reads vs writes) → storage → bandwidth → sanity check and decide.", "topicId": "estimation-method" },
+  { "id": "f3", "front": "1 million requests/day ≈ ? QPS", "back": "About 12 (≈10 for quick math).", "topicId": "qps-math" },
+  { "id": "f4", "front": "Average QPS formula?", "back": "DAU × actions per user per day ÷ 10⁵.", "topicId": "qps-math" },
+  { "id": "f5", "front": "Typical peak factor range?", "back": "2–10× average: low for global services spread across time zones, high for one region or event spikes.", "topicId": "qps-math" },
+  { "id": "f6", "front": "Why does the read:write ratio matter?", "back": "Read-heavy systems lean on caches and replicas; write-heavy systems need write-optimised storage and partitioning.", "topicId": "qps-math" },
+  { "id": "f7", "front": "Storage per year formula?", "back": "New objects/day × size × 365 × replication factor (plus index/metadata overhead).", "topicId": "storage-bandwidth" },
+  { "id": "f8", "front": "Ingress vs egress?", "back": "Ingress is data coming in (uploads, writes); egress is data going out (reads, downloads). Egress usually dominates and costs money.", "topicId": "storage-bandwidth" },
+  { "id": "f9", "front": "Main memory reference vs SSD random 4 KB read?", "back": "~100 ns vs ~100–150 µs: about 1,000×.", "topicId": "latency-numbers" },
+  { "id": "f10", "front": "Round trip in one data centre vs across continents?", "back": "~0.5 ms vs ~150 ms (California → Europe → California).", "topicId": "latency-numbers" },
+  { "id": "f11", "front": "99.9% availability = downtime per year/month?", "back": "~8.8 hours per year, ~43 minutes per month.", "topicId": "availability-nines" },
+  { "id": "f12", "front": "99.99% availability = downtime per year?", "back": "~53 minutes per year (~4.3 minutes per month).", "topicId": "availability-nines" },
+  { "id": "f13", "front": "Availability of dependencies in series?", "back": "Multiply them: two 99.9% hard dependencies ≈ 99.8%.", "topicId": "availability-nines" },
+  { "id": "f14", "front": "Availability of redundant copies in parallel?", "back": "Multiply the failure rates: two independent 99.9% copies fail together 0.001² of the time (best case; real failures correlate).", "topicId": "availability-nines" },
+  { "id": "f15", "front": "1 KB × 1 billion = ?", "back": "1 TB.", "topicId": "storage-bandwidth" }
+]

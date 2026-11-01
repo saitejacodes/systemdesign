@@ -1,0 +1,19 @@
+{
+  "id": "p1-load-balancers",
+  "phase": 1,
+  "slug": "load-balancers",
+  "title": "Load balancers",
+  "order": 10,
+  "week": 2,
+  "estimatedMinutes": 55,
+  "topics": [
+    { "id": "lb-l4-l7", "title": "L4 vs L7 load balancing", "depth": "deep" },
+    { "id": "lb-algorithms", "title": "Load-balancing algorithms", "depth": "deep" },
+    { "id": "lb-health-checks", "title": "Health checks", "depth": "deep" },
+    { "id": "lb-sticky-sessions", "title": "Sticky sessions", "depth": "tradeoffs" },
+    { "id": "lb-redundancy", "title": "LB as SPOF and redundancy", "depth": "deep" }
+  ],
+  "simulatorIds": ["load-balancer", "consistent-hashing"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-tls"]
+}

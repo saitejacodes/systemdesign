@@ -1,0 +1,6 @@
+[
+  { "id": "mdn-websockets", "title": "The WebSocket API", "author": "MDN Web Docs", "kind": "docs", "url": "https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API", "why": "Authoritative reference for the browser WebSocket API, with code examples for connecting, sending and receiving messages.", "topicIds": ["websockets"], "free": true },
+  { "id": "mdn-sse", "title": "Using server-sent events", "author": "MDN Web Docs", "kind": "docs", "url": "https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events", "why": "How to use the EventSource API for server-sent events, including reconnection and event IDs.", "topicIds": ["sse"], "free": true },
+  { "id": "websocket-rfc", "title": "RFC 6455: The WebSocket Protocol", "author": "IETF", "kind": "docs", "url": "https://datatracker.ietf.org/doc/html/rfc6455", "why": "The WebSocket protocol specification. Sections 1 and 4 (handshake) are the most useful for understanding how WebSockets work.", "topicIds": ["websockets"], "free": true }
+]
+

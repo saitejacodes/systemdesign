@@ -1,0 +1,19 @@
+{
+  "id": "p1-estimation",
+  "phase": 1,
+  "slug": "estimation",
+  "title": "Back-of-envelope estimation",
+  "order": 4,
+  "week": 1,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "estimation-method", "title": "A repeatable estimation method", "depth": "deep" },
+    { "id": "qps-math", "title": "From users to requests per second", "depth": "deep" },
+    { "id": "storage-bandwidth", "title": "Storage per year and bandwidth", "depth": "deep" },
+    { "id": "latency-numbers", "title": "Latency numbers to know", "depth": "tradeoffs" },
+    { "id": "availability-nines", "title": "Availability and the nines", "depth": "deep" }
+  ],
+  "simulatorIds": ["estimation-calculator"],
+  "practiceCaseStudyIds": ["url-shortener"],
+  "prerequisites": ["p1-scaling"]
+}

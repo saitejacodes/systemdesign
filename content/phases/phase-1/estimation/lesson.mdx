@@ -1,0 +1,210 @@
+## Why it matters
+
+Before Google built anything big, Jeff Dean was known for asking engineers to estimate a design's cost with simple arithmetic first, and the list of "latency numbers every programmer should know" that circulated from his talks (and from Peter Norvig's essay) is still how many engineers reason about speed. Estimation is not about getting the exact number. It is about knowing whether you need 3 servers or 3,000, whether data fits in memory or needs a cluster, and whether a design is off by a factor of 10 before you build it. In an interview, a two-minute estimate decides which parts of the design deserve attention. This section is the home of that skill; the full interview framework comes in Phase 7.
+
+## A repeatable estimation method
+
+<DepthStamp depth="deep" />
+
+<Term slug="back-of-envelope">Back-of-envelope estimation</Term> means getting an answer within a factor of a few using round numbers. Use the same five steps every time:
+
+1. **State assumptions out loud.** Users, actions per user per day, object sizes, read:write ratio, peak factor. Write them down. Wrong assumptions are fine; hidden ones are not.
+2. **Compute load.** Daily actions → average requests per second → peak requests per second, separately for reads and writes.
+3. **Compute storage.** New data per day × retention (usually per year) × replication factor.
+4. **Compute bandwidth.** Requests per second × bytes per request, in and out.
+5. **Sanity-check and decide.** Compare with what one machine can do. Is it 1 server or 1,000? Does it fit in RAM? What is the bottleneck?
+
+Round aggressively. Use powers of ten. Keep units next to every number. The goal is the order of magnitude.
+
+<Callout type="analogy" title="Estimating the wedding">
+Planning a wedding, nobody counts grains of rice. You say: about 150 guests, about 3 drinks each, so about 450 drinks, round up to 500. Back-of-envelope estimation is the same: a few honest guesses, multiplied out, rounded to friendly numbers, and good enough to tell a pub from a stadium.
+</Callout>
+
+### Handy conversions
+
+| Quantity | Rounded value |
+|---|---|
+| Seconds per day | 86,400 ≈ **10⁵** |
+| Seconds per month | ≈ 2.5 × 10⁶ |
+| Seconds per year | ≈ 3 × 10⁷ |
+| 1 million requests/day | ≈ **12 requests/s** (10⁶ / 10⁵ ≈ 10) |
+| 1 billion requests/day | ≈ **12,000 requests/s** |
+| 1 KB × 1 billion | 1 TB |
+| 1 MB × 1 million | 1 TB |
+
+## From users to requests per second
+
+<DepthStamp depth="deep" />
+
+Start from <Term slug="dau">daily active users (DAU)</Term> and actions per user:
+
+**Average QPS = DAU × actions per user per day ÷ 10⁵**
+
+Then apply a <Term slug="peak-factor">peak factor</Term>. Traffic is never flat: it follows time zones, evenings and events. A peak of **2–10×** the average is a sensible range. Use 2–3× for a global service spread across time zones, 5–10× for a regional app with a sharp evening peak or for event-driven spikes (a sports final, a product launch). Say which you picked and why.
+
+Split reads and writes. A social feed might be 100 reads per write; a logging pipeline might be almost all writes. The <Term slug="read-write-ratio">read:write ratio</Term> tells you where to spend effort: read-heavy systems lean on caches and replicas; write-heavy systems need write-optimised storage and partitioning.
+
+Example: 10 million DAU, each making 20 requests a day.
+
+- 10⁷ × 20 = 2 × 10⁸ requests/day
+- 2 × 10⁸ / 10⁵ = **2,000 QPS average**
+- Peak factor 3× → **6,000 QPS peak**
+- If 90% are reads: 5,400 read QPS and 600 write QPS at peak
+
+<Callout type="analogy" title="Turnstile maths">
+Daily users are the number of people who visit a stadium in a day; QPS is how many pass through the turnstiles each second. Spread evenly over the day the turnstiles are almost idle, but everyone arrives in the hour before kick-off. That rush is your peak factor, and you size the turnstiles for the rush, not the average.
+</Callout>
+
+## Storage per year and bandwidth
+
+<DepthStamp depth="deep" />
+
+**Storage per year = new objects per day × size per object × 365 × replication factor**
+
+Count every copy. Databases are commonly kept as 3 copies (a leader and replicas, or a 3-way replicated store); object stores replicate internally too, but you pay for what you store. Add indexes and metadata (often 20–50% on top of raw rows) and a margin for growth.
+
+**Bandwidth = QPS × bytes per request**, computed separately for **ingress** (data coming in: uploads, writes) and **egress** (data going out: reads, downloads). Egress usually dominates and usually costs money, which is why media-heavy systems put a CDN in front.
+
+Example: 1 million photo uploads a day at 2 MB each.
+
+- Storage: 10⁶ × 2 MB = 2 TB/day → 2 TB × 365 ≈ **730 TB/year** for originals, before thumbnails or replication.
+- Ingress: 10⁶ / 10⁵ = 10 uploads/s × 2 MB = **20 MB/s** average.
+
+<Callout type="analogy" title="Filling the warehouse">
+Storage is a warehouse that never stops receiving boxes: boxes per day × box size × 365 tells you how fast it fills, and replicas mean you are renting three warehouses. Bandwidth is the width of the loading dock: how many boxes per second can get in and out.
+</Callout>
+
+## Latency numbers to know
+
+<DepthStamp depth="tradeoffs" />
+
+These figures are rounded and hardware keeps changing, so memorise the **ratios**, not the digits. They come from the widely shared list associated with Jeff Dean and Peter Norvig, updated loosely for modern SSDs.
+
+| Operation | Approx. time |
+|---|---|
+| L1 cache reference | 1 ns |
+| Main memory reference | 100 ns |
+| Compress 1 KB (fast compressor) | ~3 µs |
+| Read 4 KB randomly from an SSD | ~100–150 µs |
+| Round trip within one data centre | ~500 µs |
+| Read 1 MB sequentially from memory | ~250 µs |
+| Read 1 MB sequentially from an SSD | ~1 ms |
+| Spinning disk seek | ~10 ms |
+| Read 1 MB sequentially from a spinning disk | ~20 ms |
+| Round trip California → Europe → California | ~150 ms |
+
+What to take away:
+
+- **Memory is about 1,000× faster than an SSD random read** for small reads. That is why caches exist.
+- **A network round trip inside a data centre (~0.5 ms) is cheap compared to a cross-continent one (~150 ms).** Users far from your servers pay the speed of light on every round trip; that is why CDNs and regional deployments exist.
+- **Sequential beats random**, especially on disks. Log-structured storage and batch writes are built around this.
+
+## Availability and the nines
+
+<DepthStamp depth="deep" />
+
+<Term slug="availability">Availability</Term> is the fraction of time a service works. It is usually expressed in "nines":
+
+| Availability | Downtime per year | Downtime per month (30 days) |
+|---|---|---|
+| 99% ("two nines") | ~3.65 days | ~7.2 hours |
+| 99.9% ("three nines") | ~8.8 hours | ~43 minutes |
+| 99.95% | ~4.4 hours | ~22 minutes |
+| 99.99% ("four nines") | ~53 minutes | ~4.3 minutes |
+| 99.999% ("five nines") | ~5.3 minutes | ~26 seconds |
+
+Two rules make availability math useful:
+
+- **In series, multiply.** If a request needs service A (99.9%) **and** service B (99.9%), the chance both are up is 0.999 × 0.999 ≈ 99.8%. Every hard dependency lowers your availability.
+- **In parallel, failures multiply.** If you have two independent replicas and either one can serve, the chance both are down is 0.001 × 0.001 = 0.000001, so availability ≈ 99.9999%. Redundancy is how you buy nines. (Real failures are often correlated, such as a shared network or a bad deploy, so treat this as a best case.)
+
+Each extra nine costs a lot more engineering: automated failover, multiple zones or regions, careful deploys. Pick the target the product actually needs.
+
+<Callout type="analogy" title="The shop that is always open">
+99% sounds great until you realise it means the shop is shut for about three and a half days a year. Each extra nine cuts the closed time by ten times: 99.9% is under nine hours a year, 99.99% under an hour. Every nine is roughly ten times harder to earn.
+</Callout>
+
+## Worked example 1: a Twitter-like timeline
+
+**Assumptions.** 200 million DAU. Each user opens their timeline 10 times a day and posts 0.5 times a day. A post is about 300 bytes of text plus metadata, call it **1 KB** stored. 10% of posts include an image of about **500 KB**. Peak factor **3×**.
+
+**Writes.** 2 × 10⁸ × 0.5 = 10⁸ posts/day → 10⁸ / 10⁵ = **1,000 posts/s average**, **3,000/s peak**.
+
+**Reads.** 2 × 10⁸ × 10 = 2 × 10⁹ timeline loads/day → **20,000/s average**, **60,000/s peak**. Read:write is 20:1 by request, and each timeline load returns about 20 posts, so it is far more by data.
+
+**Storage.** Text: 10⁸ × 1 KB = 100 GB/day → **~36 TB/year**, ~110 TB with 3 copies. Images: 10⁷ × 500 KB = 5 TB/day → **~1.8 PB/year**, which belongs in object storage, not the database.
+
+**Egress.** 20,000 timeline loads/s × 20 posts × 1 KB = **400 MB/s** of post data on average, before images. Images go through a CDN.
+
+**What this tells you.** 60,000 reads/s at peak means timelines must come from a cache or precomputed feeds, not fresh database queries each time. Writes (3,000/s) are moderate. Media storage dwarfs text storage. Those three facts drive the design.
+
+## Worked example 2: image hosting
+
+**Assumptions.** 10 million uploads/day, 2 MB average original. Each image is viewed 100 times on average, mostly as a 200 KB resized version. Peak factor **5×**.
+
+**Uploads.** 10⁷ / 10⁵ = **100 uploads/s average**, **500/s peak**. Ingress: 100 × 2 MB = **200 MB/s** average, **1 GB/s** peak.
+
+**Views.** 10⁹ views/day → **10,000 views/s average**, **50,000/s peak**. Egress at 200 KB each: 10,000 × 200 KB = **2 GB/s** average, **10 GB/s** at peak.
+
+**Storage.** 10⁷ × 2 MB = 20 TB/day → **~7.3 PB/year** of originals, plus resized copies (say +20%).
+
+**What this tells you.** 10 GB/s of egress is a CDN problem, not a server problem: the origin should serve only cache misses. Petabytes per year means object storage with lifecycle rules (move old originals to cheaper tiers). The upload path needs direct-to-storage uploads (presigned URLs, Phase 2) so app servers are not shovelling 1 GB/s.
+
+## Worked example 3: chat
+
+**Assumptions.** 50 million DAU, each sends 40 messages/day. A message is about 100 bytes of text, about **200 bytes** stored with metadata. At peak, 20% of DAU are connected at once. Peak factor **5×**.
+
+**Messages.** 50 × 10⁶ × 40 = 2 × 10⁹ messages/day → **20,000/s average**, **100,000/s peak**.
+
+**Storage.** 2 × 10⁹ × 200 B = 400 GB/day → **~146 TB/year**, ~440 TB with 3 copies.
+
+**Connections.** 20% of 50 million = **10 million concurrent connections** at peak. If one server holds about 50,000 persistent connections comfortably, that is 200 connection servers, before redundancy.
+
+**What this tells you.** The hard part is not message storage (large but straightforward) but holding 10 million open connections and routing each message to the right server. That points straight at the realtime section later in this phase.
+
+<TradeoffBox title="Estimating fast vs estimating precisely" items={[
+  { gain: "Round numbers (10⁵ s/day) keep the math in your head", cost: "Answers can be off by 10–20%, which is fine for design choices" },
+  { gain: "A peak factor captures real traffic shape", cost: "The factor is a guess; say why you chose it" },
+  { gain: "Order-of-magnitude answers show the bottleneck quickly", cost: "They are not a capacity plan; production sizing needs load tests" }
+]} />
+
+<NotWhenBox title="Leaning on a back-of-envelope estimate" items={[
+  "Committing to a hardware purchase or a cloud contract: load test and measure first.",
+  "Tuning a system that already runs: use real metrics, not assumptions.",
+  "When one assumption dominates and you do not know it within 10×: find the real number first."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Estimation should be precise." right="It should be quick and right to within a factor of a few. Spending ten minutes on exact arithmetic in an interview is a mistake." />
+
+<Misconception wrong="Average QPS is what you design for." right="You design for peak, and the peak can be several times the average. Size for peak and keep headroom." />
+
+<Misconception wrong="Adding a dependency doesn't affect availability if it is reliable." right="Availabilities multiply in series. Ten 99.9% hard dependencies give at best about 99%, roughly 3.6 days of downtime a year." />
+
+## Interview angle
+
+<InterviewAngle title="Estimation" questions={[
+  "How many requests per second will this system handle at peak? Walk me through it.",
+  "How much storage will we need in five years?",
+  "Will the working set fit in memory?",
+  "What availability can this design achieve given its dependencies?"
+]}>
+Interviewers want to see the method more than the number: assumptions stated, units kept, rounded math, and a conclusion that changes the design ("60,000 reads/s means we must serve timelines from a cache"). Keep it to two or three minutes unless they ask for more.
+</InterviewAngle>
+
+## Try it
+
+<Simulator id="estimation-calculator" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+Estimate a URL shortener before you read its case study: 100 million new short links a month, 100 reads per write, 500 bytes per record, 5 years of retention. Compute write QPS, read QPS at a 5× peak, and total storage with 3 copies.

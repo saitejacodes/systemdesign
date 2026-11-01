@@ -1,0 +1,7 @@
+[
+  { "id": "c1", "text": "I can explain vertical vs horizontal scaling and when each is the better first move.", "topicId": "vertical-horizontal" },
+  { "id": "c2", "text": "I can list the limits of vertical scaling, including why one big machine is a SPOF.", "topicId": "vertical-limits" },
+  { "id": "c3", "text": "I can size an app tier from peak RPS and per-server capacity, with redundancy.", "topicId": "stateless-tier" },
+  { "id": "c4", "text": "I can order the data-tier scaling steps and explain why writes make it hard.", "topicId": "data-tier" },
+  { "id": "c5", "text": "I can describe an autoscaling policy and explain why it needs headroom.", "topicId": "autoscaling" }
+]

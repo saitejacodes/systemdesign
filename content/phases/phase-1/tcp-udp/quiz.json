@@ -1,0 +1,63 @@
+[
+  { "id": "q1", "type": "single", "prompt": "What is the purpose of the TCP three-way handshake?", "options": [
+    { "id": "a", "text": "To encrypt the connection" },
+    { "id": "b", "text": "To synchronise sequence numbers and establish a connection before data transfer" },
+    { "id": "c", "text": "To discover the server's IP address" },
+    { "id": "d", "text": "To negotiate which port to use" }
+  ], "correct": ["b"], "explanation": "The handshake (SYN, SYN-ACK, ACK) lets both sides agree on initial sequence numbers and confirm the connection is open. (a) Encryption is TLS, a separate layer on top of TCP. (c) IP addresses are resolved by DNS, not TCP. (d) The client picks a source port and connects to a known destination port; no negotiation happens in the handshake.", "topicId": "tcp-handshake", "difficulty": 1 },
+  { "id": "q2", "type": "single", "prompt": "How many round trips does the TCP handshake add before application data can flow?", "options": [
+    { "id": "a", "text": "Zero" },
+    { "id": "b", "text": "One" },
+    { "id": "c", "text": "Two" },
+    { "id": "d", "text": "Three" }
+  ], "correct": ["b"], "explanation": "SYN → SYN-ACK is one round trip. The client can send data with the third ACK, so the handshake costs one RTT. (a) Zero would mean no handshake. (c) and (d) overcount; the three segments travel in one round trip plus one one-way leg.", "topicId": "tcp-handshake", "difficulty": 1 },
+  { "id": "q3", "type": "single", "prompt": "TCP guarantees that bytes arrive in order. What happens when a segment arrives out of order?", "options": [
+    { "id": "a", "text": "TCP delivers it immediately and lets the application reorder" },
+    { "id": "b", "text": "TCP drops it and waits for a retransmission" },
+    { "id": "c", "text": "TCP buffers it and waits for the missing earlier segment before delivering to the application" },
+    { "id": "d", "text": "TCP closes the connection" }
+  ], "correct": ["c"], "explanation": "TCP buffers out-of-order segments and delivers them to the application only after the gap is filled. (a) That is how UDP behaves (if the application chooses to). (b) TCP does not drop correctly received segments; it buffers them. (d) Out-of-order delivery is normal on the internet and does not cause a connection reset.", "topicId": "tcp-reliability", "difficulty": 1 },
+  { "id": "q4", "type": "single", "prompt": "What does the TCP **receive window** control?", "options": [
+    { "id": "a", "text": "The rate at which the network can carry packets" },
+    { "id": "b", "text": "How many bytes the sender may have in flight before the receiver acknowledges" },
+    { "id": "c", "text": "The maximum size of a single TCP segment" },
+    { "id": "d", "text": "The number of retransmission attempts before giving up" }
+  ], "correct": ["b"], "explanation": "The receive window is flow control: the receiver tells the sender how much buffer space it has. The sender must not exceed it. (a) That describes congestion control, not flow control. (c) Segment size is determined by MSS (Maximum Segment Size). (d) Retransmission limits are a separate mechanism.", "topicId": "tcp-reliability", "difficulty": 2 },
+  { "id": "q5", "type": "single", "prompt": "How does TCP congestion control differ from flow control?", "options": [
+    { "id": "a", "text": "Flow control prevents overwhelming the receiver; congestion control prevents overwhelming the network" },
+    { "id": "b", "text": "They are two names for the same mechanism" },
+    { "id": "c", "text": "Congestion control is only used in UDP" },
+    { "id": "d", "text": "Flow control operates at the network layer; congestion control at the transport layer" }
+  ], "correct": ["a"], "explanation": "Flow control (receive window) protects the receiver's buffer. Congestion control (congestion window) protects the network from being overloaded. Both limit how much the sender can send, but for different reasons. (b) They are distinct. (c) Standard UDP has no congestion control. (d) Both operate at the transport layer.", "topicId": "tcp-congestion", "difficulty": 2 },
+  { "id": "q6", "type": "single", "prompt": "Which protocol does DNS primarily use, and why?", "options": [
+    { "id": "a", "text": "TCP, because DNS queries must be reliable" },
+    { "id": "b", "text": "UDP, because queries are small and connectionless saves overhead; TCP is used as a fallback for large responses" },
+    { "id": "c", "text": "Neither; DNS uses its own transport protocol" },
+    { "id": "d", "text": "TCP, because DNS needs ordering guarantees" }
+  ], "correct": ["b"], "explanation": "DNS queries and responses are typically small, so the overhead of a TCP handshake is unnecessary. UDP's connectionless nature also lets DNS servers handle more clients. TCP is used for zone transfers and responses that exceed ~512 bytes (or with EDNS, ~4096 bytes). (a) and (d) overstate TCP's role. (c) DNS uses standard UDP and TCP.", "topicId": "udp-use-cases", "difficulty": 1 },
+  { "id": "q7", "type": "scenario", "scenario": "A live video streaming service delivers 30 frames per second. A single frame's packet is lost on the network. The next frame arrives 33 ms later.", "prompt": "Should the protocol retransmit the lost frame?", "options": [
+    { "id": "a", "text": "Yes, every frame must be delivered to maintain quality" },
+    { "id": "b", "text": "No: by the time the retransmission arrives, the display has moved on. Showing the next frame is better than waiting." },
+    { "id": "c", "text": "Yes, but only if the RTT is less than 1 ms" },
+    { "id": "d", "text": "The protocol should close the connection and reconnect" }
+  ], "correct": ["b"], "explanation": "At 30 fps, each frame is relevant for ~33 ms. A retransmission takes at least one RTT. For most networks, that retransmitted frame arrives too late to display. Skipping it (or using error concealment) is better than freezing the stream. (a) Waiting causes stutter. (c) 1 ms RTT is only possible within a data centre, not to end users. (d) Reconnecting is far worse than dropping one frame.", "topicId": "udp-use-cases", "difficulty": 2 },
+  { "id": "q8", "type": "scenario", "scenario": "An engineering team runs HTTP/2 over a single TCP connection to a backend service. Under 1% packet loss, they notice all concurrent request streams slow down together, even though only one stream's packet was lost.", "prompt": "What is this problem called, and what would fix it?", "options": [
+    { "id": "a", "text": "Connection pooling; open more TCP connections" },
+    { "id": "b", "text": "Head-of-line blocking at the TCP layer; switching to HTTP/3 (QUIC over UDP) would fix it because QUIC provides per-stream reliability" },
+    { "id": "c", "text": "Flow control; increase the receive window" },
+    { "id": "d", "text": "DNS resolution delay; lower the TTL" }
+  ], "correct": ["b"], "explanation": "TCP enforces strict ordering across the entire connection. One lost packet blocks all streams until retransmission arrives—this is TCP-level HOL blocking. QUIC handles reliability per stream, so a loss in stream A does not block stream B. (a) More TCP connections mitigate but do not eliminate the problem and waste resources. (c) Flow control is about buffer space, not ordering. (d) DNS has nothing to do with this.", "topicId": "hol-blocking", "difficulty": 3 },
+  { "id": "q9", "type": "scenario", "scenario": "A multiplayer game sends player position updates 60 times per second. Each update is 50 bytes. Players are on home internet connections with ~30 ms RTT.", "prompt": "Which transport protocol is the better fit?", "options": [
+    { "id": "a", "text": "TCP, because every position update must be delivered reliably" },
+    { "id": "b", "text": "UDP, because a stale position update is useless; the next update supersedes it" },
+    { "id": "c", "text": "TCP with Nagle's algorithm enabled for efficiency" },
+    { "id": "d", "text": "Neither; games use a custom layer-2 protocol" }
+  ], "correct": ["b"], "explanation": "Position updates are superseded 16 ms later. Retransmitting a stale position wastes time and bandwidth. UDP lets the game send each update independently and discard anything outdated. (a) Reliable delivery adds latency for no benefit here. (c) Nagle's algorithm batches small writes, adding up to 200 ms of delay—the opposite of what a real-time game needs. (d) Games use standard UDP at the transport layer.", "topicId": "udp-use-cases", "difficulty": 2 },
+  { "id": "q10", "type": "multi", "prompt": "Which of the following are provided by TCP but **not** by UDP? Select all that apply.", "options": [
+    { "id": "a", "text": "Reliable delivery via retransmission" },
+    { "id": "b", "text": "Checksum for detecting corruption" },
+    { "id": "c", "text": "Strict byte-stream ordering" },
+    { "id": "d", "text": "Built-in congestion control" }
+  ], "correct": ["a", "c", "d"], "explanation": "TCP provides reliability (a), ordering (c) and congestion control (d). UDP does not. (b) Both TCP and UDP include a checksum field for detecting corruption, so this is not unique to TCP (though UDP's checksum is optional in IPv4).", "topicId": "tcp-reliability", "difficulty": 2 }
+]
+

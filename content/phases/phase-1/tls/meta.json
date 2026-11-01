@@ -1,0 +1,19 @@
+{
+  "id": "p1-tls",
+  "phase": 1,
+  "slug": "tls",
+  "title": "TLS: encryption in transit",
+  "order": 9,
+  "week": 2,
+  "estimatedMinutes": 40,
+  "topics": [
+    { "id": "tls-provides", "title": "What TLS provides", "depth": "deep" },
+    { "id": "tls-handshake", "title": "The TLS handshake", "depth": "deep" },
+    { "id": "tls-certificates", "title": "Certificates and certificate authorities", "depth": "deep" },
+    { "id": "tls-termination", "title": "TLS termination and mTLS", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["request-journey"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-http"]
+}
+

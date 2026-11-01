@@ -1,0 +1,6 @@
+[
+  { "id": "nginx-lb-guide", "title": "HTTP Load Balancing", "author": "NGINX", "kind": "docs", "url": "https://docs.nginx.com/nginx/admin-guide/load-balancer/http-load-balancer/", "why": "Practical guide to configuring round robin, least connections, IP hash and health checks in Nginx.", "topicIds": ["lb-algorithms", "lb-health-checks"], "free": true },
+  { "id": "consistent-hashing-paper", "title": "Consistent Hashing and Random Trees", "author": "David Karger et al.", "kind": "paper", "url": "https://www.cs.princeton.edu/courses/archive/fall09/cos521/Handouts/ConsistentHashing.pdf", "why": "The original 1997 paper introducing consistent hashing. Read for the core idea; skip the proofs.", "topicIds": ["lb-algorithms"], "free": true },
+  { "id": "aws-elb", "title": "What is Elastic Load Balancing?", "author": "AWS", "kind": "docs", "url": "https://docs.aws.amazon.com/elasticloadbalancing/latest/userguide/what-is-load-balancing.html", "why": "Overview of AWS ALB (L7), NLB (L4) and GLB, showing how managed LBs handle health checks and redundancy.", "topicIds": ["lb-l4-l7", "lb-redundancy"], "free": true }
+]
+

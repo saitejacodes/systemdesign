@@ -1,0 +1,195 @@
+## Why it matters
+
+In their 2013 paper "The Tail at Scale", Google's Jeffrey Dean and Luiz André Barroso worked through a simple example. Suppose one server answers in 10 ms almost always, but 1 request in 100 takes a full second. A user request that waits on just that one server is slow 1% of the time. Now suppose the user request fans out to 100 such servers and waits for all of them. The chance that at least one is slow is 1 − 0.99¹⁰⁰ ≈ **63%**. A rare hiccup on each machine became the common case for users. That is why engineers who run large systems talk about percentiles and tails, not averages. This section gives you the vocabulary, the arithmetic, and one law (Little's) that connects them.
+
+## Latency and throughput defined
+
+<DepthStamp depth="deep" />
+
+<Term slug="latency">Latency</Term> is how long one operation takes, from the moment it starts until the result arrives. It is measured in time: milliseconds per request.
+
+<Term slug="throughput">Throughput</Term> is how many operations complete per unit of time: requests per second, messages per second, megabytes per second.
+
+They are related but different, and you can improve one while hurting the other:
+
+- **Batching** raises throughput (fewer, bigger writes) and raises latency (each item waits for its batch).
+- **Adding servers** raises throughput and, once queues shrink, lowers latency, but it does not make any single request's work faster.
+- **A faster algorithm** lowers latency and usually raises throughput too.
+
+A useful mental model is a highway. Latency is how long your drive takes. Throughput is how many cars pass a point per hour. Adding lanes raises throughput; it only lowers your drive time if there was a traffic jam.
+
+Be careful to say **where** latency is measured. Client-observed latency includes DNS, connection setup, the network in both directions, queueing at the load balancer and the server, and the server's work. Server-side latency only includes the last parts. A dashboard showing a 20 ms server time says nothing about a user on a phone 150 ms away.
+
+<Callout type="analogy" title="The motorway">
+Latency is how long one car takes to drive from A to B. Throughput is how many cars pass B per hour. Adding lanes raises throughput but no single car arrives sooner. Raising the speed limit cuts latency. They are different dials, and confusing them is the most common mistake in performance talk.
+</Callout>
+
+### Utilization and queueing
+
+<Term slug="utilization">Utilization</Term> is the fraction of time a resource is busy. When utilization is low, a request rarely waits. As it approaches 100%, requests queue, and waiting time grows very fast. For the simplest queue model (random arrivals, one server, called M/M/1), the average time in the system is **1 / (μ − λ)**, where λ is the arrival rate and μ is the service rate. At λ = 50/s and μ = 100/s (50% busy), the average is 1/50 s = 20 ms. At λ = 90/s (90% busy), it is 1/10 s = 100 ms. At λ = 99/s, it is a full second. Run the simulator at the end of this lesson and watch it happen.
+
+<Callout type="analogy" title="The coffee shop at 90%">
+A barista who is busy 50% of the time rarely makes you wait. At 90% busy, a small burst of customers builds a queue that takes ages to drain, and the line can be ten people long even though the barista is never idle. Queues grow sharply, not gently, as utilization nears 100%.
+</Callout>
+
+## Percentiles: p50, p95, p99
+
+<DepthStamp depth="deep" />
+
+The average (mean) latency hides what users feel. A service where 99 requests take 10 ms and 1 takes 2 seconds has a mean of about 30 ms, which describes no real request.
+
+A <Term slug="percentile">percentile</Term> answers "how slow is the request at position X when all requests are sorted from fastest to slowest?"
+
+- **p50 (the median):** half of requests are faster than this. The typical experience.
+- **p95:** 95% are faster; 1 in 20 is slower.
+- **p99:** 99% are faster; 1 in 100 is slower. This is the "tail".
+- **p99.9:** 1 in 1,000 is slower. Large services watch this too.
+
+<Figure caption="FIG. 5.1 · A LATENCY DISTRIBUTION · LONG RIGHT TAIL">
+  <Diagram label="Bar chart of request counts by latency bucket: most requests between 5 and 20 ms, a few between 50 and 200 ms, and a thin tail out to 1 second. Markers show p50 at 12 ms, p95 at 60 ms and p99 at 250 ms." chart={`xychart-beta
+    title "Requests by latency bucket"
+    x-axis ["0-5", "5-10", "10-20", "20-50", "50-100", "100-200", "200-500", "500-1000"]
+    y-axis "Requests" 0 --> 5000
+    bar [800, 4200, 3100, 1200, 400, 200, 80, 20]`} />
+</Figure>
+
+Why care about p99 when it is only 1%? Three reasons:
+
+1. **Heavy users hit it more.** A user who loads 100 pages a day hits your p99 about once a day. Your most engaged users see your tail most often.
+2. **One page is many requests.** A page that makes 30 backend calls is very likely to include at least one tail-latency call.
+3. **The tail is where problems show first.** Garbage-collection pauses, lock contention, a noisy neighbour on shared hardware, a cold cache: these show up in p99 long before they move the median.
+
+Two practical rules about percentiles:
+
+- **You cannot average percentiles.** The p99 of a service is not the average of each server's p99. To combine, merge the underlying data (or histograms) and compute again.
+- **Measure enough data.** A p99 needs at least a few hundred samples to mean anything; a p99.9 needs thousands.
+
+<Callout type="analogy" title="The class's commute">
+Ask a class how long their commute took. The median (p50) is the typical kid. The p99 is the kid whose bus broke down. The average hides that kid entirely, which is why we report percentiles: the unlucky users are real users, and at a million requests a day p99 is ten thousand of them.
+</Callout>
+
+## Tail latency and fan-out amplification
+
+<DepthStamp depth="deep" />
+
+<Term slug="tail-latency">Tail latency</Term> is the latency of the slowest requests, usually p99 and above. <Term slug="fan-out">Fan-out</Term> is when one request triggers many parallel sub-requests and waits for all of them: a search query sent to 50 index shards, a feed built from 20 services.
+
+When a request waits for all N parallel calls, it is only as fast as the slowest one. If each call is slow with probability p, the chance that at least one of N is slow is:
+
+**P(slow) = 1 − (1 − p)ᴺ**
+
+| Fan-out N | Each call slow 1% of the time | Request is slow |
+|---|---|---|
+| 1 | 1% | 1% |
+| 10 | 1% | ~9.6% |
+| 50 | 1% | ~39% |
+| 100 | 1% | ~63% |
+
+So a backend's p99 becomes the front end's median at a fan-out of about 70. This is <Term slug="fan-out-amplification">fan-out amplification</Term>.
+
+What large systems do about it:
+
+- **Reduce fan-out.** Fewer, coarser calls. Precompute results so fewer shards must answer.
+- **Hedged requests.** If a sub-request has not answered by roughly its p95 time, send a duplicate to another replica and take whichever answers first. Dean and Barroso report this cut tail latency sharply at the cost of a few percent extra load.
+- **Timeouts with partial results.** Return results from the shards that answered in time and mark the response as partial, when the product allows it (search often does; payments do not).
+- **Fix the causes of the tail.** Background jobs competing for CPU, GC pauses, uneven shards, queueing on hot keys.
+
+<Callout type="warning" title="Retries can make the tail worse">
+Blindly retrying slow requests adds load exactly when the system is already struggling. Hedge carefully (only after a delay, only a small fraction of requests) and cap retries. Phase 4 covers retry budgets.
+</Callout>
+
+<Callout type="analogy" title="Waiting for the slowest friend">
+Going to the cinema with ten friends, you leave when the last one is ready. If each friend is late 1% of the time, at least one of the ten is late about 10% of the time. A page that calls ten backends and waits for all of them inherits the worst of the ten, so a rare slow backend becomes a common slow page.
+</Callout>
+
+## Little's Law
+
+<DepthStamp depth="deep" />
+
+<Term slug="littles-law">Little's Law</Term> connects three quantities for any stable system (one where, over time, what goes in comes out):
+
+**L = λ × W**
+
+- **L**: the average number of items in the system (requests in flight, people in a queue).
+- **λ** (lambda): the average arrival rate (requests per second).
+- **W**: the average time each item spends in the system (latency).
+
+It is surprisingly general. It does not care about the distribution of arrivals or service times, and it applies to a whole system or any part of it.
+
+**Example: sizing a connection pool.** An API receives 2,000 requests/s, and each request holds a database connection for 15 ms on average. How many connections are busy on average? L = 2,000 × 0.015 = **30 connections**. Add headroom for bursts and variance (say 2×), and a pool of about 60 across the fleet is a sensible start. With 10 app servers, that is about 6 per server.
+
+**Example: concurrency from latency.** A service handles 500 requests/s with an average latency of 200 ms. At any moment about 500 × 0.2 = **100 requests are in flight**. If each in-flight request needs one worker thread, you need at least 100 threads. If latency doubles to 400 ms because a dependency slows down, in-flight requests double to 200 at the same traffic. That is how a slow dependency exhausts thread pools and takes down services that did nothing wrong.
+
+**Example: queue wait from depth.** A worker queue holds 6,000 messages on average and workers complete 300 per second. Then W = L / λ = 6,000 / 300 = **20 seconds** from enqueue to completion, on average.
+
+<Callout type="analogy" title="The nightclub queue">
+A club lets in 2 people a minute and each person stays 60 minutes. However the night goes, there will be about 120 people inside: arrival rate × time spent. Little's Law is that bouncer's arithmetic, and it works for servers too: requests per second × seconds per request = requests in flight.
+</Callout>
+
+## Worked example: a fan-out search page
+
+A search page calls 40 index shards in parallel, waits for all of them, then calls a ranking service.
+
+- Each shard: p50 = 8 ms, p99 = 120 ms.
+- Ranking: p50 = 15 ms, p99 = 40 ms.
+- Traffic: 1,200 searches/s.
+
+**How often is a search slow?** The chance at least one of 40 shards is in its 1% tail: 1 − 0.99⁴⁰ ≈ 1 − 0.669 = **33%**. So about a third of searches wait at least 120 ms for shards alone, and the page p50 is already close to the shards' p99.
+
+**How many shard calls are in flight?** Each search makes 40 shard calls lasting about 10 ms on average (mostly fast, a few slow): L = (1,200 × 40) × 0.010 = **480 concurrent shard calls** across the fleet.
+
+**Fix 1: hedging.** Send a second request to another replica of a shard if the first has not answered after 30 ms (around that shard's p95). Only about 5% of shard calls get hedged, adding about 5% load, and the effective per-shard tail drops sharply because two independent replicas are rarely slow at the same time.
+
+**Fix 2: reduce fan-out.** Merge small shards so a search touches 20 instead of 40. P(at least one slow) drops to 1 − 0.99²⁰ ≈ 18%.
+
+**Fix 3: partial results.** If 39 of 40 shards answered within 80 ms, return those results and mark the response as slightly incomplete. For web search that is usually acceptable.
+
+<TradeoffBox title="Fighting tail latency" items={[
+  { gain: "Hedged requests cut the tail sharply", cost: "A few percent extra load, and the work must be safe to run twice" },
+  { gain: "Lower fan-out means fewer chances to be slow", cost: "Bigger shards or more precomputation" },
+  { gain: "Timeouts with partial results bound latency", cost: "Some responses are incomplete; not acceptable for every product" },
+  { gain: "Running at lower utilization shortens queues", cost: "You pay for idle capacity" }
+]} />
+
+<NotWhenBox title="Optimising for the tail first" items={[
+  "A batch or offline job where only total throughput matters, not any one item's latency.",
+  "A low-traffic internal tool where p99 is computed from a handful of samples and means little.",
+  "The median itself is far over budget: fix the common path before chasing the tail."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Average latency tells you how fast the service feels." right="Averages hide the tail. Report p50 for the typical case and p95/p99 for what heavy users and fan-out requests feel." />
+
+<Misconception wrong="You can average the p99 from each server to get the service p99." right="Percentiles do not average. Merge the raw data or histograms and recompute." />
+
+<Misconception wrong="Higher throughput means lower latency." right="They can move in opposite directions. Batching raises throughput and latency together; running near 100% utilization raises throughput a little and latency a lot." />
+
+## Interview angle
+
+<InterviewAngle title="Latency and throughput" questions={[
+  "What latency target would you set for this API, and at which percentile?",
+  "This endpoint fans out to 30 services. How do you keep its p99 under 200 ms?",
+  "How many database connections does this service need at peak?",
+  "Why might p99 latency spike while p50 stays flat?"
+]}>
+Saying "p99 under X ms" instead of "fast" signals experience. Expect a follow-up on fan-out. Little's Law is a quick, impressive way to size pools, threads and queues in one line of arithmetic.
+</InterviewAngle>
+
+## Try it
+
+Set λ close to μ and watch p99 climb much faster than p50. Then try the challenge.
+
+<Simulator id="single-server-queue" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+Pick an endpoint you know (or a case study) and write its latency budget: how many milliseconds go to the network, the load balancer, the app, the cache and the database at p50 and at p99.

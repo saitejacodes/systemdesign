@@ -1,0 +1,63 @@
+[
+  { "id": "q1", "type": "single", "prompt": "In a full DNS resolution, which server returns the **final IP address** for `api.example.com`?", "options": [
+    { "id": "a", "text": "The root nameserver" },
+    { "id": "b", "text": "The .com TLD nameserver" },
+    { "id": "c", "text": "The authoritative nameserver for example.com" },
+    { "id": "d", "text": "The stub resolver" }
+  ], "correct": ["c"], "explanation": "The authoritative nameserver holds the actual DNS records for the domain and returns the final answer. (a) The root only refers to the TLD. (b) The TLD only refers to the domain's nameservers. (d) The stub resolver asks the recursive resolver and relays the answer; it does not resolve names itself.", "topicId": "dns-resolution", "difficulty": 1 },
+  { "id": "q2", "type": "single", "prompt": "What does a **recursive resolver** do when it has a cached answer for a query?", "options": [
+    { "id": "a", "text": "Returns the cached answer immediately without contacting any nameserver" },
+    { "id": "b", "text": "Always queries the authoritative server to verify the cache" },
+    { "id": "c", "text": "Returns the cached answer but also queries the root server in the background" },
+    { "id": "d", "text": "Discards the cache and starts a fresh resolution" }
+  ], "correct": ["a"], "explanation": "If the TTL has not expired, the recursive resolver returns the cached answer directly. That is the whole point of caching. (b), (c) and (d) all add unnecessary queries; standard DNS does not revalidate cached records before TTL expiry.", "topicId": "dns-resolution", "difficulty": 1 },
+  { "id": "q3", "type": "single", "prompt": "Which DNS record type creates an **alias** from one domain name to another?", "options": [
+    { "id": "a", "text": "A" },
+    { "id": "b", "text": "NS" },
+    { "id": "c", "text": "CNAME" },
+    { "id": "d", "text": "TXT" }
+  ], "correct": ["c"], "explanation": "A CNAME (Canonical Name) record says 'this name is an alias for that other name.' (a) An A record maps a name to an IPv4 address. (b) NS delegates a zone to nameservers. (d) TXT holds arbitrary text for verification or policy records.", "topicId": "dns-records", "difficulty": 1 },
+  { "id": "q4", "type": "single", "prompt": "Why **can't** you place a CNAME record at the zone apex (e.g. `example.com`) if you also need MX records there?", "options": [
+    { "id": "a", "text": "CNAME records are only allowed on subdomains" },
+    { "id": "b", "text": "A CNAME must be the only record at a name; it cannot coexist with MX or other records" },
+    { "id": "c", "text": "MX records override CNAME records automatically" },
+    { "id": "d", "text": "The zone apex does not support any alias-type records" }
+  ], "correct": ["b"], "explanation": "The DNS standard says a CNAME must be the sole record at its name. If you add MX, TXT or other records at the same name, the CNAME rule is violated. (a) CNAMEs can technically exist at any name, but the coexistence rule makes the apex problematic. (c) There is no such override. (d) Many providers offer non-standard ALIAS/ANAME records for the apex.", "topicId": "dns-records", "difficulty": 2 },
+  { "id": "q5", "type": "single", "prompt": "A DNS record has a TTL of 3600. What does this mean for recursive resolvers?", "options": [
+    { "id": "a", "text": "The record expires 3600 milliseconds after creation" },
+    { "id": "b", "text": "Resolvers may cache the record for up to 3600 seconds (1 hour)" },
+    { "id": "c", "text": "The record can only be queried 3600 times" },
+    { "id": "d", "text": "The record is refreshed every 3600 microseconds" }
+  ], "correct": ["b"], "explanation": "TTL is in seconds. A value of 3600 means resolvers can serve the cached answer for up to one hour before re-querying the authoritative server. (a) and (d) use the wrong time unit. (c) TTL is time-based, not query-count-based.", "topicId": "dns-ttl", "difficulty": 1 },
+  { "id": "q6", "type": "scenario", "scenario": "Your company runs a web application in a single data centre. You plan a migration to a new data centre with a different IP address. Your DNS records currently have a 24-hour TTL.", "prompt": "What should you do **before** the migration to minimise downtime?", "options": [
+    { "id": "a", "text": "Lower the TTL to 60 seconds, wait 24 hours for the old TTL to expire from caches, then change the IP" },
+    { "id": "b", "text": "Change the IP immediately; the 24-hour TTL will propagate the change within a few minutes" },
+    { "id": "c", "text": "Delete the DNS record, wait 24 hours, then create a new one with the new IP" },
+    { "id": "d", "text": "Add a second A record with the new IP and leave both forever" }
+  ], "correct": ["a"], "explanation": "Lower the TTL first, then wait for the old long TTL to expire from all caches, so that when you change the IP, resolvers re-query within 60 seconds. (b) Changing immediately means clients serve the old IP for up to 24 hours. (c) Deleting the record makes the site unreachable during the wait. (d) Keeping both IPs sends traffic to both data centres permanently, which is not the goal.", "topicId": "dns-ttl", "difficulty": 2 },
+  { "id": "q7", "type": "scenario", "scenario": "A global e-commerce company has data centres in Virginia, Frankfurt and Tokyo. They want users to be routed to the nearest data centre for lower latency.", "prompt": "Which DNS technique is the best fit?", "options": [
+    { "id": "a", "text": "Round-robin DNS returning all three IPs" },
+    { "id": "b", "text": "GeoDNS returning the IP of the nearest data centre based on the client's location" },
+    { "id": "c", "text": "A single CNAME pointing to a random data centre" },
+    { "id": "d", "text": "Setting the TTL to 0 so every request re-resolves" }
+  ], "correct": ["b"], "explanation": "GeoDNS inspects the client's location (from source IP or EDNS Client Subnet) and returns the nearest data centre's IP. (a) Round-robin picks randomly, not by proximity. (c) A single CNAME provides no geographic awareness. (d) TTL 0 increases DNS load massively and does not add geographic routing.", "topicId": "dns-load-balancing", "difficulty": 2 },
+  { "id": "q8", "type": "scenario", "scenario": "A startup uses round-robin DNS with two A records for their API (server A and server B). Server A crashes at 3 AM. Their DNS TTL is 300 seconds.", "prompt": "What happens to clients that already cached server A's IP?", "options": [
+    { "id": "a", "text": "They are immediately redirected to server B by the DNS resolver" },
+    { "id": "b", "text": "They keep trying server A until their cached record expires (up to 5 minutes), then may get server B on re-resolution" },
+    { "id": "c", "text": "The DNS server detects the failure and pushes an update to all caches" },
+    { "id": "d", "text": "The operating system retries with the other cached A record automatically" }
+  ], "correct": ["b"], "explanation": "DNS has no push mechanism. Clients with a cached A record for server A keep using it until the TTL expires. Only then do they re-query and potentially get server B. (a) DNS resolvers do not monitor server health. (c) DNS is pull-based, not push-based. (d) Some clients may try alternate cached records, but this behaviour is inconsistent and not guaranteed.", "topicId": "dns-load-balancing", "difficulty": 2 },
+  { "id": "q9", "type": "multi", "prompt": "Which of the following are **limitations** of DNS-based load balancing? Select all that apply.", "options": [
+    { "id": "a", "text": "No built-in health checking in standard DNS" },
+    { "id": "b", "text": "Cannot route based on URL path or HTTP headers" },
+    { "id": "c", "text": "Client-side caching delays failover" },
+    { "id": "d", "text": "Cannot return more than one IP address per query" }
+  ], "correct": ["a", "b", "c"], "explanation": "Standard DNS has no health checks (a), cannot inspect HTTP-layer details (b), and cached records delay failover (c). (d) is wrong: DNS can and does return multiple A records in a single response.", "topicId": "dns-load-balancing", "difficulty": 2 },
+  { "id": "q10", "type": "single", "prompt": "How does **anycast** work for DNS root servers?", "options": [
+    { "id": "a", "text": "Each root server IP is assigned to a single physical machine in a hardened facility" },
+    { "id": "b", "text": "The same IP address is announced by many servers in different locations; BGP routing sends each query to the nearest one" },
+    { "id": "c", "text": "Root servers use multicast to send responses to all resolvers at once" },
+    { "id": "d", "text": "Root servers replicate their data using a consensus protocol like Raft" }
+  ], "correct": ["b"], "explanation": "Anycast means multiple servers share one IP address. BGP routes each packet to the nearest instance by network topology. (a) There are 13 IP addresses but over 1,500 physical servers. (c) Multicast sends to a group of subscribers, which is different from anycast's nearest-server routing. (d) Root server zone data is distributed via zone transfers, not Raft.", "topicId": "dns-anycast", "difficulty": 2 }
+]
+

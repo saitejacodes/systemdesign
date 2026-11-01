@@ -1,0 +1,172 @@
+## Why it matters
+
+When you visit a website, your request almost never goes directly to the application server. It hits a reverse proxy first—Nginx, Envoy, Cloudflare or a cloud provider's edge. Some application servers are explicitly designed to depend on one: the documentation for Unicorn, a widely used Ruby web server, says it is built to serve fast clients on a low-latency network, and that slow clients should be handled by a buffering reverse proxy such as nginx in front of it. Without that proxy, a few hundred phones on bad mobile connections can tie up every worker. Reverse proxies are so common in production architectures that understanding what they do (and how they differ from forward proxies and load balancers) is essential for drawing accurate system design diagrams.
+
+## Reverse proxy vs forward proxy
+
+<DepthStamp depth="deep" />
+
+A <Term slug="reverse-proxy">reverse proxy</Term> sits in front of servers and handles requests on their behalf. Clients do not know or care that a proxy is involved; they connect to the proxy's address and the proxy forwards the request to a backend server.
+
+A <Term slug="forward-proxy">forward proxy</Term> sits in front of clients and makes requests on their behalf. The client configures its browser or OS to use the proxy, which then fetches resources from the internet. Forward proxies are used for:
+- Corporate network monitoring and filtering (blocking certain sites).
+- Caching shared resources across many employees.
+- Hiding the client's IP address (like a VPN or Tor exit node).
+
+| | Forward proxy | Reverse proxy |
+|---|---|---|
+| Sits in front of | Clients | Servers |
+| Who configures it | The client | The server operator |
+| Hides | The client's identity from the server | The server's identity from the client |
+| Use cases | Filtering, caching, anonymity | TLS termination, LB, compression, security |
+
+In system design interviews, "proxy" almost always means a reverse proxy unless stated otherwise.
+
+<Callout type="analogy" title="The celebrity's agent and the personal shopper">
+A **reverse proxy** is a celebrity's agent. Fans and journalists never get the star's personal phone number; they all call the agent, who screens the calls, answers the routine questions from a script (cache), turns away the cranks (rate limiting, access control), and only puts through the calls that genuinely need the star (the backend). The callers think they are dealing with "the star's office" and never learn which assistant actually handled them. A **forward proxy** is a personal shopper working for *you*: you tell them what you want, they go to the shops, and the shops only ever see the shopper's face, never yours. Same mechanism (someone in the middle passing messages), opposite loyalty: the reverse proxy works for the servers, the forward proxy works for the clients.
+</Callout>
+
+## What a reverse proxy does
+
+<DepthStamp depth="deep" />
+
+A reverse proxy can perform many roles. Not every deployment uses all of them, but the most common are:
+
+**1. TLS termination.** Decrypt HTTPS at the proxy and forward plain HTTP to backend servers. This centralises certificate management and offloads crypto from app servers. (Covered in the TLS section.)
+
+**2. Load balancing.** Distribute requests across multiple backends using round robin, least connections, or other algorithms. Many reverse proxies (Nginx, HAProxy, Envoy) double as load balancers.
+
+**3. Caching.** Store responses and serve them to subsequent clients without hitting the backend. Nginx and Varnish are commonly used as caching reverse proxies. This reduces backend load for cacheable content.
+
+**4. Compression.** Compress responses (gzip, Brotli) before sending them to clients. This saves bandwidth and speeds up page loads, especially on slow connections.
+
+**5. Rate limiting and access control.** Reject requests that exceed a threshold, block IPs or enforce authentication before requests reach the backend.
+
+**6. Request routing.** Route requests to different backends based on URL path, hostname or headers (virtual hosting). A single reverse proxy can serve `api.example.com` from one backend and `www.example.com` from another.
+
+**7. Static file serving.** Serve static assets (CSS, JS, images) directly from disk without involving the application server. <Term slug="nginx">Nginx</Term> is extremely efficient at this.
+
+## TLS offload, compression and buffering
+
+<DepthStamp depth="tradeoffs" />
+
+### <Term slug="tls-offload">TLS offload</Term>
+
+Terminating TLS at the reverse proxy is the most common deployment pattern. Benefits:
+- One place to manage certificates.
+- App servers are simpler (no TLS configuration, no certificate renewal).
+- The proxy can inspect and modify HTTP traffic (add headers, rewrite URLs).
+
+Cost: traffic between the proxy and backends is unencrypted unless you add internal TLS.
+
+### Compression
+
+The proxy can compress responses using gzip or Brotli before sending them over the network. Modern proxies compress on the fly with minimal CPU cost.
+
+- Compress text-based formats: HTML, CSS, JS, JSON, SVG.
+- Do not compress already-compressed formats: JPEG, PNG, gzip archives.
+- Brotli achieves better compression ratios than gzip for text but is slower to compress at high levels. Most proxies use a moderate compression level (e.g. Brotli level 4–6) for a good balance.
+
+<Callout type="analogy" title="Vacuum-packing a suitcase">
+Compression is vacuum-packing clothes before a flight: the same jumpers, a fraction of the space, at the cost of a minute with the vacuum cleaner. Text (HTML, JSON, CSS) is a fluffy wool jumper: it shrinks dramatically, often 5–10× for repetitive JSON. A JPEG or a video is a brick: it was already squeezed when it was created, and running the vacuum over it wastes electricity (CPU) and saves nothing. Compressing the brick a second time can even make the bag slightly heavier.
+</Callout>
+
+### <Term slug="response-buffering">Response buffering</Term>
+
+Without buffering, the backend must keep the connection open until the client (possibly on a slow mobile network) has received every byte. With buffering, the proxy reads the entire response from the backend quickly, frees the backend connection, and then slowly streams the response to the client. This lets the backend handle more concurrent requests.
+
+<Callout type="analogy" title="The waiter who takes the whole tray">
+Picture a restaurant where each chef must personally carry every dish to the table and stand there until the diner finishes chewing. One slow eater and the chef is stuck in the dining room for an hour while orders pile up in the kitchen. Buffering is hiring waiters: the chef plates the food, puts it on the pass, and goes straight back to cooking. The waiter carries it to the table and handles the slow, chatty diner, which costs the restaurant almost nothing because waiters are cheap and one waiter can look after many tables. In software terms, app workers are expensive (memory, a thread or process each), while an event-driven proxy like nginx can hold tens of thousands of slow connections cheaply.
+</Callout>
+
+### Worked example: what buffering buys
+
+An app server has **50 workers**. Each request takes **20 ms** of real work and returns a **200 KB** page. Many users are on poor mobile connections that download at about **50 KB/s**.
+
+**Without a buffering proxy.** The worker can't finish until the client has received the last byte: 200 KB ÷ 50 KB/s = **4 s**. Each worker is busy for 4.02 s per request, so the server tops out at 50 ÷ 4.02 ≈ **12 requests/s**, while the CPU is almost idle. Fifty slow phones are enough to fill every worker, and that is also the core of the "Slowloris" attack, where an attacker deliberately opens connections and trickles data to exhaust workers.
+
+**With a buffering proxy.** The proxy reads the 200 KB from the app over the fast internal network in a couple of milliseconds, and the worker is free after about **20 ms**. Capacity becomes 50 ÷ 0.02 = **2,500 requests/s**, a 200× improvement from a config line. The cost moves to the proxy: at 1,000 slow clients in flight, it holds about 1,000 × 200 KB = **200 MB** of buffered responses in memory or spills them to temporary files. That is cheap for nginx.
+
+**When not to buffer.** Streaming responses (server-sent events, long-polling, large file downloads, LLM tokens streamed to a chat UI) must flow to the client as they are produced. Buffering them would make the user wait for the whole thing. Proxies let you turn buffering off per route (in nginx, `proxy_buffering off`, or the `X-Accel-Buffering: no` response header).
+
+<Term slug="envoy">Envoy</Term> (created at Lyft, now a CNCF project) is a modern reverse proxy designed for microservice architectures. It supports HTTP/2, gRPC, automatic retries, circuit breaking, distributed tracing and integrates with service meshes.
+
+## Sidecar proxies and service mesh
+
+<DepthStamp depth="awareness" />
+
+A <Term slug="sidecar-proxy">sidecar proxy</Term> is a small reverse proxy deployed alongside every instance of a service, usually as a separate container in the same pod (in Kubernetes). All inbound and outbound traffic goes through the sidecar, which handles:
+- mTLS encryption and authentication.
+- Retries, timeouts and circuit breaking.
+- Load balancing between service instances.
+- Distributed tracing and metrics collection.
+
+A <Term slug="service-mesh">service mesh</Term> (like Istio, Linkerd or Consul Connect) is the control plane that manages all these sidecar proxies. It provides a uniform way to secure, observe and control service-to-service communication without changing application code.
+
+<Callout type="analogy" title="A sidecar is a diplomat's interpreter and bodyguard">
+Every diplomat (service) at a summit has a personal aide (the sidecar) who walks beside them everywhere. The aide translates (protocol handling), checks the other side's credentials and makes sure nobody listens in (mTLS), tries again politely if a message gets lost (retries), gives up if the other delegation hasn't answered in time (timeouts, circuit breaking), and writes down every conversation in the summit log (tracing and metrics). The diplomat just talks. The summit organisers (the service mesh control plane) brief all the aides centrally, so a new security rule reaches every delegation at once without retraining any diplomat. The cost: every conversation now passes through two aides, one on each side, which adds a little delay and a lot of aides to manage.
+</Callout>
+
+<Figure caption="FIG. 11.1 · SIDECAR PROXIES · MTLS BETWEEN PODS">
+  <Diagram label="Sidecar proxies handle cross-cutting concerns (TLS, retries, tracing) between services." chart={`flowchart LR
+    subgraph Pod A
+        AppA["Service A"] --> SideA["Sidecar proxy"]
+    end
+    subgraph Pod B
+        SideB["Sidecar proxy"] --> AppB["Service B"]
+    end
+    SideA -->|mTLS| SideB`} />
+</Figure>
+
+*Sidecar proxies handle cross-cutting concerns (TLS, retries, tracing) between services.*
+
+Service meshes add operational complexity and latency (two extra proxy hops per request). They are most valuable in large microservice deployments (dozens or hundreds of services) where managing these concerns per-service would be impractical.
+
+<TradeoffBox title="Reverse proxy tradeoffs" items={[
+  { gain: "Centralises TLS, compression, caching and routing in one layer", cost: "Adds a network hop and a point of failure" },
+  { gain: "Response buffering frees backend connections quickly", cost: "Requires enough memory on the proxy to buffer responses" },
+  { gain: "Sidecar proxies standardise cross-cutting concerns across all services", cost: "Extra latency (two proxy hops) and operational complexity of managing a service mesh" },
+  { gain: "Static file serving from the proxy avoids hitting the application server", cost: "Cache invalidation: stale files may be served if not managed carefully" }
+]} />
+
+<NotWhenBox title="Adding a reverse proxy" items={[
+  "Very simple, single-server deployments where the overhead is not justified.",
+  "When the proxy layer becomes a bottleneck and you need to scale it, adding complexity without corresponding benefit.",
+  "A service mesh for a small number of services (under ~5): the operational cost outweighs the benefit."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A reverse proxy and a load balancer are the same thing." right="A load balancer distributes traffic across backends. A reverse proxy may also load-balance, but it does much more: TLS termination, caching, compression, buffering, rate limiting and routing. Many tools (Nginx, HAProxy, Envoy) serve both roles." />
+
+<Misconception wrong="Every microservice architecture needs a service mesh." right="Service meshes add significant complexity. They pay off at scale (many services, many teams). A small team with a handful of services can use simpler approaches: a shared library for retries and tracing, or a single reverse proxy in front of each service." />
+
+<Misconception wrong="A reverse proxy hides the server's IP from attackers." right="A reverse proxy can obscure the origin server's IP, but if the origin is also reachable directly (misconfigured firewall), attackers can bypass the proxy. The origin must reject direct connections." />
+
+## Interview angle
+
+<InterviewAngle title="Reverse proxies" questions={[
+  "Why would you put a reverse proxy in front of your application servers?",
+  "What is the difference between a reverse proxy and a load balancer?",
+  "How does response buffering help backend performance?",
+  "When would you use a service mesh?"
+]}>
+In an interview, the reverse proxy often overlaps with the load balancer in your diagram. Call out the extra functions it provides: TLS termination, compression, caching, buffering and static file serving. If the system is a microservice architecture, mention sidecar proxies and service mesh at the awareness level—know what they are and when they help, but do not over-architect.
+</InterviewAngle>
+
+## Try it
+
+<Simulator id="request-journey" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+Write a minimal reverse-proxy plan for a web app with an API and a static frontend: which paths go where, which responses are compressed, which are buffered, which are cached and for how long, and where TLS terminates. Then redo the buffering example for a 2 MB response: how long does a 50 KB/s client hold a worker without the proxy? Sketch the result in the [Design Studio](/studio).
+

@@ -1,0 +1,282 @@
+## Why it matters
+
+You see a new message appear in Slack the moment a colleague hits Enter. A live score ticks over without you refreshing. A teammate's cursor glides across a shared document. In each case the server is sending you data you never asked for.
+
+Plain HTTP cannot do that on its own. It is request–response: the client asks, the server answers, and the server has no way to speak first. Realtime communication is the set of tricks and protocols that let the server start the conversation. There are four common options: short polling, long polling, Server-Sent Events and WebSockets. Which one you pick decides your latency, your server bill and how hard the system is to scale. Pick wrong at 10 million users and you either melt your servers with empty requests or drown in connection state you cannot move.
+
+<Callout type="analogy" title="The road trip">
+Think of four ways a child in the back seat can learn "are we there yet?". **Short polling** asks every five minutes and mostly hears "no". **Long polling** asks once, and the parent stays silent until the answer is yes, then the child asks again. **SSE** is the parent switching on the car radio's traffic announcements: news arrives whenever there is some, but the child cannot talk back over the radio. **A WebSocket** is a walkie-talkie both of them hold for the whole trip: either one can speak at any moment.
+</Callout>
+
+## Short polling
+
+<DepthStamp depth="deep" />
+
+<Term slug="short-polling">Short polling</Term> is the simplest approach: the client sends an ordinary HTTP request every few seconds asking "anything new?"
+
+```
+Client: GET /messages?since=1698765432  →  Server: 200 OK (empty)
+... 3 seconds later ...
+Client: GET /messages?since=1698765432  →  Server: 200 OK (empty)
+... 3 seconds later ...
+Client: GET /messages?since=1698765432  →  Server: 200 OK [{new message}]
+```
+
+**How it works.** The client sets a timer (for example every 3 seconds) and makes a regular HTTP GET. The server answers at once, with new data or with nothing. The `since` cursor tells the server what the client already has, so nothing is sent twice.
+
+<Callout type="analogy" title="Checking the letterbox">
+Short polling is walking to the letterbox every ten minutes. Most trips find it empty. Walk more often and you get letters sooner but wear out your shoes. Walk less often and letters sit there waiting. There is no setting that is both cheap and fast, only a dial between the two.
+</Callout>
+
+**Pros:**
+- Dead simple. Works with any HTTP server, any client, any framework.
+- Stateless on the server: each request is independent, so any server behind the load balancer can answer it.
+- Works through every proxy and firewall, because it is just HTTP.
+- Caches and CDNs can help: a shared "latest scores" response can be cached for a second and served to millions.
+
+**Cons:**
+- **Wasteful.** Most responses are empty. If 1,000 clients poll every 3 seconds, that is about 333 requests per second even when nothing is happening.
+- **Latency.** An update waits, on average, half the polling interval. A 3-second interval means about 1.5 seconds of average delay and up to 3 seconds in the worst case.
+- **A straight-line tradeoff.** Halve the interval and you halve the delay but double the load.
+- **Header tax.** Every empty poll still carries full HTTP headers, cookies and often an auth token, typically several hundred bytes each way.
+
+Short polling is fine for low-frequency updates where seconds of delay do not matter: checking for new email every 30 seconds, refreshing a dashboard every minute, or checking whether a long export job has finished.
+
+### Worked example: the cost of polling at scale
+
+Take a chat app with **10 million** connected users, each polling every **3 seconds**.
+
+- Requests per second: 10,000,000 ÷ 3 ≈ **3.3 million requests per second**.
+- Suppose a real message arrives for a given user about once a minute. Then only 1 poll in 20 carries anything, and **95%** of those 3.3 million requests are empty.
+- At roughly 800 bytes of request and response headers per poll, that is about 3.3M × 800 B ≈ **2.7 GB per second** of pure overhead, before any message is sent.
+- And users still wait about 1.5 seconds on average for each message.
+
+Now the same users on persistent connections (long polling, SSE or WebSockets): the server sends roughly 10,000,000 ÷ 60 ≈ **167,000 messages per second**, only when something happens, and each arrives within network latency (tens of milliseconds). The price is holding **10 million open connections**. Every option below trades request volume for connection state.
+
+## Long polling
+
+<DepthStamp depth="deep" />
+
+<Term slug="long-polling">Long polling</Term> improves on short polling by holding the request open until the server has something to send.
+
+```
+Client: GET /messages?since=1698765432  →  (server holds the connection open)
+... 30 seconds pass, a message arrives ...
+Server: 200 OK [{new message}]
+Client: GET /messages?since=1698765435  →  (server holds again)
+```
+
+**How it works.** The client sends a request. The server does not answer at once. It parks the request until new data exists or a timeout expires (typically 20–60 seconds). If data arrives, the server responds and the client immediately sends the next request. If the timeout fires, the server returns an empty response and the client asks again. The timeout exists because proxies and load balancers often kill requests that stay idle too long.
+
+<Callout type="analogy" title="Waiting at the post office counter">
+Instead of walking to the letterbox every ten minutes, you go to the post office and say "I'll wait here until something comes for me." The clerk keeps you at the counter. The moment a letter arrives you get it, walk out, and immediately join the queue again. Fast delivery, but every waiting customer is taking up space in the building.
+</Callout>
+
+**Pros:**
+- Near-instant delivery: the client gets the update as soon as the server has it.
+- Works through most proxies and firewalls; to them it looks like a slow HTTP response.
+- No special protocol; plain HTTP with a cursor.
+
+**Cons:**
+- **The server holds requests.** Each waiting client is one parked request. At 100,000 concurrent users that is 100,000 open connections. A thread-per-request server (one thread per waiting user) falls over long before that; you need an event-driven server (Node.js, Go, Netty, nginx) that can park requests cheaply.
+- **Reconnection gap.** After each response the client must send a new request. Messages that arrive in that gap must be buffered on the server, which is why the `since` cursor matters.
+- **Bursts are clumsy.** If ten messages arrive in a second, you either batch them into one response or pay ten round trips.
+- **Harder to get right.** Timeouts, retries, duplicate delivery and ordering all need care.
+
+Long polling was the standard approach before WebSockets and SSE existed. It is still the fallback when nothing better gets through; libraries such as Socket.IO start with it, or drop back to it, when a WebSocket upgrade fails.
+
+## Server-Sent Events
+
+<DepthStamp depth="deep" />
+
+<Term slug="sse">Server-Sent Events (SSE)</Term> use a single long-lived HTTP response over which the server keeps writing text events.
+
+```
+Client: GET /events (Accept: text/event-stream)
+Server: 200 OK (Content-Type: text/event-stream)
+  id: 41
+  data: {"type":"message","text":"Hello"}
+
+  id: 42
+  data: {"type":"message","text":"World"}
+
+  ... connection stays open ...
+```
+
+**How it works.** The browser opens an `EventSource` (a standard browser API). The server never "finishes" the response; it writes one event at a time, each ending with a blank line. If the connection drops, the browser reconnects on its own after a short delay and sends a `Last-Event-ID` header with the last `id` it saw, so the server can replay what was missed. The server can also send a `retry:` line to set the reconnect delay.
+
+<Callout type="analogy" title="A radio station">
+SSE is a radio broadcast. You tune in once and the station talks whenever it has news. If you drive through a tunnel, your radio retunes by itself when you come out, and a good station says "here's what you missed." But you cannot talk back through the radio. To call the station you pick up a phone, which here means a normal HTTP POST.
+</Callout>
+
+**Pros:**
+- Tiny client API: `new EventSource('/events')`.
+- Automatic reconnection and resume via event IDs, built into the browser.
+- Plain HTTP: no protocol upgrade, works with ordinary HTTP authentication, compression and HTTP/2.
+- Ideal for server-to-client streams. Streaming LLM responses (tokens appearing one by one) commonly use exactly this format.
+
+**Cons:**
+- **<Term slug="half-duplex">One direction</Term>** (server to client only). The client sends anything back with separate HTTP requests.
+- **Text only** (UTF-8). Binary data must be encoded, for example as base64, which adds about a third to its size.
+- **Connection limit on HTTP/1.1.** Browsers allow about 6 connections per domain over HTTP/1.1, shared with everything else on the page, so a user with seven tabs open can starve themselves. HTTP/2 multiplexes many streams over one connection and removes most of this problem.
+- **Buffering proxies.** A proxy that buffers responses holds the events back and breaks the stream. You must turn buffering off for the SSE route (for example `X-Accel-Buffering: no` on nginx).
+
+SSE fits whenever the server pushes and the client mostly listens: notifications, live feeds, stock tickers, build logs, progress bars, streamed AI output.
+
+## WebSockets
+
+<DepthStamp depth="deep" />
+
+<Term slug="websocket">WebSockets</Term> give a <Term slug="full-duplex">full-duplex</Term>, persistent connection between client and server. Both sides can send messages at any time, independently.
+
+**How it works.** The client sends an HTTP request with `Upgrade: websocket` and a random `Sec-WebSocket-Key` header (a <Term slug="connection-upgrade">connection upgrade</Term>). If the server agrees, it answers `101 Switching Protocols` with a `Sec-WebSocket-Accept` value derived from that key, proving it really speaks WebSocket. From then on the TCP connection stops carrying HTTP and carries WebSocket frames instead, over `ws://` or, encrypted with TLS, `wss://`.
+
+<Figure caption="FIG. 12.1 · THE WEBSOCKET UPGRADE · THEN FULL-DUPLEX MESSAGES">
+  <Diagram label="After the HTTP upgrade, both client and server send messages freely over the WebSocket connection." chart={`sequenceDiagram
+    participant Client
+    participant Server
+    Client->>Server: HTTP GET (Upgrade: websocket)
+    Server->>Client: 101 Switching Protocols
+    Note over Client,Server: WebSocket connection open
+    Client->>Server: {"type":"typing","user":"alice"}
+    Server->>Client: {"type":"message","from":"bob","text":"Hi!"}
+    Server->>Client: {"type":"message","from":"carol","text":"Hey!"}
+    Client->>Server: {"type":"message","text":"Hello everyone"}`} />
+</Figure>
+
+*After the HTTP upgrade, both client and server send messages freely over the WebSocket connection.*
+
+<Callout type="analogy" title="The walkie-talkie that never hangs up">
+HTTP is like sending letters: every message needs an envelope, an address and a stamp (the headers). A WebSocket is a walkie-talkie pair you hand over once at the door. After that, either side presses the button and talks. No envelopes, no addresses, just a couple of bytes of "over". But you have to keep the batteries charged (heartbeats), and if the line goes dead, nobody tells you until you try to talk.
+</Callout>
+
+**Pros:**
+- **Full-duplex.** Both sides send whenever they like, without request–response pairs.
+- **Low overhead.** After the handshake, each frame has 2–14 bytes of framing, against hundreds of bytes of HTTP headers per request.
+- **Low latency.** No polling interval; a message goes out the moment it exists.
+- **Binary and text** frames are both supported, so you can send compact formats such as Protocol Buffers or MessagePack.
+
+**Cons:**
+- **Stateful.** Each connection is long-lived and pinned to one server process. Deploys, crashes and rebalancing all disconnect users.
+- **Proxy trouble.** Some corporate proxies, firewalls and older load balancers mishandle the upgrade, or kill connections that look idle.
+- **No automatic reconnection** (unlike SSE). The application must reconnect, with backoff, and fetch anything missed while it was away.
+- **No built-in delivery guarantees.** If the connection dies mid-message, WebSocket does not tell you what arrived. Your app needs message IDs and acknowledgements if loss matters.
+- **Resource cost.** Each connection takes a file descriptor and memory for buffers and per-user state. Millions of them need deliberate infrastructure.
+
+## Comparison table
+
+| Feature | Short polling | Long polling | SSE | WebSocket |
+|---------|--------------|-------------|-----|-----------|
+| Who speaks first | Client, on a timer | Client, then server answers when ready | Server, any time | Either side, any time |
+| Direction of data | Server → client in responses | Server → client in responses | Server → client | Both (full-duplex) |
+| Latency | Half the interval on average | Near-instant | Near-instant | Near-instant |
+| Server cost | Many requests, mostly empty | Held requests + reconnects | Held connections | Held connections, tiny frames |
+| Protocol | HTTP | HTTP | HTTP | WebSocket (after HTTP upgrade) |
+| Binary support | Yes | Yes | No (text only) | Yes |
+| Auto-reconnect | Not needed | Must implement | Built into the browser | Must implement |
+| Proxy compatibility | Excellent | Good | Moderate (buffering) | Moderate (upgrade) |
+
+## Scaling WebSocket connections
+
+<DepthStamp depth="tradeoffs" />
+
+A well-tuned server can hold a very large number of mostly idle connections. Each one costs a file descriptor plus memory for kernel socket buffers, TLS state and your application's per-user data, from a few kilobytes up to tens of kilobytes depending on settings. The hard part is not holding them. It is routing messages between them, and surviving when a server holding a quarter of a million of them dies.
+
+<Callout type="analogy" title="The hotel switchboard">
+Picture a hotel chain where every guest has a phone line into one particular hotel's switchboard. Holding the lines is easy. The hard question is: when a guest in the Paris hotel wants to call a guest in the Tokyo hotel, how does the Paris operator know where Tokyo's guest is? You need a shared directory and a trunk line between switchboards. That is the pub/sub bus.
+</Callout>
+
+**Horizontal scaling.** Run many connection servers (sometimes called gateways) behind a load balancer. The load balancer must understand the WebSocket upgrade; L7 proxies such as nginx, HAProxy and Envoy do, as long as their idle timeouts are raised above your heartbeat interval.
+
+**<Term slug="sticky-connection">Sticky connections</Term>.** A WebSocket rides one TCP connection, so every frame naturally reaches the same server; nothing extra is needed for that. The catch is the other direction: you cannot move a live connection to another server. Draining a server for a deploy means closing its connections and letting clients reconnect elsewhere.
+
+**Message routing.** If user A is connected to server 1 and user B to server 3, how does A's message reach B? Put a pub/sub system (Redis Pub/Sub, NATS, Kafka) between the connection servers. Server 1 publishes A's message on B's channel (or the chat room's channel). Server 3 subscribed to that channel when B connected, so it receives the message and pushes it down B's socket.
+
+<Figure caption="FIG. 12.2 · A PUB/SUB BUS ROUTES MESSAGES BETWEEN CONNECTION SERVERS">
+  <Diagram label="A pub/sub bus routes messages between connection servers so clients on different servers can communicate." chart={`flowchart LR
+    A["Client A"] --> S1["Conn server 1"]
+    B["Client B"] --> S3["Conn server 3"]
+    S1 -->|publish| PubSub["Redis Pub/Sub"]
+    PubSub -->|subscribe| S3
+    S3 --> B`} />
+</Figure>
+
+*A pub/sub bus routes messages between connection servers so clients on different servers can communicate.*
+
+Redis Pub/Sub is fire-and-forget: a subscriber that is briefly offline misses the message. If missing messages is unacceptable (chat history, payments), write the message to a durable store first, push it in realtime as a best effort, and let reconnecting clients fetch anything after their last seen ID.
+
+**<Term slug="heartbeat">Heartbeats</Term>.** Connections die silently: a phone enters a lift, a NAT box on the path forgets the mapping after a few minutes of silence. TCP itself may not notice for a very long time. So both sides send small ping/pong frames on a schedule. Miss a few in a row and you close the connection, and the client reconnects.
+
+Heartbeats cost something at scale. With 10 million connections and a ping every 30 seconds, the fleet sends 10,000,000 ÷ 30 ≈ **333,000 pings per second** in each direction. That is still tiny next to 3.3 million full HTTP polls per second, but it is why you should not ping every second.
+
+**The reconnect storm.** When one connection server crashes, all its clients reconnect at once. If server 7 held 250,000 users and they all retry instantly, the other servers and your auth service take 250,000 handshakes (each with a TLS handshake and a token check) in the same second. Clients must reconnect with **exponential backoff and random jitter**, for example a random wait between 0 and 1 second, then up to 2, then up to 4. That spreads the herd over several seconds.
+
+<Callout type="analogy" title="The fire drill">
+When the fire alarm ends, if 2,000 office workers all rush back through one door at once, nobody gets in for ages. If each person waits a random few seconds first, the lobby flows. Jitter is that random wait.
+</Callout>
+
+**Connection limits.** Each process has a file descriptor limit; the default on Linux is often 1,024, and raising it to hundreds of thousands or more needs explicit tuning (`ulimit`, kernel settings). Track connections per server as a first-class metric, and scale out before you hit the ceiling rather than after.
+
+### Worked example: sizing a connection fleet
+
+Design for **10 million** concurrent users, with a budget of **250,000** connections per server (leaving headroom below what one machine can actually hold).
+
+- Servers needed: 10,000,000 ÷ 250,000 = **40 connection servers**. Add spares for failures and deploys, say **48**.
+- Memory: at about 20 KB per connection (buffers, TLS and session state together), 250,000 × 20 KB ≈ **5 GB** per server. Comfortable on a 16 GB machine.
+- Losing one server disconnects 250,000 users. With jitter spreading reconnects over 10 seconds, the rest of the fleet sees about **25,000 reconnects per second**, which the auth service must be sized for.
+- A rolling deploy of all 48 servers, one at a time, causes 48 small reconnect waves rather than one giant one.
+
+These numbers are illustrative inputs, not measurements; real per-connection memory depends heavily on your language runtime and buffer settings. The method is what matters: users ÷ connections per server, then plan for the reconnect wave.
+
+<TradeoffBox title="Realtime communication tradeoffs" items={[
+  { gain: "Short polling is trivial to implement, stateless and works everywhere", cost: "Most requests are empty; average latency is half the interval" },
+  { gain: "Long polling delivers updates near-instantly over plain HTTP", cost: "Holds many requests; reconnection gaps after each response" },
+  { gain: "SSE is a one-line browser API with built-in reconnection and resume", cost: "Server-to-client only; text only; proxies must not buffer it" },
+  { gain: "WebSockets give full-duplex, low-overhead, low-latency messaging", cost: "Stateful connections complicate scaling, deploys and failover; need pub/sub for cross-server routing" }
+]} />
+
+<NotWhenBox title="Choosing WebSockets" items={[
+  "When updates are infrequent (once a minute or less): short polling or SSE is simpler and wastes less.",
+  "When data flows only from server to client (notifications, feeds, streamed AI output): SSE is simpler and reconnects by itself.",
+  "When corporate firewalls block WebSocket upgrades: long polling or SSE are more compatible fallbacks."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="WebSockets replace HTTP." right="WebSockets complement HTTP. Use HTTP for request–response (API calls, page loads, uploads) and WebSockets for persistent, two-way messaging (chat, live collaboration, multiplayer). Most applications use both." />
+
+<Misconception wrong="Long polling is the same as short polling with a longer interval." right="Short polling returns immediately, empty or not. Long polling holds the request until data exists, so updates arrive near-instantly without a stream of empty responses." />
+
+<Misconception wrong="SSE is obsolete because WebSockets exist." right="SSE is simpler, reconnects and resumes by itself, and is enough when data flows only from server to client. Many dashboards, notification systems and AI chat interfaces use it on purpose." />
+
+<Misconception wrong="An open WebSocket means the user is still there." right="Connections die silently behind NATs and flaky mobile networks. Without heartbeats a server can hold thousands of dead connections and think those users are online." />
+
+## Interview angle
+
+<InterviewAngle title="Realtime communication" questions={[
+  "How would you deliver real-time notifications to millions of users?",
+  "When would you choose WebSockets over SSE or polling?",
+  "How do you scale WebSocket connections across multiple servers?",
+  "What happens when a WebSocket connection server crashes?"
+]}>
+Realtime comes up in chat, notification, live feed and collaboration designs. Start from direction and frequency: rare updates, poll; server-push only, SSE; two-way and frequent, WebSockets; long polling as the compatibility fallback. Then show the cost math: polling QPS = users ÷ interval, against connections to hold. For scale, describe a fleet of connection servers behind an L7 load balancer, a pub/sub bus for cross-server routing, a durable store plus "fetch since last ID" so messages are not lost, heartbeats to find dead connections, and jittered backoff to survive reconnect storms.
+</InterviewAngle>
+
+## Practice
+
+1. A sports app has 2 million users watching a match. Scores change about once a minute. Compare short polling every 5 seconds with SSE: how many requests per second does polling generate, and what fraction are empty?
+2. You are designing a collaborative whiteboard where every cursor moves live. Pick a transport and justify it in two sentences, including what happens on a dropped connection.
+3. A connection server holding 200,000 WebSockets crashes. Sketch the reconnect behaviour you would build into the client, and estimate the reconnects per second the fleet sees if you spread them over 20 seconds.
+4. Your SSE notifications work locally but arrive in bursts every 30 seconds in production. Name the most likely cause and the fix.
+
+## Try it
+
+<Simulator id="request-journey" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

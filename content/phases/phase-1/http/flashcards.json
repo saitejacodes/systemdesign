@@ -1,0 +1,18 @@
+[
+  { "id": "f1", "front": "What did HTTP/1.1 keep-alive add?", "back": "The TCP connection stays open for multiple request–response pairs, avoiding a new handshake each time. Requests are still serial within one connection.", "topicId": "http-versions" },
+  { "id": "f2", "front": "What is HTTP/2 multiplexing?", "back": "Multiple concurrent request–response streams share one TCP connection. Frames from different streams are interleaved, so a slow response on one stream does not block others at the HTTP level.", "topicId": "http-versions" },
+  { "id": "f3", "front": "What transport does HTTP/3 use and why?", "back": "QUIC over UDP. QUIC provides per-stream reliability, eliminating TCP-level HOL blocking, and integrates TLS 1.3 for a faster handshake.", "topicId": "http-versions" },
+  { "id": "f4", "front": "HTTP/3 connection migration?", "back": "QUIC connections are identified by a connection ID, not by IP:port. When a mobile client switches networks, the connection survives.", "topicId": "http-versions" },
+  { "id": "f5", "front": "Safe method vs idempotent method?", "back": "Safe = does not change server state (GET, HEAD). Idempotent = same result whether sent once or many times (GET, PUT, DELETE). POST is neither.", "topicId": "http-methods" },
+  { "id": "f6", "front": "Why is PUT idempotent but POST is not?", "back": "PUT replaces a resource: doing it twice sets the same value. POST creates or triggers an action: doing it twice may create two resources.", "topicId": "http-methods" },
+  { "id": "f7", "front": "What is an idempotency key?", "back": "A unique key the client sends with a POST request. The server stores it and, if the same key arrives again, returns the original response without re-processing. Prevents duplicate orders/payments on retry.", "topicId": "http-methods" },
+  { "id": "f8", "front": "HTTP status code ranges?", "back": "1xx informational, 2xx success, 3xx redirection, 4xx client error, 5xx server error.", "topicId": "http-methods" },
+  { "id": "f9", "front": "429 Too Many Requests?", "back": "The server is rate-limiting the client. Retry after the time indicated in the Retry-After header.", "topicId": "http-methods" },
+  { "id": "f10", "front": "Cache-Control: no-cache vs no-store?", "back": "no-cache: cache the response but revalidate with the origin on every use. no-store: do not cache at all.", "topicId": "http-caching-headers" },
+  { "id": "f11", "front": "What is an ETag?", "back": "A fingerprint of the response body. The client sends If-None-Match: <etag> on subsequent requests. If unchanged, the server returns 304 Not Modified with no body.", "topicId": "http-caching-headers" },
+  { "id": "f12", "front": "Cache-Control: public vs private?", "back": "public: any cache (browser, CDN, proxy) may store. private: only the end-user's browser may cache. Use private for user-specific data.", "topicId": "http-caching-headers" },
+  { "id": "f13", "front": "Content-hash caching strategy?", "back": "Include a hash in the filename (app.3f8a.js). Cache with max-age=31536000, immutable. When code changes, the filename changes, forcing a cache miss.", "topicId": "http-caching-headers" },
+  { "id": "f14", "front": "What is s-maxage?", "back": "A Cache-Control directive that overrides max-age for shared caches (CDNs, reverse proxies) but not for the browser.", "topicId": "http-caching-headers" },
+  { "id": "f15", "front": "304 Not Modified?", "back": "Returned when a conditional request (ETag or Last-Modified) shows the content has not changed. No body is sent, saving bandwidth. The client uses its cached copy.", "topicId": "http-caching-headers" }
+]
+

@@ -1,0 +1,20 @@
+{
+  "id": "p1-tcp-udp",
+  "phase": 1,
+  "slug": "tcp-udp",
+  "title": "TCP and UDP",
+  "order": 7,
+  "week": 2,
+  "estimatedMinutes": 50,
+  "topics": [
+    { "id": "tcp-handshake", "title": "TCP three-way handshake", "depth": "deep" },
+    { "id": "tcp-reliability", "title": "Reliability, ordering and flow control", "depth": "deep" },
+    { "id": "tcp-congestion", "title": "Congestion control", "depth": "tradeoffs" },
+    { "id": "udp-use-cases", "title": "UDP and when to use it", "depth": "deep" },
+    { "id": "hol-blocking", "title": "Head-of-line blocking", "depth": "deep" }
+  ],
+  "simulatorIds": ["request-journey"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-dns"]
+}
+

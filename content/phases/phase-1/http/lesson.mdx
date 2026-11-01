@@ -1,0 +1,184 @@
+## Why it matters
+
+HTTP is the protocol that carries almost every web and mobile API call. When Stripe processes a payment, when your app fetches a user profile, when a CDN serves an image—it is HTTP underneath. Three major versions of the protocol coexist today, each solving performance problems its predecessor left behind. Knowing the differences between HTTP/1.1, HTTP/2 and HTTP/3, understanding which methods are safe and idempotent, and mastering caching headers lets you design APIs that are correct, fast and cache-friendly.
+
+## HTTP/1.1, HTTP/2 and HTTP/3
+
+<DepthStamp depth="deep" />
+
+### HTTP/1.1
+
+<Term slug="http">HTTP</Term> 1.1, standardised in 1997 and updated in 2022 (RFC 9110–9112), added <Term slug="keep-alive">keep-alive</Term> connections: a single TCP connection stays open for multiple request–response pairs, avoiding a new three-way handshake each time. However, HTTP/1.1 is fundamentally serial within a connection: the client sends a request, waits for the response, then sends the next. Browsers work around this by opening 6–8 parallel TCP connections per host, but each connection still processes one request at a time.
+
+**Pipelining** was an attempt to send multiple requests without waiting for responses, but it was plagued by head-of-line blocking at the HTTP level (a slow response blocks all pipelined responses behind it) and was never widely deployed.
+
+### HTTP/2
+
+HTTP/2 (2015, RFC 7540; revised in 2022 as RFC 9113) introduced <Term slug="multiplexing">multiplexing</Term>: many independent request–response streams share one TCP connection. Each stream has an ID; frames from different streams are interleaved on the wire. This means a slow response on stream 3 does not block stream 7 at the HTTP level.
+
+Other HTTP/2 features:
+- **Header compression (HPACK).** HTTP headers are compressed and deduplicated, saving bandwidth on repeat requests.
+- **Server push.** The server can send resources the client has not yet requested. In practice, server push saw little use because predicting what the client needs is hard and it often re-sent files the browser already had cached; Chrome removed support for it in 2022. The `103 Early Hints` status code is the lighter replacement: the server tells the browser which files to start fetching while it is still preparing the main response.
+- **Binary framing.** HTTP/2 is binary (not text), which is more efficient to parse.
+
+HTTP/2's limitation: it still runs over TCP. A single lost TCP packet blocks all HTTP/2 streams on that connection (TCP-level head-of-line blocking, covered in the TCP/UDP section).
+
+### HTTP/3 and QUIC
+
+HTTP/3 (2022, RFC 9114) replaces TCP with <Term slug="quic">QUIC</Term>, a transport protocol built on UDP. QUIC provides per-stream reliability: a lost packet in one stream does not block others. It also integrates TLS 1.3 into the handshake, establishing encryption in a single round trip (0-RTT on repeat connections).
+
+| Feature | HTTP/1.1 | HTTP/2 | HTTP/3 |
+|---------|----------|--------|--------|
+| Transport | TCP | TCP | QUIC (UDP) |
+| Multiplexing | No (serial) | Yes (streams over one connection) | Yes (streams, no HOL blocking) |
+| Header compression | None | HPACK | QPACK |
+| TLS | Separate (optional) | Separate (required in practice) | Integrated (always) |
+| HOL blocking | HTTP-level | TCP-level | None (per-stream) |
+| Connection migration | No | No | Yes (connection ID survives IP changes) |
+
+HTTP/3's connection migration is useful for mobile clients: when a phone switches from Wi-Fi to cellular, the QUIC connection survives because it is identified by a connection ID, not by the source IP and port tuple.
+
+<Callout type="analogy" title="Three generations of the same coffee shop">
+**HTTP/1.1** is a coffee shop where each barista takes one order, makes it, hands it over and only then takes the next order. To serve a group of 60 faster, you send six friends to six different baristas (browsers open about six connections per host), but each barista still works one cup at a time. **HTTP/2** is one super-barista with a numbered ticket system: everyone shouts their order at once, each cup gets a ticket number, and finished drinks come out in whatever order they're ready. Much faster, but there's a single counter, and if the counter gets blocked (a lost TCP packet), every ticket waits. **HTTP/3** keeps the ticket system but gives every ticket its own little pickup window, so one spilled latte blocks only that latte. And if you walk out of the shop and come back in through another door (your phone switches from Wi-Fi to 5G), the barista still recognises your ticket.
+</Callout>
+
+### Worked example: a page with 60 small files
+
+A product page needs the HTML plus 60 small assets (icons, scripts, styles), each about 5 KB. The user is **100 ms** from the server. Ignore the time servers spend generating files and focus on round trips.
+
+**HTTP/1.1.** One request per connection at a time, about six connections. After DNS, TCP and TLS on each connection (about 2 round trips, done in parallel), 60 assets over 6 connections is 10 sequential rounds. Total: about 2 + 1 (HTML) + 10 = **13 round trips ≈ 1.3 s**.
+
+**HTTP/2.** One connection, 2 round trips to set up, 1 for the HTML, then all 60 requests go out at once as streams. 60 × 5 KB = 300 KB, which takes slow start a few round trips to deliver on a fresh connection (say 3–4). Total: about 2 + 1 + 4 = **7 round trips ≈ 0.7 s**.
+
+**HTTP/3.** The QUIC handshake combines transport and TLS setup into 1 round trip, or 0 on a repeat visit. Total: about 1 + 1 + 4 = **6 round trips ≈ 0.6 s**, and it degrades more gracefully on a lossy mobile network because one lost packet stalls only its own stream.
+
+The lesson: once round trips dominate, protocol choice changes page time by about 2×, and putting a CDN edge 10 ms from the user instead of 100 ms beats all of it.
+
+## Methods, status codes and idempotency
+
+<DepthStamp depth="deep" />
+
+### Methods
+
+HTTP defines several request methods. The ones you will use in system design:
+
+| Method | Purpose | <Term slug="safe-method">Safe</Term> | <Term slug="idempotent-method">Idempotent</Term> |
+|--------|---------|------|------------|
+| GET | Retrieve a resource | Yes | Yes |
+| HEAD | Like GET but response has no body | Yes | Yes |
+| POST | Create a resource or trigger an action | No | No |
+| PUT | Replace a resource entirely | No | Yes |
+| PATCH | Partially update a resource | No | No (usually) |
+| DELETE | Remove a resource | No | Yes |
+
+**Safe** means the request does not change server state. **Idempotent** means sending the same request multiple times has the same effect as sending it once. GET is both safe and idempotent. PUT is idempotent but not safe: the first call changes the resource, but repeating it does not change it further. POST is neither: two identical POST requests may create two resources.
+
+<Callout type="analogy" title="The lift button and the vending machine">
+**Safe** is reading the menu in a restaurant window: you can look a thousand times and nothing in the kitchen changes. **Idempotent** is the lift call button: press it once and the lift is called; press it nine more times out of impatience and the lift is still called exactly once. PUT and DELETE are lift buttons: "set my profile name to Asha" ten times leaves the name as Asha; "delete order 42" ten times leaves order 42 deleted. **Non-idempotent** is the vending machine: press "buy" twice and you get two sodas and pay twice. POST is the vending machine, which is why a payment API must never blindly re-press it on a timeout. An idempotency key is writing your name on the coin: the machine remembers "I already gave Asha her soda for this coin" and hands back the same can instead of a second one.
+</Callout>
+
+Idempotency matters for retries. If a network error occurs after sending a PUT and the client is unsure whether the server received it, retrying is safe—the result is the same. Retrying a POST may create duplicates, which is why many APIs use idempotency keys: the client includes a unique key with each POST, and the server deduplicates by that key.
+
+### Status codes
+
+<Term slug="status-code">Status codes</Term> fall into five classes:
+
+| Range | Meaning | Examples |
+|-------|---------|----------|
+| 1xx | Informational | 100 Continue, 101 Switching Protocols |
+| 2xx | Success | 200 OK, 201 Created, 204 No Content |
+| 3xx | Redirection | 301 Moved Permanently, 304 Not Modified |
+| 4xx | Client error | 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 429 Too Many Requests |
+| 5xx | Server error | 500 Internal Server Error, 502 Bad Gateway, 503 Service Unavailable, 504 Gateway Timeout |
+
+In system design, 429 (Too Many Requests) is the rate-limiting response, 502/504 signal upstream failures (useful when discussing load balancer behaviour), and 304 (Not Modified) is the caching validation response.
+
+## Caching headers
+
+<DepthStamp depth="tradeoffs" />
+
+HTTP caching lets clients and intermediate proxies store responses and reuse them without hitting the origin server. The key headers:
+
+**<Term slug="cache-control">Cache-Control</Term>.** The primary directive. Common values:
+- `public, max-age=3600` — any cache (browser, CDN) may store this for 1 hour.
+- `private, max-age=600` — only the browser may cache (not shared caches like CDNs); useful for user-specific data.
+- `no-store` — never cache. Use for sensitive data.
+- `no-cache` — cache the response but revalidate with the origin on every use.
+- `s-maxage=86400` — overrides `max-age` for shared caches (CDNs, reverse proxies).
+
+**<Term slug="etag">ETag</Term>.** A fingerprint of the response body. On subsequent requests the client sends `If-None-Match: <etag>`. If the content has not changed, the server returns 304 Not Modified with no body, saving bandwidth.
+
+**Last-Modified / If-Modified-Since.** A date-based alternative to ETag. Less precise (second granularity) but simpler.
+
+**<Term slug="conditional-request">Conditional requests</Term>** (using ETag or Last-Modified) let the client ask "has this changed?" instead of downloading the full response. This is how browsers avoid re-downloading unchanged CSS, JS and images.
+
+<Callout type="analogy" title="max-age is a fridge; ETag is asking for the edition number">
+`max-age=3600` is buying milk and putting it in your own fridge: for the next hour you don't even leave the house. `no-cache` with an ETag is a newspaper subscription where, every morning, you phone the newsagent and ask "is today's edition still number 4512?" If yes ("304 Not Modified"), you keep reading the copy on your table: a short phone call instead of a trip to the shop. If no, they send the new paper. `no-store` is a secret letter you must burn after reading: never kept anywhere, fetched fresh every time. And `private` versus `public` is the difference between your own fridge and the office fridge: you would never put someone's personal medication (a user's account page) in the shared office fridge (a CDN), where the next person might take it.
+</Callout>
+
+### Worked example: what caching saves
+
+A site's logo is 50 KB and appears on every page. The site serves **10 million page views a day** from **2 million distinct visitors**.
+
+**No caching.** Every page view downloads the logo: 10⁷ × 50 KB = **500 GB/day** of egress for one image.
+
+**`max-age=31536000, immutable` with a hashed filename.** Each visitor downloads it once and then reuses the cached copy: at most 2 × 10⁶ × 50 KB = **100 GB/day**, and much less on following days because returning visitors already have it. Put a CDN in front and your origin sees only a few hundred requests per day (one per CDN edge location per cache expiry) instead of 10 million.
+
+**ETag revalidation only (`no-cache`).** Every page view still sends a conditional request. The body is skipped (304), so bandwidth falls to a few hundred bytes per request, but you still pay **10 million round trips and requests per day** at the server. Revalidation saves bytes, not requests.
+
+### Caching strategy in practice
+
+- **Static assets** (JS, CSS, images with hashed filenames): `Cache-Control: public, max-age=31536000, immutable`. The hash in the filename changes when the content changes, so you can cache forever.
+- **API responses**: `Cache-Control: private, max-age=60` or `no-cache` with an ETag for revalidation.
+- **Sensitive data** (user sessions, payment info): `Cache-Control: no-store`.
+
+<TradeoffBox title="HTTP caching tradeoffs" items={[
+  { gain: "Long max-age reduces origin load and speeds up repeat visits", cost: "Stale content served until the cache expires; hard to invalidate" },
+  { gain: "ETag revalidation saves bandwidth when content hasn't changed", cost: "Still requires a round trip to the origin for the conditional request" },
+  { gain: "CDN caching (s-maxage) offloads traffic from your servers", cost: "Cache invalidation across a global CDN is eventually consistent" },
+  { gain: "no-store guarantees freshness and privacy", cost: "Every request hits the origin, increasing load and latency" }
+]} />
+
+<NotWhenBox title="Caching aggressively" items={[
+  "Personalised or authenticated content without proper Cache-Control: private. A shared cache could serve one user's data to another.",
+  "Rapidly changing data where staleness causes correctness problems (e.g. stock prices, auction bids).",
+  "When you cannot version or hash-bust URLs: you lose the ability to cache-bust stale assets."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="HTTP/2 is always faster than HTTP/1.1." right="HTTP/2 multiplexing helps when many small requests share a connection. For a single large download, there is little difference. And under packet loss, TCP-level HOL blocking can make HTTP/2 slower than multiple HTTP/1.1 connections." />
+
+<Misconception wrong="PUT and POST are interchangeable." right="PUT replaces the entire resource and is idempotent: repeating it is safe. POST creates or triggers an action and is not idempotent: repeating it may create duplicates." />
+
+<Misconception wrong="Cache-Control: no-cache means 'don't cache'." right="no-cache means 'cache the response but always revalidate with the origin before using it.' no-store means 'don't cache at all.'" />
+
+<Misconception wrong="ETag eliminates the round trip to the server." right="A conditional request still travels to the server. What it saves is bandwidth: the server returns 304 with no body instead of the full response. The round trip still happens." />
+
+## Interview angle
+
+<InterviewAngle title="HTTP" questions={[
+  "What HTTP methods would you use for your API, and which are idempotent?",
+  "How would you design the caching strategy for a CDN-backed service?",
+  "What is the difference between HTTP/2 and HTTP/3, and when does it matter?",
+  "How do you handle retries safely for non-idempotent endpoints?"
+]}>
+HTTP shows up in the API design phase of almost every system design interview. Know which methods are idempotent (GET, PUT, DELETE) and why that matters for retries. Mention idempotency keys for POST endpoints. When discussing performance, show awareness of HTTP/2 multiplexing and HTTP/3's fix for TCP-level HOL blocking. Caching headers are essential when designing CDN strategies.
+</InterviewAngle>
+
+## Try it
+
+<Simulator id="request-journey" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+Open your browser's developer tools on any large site, go to the Network tab and add the "Protocol" column. Which requests use h2 or h3? Pick three responses and read their `Cache-Control` and `ETag` headers: why do you think each one was chosen? Then design the methods and cache headers for a small "orders" API: create, read, update status, cancel.
+

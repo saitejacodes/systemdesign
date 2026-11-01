@@ -1,0 +1,32 @@
+[
+  {
+    "id": "c1",
+    "text": "I can compare short polling, long polling, SSE and WebSockets on latency, server cost, direction and proxy compatibility.",
+    "topicId": "short-polling"
+  },
+  {
+    "id": "c2",
+    "text": "I can explain when to use SSE vs WebSockets and give a concrete example for each.",
+    "topicId": "sse"
+  },
+  {
+    "id": "c3",
+    "text": "I can describe how WebSocket connections are established (HTTP upgrade) and their full-duplex nature.",
+    "topicId": "websockets"
+  },
+  {
+    "id": "c4",
+    "text": "I can explain how to scale WebSocket connections using multiple servers, a pub/sub bus and heartbeats.",
+    "topicId": "scaling-websockets"
+  },
+  {
+    "id": "c5",
+    "text": "I can explain long polling's advantages over short polling and its drawbacks compared to SSE/WebSockets.",
+    "topicId": "long-polling"
+  },
+  {
+    "id": "c6",
+    "text": "I can size a WebSocket fleet (users ÷ connections per server) and plan for the reconnect storm when one server dies.",
+    "topicId": "scaling-websockets"
+  }
+]

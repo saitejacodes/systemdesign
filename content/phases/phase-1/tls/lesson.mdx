@@ -1,0 +1,190 @@
+## Why it matters
+
+Every HTTPS request—every login, every API call, every credit-card payment—is protected by TLS. When you type a password into a website, TLS ensures that nobody between your browser and the server can read or tamper with it. Google began ranking HTTPS sites higher in 2014, and today browsers mark plain HTTP as "Not Secure." In a system design interview, understanding where TLS terminates, how certificates work and when to use mTLS between services shows you can reason about security at the infrastructure level.
+
+## What TLS provides
+
+<DepthStamp depth="deep" />
+
+<Term slug="tls">Transport Layer Security (TLS)</Term> provides three guarantees for data in transit:
+
+1. **Confidentiality.** Data is encrypted. An attacker who intercepts the traffic sees only ciphertext.
+2. **Integrity.** Each encrypted record carries an authentication tag (a message authentication code; TLS 1.3 uses AEAD ciphers that encrypt and authenticate in one step). Any tampering is detected and the connection is dropped.
+3. **Authentication.** The server proves its identity using a <Term slug="certificate">certificate</Term> signed by a trusted <Term slug="certificate-authority">certificate authority (CA)</Term>. The client verifies the certificate chain before sending any sensitive data.
+
+TLS sits between the transport layer (TCP or QUIC) and the application layer (HTTP). The application sees a normal socket; TLS handles encryption transparently.
+
+<Callout type="analogy" title="An armoured van with a sealed box and a driver's licence">
+Sending plain HTTP is mailing a postcard: every postal worker who touches it can read it, and anyone could rub out "£10" and write "£1,000". TLS turns the postcard into a locked box in an armoured van. **Confidentiality**: the box is locked, so handlers see a box, not the contents. **Integrity**: the box has a tamper-evident seal; if anyone pries it open and re-closes it, the seal is broken and the receiver throws the box away. **Authentication**: before you hand over the box, the driver shows a licence issued by an authority you trust, so you know you are giving your valuables to the real bank's van and not a criminal in a van-shaped costume. Remove any one of the three and the scheme fails: a locked box handed to an impostor is still stolen.
+</Callout>
+
+<Term slug="ssl">SSL</Term> (Secure Sockets Layer) is the predecessor of TLS. SSL 3.0 was deprecated in 2015 due to security vulnerabilities. The term "SSL" is still colloquially used, but all modern deployments use TLS 1.2 or TLS 1.3.
+
+## The TLS handshake
+
+<DepthStamp depth="deep" />
+
+Before encrypted data can flow, the client and server perform a <Term slug="tls-handshake">TLS handshake</Term> to agree on a <Term slug="cipher-suite">cipher suite</Term>, exchange keys and verify the server's identity.
+
+### TLS 1.2 handshake (2 round trips)
+
+1. **ClientHello.** The client sends supported TLS versions, cipher suites and a random number.
+2. **ServerHello + Certificate.** The server picks a cipher suite, sends its certificate and its own random number.
+3. **Key exchange.** The client verifies the certificate, both sides compute a shared secret (using Diffie-Hellman or similar), and the client sends a Finished message.
+4. **Server Finished.** The server confirms. Encrypted application data can now flow.
+
+### TLS 1.3 handshake (1 round trip)
+
+TLS 1.3 (2018, RFC 8446) simplifies the handshake to a single round trip:
+
+1. **ClientHello + key share.** The client sends supported cipher suites and its Diffie-Hellman key share in the first message.
+2. **ServerHello + key share + Certificate + Finished.** The server responds with its key share, certificate and Finished in one flight.
+3. **Client Finished.** The client sends Finished and can immediately send encrypted data.
+
+### How two strangers agree on a secret in public
+
+The key exchange is the clever step. Client and server have never met, every byte they send can be read by an eavesdropper, and yet they end up sharing a secret key the eavesdropper cannot compute. They do it with <Term slug="diffie-hellman">Diffie–Hellman</Term> key exchange (in modern TLS, its elliptic-curve form, ECDHE).
+
+<Callout type="analogy" title="Mixing paint in front of a spy">
+Alice and Bob publicly agree on a common base colour, say yellow. Each secretly picks a private colour: Alice picks red, Bob picks blue. Alice mixes yellow + red (orange) and sends it to Bob; Bob mixes yellow + blue (green) and sends it to Alice. A spy sees yellow, orange and green go past. Now Alice adds her secret red to Bob's green, and Bob adds his secret blue to Alice's orange. Both end up with exactly the same muddy yellow-red-blue brown. The spy has every paint that travelled on the wire, but un-mixing paint is practically impossible, so they cannot produce that brown. Replace "mixing paint" with maths that is easy to do and practically impossible to undo, and that is Diffie–Hellman.
+</Callout>
+
+Because TLS 1.3 always uses fresh (ephemeral) Diffie–Hellman keys for each connection, it gives <Term slug="forward-secrecy">forward secrecy</Term>: if an attacker records your encrypted traffic today and steals the server's private key next year, they still cannot decrypt the old recordings. The certificate's private key is only used to *prove identity* (sign the handshake), not to encrypt the session key. Older TLS setups that used RSA key transport did not have this property, which is one reason TLS 1.3 removed it.
+
+<Figure caption="FIG. 9.1 · TLS 1.3 HANDSHAKE · ONE ROUND TRIP">
+  <Diagram label="TLS 1.3 handshake completes in one round trip, compared to two for TLS 1.2." chart={`sequenceDiagram
+    participant Client
+    participant Server
+    Client->>Server: ClientHello + key share
+    Server->>Client: ServerHello + key share + Certificate + Finished
+    Client->>Server: Finished + application data
+    Note over Client,Server: Encrypted connection established (1 RTT)`} />
+</Figure>
+
+*TLS 1.3 handshake completes in one round trip, compared to two for TLS 1.2.*
+
+**0-RTT resumption.** TLS 1.3 supports 0-RTT mode: on a repeat connection, the client can send encrypted data in the very first message using a pre-shared key from a previous session. The tradeoff is that 0-RTT data can be replayed by an attacker, so it should only carry idempotent requests.
+
+Combined with TCP, a new HTTPS connection costs 2 RTTs in TLS 1.3 (1 for TCP handshake + 1 for TLS) or 3 RTTs in TLS 1.2. HTTP/3 (QUIC) integrates TLS 1.3 into the transport handshake, achieving 1 RTT for new connections and 0 RTT for repeat connections.
+
+## Certificates and certificate authorities
+
+<DepthStamp depth="deep" />
+
+A TLS <Term slug="certificate">certificate</Term> is a digitally signed document that binds a <Term slug="public-key">public key</Term> to a domain name. The server holds the corresponding <Term slug="private-key">private key</Term> and never shares it.
+
+**<Term slug="certificate-chain">Certificate chain</Term>.** Certificates form a chain of trust:
+
+1. **Root CA.** A self-signed certificate that browsers and operating systems trust by default. A typical trust store holds well over a hundred root certificates from a few dozen organisations (DigiCert, Let's Encrypt's ISRG Root, and others).
+2. **Intermediate CA.** Signed by the root. Most certificates are issued by intermediates, so the root key can be kept offline.
+3. **Leaf (server) certificate.** Signed by the intermediate. This is what the server presents.
+
+The client verifies the chain: the leaf is signed by the intermediate, the intermediate is signed by the root, and the root is in the client's trust store.
+
+<Callout type="analogy" title="A passport stamped by a regional office">
+A certificate is a passport for a website. The leaf certificate says "the holder of this public key is `shop.example.com`", the way a passport says "the person in this photo is Asha Rao". A border guard doesn't know Asha personally; they trust the passport because it was issued by a regional passport office (the **intermediate CA**), and they trust the regional office because its authority comes from the national government (the **root CA**), whose seal every border post keeps on file (the browser's **trust store**). The government keeps its master seal locked in a vault and rarely uses it (root keys are kept offline), and lets regional offices do the daily stamping. If a regional office is caught issuing fake passports, it gets struck off and every passport it issued stops being accepted: that is certificate revocation, and in a few real cases browsers have removed trust from an entire CA.
+</Callout>
+
+**What the browser actually checks**, in order: the name on the certificate matches the host you typed (`shop.example.com`, or a wildcard like `*.example.com` that covers exactly one label); the current date is between the certificate's "not before" and "not after" dates; each signature in the chain is valid; the chain ends at a root in the trust store; and (where checked) the certificate has not been revoked. Fail any step and you see a full-page warning instead of the site.
+
+**Let's Encrypt** made TLS certificates free and automated, removing cost as a barrier. Certificates are valid for 90 days and renewed automatically.
+
+**Certificate expiration** is a common cause of outages. If a certificate expires, browsers show an error and refuse to connect. Automated renewal (certbot, ACME protocol) and monitoring are essential. This happens to large companies too: in February 2020 Microsoft Teams was unavailable for a few hours because an authentication certificate had been allowed to expire, and in December 2018 an expired certificate in Ericsson's software knocked out mobile data for millions of O2 customers in the UK for most of a day.
+
+### Worked example: a renewal policy that never pages you at 3 a.m.
+
+You run 40 services, each with its own certificate from an ACME CA such as Let's Encrypt (90-day certificates).
+
+- **Renew at two-thirds of the lifetime**, around day 60. That leaves a 30-day buffer for the renewal job to fail, be noticed and be fixed. Let's Encrypt's own guidance recommends renewing well before expiry for exactly this reason.
+- **Alert at 21 days remaining** (a ticket, not a page), and **page at 7 days**. If the automation is healthy you never see either.
+- **Expected renewal volume**: 40 certificates ÷ 60 days ≈ **0.7 renewals per day**, so a failure is a small, quiet event, not a monthly cliff where everything renews at once.
+- **Check what clients see, not what's on disk.** A renewed certificate sitting in a file does nothing until the load balancer or server reloads it. Monitor by connecting to the real endpoint and reading the expiry date it presents.
+
+### What TLS costs in practice
+
+TLS adds two costs: **round trips** to set up (1 for TLS 1.3, 2 for TLS 1.2, on top of TCP) and **CPU** for the handshake's public-key operations and for encrypting every byte. Modern CPUs have instructions dedicated to AES, so bulk encryption is cheap; the handshake is the more expensive part, which is one more reason to reuse connections. For a user 150 ms away, a fresh TLS 1.2 connection spends 3 × 150 = 450 ms on TCP + TLS setup; TLS 1.3 cuts that to 300 ms; a reused connection pays 0. Inside a data centre, where a round trip is about 0.5 ms, the setup cost is small, which is why encrypting internal traffic (re-encryption or mTLS) is much more affordable than many teams assume.
+
+## TLS termination and mTLS
+
+<DepthStamp depth="tradeoffs" />
+
+### <Term slug="tls-termination">TLS termination</Term>
+
+In a typical deployment, TLS is terminated at the load balancer or reverse proxy, not at each application server:
+
+<Figure caption="FIG. 9.2 · TLS TERMINATES AT THE LOAD BALANCER">
+  <Diagram label="TLS terminates at the load balancer. Traffic between the LB and app servers is plain HTTP within a private network." chart={`flowchart LR
+    Client -->|HTTPS| LB["Load balancer<br/>(TLS terminated)"]
+    LB -->|HTTP| App1["App server 1"]
+    LB -->|HTTP| App2["App server 2"]`} />
+</Figure>
+
+*TLS terminates at the load balancer. Traffic between the LB and app servers is plain HTTP within a private network.*
+
+**Why terminate at the LB?**
+- Centralises certificate management: one place to renew and rotate certificates.
+- Offloads CPU-intensive encryption from application servers.
+- Allows the LB to inspect HTTP headers for routing (L7 load balancing requires decrypted traffic).
+
+**The risk:** traffic between the LB and app servers is unencrypted. This is acceptable within a trusted private network or VPC, but if an attacker gains access to the internal network, they can read the traffic. For high-security environments, re-encrypt between the LB and app servers (TLS passthrough or TLS re-encryption).
+
+### <Term slug="mtls">Mutual TLS (mTLS)</Term>
+
+In standard TLS, only the server presents a certificate. In mTLS, the **client also presents a certificate** to the server. This proves the client's identity, not just the server's.
+
+mTLS is used for service-to-service communication in microservice architectures. Instead of relying on network boundaries for trust, each service has its own certificate, and services only accept connections from other services with valid certificates.
+
+Service meshes like Istio and Linkerd automate mTLS: every sidecar proxy gets a certificate from an internal CA, and all inter-service traffic is encrypted and authenticated without application code changes.
+
+<Callout type="analogy" title="Termination is the mailroom; mTLS is a nightclub where everyone shows ID">
+**TLS termination** is a company mailroom. Armoured vans deliver sealed boxes to the front desk (the load balancer). The mailroom opens them, reads the address label to decide which department gets each item (L7 routing), and walks the contents through the building in open trays. That is fast and convenient, and fine as long as you trust everyone in the corridors. If you don't, you reseal the contents in a new box for the internal walk (re-encryption). **Plain TLS** is a nightclub where you check the bouncer's official badge before you hand over your coat, but the bouncer never asks who you are. **mTLS** is a members-only club: you check the bouncer's badge *and* the bouncer checks your membership card. Inside a microservice system, every service is both a guest and a bouncer, so every hop checks ID in both directions. That is the heart of "zero trust" networking: being inside the building doesn't make you trusted.
+</Callout>
+
+<TradeoffBox title="TLS deployment tradeoffs" items={[
+  { gain: "Terminating TLS at the load balancer centralises cert management and offloads crypto", cost: "Internal traffic is unencrypted unless you re-encrypt" },
+  { gain: "TLS 1.3 reduces handshake to 1 RTT; 0-RTT enables instant resumption", cost: "0-RTT data can be replayed; only use it for idempotent requests" },
+  { gain: "mTLS gives strong service-to-service authentication", cost: "Certificate management complexity: each service needs a cert, rotation, and a CA" },
+  { gain: "Let's Encrypt provides free, automated certificates", cost: "90-day validity means you must automate renewal; a missed renewal causes an outage" }
+]} />
+
+<NotWhenBox title="Skipping TLS" items={[
+  "Any endpoint that handles user data, credentials or payments: TLS is mandatory, not optional.",
+  "Internal services carrying sensitive data: network boundaries alone are not enough if an attacker reaches the internal network.",
+  "APIs exposed to third parties: mTLS or at minimum TLS with API keys is expected."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="SSL and TLS are different protocols you can choose between." right="SSL is the deprecated predecessor of TLS. All modern deployments use TLS 1.2 or 1.3. When people say 'SSL certificate' or 'SSL termination,' they mean TLS." />
+
+<Misconception wrong="TLS makes requests slow." right="TLS 1.3 adds only 1 RTT to connection setup. With connection reuse (keep-alive, HTTP/2) and 0-RTT resumption, the overhead is negligible for most applications." />
+
+<Misconception wrong="HTTPS means the server is trustworthy." right="HTTPS means the connection is encrypted and the server has a valid certificate for its domain. It does not mean the website is safe, honest or free of malware." />
+
+## Interview angle
+
+<InterviewAngle title="TLS" questions={[
+  "Where would you terminate TLS in your architecture, and why?",
+  "How would you secure service-to-service communication in a microservice architecture?",
+  "What happens when a TLS certificate expires?",
+  "What is the cost of a TLS handshake, and how do you minimise it?"
+]}>
+TLS comes up when the interviewer asks about security or when you draw a load balancer. Show where TLS terminates, why you might re-encrypt internally, and mention mTLS for service-to-service auth. Knowing that TLS 1.3 costs 1 RTT and that HTTP/3 integrates TLS into the QUIC handshake shows modern awareness.
+</InterviewAngle>
+
+## Try it
+
+<Simulator id="request-journey" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+Run `openssl s_client -connect example.com:443 -servername example.com` (or click the padlock in your browser) and find the leaf certificate's name, its issuer (the intermediate), and its expiry date. Then, in the [Design Studio](/studio), draw an architecture with a public load balancer and three internal services. Mark where TLS terminates, where you re-encrypt, and where you would use mTLS. Write the renewal and alerting policy for every certificate you drew.
+

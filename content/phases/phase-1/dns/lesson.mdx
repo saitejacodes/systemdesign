@@ -1,0 +1,209 @@
+## Why it matters
+
+Every request on the internet starts with a name lookup. When a user types `maps.google.com` into a browser, the very first thing that happens—before any TCP handshake, before any HTTP request—is a DNS query that turns that human-readable name into an IP address. In October 2021, Facebook experienced a roughly six-hour outage because a configuration change withdrew the BGP routes to its DNS nameservers, making `facebook.com` unresolvable worldwide. No DNS, no Facebook. Understanding DNS is understanding the first link in every request chain, and it is a building block that shows up in load balancing, failover, CDN routing and service discovery.
+
+## DNS resolution chain
+
+<DepthStamp depth="deep" />
+
+The <Term slug="dns">Domain Name System</Term> is a distributed, hierarchical database that maps domain names to IP addresses (and other records). When your application calls `getaddrinfo("api.example.com")`, a chain of lookups runs:
+
+1. **<Term slug="stub-resolver">Stub resolver</Term>.** A tiny library inside the operating system. It does not do recursion itself. It sends the query to a configured <Term slug="recursive-resolver">recursive resolver</Term> (usually your ISP's or a public one like `8.8.8.8` or `1.1.1.1`) and waits for the final answer.
+
+2. **Recursive resolver.** This server does the heavy lifting. If the answer is not in its cache, it walks the hierarchy:
+
+3. **<Term slug="root-nameserver">Root nameservers</Term>.** There are 13 logical root server addresses (named `a.root-servers.net` through `m.root-servers.net`), each backed by many physical servers via anycast. The root does not know `api.example.com`, but it knows where to find the `.com` <Term slug="tld-nameserver">TLD nameservers</Term> and returns a referral.
+
+4. **TLD nameservers.** The `.com` TLD server knows which nameservers are <Term slug="authoritative-nameserver">authoritative</Term> for `example.com` and returns another referral.
+
+5. **Authoritative nameserver.** The server that holds the actual DNS records for `example.com`. It returns the final answer—for example, an A record with `93.184.216.34`.
+
+The recursive resolver caches the answer for the duration of the record's <Term slug="ttl">TTL</Term> and sends it back to the stub resolver. Subsequent lookups for the same name skip part or all of the chain.
+
+<Callout type="analogy" title="The hotel concierge who has never heard of your restaurant">
+You are in a huge foreign city and you want the phone number of "Luigi's on 5th". You ask your hotel concierge (the **stub resolver**: you don't search yourself, you ask one person and wait). The concierge (the **recursive resolver**) doesn't know either, so they call the city tourist office (the **root**). The tourist office has no idea where Luigi's is, but it does know who handles the Italian quarter, and gives the concierge that number (a **referral**). The Italian quarter's information booth (the **TLD**) doesn't know Luigi's number either, but it knows which building manager is responsible for 5th Street. The building manager (the **authoritative server**) finally reads the number off the wall. The concierge writes it on a sticky note with an expiry time (the **TTL**), so when the next guest asks for Luigi's, they answer instantly without a single phone call. Nobody in this chain knows everything. Each one knows exactly who to ask next. That is why DNS can hold hundreds of millions of names without any single server knowing them all.
+</Callout>
+
+<Figure caption="FIG. 6.1 · A FULL DNS RESOLUTION">
+  <Diagram label="A full DNS resolution: the recursive resolver walks root → TLD → authoritative. Cached answers skip steps." chart={`sequenceDiagram
+    participant App as Application
+    participant Stub as Stub resolver
+    participant Rec as Recursive resolver
+    participant Root as Root server
+    participant TLD as .com TLD server
+    participant Auth as example.com authoritative
+    App->>Stub: resolve api.example.com
+    Stub->>Rec: query api.example.com
+    Rec->>Root: query api.example.com
+    Root-->>Rec: referral → .com TLD
+    Rec->>TLD: query api.example.com
+    TLD-->>Rec: referral → example.com NS
+    Rec->>Auth: query api.example.com
+    Auth-->>Rec: A 93.184.216.34 (TTL 300)
+    Rec-->>Stub: A 93.184.216.34
+    Stub-->>App: 93.184.216.34`} />
+</Figure>
+
+*A full DNS resolution: the recursive resolver walks root → TLD → authoritative. Cached answers skip steps.*
+
+In practice most queries hit the recursive resolver's cache and return in 1–5 ms. A full walk to the root happens only for names the resolver has never seen or whose TTL has expired.
+
+### What a lookup actually costs
+
+There are caches at every layer, and each one you hit skips the steps after it:
+
+| Where the answer is found | Typical cost | Why |
+|---|---|---|
+| Browser or app cache | ~0 ms | Already in process memory |
+| Operating system cache | under 1 ms | A local lookup, no network |
+| Recursive resolver cache | ~1–20 ms | One round trip to a nearby resolver |
+| Full walk (root → TLD → authoritative) | ~50–200+ ms | Up to three more round trips, possibly across continents |
+
+The root and TLD referrals themselves are cached for a long time (the `.com` delegation is valid for days), so a "full walk" in practice is usually just one extra trip to your authoritative server. The truly cold path is rare, but it does hit the first visitor after a TTL expires. That is one reason sites with tiny TTLs see slightly worse first-request latency.
+
+Two transport details worth knowing: DNS queries normally travel over **UDP port 53** (one small packet each way, no handshake, which is part of why DNS is fast), and switch to **TCP** when a response is too large for a UDP packet or for zone transfers between servers. Newer variants, DNS over HTTPS (DoH) and DNS over TLS (DoT), wrap queries in encryption so that networks along the way cannot read or tamper with them.
+
+## Record types
+
+<DepthStamp depth="deep" />
+
+DNS stores more than IP addresses. The most important record types:
+
+| Type | Purpose | Example |
+|------|---------|---------|
+| <Term slug="a-record">A</Term> | Maps a name to an IPv4 address | `api.example.com → 93.184.216.34` |
+| <Term slug="aaaa-record">AAAA</Term> | Maps a name to an IPv6 address | `api.example.com → 2606:2800:220:1:…` |
+| <Term slug="cname-record">CNAME</Term> | Alias: one name points to another name | `www.example.com → example.com` |
+| <Term slug="ns-record">NS</Term> | Delegates a zone to a set of nameservers | `example.com NS ns1.dnsprovider.com` |
+| <Term slug="txt-record">TXT</Term> | Arbitrary text, used for verification, SPF, DKIM | `example.com TXT "v=spf1 …"` |
+| MX | Mail exchange server for the domain | `example.com MX 10 mail.example.com` |
+
+**CNAME rules.** A CNAME cannot coexist with other records at the same name. You cannot put a CNAME at the zone apex (`example.com`) if you also need an MX or TXT record there. Many DNS providers offer a non-standard "ALIAS" or "ANAME" record that resolves the alias server-side, returning an A record to the client. This matters when pointing a bare domain at a CDN or load balancer.
+
+**NS records** define delegation. When you buy `example.com` and set its nameservers to `ns1.cloudprovider.com`, you are creating NS records in the `.com` TLD zone.
+
+## TTL tradeoffs
+
+<DepthStamp depth="tradeoffs" />
+
+Every DNS record carries a <Term slug="ttl">TTL (time to live)</Term> in seconds. When a recursive resolver caches a record, it serves the cached answer until the TTL expires, then re-queries the authoritative server.
+
+**Long TTLs (hours to days)**
+
+- Fewer queries to your authoritative servers, lower DNS cost.
+- Faster lookups for users (cache hits).
+- Slower failover: if you change an IP, clients keep using the old one until their cached copy expires. Some resolvers and operating systems ignore TTLs or cap them.
+
+**Short TTLs (30–300 seconds)**
+
+- Changes propagate quickly. Useful for failover, blue-green deploys, and traffic shifting.
+- More queries to authoritative servers, slightly higher latency for cache misses.
+
+A common pattern is to run a long TTL during normal operation and lower it before a planned migration, wait for the old TTL to expire, then make the change. After the migration, raise the TTL again.
+
+In a system design interview, mention TTL when discussing failover time. A 1-hour TTL means that after you redirect traffic, some clients will keep hitting the old servers for up to an hour.
+
+<Callout type="analogy" title="TTL is the 'best before' date on a carton of milk">
+Every resolver that caches your record has put a carton of milk in its fridge with a "best before" date printed on it. A 1-day TTL is long-life milk: nobody needs to go shopping often, but if the dairy recalls that batch (you change your IP), thousands of fridges around the world keep pouring the old milk until their own date runs out. You can't reach into other people's fridges. A 60-second TTL is milk that expires every minute: recalls take effect almost at once, but every fridge owner is back at the shop sixty times an hour, and your shop (the authoritative server) has to serve them all. Some fridge owners also ignore the label and keep milk longer than printed, so never assume every client respects your TTL exactly.
+</Callout>
+
+### Worked example: a planned data-centre move
+
+You are moving `api.example.com` from data centre A (IP `198.51.100.10`) to data centre B (IP `203.0.113.20`). The record currently has a TTL of 86,400 s (one day).
+
+**Step 1: lower the TTL early.** Two days before the move, change the TTL to 60 s, but leave the IP alone. Why two days? Resolvers that cached the record just before you changed it will hold the old one-day TTL for up to 24 more hours. You must wait out the *old* TTL before the new short one is in effect everywhere.
+
+**Step 2: estimate the extra query load.** Suppose about 20,000 distinct recursive resolvers around the world query your name. With a one-day TTL, each asks about once a day: 20,000 / 86,400 ≈ **0.2 queries/s** to your authoritative servers. With a 60 s TTL, each asks up to once a minute: 20,000 / 60 ≈ **333 queries/s**. Managed DNS providers handle that easily, but it is a 1,000× jump, and some providers charge per million queries, so it is worth knowing.
+
+**Step 3: switch.** Point the A record at `203.0.113.20`. Within roughly 60 s most resolvers have the new IP. Keep data centre A serving for a few hours anyway: some clients (old operating systems, a few application runtimes, misbehaving home routers) cache longer than the TTL says.
+
+**Step 4: raise the TTL again.** Once traffic on A has drained to near zero, set the TTL back to something like 3,600 s.
+
+**Failover math.** For *unplanned* failover with health-checked DNS, the time until most users move is roughly: health check interval × failures needed + TTL. With checks every 10 s, 3 failures to mark unhealthy and a 60 s TTL: 10 × 3 + 60 = **about 90 seconds**, plus the stragglers. That is why DNS failover is described as "minutes", while a load balancer's failover is "seconds".
+
+## DNS-based load balancing and GeoDNS
+
+<DepthStamp depth="tradeoffs" />
+
+DNS can distribute traffic by returning different IP addresses to different clients:
+
+**Round-robin DNS.** The authoritative server returns multiple A records. The client (or its resolver) picks one. This spreads traffic but has no health awareness: if one server dies, DNS still hands out its IP until someone removes the record.
+
+**Weighted DNS.** Some DNS providers let you assign weights to records, sending more traffic to beefier servers. Still no health checks at the DNS layer, though managed DNS services often add them.
+
+**<Term slug="geodns">GeoDNS</Term>.** The authoritative server inspects the source IP of the query (or the EDNS Client Subnet extension, which carries a prefix of the real client's IP) and returns the IP of the nearest data centre. This is how CDNs route users to edge servers close to them, keeping latency low.
+
+**Limitations of DNS load balancing:**
+
+- No real-time health checking in standard DNS. Managed services (Route 53, Cloud DNS) add health checks that remove unhealthy IPs, but propagation is still bounded by TTL.
+- Clients cache answers. Even if you remove a record, clients with a cached copy keep using it.
+- DNS does not see request-level information (URL path, headers), so it cannot do content-based routing. That is the job of an L7 load balancer.
+
+DNS load balancing is best used as the coarse, first layer of routing—steering users to the right region or data centre—with a proper load balancer behind it for fine-grained, health-aware distribution.
+
+<Callout type="analogy" title="GeoDNS is a pizza chain's single phone number">
+A national pizza chain advertises one number. When you call, the switchboard looks at your area code and silently connects you to the branch nearest your house. GeoDNS does the same with your resolver's IP address. It works well until someone calls from a hotel phone that routes through head office (a VPN or a corporate resolver far from the user): then a customer in Mumbai gets connected to the branch in Frankfurt, and the pizza arrives cold. The EDNS Client Subnet extension is the switchboard asking "sorry, what's your actual postcode?" so it can route correctly even when the call came through a faraway exchange.
+</Callout>
+
+## Anycast
+
+<DepthStamp depth="awareness" />
+
+<Term slug="anycast">Anycast</Term> is a networking technique where the same IP address is announced by multiple servers in different locations. The internet's BGP routing delivers each client's packets to the nearest (by network hops) instance. The DNS root servers use anycast: there are 13 IP addresses but over 1,500 physical servers worldwide.
+
+Anycast is widely used for DNS and for DDoS protection (spreading attack traffic across many locations). CDN providers like Cloudflare use it so that every user's DNS query reaches a nearby point of presence. It works well for UDP-based and short-lived protocols. Long-lived TCP connections on anycast IPs can break if a route change shifts the client to a different server mid-connection, though this is rare and modern deployments handle it with connection-aware routing.
+
+<Callout type="analogy" title="Anycast is an emergency number">
+Dial the emergency number in any city in your country and you reach the *local* dispatcher, even though everyone dials exactly the same three digits. Nobody hands you a list of dispatchers to choose from; the phone network itself routes you to the nearest one. Anycast does this with an IP address: many servers in many cities all claim the same address, and the internet's routing system (BGP) delivers your packets to whichever one is fewest network hops away. If one city's dispatch centre burns down, its routes are withdrawn and calls flow to the next nearest centre automatically, with no DNS change and no TTL to wait out.
+</Callout>
+
+<TradeoffBox title="DNS design tradeoffs" items={[
+  { gain: "Long TTLs reduce DNS query load and speed up lookups", cost: "Failover is slow: clients keep stale IPs for the TTL duration" },
+  { gain: "GeoDNS routes users to the nearest data centre automatically", cost: "Relies on source-IP geolocation, which is imperfect for VPN and mobile users" },
+  { gain: "Round-robin DNS spreads traffic without extra infrastructure", cost: "No health awareness: dead servers still receive traffic until records are updated" },
+  { gain: "Anycast distributes queries to the nearest server globally", cost: "Long-lived TCP connections can break on route changes" }
+]} />
+
+<NotWhenBox title="Relying on DNS alone for load balancing" items={[
+  "When you need health-aware, per-request routing: use an L4 or L7 load balancer behind DNS.",
+  "When you need sub-second failover: DNS propagation is too slow even with short TTLs.",
+  "When you need content-based routing (by URL, header, cookie): DNS only sees the domain name."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="DNS is a single server." right="DNS is a globally distributed hierarchy: root servers, TLD servers, and authoritative servers, each layer delegating to the next. Recursive resolvers cache heavily, so the full chain rarely runs." />
+
+<Misconception wrong="Changing a DNS record takes effect immediately." right="Clients and resolvers cache records for the TTL. Even after you update the authoritative record, some clients will use the old IP until their cache expires. Some resolvers also clamp TTLs to a minimum." />
+
+<Misconception wrong="DNS changes need 24–48 hours to 'propagate' across the internet." right="There is no propagation process that pushes changes out. Resolvers simply keep their cached copy until its TTL runs out. With a short TTL set in advance, a change reaches most users in minutes." />
+
+<Misconception wrong="CNAME and A records can coexist at the same name." right="A CNAME says 'this name is an alias for another name' and must be the only record at that name. If you need both a CNAME-like alias and other records (MX, TXT) at the zone apex, use your provider's ALIAS/ANAME record or put the alias on a subdomain." />
+
+## Interview angle
+
+<InterviewAngle title="DNS" questions={[
+  "Walk me through what happens when a user types a URL into a browser.",
+  "How would you handle DNS failover for a multi-region deployment?",
+  "Why can't you put a CNAME at the zone apex?",
+  "What are the tradeoffs of a long vs short DNS TTL?"
+]}>
+DNS usually comes up in the first minute of a system design interview, when the interviewer asks "what happens when the user makes a request." Show that you know the resolution chain (stub → recursive → root → TLD → authoritative), that results are cached per TTL, and that DNS is the first layer of routing. When discussing multi-region architectures, mention GeoDNS for steering users to the nearest data centre and the TTL implications for failover speed.
+</InterviewAngle>
+
+## Try it
+
+<Simulator id="request-journey" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+Run `dig +trace api.github.com` (or any domain you use) in a terminal and match each block of output to a step in Figure 6.1: root referral, TLD referral, authoritative answer. Note the TTL on each answer. Then, in the [Design Studio](/studio), draw a two-region deployment with GeoDNS in front and write down how long failover takes with your chosen TTL and health-check settings.
+

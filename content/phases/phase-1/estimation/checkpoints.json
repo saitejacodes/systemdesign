@@ -1,0 +1,7 @@
+[
+  { "id": "c1", "text": "I can run the five-step estimation method out loud without notes.", "topicId": "estimation-method" },
+  { "id": "c2", "text": "I can turn DAU and actions per user into average and peak QPS, split by reads and writes.", "topicId": "qps-math" },
+  { "id": "c3", "text": "I can compute storage per year with replication, and ingress/egress bandwidth.", "topicId": "storage-bandwidth" },
+  { "id": "c4", "text": "I can recall the key latency ratios: memory vs SSD vs network vs cross-continent.", "topicId": "latency-numbers" },
+  { "id": "c5", "text": "I can convert nines to downtime and compute availability for serial and redundant parts.", "topicId": "availability-nines" }
+]

@@ -1,0 +1,18 @@
+[
+  { "id": "f1", "front": "L4 vs L7 load balancing?", "back": "L4 routes by IP + port (fast, no content inspection). L7 terminates TLS, parses HTTP, and routes by URL, headers, cookies (slower but more flexible).", "topicId": "lb-l4-l7" },
+  { "id": "f2", "front": "Round robin algorithm?", "back": "Requests go to backends 1, 2, 3, 1, 2, 3… Simple, assumes equal capacity and equal request cost.", "topicId": "lb-algorithms" },
+  { "id": "f3", "front": "Weighted round robin?", "back": "Each backend has a weight. Higher weight = more requests. Useful when backends have different capacities.", "topicId": "lb-algorithms" },
+  { "id": "f4", "front": "Least connections algorithm?", "back": "Send to the backend with the fewest active connections. Adapts to variable request durations: slow servers get fewer requests.", "topicId": "lb-algorithms" },
+  { "id": "f5", "front": "What is consistent hashing?", "back": "Maps servers and keys to a hash ring. Each key goes to the nearest server. Adding/removing a server moves only ≈1/n of keys.", "topicId": "lb-algorithms" },
+  { "id": "f6", "front": "Active health check?", "back": "The LB periodically probes each backend (HTTP, TCP). Backends that fail multiple checks are removed from the pool.", "topicId": "lb-health-checks" },
+  { "id": "f7", "front": "Passive health check?", "back": "The LB monitors real traffic. Too many 5xx errors or timeouts from a backend → mark unhealthy. Catches issues that active checks miss.", "topicId": "lb-health-checks" },
+  { "id": "f8", "front": "Connection draining?", "back": "Before shutdown, the server signals unhealthy. The LB stops new traffic. In-flight requests complete. Then the server shuts down.", "topicId": "lb-health-checks" },
+  { "id": "f9", "front": "Why avoid sticky sessions?", "back": "Uneven load (hot servers), fragile failover (session lost on crash), hard to scale (new servers only get new sessions).", "topicId": "lb-sticky-sessions" },
+  { "id": "f10", "front": "Alternative to sticky sessions?", "back": "Store session state externally (Redis, database, encrypted cookie). Any server can handle any request.", "topicId": "lb-sticky-sessions" },
+  { "id": "f11", "front": "How to make the LB not a SPOF?", "back": "Active-passive: two LBs share a VIP; passive takes over on failure. Active-active: both handle traffic simultaneously.", "topicId": "lb-redundancy" },
+  { "id": "f12", "front": "What is a virtual IP (VIP)?", "back": "A floating IP shared between redundant LBs. If the active LB fails, the passive claims the VIP. Clients see no change.", "topicId": "lb-redundancy" },
+  { "id": "f13", "front": "When to use consistent hashing in LB?", "back": "When backends are stateful (caches, sharded databases) and you want to minimise key redistribution on scale events.", "topicId": "lb-algorithms" },
+  { "id": "f14", "front": "Active-passive vs active-active LB?", "back": "Active-passive: one handles traffic, one is standby. Active-active: both handle traffic, doubling capacity and redundancy.", "topicId": "lb-redundancy" },
+  { "id": "f15", "front": "What should a /health endpoint check?", "back": "Critical dependencies: database connection, disk space, memory. Return 200 OK if healthy, 503 if not. Do not always return 200.", "topicId": "lb-health-checks" }
+]
+

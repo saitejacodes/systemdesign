@@ -1,0 +1,20 @@
+{
+  "id": "p1-realtime",
+  "phase": 1,
+  "slug": "realtime",
+  "title": "Realtime communication",
+  "order": 12,
+  "week": 2,
+  "estimatedMinutes": 50,
+  "topics": [
+    { "id": "short-polling", "title": "Short polling", "depth": "deep" },
+    { "id": "long-polling", "title": "Long polling", "depth": "deep" },
+    { "id": "sse", "title": "Server-Sent Events", "depth": "deep" },
+    { "id": "websockets", "title": "WebSockets", "depth": "deep" },
+    { "id": "scaling-websockets", "title": "Scaling WebSocket connections", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["request-journey"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-http"]
+}
+

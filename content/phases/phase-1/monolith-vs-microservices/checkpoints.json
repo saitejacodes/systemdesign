@@ -1,0 +1,7 @@
+[
+  { "id": "c1", "text": "I can explain the difference between a monolith, a modular monolith and a distributed monolith.", "topicId": "modular-monolith" },
+  { "id": "c2", "text": "I can list the benefits of microservices and say which ones are organisational.", "topicId": "microservice-benefits" },
+  { "id": "c3", "text": "I can name four costs of microservices: latency, partial failure, distributed data and observability.", "topicId": "microservice-costs" },
+  { "id": "c4", "text": "I can explain Conway's law and use it to argue for or against a service split.", "topicId": "conways-law" },
+  { "id": "c5", "text": "I can say when I would not use microservices, and describe the strangler fig path for splitting later.", "topicId": "when-not-microservices" }
+]

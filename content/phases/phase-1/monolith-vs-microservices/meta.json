@@ -1,0 +1,19 @@
+{
+  "id": "p1-monolith-vs-microservices",
+  "phase": 1,
+  "slug": "monolith-vs-microservices",
+  "title": "Monoliths, modular monoliths and microservices",
+  "order": 2,
+  "week": 1,
+  "estimatedMinutes": 50,
+  "topics": [
+    { "id": "modular-monolith", "title": "The monolith and the modular monolith", "depth": "deep" },
+    { "id": "microservice-benefits", "title": "What microservices buy you", "depth": "tradeoffs" },
+    { "id": "microservice-costs", "title": "What microservices cost you", "depth": "deep" },
+    { "id": "conways-law", "title": "Conway's law and team ownership", "depth": "tradeoffs" },
+    { "id": "when-not-microservices", "title": "When not to use microservices", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-client-server"]
+}

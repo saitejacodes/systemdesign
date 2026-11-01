@@ -1,0 +1,17 @@
+[
+  { "id": "f1", "front": "What is a monolith?", "back": "One deployable unit containing all the application's code. It can still run as many copies behind a load balancer.", "topicId": "modular-monolith" },
+  { "id": "f2", "front": "What is a modular monolith?", "back": "A single deployable whose modules each own their code and tables and only call each other through defined interfaces, often enforced by build checks.", "topicId": "modular-monolith" },
+  { "id": "f3", "front": "Name three strengths of a monolith.", "back": "Fast, reliable in-process calls; easy single-database transactions; one thing to deploy, monitor and debug.", "topicId": "modular-monolith" },
+  { "id": "f4", "front": "What is a microservice?", "back": "A separately deployable service that owns one business capability and its own data, talking to others over the network.", "topicId": "microservice-benefits" },
+  { "id": "f5", "front": "What are the main benefits of microservices?", "back": "Independent deploys, clear team ownership, independent scaling, fault isolation (if callers handle failure) and per-service technology choice.", "topicId": "microservice-benefits" },
+  { "id": "f6", "front": "In-process call vs same-datacentre service call: rough latency?", "back": "About 100 ns in process vs roughly 0.5–few ms across the network once serialisation and the other service's work are included.", "topicId": "microservice-costs" },
+  { "id": "f7", "front": "What is partial failure?", "back": "Some parts of a distributed operation succeed while others fail or are unknown, e.g. a call times out after the server already did the work.", "topicId": "microservice-costs" },
+  { "id": "f8", "front": "What replaces a database transaction across services?", "back": "Patterns like sagas: a sequence of local transactions with compensating actions, plus acceptance of temporary inconsistency.", "topicId": "microservice-costs" },
+  { "id": "f9", "front": "What is a distributed monolith?", "back": "Services that must be deployed together or share a database: microservice costs without microservice independence.", "topicId": "microservice-costs" },
+  { "id": "f10", "front": "State Conway's law.", "back": "Organisations design systems that mirror their own communication structure.", "topicId": "conways-law" },
+  { "id": "f11", "front": "What is the inverse Conway manoeuvre?", "back": "Shaping teams around the business capabilities you want first, so the service boundaries that follow team boundaries are the right ones.", "topicId": "conways-law" },
+  { "id": "f12", "front": "Split services by technical layer or by business capability?", "back": "Business capability. Layer splits make nearly every feature change several services and teams.", "topicId": "conways-law" },
+  { "id": "f13", "front": "What is the MonolithFirst argument?", "back": "Start with a monolith until you understand the domain, because moving a service boundary is far more expensive than moving a module boundary.", "topicId": "when-not-microservices" },
+  { "id": "f14", "front": "Name two good reasons to split one module into a service.", "back": "A very different scaling profile (CPU/GPU/bursty), or a need for a separate release cadence or security boundary, once boundaries are stable.", "topicId": "when-not-microservices" },
+  { "id": "f15", "front": "What is the strangler fig pattern?", "back": "Put a router in front of the old system and move one capability at a time to new services until the old code can be deleted.", "topicId": "when-not-microservices" }
+]

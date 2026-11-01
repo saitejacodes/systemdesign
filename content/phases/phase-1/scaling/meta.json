@@ -1,0 +1,19 @@
+{
+  "id": "p1-scaling",
+  "phase": 1,
+  "slug": "scaling",
+  "title": "Scaling up and scaling out",
+  "order": 3,
+  "week": 1,
+  "estimatedMinutes": 45,
+  "topics": [
+    { "id": "vertical-horizontal", "title": "Vertical vs horizontal scaling", "depth": "deep" },
+    { "id": "vertical-limits", "title": "The limits of vertical scaling", "depth": "tradeoffs" },
+    { "id": "stateless-tier", "title": "Scaling the stateless app tier", "depth": "deep" },
+    { "id": "data-tier", "title": "Why the data tier is the hard part", "depth": "deep" },
+    { "id": "autoscaling", "title": "Autoscaling basics", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["load-balancer"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-client-server"]
+}

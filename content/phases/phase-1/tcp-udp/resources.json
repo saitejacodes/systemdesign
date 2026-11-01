@@ -1,0 +1,6 @@
+[
+  { "id": "cloudflare-tcp", "title": "What is TCP/IP?", "author": "Cloudflare Learning Center", "kind": "docs", "url": "https://www.cloudflare.com/learning/ddos/glossary/tcp-ip/", "why": "Clear overview of TCP, UDP and the TCP/IP model with helpful diagrams.", "topicIds": ["tcp-handshake", "tcp-reliability", "udp-use-cases"], "free": true },
+  { "id": "quic-rfc", "title": "RFC 9000: QUIC: A UDP-Based Multiplexed and Secure Transport", "author": "IETF", "kind": "docs", "url": "https://datatracker.ietf.org/doc/html/rfc9000", "why": "The QUIC specification. Read the introduction and section 2 (streams) to understand how QUIC solves TCP's HOL blocking.", "topicIds": ["hol-blocking", "udp-use-cases"], "free": true },
+  { "id": "julia-evans-tcp", "title": "How does TCP work?", "author": "Julia Evans", "kind": "blog", "url": "https://jvns.ca/blog/2015/11/21/why-you-should-understand-a-little-about-tcp/", "why": "Practical explanation of TCP with real packet captures showing the handshake, retransmissions and flow control.", "topicIds": ["tcp-handshake", "tcp-reliability"], "free": true }
+]
+

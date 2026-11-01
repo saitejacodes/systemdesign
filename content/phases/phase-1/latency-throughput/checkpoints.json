@@ -1,0 +1,7 @@
+[
+  { "id": "c1", "text": "I can define latency and throughput and give an example where improving one hurts the other.", "topicId": "lt-definitions" },
+  { "id": "c2", "text": "I can explain p50, p95 and p99 and why percentiles can't be averaged.", "topicId": "percentiles" },
+  { "id": "c3", "text": "I can compute how fan-out amplifies tail latency and name three mitigations.", "topicId": "tail-latency" },
+  { "id": "c4", "text": "I can use Little's Law to size a connection pool or thread pool.", "topicId": "littles-law" },
+  { "id": "c5", "text": "I can explain why latency explodes as utilization approaches 100%.", "topicId": "lt-definitions" }
+]

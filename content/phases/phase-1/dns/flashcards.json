@@ -1,0 +1,18 @@
+[
+  { "id": "f1", "front": "What are the five steps in a full DNS resolution chain?", "back": "Stub resolver → recursive resolver → root nameserver → TLD nameserver → authoritative nameserver. The stub asks the recursive, which walks root → TLD → authoritative.", "topicId": "dns-resolution" },
+  { "id": "f2", "front": "What does a stub resolver do?", "back": "Sends DNS queries to a configured recursive resolver and returns the answer to the application. It does not do recursion itself.", "topicId": "dns-resolution" },
+  { "id": "f3", "front": "What does a recursive resolver do?", "back": "Walks the DNS hierarchy (root → TLD → authoritative) on behalf of the client, caches results for their TTL, and returns the final answer.", "topicId": "dns-resolution" },
+  { "id": "f4", "front": "How many root server IP addresses exist? How many physical servers?", "back": "13 logical IP addresses (a–m.root-servers.net), backed by over 1,500 physical servers worldwide via anycast.", "topicId": "dns-resolution" },
+  { "id": "f5", "front": "A record vs AAAA record?", "back": "A maps a name to an IPv4 address. AAAA maps a name to an IPv6 address.", "topicId": "dns-records" },
+  { "id": "f6", "front": "What is a CNAME record?", "back": "An alias: it says 'this name is really that other name.' The resolver then looks up the target name. A CNAME must be the only record at its name.", "topicId": "dns-records" },
+  { "id": "f7", "front": "Why can't you put a CNAME at the zone apex?", "back": "A CNAME cannot coexist with other records (like MX or NS), and the apex almost always needs NS and often MX/TXT records. Use a provider-specific ALIAS/ANAME instead.", "topicId": "dns-records" },
+  { "id": "f8", "front": "What does an NS record do?", "back": "Delegates a DNS zone to a set of authoritative nameservers. Example: example.com NS ns1.provider.com.", "topicId": "dns-records" },
+  { "id": "f9", "front": "What is DNS TTL?", "back": "Time to live, in seconds. Resolvers cache a record for its TTL before re-querying the authoritative server.", "topicId": "dns-ttl" },
+  { "id": "f10", "front": "Long TTL: pros and cons?", "back": "Pro: fewer queries, faster cached lookups. Con: changes propagate slowly; failover can take hours.", "topicId": "dns-ttl" },
+  { "id": "f11", "front": "How to prepare for a DNS IP change with a long TTL?", "back": "Lower the TTL well in advance (e.g. to 60 s), wait for the old TTL to expire from caches, then change the IP.", "topicId": "dns-ttl" },
+  { "id": "f12", "front": "What is GeoDNS?", "back": "The authoritative server returns different IPs based on the client's geographic location (from source IP or EDNS Client Subnet), routing users to the nearest data centre.", "topicId": "dns-load-balancing" },
+  { "id": "f13", "front": "Limitations of DNS load balancing?", "back": "No built-in health checks, client caching delays failover, and DNS cannot see HTTP-layer details (path, headers, cookies).", "topicId": "dns-load-balancing" },
+  { "id": "f14", "front": "What is anycast?", "back": "Multiple servers in different locations share the same IP address. BGP routing sends each packet to the nearest server by network topology.", "topicId": "dns-anycast" },
+  { "id": "f15", "front": "Where is anycast commonly used?", "back": "DNS (root servers, public resolvers), CDNs, and DDoS mitigation. Works best for stateless or short-lived protocols.", "topicId": "dns-anycast" }
+]
+

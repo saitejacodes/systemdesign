@@ -1,0 +1,6 @@
+[
+  { "id": "nginx-docs", "title": "NGINX Documentation", "author": "NGINX", "kind": "docs", "url": "https://nginx.org/en/docs/", "why": "Official documentation for the most widely-used reverse proxy. Covers proxying, caching, compression and load balancing.", "topicIds": ["proxy-roles", "proxy-tls-compression"], "free": true },
+  { "id": "envoy-overview", "title": "What is Envoy?", "author": "Envoy Proxy", "kind": "docs", "url": "https://www.envoyproxy.io/docs/envoy/latest/intro/what_is_envoy", "why": "Introduction to Envoy's architecture and features, from the proxy designed for modern microservice architectures.", "topicIds": ["proxy-roles", "sidecar-proxy"], "free": true },
+  { "id": "istio-concepts", "title": "What is Istio?", "author": "Istio", "kind": "docs", "url": "https://istio.io/latest/about/service-mesh/", "why": "Overview of the service mesh concept with Istio's sidecar proxy model, mTLS and traffic management.", "topicIds": ["sidecar-proxy"], "free": true }
+]
+

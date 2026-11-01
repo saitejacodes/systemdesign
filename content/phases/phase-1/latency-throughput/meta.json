@@ -1,0 +1,18 @@
+{
+  "id": "p1-latency-throughput",
+  "phase": 1,
+  "slug": "latency-throughput",
+  "title": "Latency, throughput and the tail",
+  "order": 5,
+  "week": 1,
+  "estimatedMinutes": 50,
+  "topics": [
+    { "id": "lt-definitions", "title": "Latency and throughput defined", "depth": "deep" },
+    { "id": "percentiles", "title": "Percentiles: p50, p95, p99", "depth": "deep" },
+    { "id": "tail-latency", "title": "Tail latency and fan-out amplification", "depth": "deep" },
+    { "id": "littles-law", "title": "Little's Law", "depth": "deep" }
+  ],
+  "simulatorIds": ["single-server-queue"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-estimation"]
+}

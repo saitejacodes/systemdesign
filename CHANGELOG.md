@@ -43,3 +43,11 @@
 - Demo: single-server-queue (M/M/1) with a slow-server fault and a "p99 < 200 ms at λ = 80/s within a μ budget" challenge.
 - Fixed: breadcrumbs linked to /phase and /interview, which have no page (prefetch 404s).
 - Verify: open /simulators/single-server-queue, follow the tour, press Play, break it, then set μ = 150 and start the challenge at 4×. Tests: lib/sim/engine/engine.test.ts, single-server-queue/model.test.ts (M/M/1 mean latency within 15% of 1/(μ−λ)), registry.test.ts, tests/e2e/simulator.spec.ts.
+
+## Prompt 06 · Phase 1 content
+- All 12 Phase 1 sections written: client–server, monolith vs microservices, scaling, estimation, latency and throughput, DNS, TCP/UDP, HTTP, TLS, load balancers, reverse proxies, realtime. Each has a 2,000–3,400-word lesson with worked examples and a Practice section, 10+ quiz questions (at least 3 scenario), 15+ flashcards, 4–6 checkpoints and 2–4 resources.
+- New `<Callout type="analogy">` box (≈ icon). Every lesson has several memorable analogies, for example DNS as a concierge, TCP as a phone call vs UDP as pigeons, TLS key exchange as paint mixing, and realtime as a road trip.
+- Seven networking sections drafted in Antigravity were merged and fact-checked: Google Maglev in place of an unverified Netflix stat, the least-connections explanation, L4 balancers passing TLS through, the HTTP/2 RFC and removed server push, AEAD instead of MAC, root-server counts, and truncated figure captions.
+- Glossary grows to 116 terms; every `<Term>` in a lesson resolves.
+- The smoke test now covers all 12 lesson pages in both themes at desktop and mobile widths.
+- Verify: open /phase/1/realtime and /phase/1/tls; `pnpm test` (content validation); `pnpm test:e2e smoke`.

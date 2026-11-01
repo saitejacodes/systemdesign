@@ -1,0 +1,63 @@
+[
+  { "id": "q1", "type": "single", "prompt": "A **reverse proxy** sits in front of:", "options": [
+    { "id": "a", "text": "Clients, making requests on their behalf" },
+    { "id": "b", "text": "Servers, handling requests on their behalf" },
+    { "id": "c", "text": "DNS servers, caching DNS records" },
+    { "id": "d", "text": "Databases, translating SQL queries" }
+  ], "correct": ["b"], "explanation": "A reverse proxy sits in front of servers and handles incoming client requests on the servers' behalf. (a) That describes a forward proxy. (c) and (d) are unrelated.", "topicId": "reverse-vs-forward", "difficulty": 1 },
+  { "id": "q2", "type": "single", "prompt": "What does a **forward proxy** hide?", "options": [
+    { "id": "a", "text": "The server's identity from the client" },
+    { "id": "b", "text": "The client's identity from the server" },
+    { "id": "c", "text": "The DNS records of both sides" },
+    { "id": "d", "text": "Nothing; proxies are transparent" }
+  ], "correct": ["b"], "explanation": "A forward proxy makes requests on behalf of clients, so the server sees the proxy's IP, not the client's. (a) That is what a reverse proxy does. (c) Proxies do not modify DNS. (d) Proxies specifically mediate traffic.", "topicId": "reverse-vs-forward", "difficulty": 1 },
+  { "id": "q3", "type": "multi", "prompt": "Which of the following are common functions of a reverse proxy? Select all that apply.", "options": [
+    { "id": "a", "text": "TLS termination" },
+    { "id": "b", "text": "Response compression" },
+    { "id": "c", "text": "Rate limiting" },
+    { "id": "d", "text": "Client-side rendering" }
+  ], "correct": ["a", "b", "c"], "explanation": "Reverse proxies commonly handle TLS (a), compress responses (b) and enforce rate limits (c). (d) Client-side rendering happens in the browser, not at a proxy.", "topicId": "proxy-roles", "difficulty": 1 },
+  { "id": "q4", "type": "single", "prompt": "How does **response buffering** help backend performance?", "options": [
+    { "id": "a", "text": "It compresses the response so backends send less data" },
+    { "id": "b", "text": "The proxy reads the full response quickly, frees the backend connection, and streams slowly to the client" },
+    { "id": "c", "text": "It caches the response permanently so the backend never handles that request again" },
+    { "id": "d", "text": "It splits the response into multiple TCP segments" }
+  ], "correct": ["b"], "explanation": "Buffering means the proxy absorbs the response from the fast backend quickly, then trickles it to the slow client. The backend connection is freed for other requests. (a) That is compression, a separate function. (c) Caching is different from buffering; buffered responses are not necessarily cached. (d) TCP segmentation happens at a lower layer.", "topicId": "proxy-tls-compression", "difficulty": 2 },
+  { "id": "q5", "type": "single", "prompt": "Which file types should you **not** compress in a reverse proxy?", "options": [
+    { "id": "a", "text": "HTML and CSS" },
+    { "id": "b", "text": "JSON API responses" },
+    { "id": "c", "text": "JPEG images and PNG files" },
+    { "id": "d", "text": "JavaScript bundles" }
+  ], "correct": ["c"], "explanation": "JPEG and PNG are already compressed. Re-compressing them wastes CPU without reducing size. (a), (b) and (d) are text-based and benefit significantly from gzip or Brotli compression.", "topicId": "proxy-tls-compression", "difficulty": 1 },
+  { "id": "q6", "type": "single", "prompt": "What is a **sidecar proxy**?", "options": [
+    { "id": "a", "text": "A reverse proxy shared by all services in a cluster" },
+    { "id": "b", "text": "A small proxy deployed alongside each service instance, handling mTLS, retries and tracing" },
+    { "id": "c", "text": "A forward proxy for outbound internet requests" },
+    { "id": "d", "text": "A DNS proxy that caches records locally" }
+  ], "correct": ["b"], "explanation": "A sidecar proxy runs next to each service instance (e.g. in the same Kubernetes pod) and handles cross-cutting concerns like encryption, retries and observability. (a) That is a central proxy, not a sidecar. (c) and (d) are different proxy types.", "topicId": "sidecar-proxy", "difficulty": 2 },
+  { "id": "q7", "type": "scenario", "scenario": "A web application serves a mix of API requests (dynamic) and static assets (CSS, JS, images). The backend is a Node.js server that handles both.", "prompt": "How would adding a reverse proxy improve performance?", "options": [
+    { "id": "a", "text": "The proxy serves static files directly from disk, so Node.js only handles API requests" },
+    { "id": "b", "text": "The proxy converts Node.js to a compiled language for faster execution" },
+    { "id": "c", "text": "The proxy increases Node.js's thread count" },
+    { "id": "d", "text": "The proxy moves the database closer to the server" }
+  ], "correct": ["a"], "explanation": "Nginx is extremely efficient at serving static files. By handling them at the proxy layer, Node.js is freed to focus on dynamic API logic. (b), (c) and (d) are not functions of a reverse proxy.", "topicId": "proxy-roles", "difficulty": 1 },
+  { "id": "q8", "type": "scenario", "scenario": "A company has 50 microservices. They want consistent mTLS, retries, circuit breaking and distributed tracing across all of them without modifying each service's code.", "prompt": "What architecture pattern should they adopt?", "options": [
+    { "id": "a", "text": "A single centralized reverse proxy for all services" },
+    { "id": "b", "text": "A service mesh with sidecar proxies (e.g. Istio, Linkerd)" },
+    { "id": "c", "text": "A shared library compiled into each service" },
+    { "id": "d", "text": "DNS-based load balancing with GeoDNS" }
+  ], "correct": ["b"], "explanation": "A service mesh deploys a sidecar proxy alongside each service, providing mTLS, retries, circuit breaking and tracing without code changes. A control plane manages configuration. (a) A single proxy creates a bottleneck. (c) A shared library requires code changes and different libraries for different languages. (d) DNS does not provide retries, mTLS or tracing.", "topicId": "sidecar-proxy", "difficulty": 2 },
+  { "id": "q9", "type": "scenario", "scenario": "Your backend returns a 5 MB JSON response. Many clients are on 3G mobile connections. Without buffering, each backend connection is held open for 10–15 seconds while the slow client downloads.", "prompt": "What does enabling response buffering at the reverse proxy change?", "options": [
+    { "id": "a", "text": "The response is compressed to 500 KB automatically" },
+    { "id": "b", "text": "The proxy buffers the full 5 MB response, frees the backend connection in milliseconds, and streams to the client over 10–15 seconds" },
+    { "id": "c", "text": "The client connection is upgraded to HTTP/3 for faster download" },
+    { "id": "d", "text": "Nothing changes; buffering only affects responses under 1 MB" }
+  ], "correct": ["b"], "explanation": "With buffering, the proxy reads the backend's response quickly (the backend is fast, the proxy is nearby), then frees the backend connection. It then slowly streams to the mobile client. The backend can serve other requests instead of waiting. (a) Compression is separate. (c) Protocol upgrade is separate. (d) No such size limit.", "topicId": "proxy-tls-compression", "difficulty": 2 },
+  { "id": "q10", "type": "single", "prompt": "When is a service mesh **not** worth the complexity?", "options": [
+    { "id": "a", "text": "When you have 100+ services with multiple teams" },
+    { "id": "b", "text": "When you have fewer than 5 services and a small team" },
+    { "id": "c", "text": "When you need mTLS between services" },
+    { "id": "d", "text": "When you need distributed tracing" }
+  ], "correct": ["b"], "explanation": "A service mesh adds operational complexity (control plane, sidecar management, debugging). For a small number of services, simpler alternatives (a shared library, manual mTLS) are easier to manage. (a) At 100+ services, the mesh pays for itself. (c) and (d) are legitimate reasons to use a mesh, but not the only way to achieve them.", "topicId": "sidecar-proxy", "difficulty": 2 }
+]
+

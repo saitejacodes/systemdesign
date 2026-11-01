@@ -1,0 +1,62 @@
+[
+  { "id": "q1", "type": "single", "prompt": "What best describes a **modular monolith**?", "options": [
+    { "id": "a", "text": "Many services that share one database" },
+    { "id": "b", "text": "One deployable unit whose modules own their own code and data and talk only through defined interfaces" },
+    { "id": "c", "text": "A monolith that runs on one server only" },
+    { "id": "d", "text": "A set of microservices deployed together in one container" }
+  ], "correct": ["b"], "explanation": "A modular monolith keeps one deployable but enforces internal boundaries. (a) is a shared-database service setup, which couples services. (c) is about how many servers run it; a monolith can run on many servers. (d) describes a distributed monolith, not a modular one.", "topicId": "modular-monolith", "difficulty": 1 },
+  { "id": "q2", "type": "multi", "prompt": "Which of these are genuine benefits of microservices? Select all that apply.", "options": [
+    { "id": "a", "text": "Teams can deploy their service without coordinating a joint release" },
+    { "id": "b", "text": "Calls between components become faster" },
+    { "id": "c", "text": "A CPU-heavy component can scale separately from the rest" },
+    { "id": "d", "text": "Cross-component transactions become simpler" }
+  ], "correct": ["a", "c"], "explanation": "Independent deploys and independent scaling are real benefits. (b) is backwards: network calls are much slower than in-process calls. (d) is also backwards: you lose single-database transactions and need patterns like sagas.", "topicId": "microservice-benefits", "difficulty": 1 },
+  { "id": "q3", "type": "single", "prompt": "A page makes 15 **sequential** calls to other services, each taking about 4 ms including the network hop. Roughly how much time do the calls alone add?", "options": [
+    { "id": "a", "text": "About 4 ms" },
+    { "id": "b", "text": "About 15 ms" },
+    { "id": "c", "text": "About 60 ms" },
+    { "id": "d", "text": "About 600 ms" }
+  ], "correct": ["c"], "explanation": "Sequential calls add up: 15 × 4 ms = 60 ms. (a) would only hold if all calls ran in parallel. (b) assumes 1 ms per call. (d) is ten times too high.", "topicId": "microservice-costs", "difficulty": 1 },
+  { "id": "q4", "type": "single", "prompt": "What does **Conway's law** say?", "options": [
+    { "id": "a", "text": "The number of services doubles every two years" },
+    { "id": "b", "text": "Systems tend to mirror the communication structure of the organisation that builds them" },
+    { "id": "c", "text": "Every service must have exactly one database" },
+    { "id": "d", "text": "Adding engineers to a late project makes it later" }
+  ], "correct": ["b"], "explanation": "Conway (1968) observed that designs copy the communication structure of the team that builds them. (a) is a made-up growth rule. (c) is a microservice guideline, not Conway's law. (d) is Brooks's law, from The Mythical Man-Month.", "topicId": "conways-law", "difficulty": 1 },
+  { "id": "q5", "type": "scenario", "scenario": "A startup of 7 engineers is building its first product. The domain is still changing every few weeks. They have no CI/CD pipeline yet and log to files on each server. The CTO proposes 12 microservices from day one so they 'won't need to rewrite later'.", "prompt": "What is the best advice?", "options": [
+    { "id": "a", "text": "Agree: starting with microservices avoids a painful split later" },
+    { "id": "b", "text": "Start with a modular monolith with enforced module boundaries, invest in deploy automation and logging, and split out services when a clear reason appears" },
+    { "id": "c", "text": "Build one service per developer so everyone has ownership" },
+    { "id": "d", "text": "Build a monolith with no module boundaries; boundaries slow early teams down" }
+  ], "correct": ["b"], "explanation": "A small team with a moving domain and no platform tooling will pay all the microservice costs without the coordination benefit, and will likely draw boundaries in the wrong places. (a) ignores that moving a service boundary is far more expensive than moving a module boundary. (c) ties services to people, not business capabilities. (d) leads to a big ball of mud that is hard to split later.", "topicId": "when-not-microservices", "difficulty": 2 },
+  { "id": "q6", "type": "scenario", "scenario": "The orders service calls the payments service to charge a card. The call times out after 2 seconds. The payments service may or may not have charged the card.", "prompt": "What is the safest way for the orders service to handle this?", "options": [
+    { "id": "a", "text": "Retry the charge immediately with a new request" },
+    { "id": "b", "text": "Mark the order as failed and tell the user to try again" },
+    { "id": "c", "text": "Retry with the same idempotency key so payments can recognise a repeat, and reconcile the order's status from the payment result" },
+    { "id": "d", "text": "Wrap both services in one database transaction" }
+  ], "correct": ["c"], "explanation": "A timeout means 'unknown', not 'failed'. Retrying with an idempotency key lets the payments service return the original result instead of charging twice. (a) risks a double charge. (b) may leave a charged customer with a failed order. (d) is not possible across separate service databases.", "topicId": "microservice-costs", "difficulty": 2 },
+  { "id": "q7", "type": "scenario", "scenario": "A company has 8 services. Each release, they must deploy users, then orders, then billing, in that order, because they all read and write the same PostgreSQL tables and a schema change breaks the others.", "prompt": "What is this architecture usually called, and what is the root problem?", "options": [
+    { "id": "a", "text": "A modular monolith; the problem is too many modules" },
+    { "id": "b", "text": "A distributed monolith; the services are coupled through a shared database so they cannot deploy independently" },
+    { "id": "c", "text": "Event-driven architecture; the problem is missing events" },
+    { "id": "d", "text": "Healthy microservices; ordered deploys are normal" }
+  ], "correct": ["b"], "explanation": "Services that must deploy together because they share a schema are a distributed monolith: network costs without independence. (a) is wrong because a modular monolith is one deployable. (c) misnames the pattern; events alone would not fix the shared tables. (d) is wrong: independent deploys are the main point of services.", "topicId": "microservice-costs", "difficulty": 2 },
+  { "id": "q8", "type": "single", "prompt": "Which split usually works **worst** for microservices?", "options": [
+    { "id": "a", "text": "Orders, payments and catalog as separate services" },
+    { "id": "b", "text": "A frontend service, a business-logic service and a database-access service" },
+    { "id": "c", "text": "A separate notification service consuming events" },
+    { "id": "d", "text": "A separate search service fed from the catalog" }
+  ], "correct": ["b"], "explanation": "Splitting by technical layer means almost every feature changes all three services, so teams must coordinate every release. (a), (c) and (d) split by business capability, which lets one team change one service for most features.", "topicId": "conways-law", "difficulty": 2 },
+  { "id": "q9", "type": "multi", "prompt": "Which of these become **necessary** once a request crosses many services? Select all that apply.", "options": [
+    { "id": "a", "text": "A request ID passed through every hop" },
+    { "id": "b", "text": "Distributed tracing" },
+    { "id": "c", "text": "Timeouts on every outbound call" },
+    { "id": "d", "text": "A single shared database for all services" }
+  ], "correct": ["a", "b", "c"], "explanation": "Request IDs and tracing let you follow one request across services, and timeouts stop one slow dependency from hanging every caller. (d) is the opposite of the goal: a shared database couples services together.", "topicId": "microservice-costs", "difficulty": 2 },
+  { "id": "q10", "type": "single", "prompt": "What is the **strangler fig** pattern?", "options": [
+    { "id": "a", "text": "Rewriting the whole monolith from scratch in one big release" },
+    { "id": "b", "text": "Routing traffic for one capability at a time from the old system to a new service until the old code can be deleted" },
+    { "id": "c", "text": "Throttling a service until it fails" },
+    { "id": "d", "text": "Merging microservices back into a monolith" }
+  ], "correct": ["b"], "explanation": "The strangler fig grows around the old system and gradually replaces it, one route at a time. (a) is the big-bang rewrite the pattern exists to avoid. (c) describes load shedding or throttling. (d) is the opposite direction.", "topicId": "when-not-microservices", "difficulty": 1 }
+]

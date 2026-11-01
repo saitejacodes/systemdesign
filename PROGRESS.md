@@ -6,7 +6,7 @@
 - [x] 03 Learning Engine
 - [x] 04 Plan & Dashboard
 - [x] 05 Simulator Framework
-- [ ] 06 Phase 1 Content
+- [x] 06 Phase 1 Content
 - [ ] 07 Phase 1 Simulators
 - [ ] 08 Phase 2 Content
 - [ ] 09 Phase 2 Simulators + SQL Sandbox

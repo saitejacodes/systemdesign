@@ -1,0 +1,5 @@
+[
+  { "id": "craver-so-2016", "title": "Stack Overflow: The Architecture – 2016 Edition", "author": "Nick Craver", "kind": "blog", "url": "https://nickcraver.com/blog/2016/02/17/stack-overflow-the-architecture-2016-edition/", "why": "A real, high-traffic site that leaned on vertical scaling and careful caching instead of a huge fleet.", "topicIds": ["vertical-horizontal", "vertical-limits"], "free": true },
+  { "id": "aws-autoscaling", "title": "What is Amazon EC2 Auto Scaling?", "author": "AWS documentation", "kind": "docs", "url": "https://docs.aws.amazon.com/autoscaling/ec2/userguide/what-is-amazon-ec2-auto-scaling.html", "why": "Concrete reference for scaling policies, min/max limits, cooldowns and scheduled scaling.", "topicIds": ["autoscaling"], "free": true },
+  { "id": "ddia-book", "title": "Designing Data-Intensive Applications", "author": "Martin Kleppmann", "kind": "book", "url": "https://dataintensive.net/", "why": "Chapters on replication and partitioning explain why the data tier is the hard part.", "topicIds": ["data-tier"], "free": false }
+]

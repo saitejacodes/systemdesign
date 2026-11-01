@@ -1,0 +1,8 @@
+[
+  { "id": "c1", "text": "I can draw the TCP three-way handshake and explain why it costs one RTT.", "topicId": "tcp-handshake" },
+  { "id": "c2", "text": "I can explain how TCP provides reliable, ordered delivery using sequence numbers, ACKs and retransmission.", "topicId": "tcp-reliability" },
+  { "id": "c3", "text": "I can distinguish flow control (receive window) from congestion control (congestion window) and explain slow start.", "topicId": "tcp-congestion" },
+  { "id": "c4", "text": "I can explain when UDP is preferable to TCP and give concrete examples (DNS, live video, gaming).", "topicId": "udp-use-cases" },
+  { "id": "c5", "text": "I can describe head-of-line blocking, why it affects HTTP/2 over TCP, and how QUIC solves it.", "topicId": "hol-blocking" }
+]
+

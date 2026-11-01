@@ -48,7 +48,7 @@ export function InterviewAngle({ title, questions, children }: { title?: string;
   );
 }
 
-const CALLOUT = { info: ["i", "Note"], warning: ["!", "Warning"], tip: ["→", "Tip"], example: ["#", "Example"] } as const;
+const CALLOUT = { info: ["i", "Note"], warning: ["!", "Warning"], tip: ["→", "Tip"], example: ["#", "Example"], analogy: ["≈", "Analogy"] } as const;
 export function Callout({ type = "info", title, children }: { type?: keyof typeof CALLOUT; title?: string; children: ReactNode }) {
   const [g, label] = CALLOUT[type];
   return (

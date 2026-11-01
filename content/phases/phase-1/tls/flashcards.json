@@ -1,0 +1,98 @@
+[
+  {
+    "id": "f1",
+    "front": "What three guarantees does TLS provide?",
+    "back": "Confidentiality (encryption), integrity (tamper detection via authenticated encryption, AEAD) and authentication (server identity via certificate).",
+    "topicId": "tls-provides"
+  },
+  {
+    "id": "f2",
+    "front": "TLS vs SSL?",
+    "back": "SSL is the deprecated predecessor (SSL 3.0 retired in 2015). TLS 1.2 and 1.3 are the current standards. People still say 'SSL' but mean TLS.",
+    "topicId": "tls-provides"
+  },
+  {
+    "id": "f3",
+    "front": "TLS 1.2 handshake cost?",
+    "back": "2 round trips on top of the TCP handshake (3 RTTs total for a new HTTPS connection).",
+    "topicId": "tls-handshake"
+  },
+  {
+    "id": "f4",
+    "front": "TLS 1.3 handshake cost?",
+    "back": "1 round trip. Key shares are sent in the first message. Total for new HTTPS over TCP: 2 RTTs (1 TCP + 1 TLS).",
+    "topicId": "tls-handshake"
+  },
+  {
+    "id": "f5",
+    "front": "TLS 1.3 0-RTT resumption?",
+    "back": "On repeat connections, the client can send encrypted data in the first message using a pre-shared key. Risk: 0-RTT data can be replayed, so only use for idempotent requests.",
+    "topicId": "tls-handshake"
+  },
+  {
+    "id": "f6",
+    "front": "What is a TLS certificate?",
+    "back": "A digitally signed document binding a public key to a domain name. The server holds the matching private key.",
+    "topicId": "tls-certificates"
+  },
+  {
+    "id": "f7",
+    "front": "Certificate chain: root → intermediate → leaf?",
+    "back": "Root CA (trusted by browsers) signs intermediate CA. Intermediate signs the server's leaf certificate. Root key stays offline for security.",
+    "topicId": "tls-certificates"
+  },
+  {
+    "id": "f8",
+    "front": "What is a certificate authority (CA)?",
+    "back": "An organisation trusted to sign certificates. Browsers ship with a list of trusted root CAs. Let's Encrypt is a free, automated CA.",
+    "topicId": "tls-certificates"
+  },
+  {
+    "id": "f9",
+    "front": "What is TLS termination?",
+    "back": "Decrypting TLS at the load balancer or reverse proxy. Traffic between the LB and app servers is plain HTTP (within a trusted network).",
+    "topicId": "tls-termination"
+  },
+  {
+    "id": "f10",
+    "front": "Why terminate TLS at the load balancer?",
+    "back": "Centralised cert management, offloads crypto from app servers, and allows L7 routing (which needs decrypted traffic).",
+    "topicId": "tls-termination"
+  },
+  {
+    "id": "f11",
+    "front": "What is mTLS?",
+    "back": "Mutual TLS: both client and server present certificates, authenticating each other. Used for service-to-service communication in microservice architectures.",
+    "topicId": "tls-termination"
+  },
+  {
+    "id": "f12",
+    "front": "How do service meshes automate mTLS?",
+    "back": "Each service's sidecar proxy gets a certificate from an internal CA. All inter-service traffic is encrypted and authenticated without application code changes.",
+    "topicId": "tls-termination"
+  },
+  {
+    "id": "f13",
+    "front": "How does Diffie–Hellman let two strangers share a secret in public?",
+    "back": "Each mixes a public value with a private one and sends the result; each then mixes in their own private value again. Both get the same secret, but an eavesdropper can't undo the mixing.",
+    "topicId": "tls-handshake"
+  },
+  {
+    "id": "f14",
+    "front": "What is forward secrecy?",
+    "back": "Fresh per-connection keys mean a server private key stolen later can't decrypt traffic recorded earlier. TLS 1.3 always provides it.",
+    "topicId": "tls-handshake"
+  },
+  {
+    "id": "f15",
+    "front": "What does a browser check on a certificate?",
+    "back": "Name matches the host, current date within validity, every signature in the chain valid, chain ends at a trusted root, and (where checked) not revoked.",
+    "topicId": "tls-certificates"
+  },
+  {
+    "id": "f16",
+    "front": "Sensible renewal policy for 90-day certificates?",
+    "back": "Renew around day 60, ticket at 21 days left, page at 7, and monitor the expiry date the live endpoint actually presents.",
+    "topicId": "tls-certificates"
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "id": "p1-reverse-proxy",
+  "phase": 1,
+  "slug": "reverse-proxy",
+  "title": "Reverse proxies",
+  "order": 11,
+  "week": 2,
+  "estimatedMinutes": 40,
+  "topics": [
+    { "id": "reverse-vs-forward", "title": "Reverse proxy vs forward proxy", "depth": "deep" },
+    { "id": "proxy-roles", "title": "What a reverse proxy does", "depth": "deep" },
+    { "id": "proxy-tls-compression", "title": "TLS offload, compression and buffering", "depth": "tradeoffs" },
+    { "id": "sidecar-proxy", "title": "Sidecar proxies and service mesh", "depth": "awareness" }
+  ],
+  "simulatorIds": ["request-journey"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-load-balancers"]
+}
+

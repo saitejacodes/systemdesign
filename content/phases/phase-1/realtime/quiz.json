@@ -1,0 +1,297 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "What is the main drawback of **short polling**?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It requires WebSocket support"
+      },
+      {
+        "id": "b",
+        "text": "Most responses are empty, wasting server resources and bandwidth"
+      },
+      {
+        "id": "c",
+        "text": "It does not work through firewalls"
+      },
+      {
+        "id": "d",
+        "text": "It requires a persistent connection"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Short polling sends requests on a timer. If nothing has changed, the response is empty—wasted work. (a) Short polling uses standard HTTP. (c) HTTP works through all firewalls. (d) Each poll is an independent HTTP request.",
+    "topicId": "short-polling",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "How does **long polling** differ from short polling?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Long polling uses a different protocol"
+      },
+      {
+        "id": "b",
+        "text": "The server holds the connection open until new data is available, then responds"
+      },
+      {
+        "id": "c",
+        "text": "Long polling sends requests more frequently"
+      },
+      {
+        "id": "d",
+        "text": "Long polling only works with WebSocket servers"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "In long polling, the server waits to respond until there is data (or a timeout). This eliminates empty responses and delivers updates near-instantly. (a) It uses standard HTTP. (c) It polls less frequently because each request waits. (d) No WebSocket needed.",
+    "topicId": "long-polling",
+    "difficulty": 1
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "What advantage does SSE have over WebSockets for a server-to-client notification stream?",
+    "options": [
+      {
+        "id": "a",
+        "text": "SSE supports binary messages"
+      },
+      {
+        "id": "b",
+        "text": "SSE provides automatic reconnection with event ID tracking"
+      },
+      {
+        "id": "c",
+        "text": "SSE allows the client to send messages to the server over the same connection"
+      },
+      {
+        "id": "d",
+        "text": "SSE uses less memory per connection"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The browser's EventSource API automatically reconnects and sends Last-Event-ID so the server can resume. WebSockets require manual reconnection logic. (a) SSE is text-only. (c) SSE is server-to-client only. (d) Memory usage is similar.",
+    "topicId": "sse",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "single",
+    "prompt": "What does the HTTP `Upgrade: websocket` header do?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Upgrades the server to a newer version of HTTP"
+      },
+      {
+        "id": "b",
+        "text": "Switches the connection from HTTP to the WebSocket protocol after the server accepts"
+      },
+      {
+        "id": "c",
+        "text": "Enables HTTP/2 multiplexing"
+      },
+      {
+        "id": "d",
+        "text": "Compresses the HTTP response"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The Upgrade header requests a protocol switch. If the server returns 101 Switching Protocols, the connection becomes a WebSocket. (a) It switches protocol, not version. (c) HTTP/2 has its own negotiation (ALPN). (d) Compression uses different headers.",
+    "topicId": "websockets",
+    "difficulty": 1
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "Why are WebSocket connections called **stateful**?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Because each message includes a session cookie"
+      },
+      {
+        "id": "b",
+        "text": "Because the connection is long-lived and tied to a specific server, maintaining state across messages"
+      },
+      {
+        "id": "c",
+        "text": "Because WebSocket messages are stored in a database"
+      },
+      {
+        "id": "d",
+        "text": "Because the client must authenticate on every message"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A WebSocket connection persists across many messages and is bound to one server. The server tracks which user is on which connection. (a) Cookies are an HTTP concept. (c) Messages are in-memory on the connection server. (d) Authentication happens at connection time.",
+    "topicId": "websockets",
+    "difficulty": 1
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "scenario": "A news website wants to push live election results to readers. Updates come every 10–60 seconds. Readers do not send data back. The engineering team wants the simplest possible implementation.",
+    "prompt": "Which realtime approach is the best fit?",
+    "options": [
+      {
+        "id": "a",
+        "text": "WebSockets, because they are the fastest"
+      },
+      {
+        "id": "b",
+        "text": "Server-Sent Events, because the data flow is server-to-client only and SSE is simpler than WebSockets"
+      },
+      {
+        "id": "c",
+        "text": "Short polling every 1 second for minimum latency"
+      },
+      {
+        "id": "d",
+        "text": "Long polling, because SSE is not supported by modern browsers"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "SSE is perfect for server-to-client push. It is simpler than WebSockets (one-line browser API, auto-reconnect) and sufficient because readers do not send data. (a) WebSockets are unnecessary for one-way data. (c) 1-second polling wastes resources. (d) SSE is well-supported in all modern browsers.",
+    "topicId": "sse",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "scenario": "A chat application has 2 million concurrent users. Users can send and receive messages in real time. The team deploys 50 connection servers behind a load balancer.",
+    "prompt": "How do messages from user A (on server 1) reach user B (on server 30)?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Server 1 directly connects to server 30 via HTTP"
+      },
+      {
+        "id": "b",
+        "text": "Server 1 publishes the message to a pub/sub system (e.g. Redis Pub/Sub). Server 30 subscribes and pushes it to user B."
+      },
+      {
+        "id": "c",
+        "text": "The load balancer routes A's message to server 30 automatically"
+      },
+      {
+        "id": "d",
+        "text": "User A's client connects directly to server 30 to send the message"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A pub/sub bus decouples connection servers. Server 1 publishes; all servers subscribed to the channel receive the message and push it to their connected clients. (a) Direct server-to-server connections do not scale. (c) The LB routes external connections, not inter-server messages. (d) The client connects to one server, not all of them.",
+    "topicId": "scaling-websockets",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "scenario": "A multiplayer game server detects that a player's WebSocket connection has been idle for 90 seconds with no messages in either direction.",
+    "prompt": "What should the server do?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Keep the connection open indefinitely; the player may return"
+      },
+      {
+        "id": "b",
+        "text": "Send a ping/heartbeat frame. If no pong is received, close the connection and free resources."
+      },
+      {
+        "id": "c",
+        "text": "Send the player's data to another server"
+      },
+      {
+        "id": "d",
+        "text": "Upgrade the connection to HTTP/3"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Heartbeats detect dead connections (e.g. client lost network). If the client does not respond to a ping, the connection is considered dead and should be closed to free server resources. (a) Keeping dead connections wastes resources. (c) and (d) are unrelated.",
+    "topicId": "scaling-websockets",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "multi",
+    "prompt": "Which of the following are **advantages** of WebSockets over SSE? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Full-duplex communication (both sides send freely)"
+      },
+      {
+        "id": "b",
+        "text": "Binary message support"
+      },
+      {
+        "id": "c",
+        "text": "Automatic reconnection"
+      },
+      {
+        "id": "d",
+        "text": "Built-in resume from the last event ID after a drop"
+      }
+    ],
+    "correct": [
+      "a",
+      "b"
+    ],
+    "explanation": "WebSockets are full-duplex (a) and carry binary frames (b); SSE is server-to-client and text-only. (c) is wrong: SSE reconnects automatically and WebSockets do not. (d) is wrong: Last-Event-ID resume is an SSE feature; with WebSockets you build resume yourself with message IDs. Per-message overhead is not a deciding difference here, since both send small frames once the connection is open.",
+    "topicId": "websockets",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "scenario",
+    "scenario": "A dashboard shows server metrics updated every 5 seconds. The company's corporate network blocks WebSocket upgrades at the firewall.",
+    "prompt": "Which fallback provides near-real-time updates?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Short polling every 5 seconds"
+      },
+      {
+        "id": "b",
+        "text": "Long polling or SSE, both of which use standard HTTP and are not blocked by WebSocket-aware firewalls"
+      },
+      {
+        "id": "c",
+        "text": "Send the data via email"
+      },
+      {
+        "id": "d",
+        "text": "Use UDP directly from the browser"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Long polling and SSE use standard HTTP requests, which pass through firewalls that block WebSocket upgrades. (a) Short polling every 5 seconds works but is less efficient (empty responses). (b) is better because long polling and SSE deliver updates immediately. (c) and (d) are impractical.",
+    "topicId": "long-polling",
+    "difficulty": 2
+  }
+]

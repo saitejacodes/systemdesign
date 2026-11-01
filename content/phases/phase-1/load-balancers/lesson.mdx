@@ -1,0 +1,206 @@
+## Why it matters
+
+Every large web service sits behind a load balancer. Google published a paper in 2016 about Maglev, the software load balancer that had been spreading traffic for Google services since 2008. It runs on ordinary Linux servers, and many Maglev machines share the same IP addresses so that losing one of them barely registers. Your systems will be smaller, but they face the same three questions Maglev answers: which server gets this request, how do we notice a dead server, and what happens when the load balancer itself dies? A load balancer is often the first piece of infrastructure you draw in a system design interview, and understanding L4 vs L7, the algorithms, health checks and redundancy patterns lets you reason about availability and scaling for any system.
+
+## L4 vs L7 load balancing
+
+<DepthStamp depth="deep" />
+
+A <Term slug="load-balancer">load balancer</Term> distributes incoming requests across multiple backend servers. The "L4" and "L7" labels refer to layers of the OSI model.
+
+**<Term slug="l4-load-balancing">L4 (transport layer) load balancing</Term>** routes based on IP addresses and TCP/UDP port numbers. It sees only the connection metadata (source IP, destination IP, source port, destination port) and forwards packets without inspecting the content. L4 LBs are fast because they operate at the packet level, often using techniques like Direct Server Return (DSR) where response traffic goes directly from the backend to the client, bypassing the LB.
+
+**<Term slug="l7-load-balancing">L7 (application layer) load balancing</Term>** terminates the TCP (and TLS) connection, inspects the HTTP request, and makes routing decisions based on URL path, headers, cookies or the request body. This enables:
+- Routing `/api/*` to API servers and `/static/*` to a CDN origin.
+- A/B testing by routing based on a cookie or header.
+- Rate limiting per user or API key.
+- WebSocket-aware routing.
+
+The tradeoff: L7 LBs are slower because they must decrypt TLS and parse HTTP. They also maintain two connections per request (client → LB and LB → backend), doubling the connection state.
+
+| Feature | L4 | L7 |
+|---------|----|----|
+| Routing info | IP + port | URL, headers, cookies, body |
+| TLS termination | Usually passes through (some, like AWS NLB, can terminate) | Yes |
+| Speed | Very fast (packet level) | Slower (HTTP parsing) |
+| Content-based routing | No | Yes |
+| Connection state | One (pass-through) | Two (client → LB, LB → backend) |
+
+In practice most architectures use an L7 LB (like Nginx, HAProxy, Envoy, AWS ALB or GCP's HTTP(S) LB) because content-based routing is almost always needed.
+
+<Callout type="analogy" title="The postal sorter and the personal assistant">
+An **L4** load balancer is a postal sorting machine. It looks only at the outside of the envelope (IP address and port) and throws it into one of several bins at enormous speed. It never opens the letter, so it can't tell an urgent legal notice from a takeaway menu, and it doesn't care. An **L7** load balancer is a personal assistant who opens every letter, reads it and decides: "invoices go to accounting, complaints to support, anything from the CEO goes to the senior team, and anything from this sender who has written 500 times today goes in the bin." The assistant is much smarter and much slower per letter, and needs the key to the envelope (it must terminate TLS to read encrypted mail). Big systems often use both: a sorting machine at the loading dock spreading envelopes across a team of assistants.
+</Callout>
+
+## Load-balancing algorithms
+
+<DepthStamp depth="deep" />
+
+The algorithm decides which backend gets each request.
+
+**<Term slug="round-robin">Round robin</Term>.** Requests go to backends 1, 2, 3, 1, 2, 3, … in order. Simple but assumes all backends are equally powerful and all requests are equally expensive. A heavyweight request and a health-check ping get the same treatment.
+
+**<Term slug="weighted-round-robin">Weighted round robin</Term>.** Each backend has a weight. A server with weight 3 gets three requests for every one that a server with weight 1 gets. Useful when backends have different capacities (e.g. after a rolling deploy with old and new instance types).
+
+**<Term slug="least-connections">Least connections</Term>.** Sends the request to the backend with the fewest active connections. Adapts better than round robin when request durations vary: a server stuck on slow requests accumulates *more* open connections, so the balancer naturally sends it fewer new ones until it catches up.
+
+**<Term slug="power-of-two-choices">Power of two random choices</Term>.** Pick two backends at random and send the request to the less busy of the two. It sounds too simple to work, but it gets very close to the balance of "check every server" while only looking at two, and it avoids a classic problem with least connections across many load balancers: when every balancer sees the same "least loaded" server, they all pile onto it at once (a herd). Envoy and NGINX both offer this approach.
+
+**IP hash.** Hashes the client's IP to pick a backend. The same client always goes to the same server (unless the server pool changes). This provides session affinity without cookies, but is brittle: adding or removing a server reshuffles most clients.
+
+**<Term slug="consistent-hashing">Consistent hashing</Term>.** Maps both servers and requests onto a hash ring. Each request goes to the nearest server on the ring. When a server is added or removed, only a fraction of requests move (≈ 1/n of the total). This is essential for stateful backends like caches and sharded databases.
+
+<Callout type="analogy" title="Supermarket checkouts">
+**Round robin** is a staff member at the front sending shoppers to checkout 1, 2, 3, 1, 2, 3 without looking. It's fair by headcount, but the shopper with a full trolley for a family of eight gets sent to the same lane as everyone else, and that lane backs up while the next one sits empty. **Least connections** is the staff member glancing at the queues and sending you to the shortest one. **Power of two choices** is them glancing at just two random lanes and picking the shorter one: much less looking, almost as good, and it stops every new shopper being sent to the same "shortest" lane at the same moment. **IP hash / consistent hashing** is "your loyalty card number decides your lane": you always go to the same cashier, who remembers your preferences (a warm cache), and if one cashier goes on break, only *their* regulars get reassigned, not every customer in the shop.
+</Callout>
+
+### Worked example: when round robin hurts
+
+Three identical API servers. Traffic is 300 requests/s. 95% of requests take **10 ms**; 5% are report exports that take **2 s**. Each server runs **32 worker threads**.
+
+**Average load.** Per second: 285 fast requests × 0.01 s = 2.85 worker-seconds, plus 15 slow ones × 2 s = 30 worker-seconds. Total ≈ **33 busy workers** across 96 (Little's Law from the latency section): about 34% utilization. Looks fine.
+
+**Round robin.** Slow requests land on servers by chance, not by load. In a bad few seconds, one server can collect, say, 25 slow exports in flight, using 25 of its 32 workers for two seconds. Fast requests round-robined to that server now queue behind the remaining 7 workers, so their p99 jumps from 10 ms to hundreds of milliseconds while the other two servers sit mostly idle.
+
+**Least connections.** The server holding 25 exports shows 25+ active connections; the others show around 5. New requests flow to the quiet servers until the slow ones finish. Fast-request p99 stays close to 10 ms.
+
+**Better still.** Move 2 s exports off the request path entirely (a job queue, as in the monolith section's worked example). The load balancer can only work with the variance it's given.
+
+### Which algorithm to choose?
+
+- **Stateless API servers:** round robin or least connections. Least connections is better when request durations vary.
+- **Cache or session-affinity needs:** consistent hashing.
+- **Mixed hardware:** weighted round robin.
+
+## Health checks
+
+<DepthStamp depth="deep" />
+
+A <Term slug="health-check">health check</Term> lets the LB detect unhealthy backends and stop sending traffic to them.
+
+**Active health checks.** The LB periodically sends a probe (an HTTP GET to `/health`, a TCP connect, or a custom check). If a backend fails several consecutive checks, the LB marks it as unhealthy and removes it from the pool. When it starts passing again, the LB adds it back (often with a warm-up period to avoid overwhelming a recovering server).
+
+**Passive health checks.** The LB monitors real traffic. If a backend returns too many 5xx errors or times out repeatedly, it is marked unhealthy. This catches issues that active checks might miss (for example, a server that responds to `/health` but fails on real queries).
+
+Most production setups use both. The health endpoint should check the service's critical dependencies (database connection, disk space) and return a meaningful status, not just always 200.
+
+**Graceful shutdown.** Before draining a server (for deploys or scaling down), it should signal the LB (e.g. start returning 503 from the health endpoint), let in-flight requests complete, then shut down. This is called connection draining.
+
+<Callout type="analogy" title="Health checks are a teacher taking the register">
+An active health check is a teacher calling the register every five minutes: "Server 3?" "Here!" Three missed calls in a row and the teacher stops giving server 3 any work. A passive health check is the teacher noticing that every piece of homework from server 3 comes back wrong, even though it answers "Here!" cheerfully every time. A *shallow* health endpoint that always returns 200 is a student who learned to shout "Here!" while fast asleep. A *too-deep* one that fails whenever the shared database is slow is worse: every student fails the register at once, the teacher sends them all home, and now there is nobody left to teach. Check what the server itself needs, and be careful about failing on dependencies every server shares.
+</Callout>
+
+### Detection math
+
+With active checks every **5 s** and an unhealthy threshold of **3** failures, a crashed server keeps receiving its share of traffic for up to about **15 s**. If each of 4 servers takes 1,000 requests/s, that is about 15 × 1,000 = **15,000 failed requests** before the balancer reacts. Ways to shrink it: shorter intervals (more probe traffic), passive checks that eject a backend after a burst of connection errors in under a second, and retrying idempotent requests on another backend when the first one fails to connect.
+
+## Sticky sessions
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="sticky-session">Sticky sessions</Term> (session affinity) route all requests from the same client to the same backend, usually using a cookie or IP hash. This is sometimes used when session state is stored in the server's memory.
+
+**Why to avoid them:**
+
+- **Uneven load.** Some clients generate far more traffic than others. The "sticky" server gets overloaded while others are idle.
+- **Fragile failover.** If the sticky server dies, the client's session is lost. The user must log in again or lose their cart.
+- **Scaling difficulty.** Adding servers does not help existing sessions; only new sessions are distributed.
+
+<Callout type="analogy" title="Sticky sessions are a favourite barber">
+Sticky sessions are insisting on the same barber every visit because only they remember how you like your hair. Lovely, until your barber is fully booked while three others stand idle (uneven load), goes on holiday (server dies: the new barber has no idea what you wanted), or the shop hires five new barbers and none of them gets any regulars (scaling doesn't help existing sessions). Writing your haircut instructions on a card you carry, or keeping them in a shared book at the front desk (external session storage), lets any barber do the job.
+</Callout>
+
+**The alternative:** store session state externally (in Redis, a database or an encrypted cookie). This makes every server interchangeable, so the LB can use round robin or least connections, and any server can handle any request. This is the stateless app tier pattern from the scaling section.
+
+## LB as SPOF and redundancy
+
+<DepthStamp depth="deep" />
+
+A single load balancer is a <Term slug="single-point-of-failure">single point of failure</Term>: if it dies, all traffic stops. The fix is redundancy.
+
+**<Term slug="active-passive">Active-passive</Term>.** Two LBs share a <Term slug="virtual-ip">virtual IP (VIP)</Term>. The active LB handles traffic. The passive one monitors the active via heartbeats. If the active LB fails, the passive takes over the VIP (using a protocol like VRRP or cloud provider failover). Failover takes seconds.
+
+**<Term slug="active-active">Active-active</Term>.** Both LBs handle traffic simultaneously. DNS returns both IPs, or an upstream L4 LB (often hardware or cloud-native) distributes across them. This provides both redundancy and doubled capacity.
+
+<Figure caption="FIG. 10.1 · REDUNDANT LOAD BALANCERS">
+  <Diagram label="Redundant load balancers: active-passive with automatic failover via a shared VIP." chart={`flowchart TD
+    Client["Clients"]
+    subgraph LB layer
+        LB1["LB 1 (active)"]
+        LB2["LB 2 (passive / active)"]
+    end
+    subgraph Backend pool
+        S1["Server 1"]
+        S2["Server 2"]
+        S3["Server 3"]
+    end
+    Client --> LB1
+    Client -.->|failover| LB2
+    LB1 --> S1
+    LB1 --> S2
+    LB1 --> S3
+    LB2 --> S1
+    LB2 --> S2
+    LB2 --> S3`} />
+</Figure>
+
+*Redundant load balancers: active-passive with automatic failover via a shared VIP.*
+
+<Callout type="analogy" title="One door into a stadium">
+A single load balancer is a stadium with one entrance gate. It doesn't matter that there are 40 turnstiles behind it and 60,000 seats: if that one gate jams, nobody gets in. Active-passive is a second gate kept locked, with a steward watching the first; if it jams, the steward unlocks the spare and moves the "Entrance" sign (the virtual IP) over to it. Active-active is two gates open all the time, each handling half the crowd, so a jam halves capacity rather than stopping the match.
+</Callout>
+
+Cloud providers handle this transparently. AWS ALB, GCP HTTP(S) LB and Azure LB are all managed, multi-zone, redundant load balancers. You do not manage failover yourself; the provider does.
+
+The related rate-limiter simulator (built in Phase 2) shows how a load balancer can enforce request limits per client.
+
+<TradeoffBox title="Load balancer tradeoffs" items={[
+  { gain: "L7 LB enables content-based routing, A/B testing and rate limiting", cost: "Slower than L4; must terminate TLS and parse HTTP" },
+  { gain: "Least connections adapts to variable request durations", cost: "Slightly more complex; may not distribute evenly if backends report connections differently" },
+  { gain: "Consistent hashing minimises reshuffling when backends change", cost: "More complex to implement; can cause hotspots if keys are skewed" },
+  { gain: "Active-passive LB redundancy prevents SPOF", cost: "One LB is idle; failover takes a few seconds" }
+]} />
+
+<NotWhenBox title="Relying on a single LB or sticky sessions" items={[
+  "Production systems should never run a single load balancer. Use active-passive or active-active for redundancy.",
+  "Sticky sessions should be a last resort. Store session state externally so any server can handle any request.",
+  "DNS round robin is not a substitute for a health-aware load balancer: it cannot detect or route around failures."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A load balancer is just for distributing traffic evenly." right="It also provides health checking, TLS termination, rate limiting, content-based routing and connection draining. Even distribution is one function among many." />
+
+<Misconception wrong="Consistent hashing is only for load balancers." right="Consistent hashing is used in load balancers, distributed caches (Memcached, Redis clusters), database sharding and distributed hash tables. It is a general technique for mapping keys to nodes." />
+
+<Misconception wrong="Round robin is always good enough." right="Round robin works when backends are identical and requests are uniform. When request durations vary or backends have different capacities, least connections or weighted round robin produce better results." />
+
+## Interview angle
+
+<InterviewAngle title="Load balancers" questions={[
+  "Where would you place a load balancer in your architecture?",
+  "Which load-balancing algorithm would you use, and why?",
+  "How do you prevent the load balancer from being a single point of failure?",
+  "What is the difference between L4 and L7 load balancing?"
+]}>
+Draw the load balancer early in the interview—right after DNS, before the app servers. State whether it is L4 or L7 and why. Mention health checks (so unhealthy servers are removed) and redundancy (active-passive or active-active). If the system needs session affinity, explain consistent hashing or external session storage rather than sticky sessions.
+</InterviewAngle>
+
+## Try it
+
+<Simulator id="load-balancer" />
+
+<Simulator id="consistent-hashing" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+Redo the worked example with 6 servers and 10% slow requests. How many workers are busy on average, and how many slow requests in flight would it take to saturate one server? Then, in the [Design Studio](/studio), draw two L7 load balancers in active-active behind DNS, three app servers and a Redis session store, and write the health-check settings and the worst-case number of failed requests when a server crashes.
+

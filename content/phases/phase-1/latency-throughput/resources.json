@@ -1,0 +1,5 @@
+[
+  { "id": "tail-at-scale", "title": "The Tail at Scale (Communications of the ACM, February 2013)", "author": "Jeffrey Dean and Luiz André Barroso", "kind": "paper", "url": "https://cacm.acm.org/", "why": "The source of the fan-out arithmetic and of hedged and tied requests. Search the CACM site for the title.", "topicIds": ["tail-latency", "percentiles"], "free": true },
+  { "id": "sre-slos", "title": "Service Level Objectives", "author": "Google SRE book", "kind": "free-book", "url": "https://sre.google/sre-book/service-level-objectives/", "why": "Why to choose percentiles over averages when setting latency targets.", "topicIds": ["percentiles"], "free": true },
+  { "id": "wiki-littles-law", "title": "Little's law", "author": "Wikipedia", "kind": "docs", "url": "https://en.wikipedia.org/wiki/Little%27s_law", "why": "Statement, conditions and worked examples of L = λW.", "topicIds": ["littles-law"], "free": true }
+]

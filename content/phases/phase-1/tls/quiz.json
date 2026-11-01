@@ -1,0 +1,63 @@
+[
+  { "id": "q1", "type": "single", "prompt": "Which three guarantees does TLS provide?", "options": [
+    { "id": "a", "text": "Confidentiality, integrity and authentication" },
+    { "id": "b", "text": "Encryption, compression and load balancing" },
+    { "id": "c", "text": "Authentication, authorisation and accounting" },
+    { "id": "d", "text": "Reliability, ordering and flow control" }
+  ], "correct": ["a"], "explanation": "TLS provides confidentiality (encryption), integrity (tamper detection via authenticated encryption, AEAD) and authentication (certificate verification). (b) TLS does not do compression or load balancing. (c) Authorisation and accounting are application concerns, not TLS. (d) Those are TCP's guarantees.", "topicId": "tls-provides", "difficulty": 1 },
+  { "id": "q2", "type": "single", "prompt": "How many round trips does a TLS 1.3 handshake require for a **new** connection?", "options": [
+    { "id": "a", "text": "Zero" },
+    { "id": "b", "text": "One" },
+    { "id": "c", "text": "Two" },
+    { "id": "d", "text": "Three" }
+  ], "correct": ["b"], "explanation": "TLS 1.3 completes in 1 RTT by sending key shares in the first message. (a) 0-RTT is available for repeat connections only. (c) TLS 1.2 takes 2 RTTs. (d) Only if you count the TCP handshake separately.", "topicId": "tls-handshake", "difficulty": 1 },
+  { "id": "q3", "type": "single", "prompt": "What is the security risk of TLS 1.3's 0-RTT resumption?", "options": [
+    { "id": "a", "text": "The server's private key is exposed" },
+    { "id": "b", "text": "0-RTT data can be replayed by an attacker" },
+    { "id": "c", "text": "The connection is unencrypted during 0-RTT" },
+    { "id": "d", "text": "0-RTT disables certificate verification" }
+  ], "correct": ["b"], "explanation": "An attacker can capture and resend the 0-RTT data, causing the server to process it again. This is safe only for idempotent requests. (a) The private key is never sent. (c) 0-RTT data is encrypted with a pre-shared key. (d) Certificate verification still occurs.", "topicId": "tls-handshake", "difficulty": 2 },
+  { "id": "q4", "type": "single", "prompt": "In a TLS certificate chain, who signs the **leaf** (server) certificate?", "options": [
+    { "id": "a", "text": "The server signs its own certificate" },
+    { "id": "b", "text": "The root CA directly" },
+    { "id": "c", "text": "An intermediate CA, which is signed by the root CA" },
+    { "id": "d", "text": "The client's browser" }
+  ], "correct": ["c"], "explanation": "Most server certificates are signed by an intermediate CA, which itself is signed by the root CA. The root key is kept offline for security. (a) Self-signed certificates are not trusted by browsers. (b) Root CAs rarely sign leaf certs directly. (d) The browser verifies, not signs.", "topicId": "tls-certificates", "difficulty": 1 },
+  { "id": "q5", "type": "single", "prompt": "What happens when a server's TLS certificate expires?", "options": [
+    { "id": "a", "text": "The connection silently falls back to HTTP" },
+    { "id": "b", "text": "Browsers show a security error and refuse to connect (unless the user overrides)" },
+    { "id": "c", "text": "The server automatically renews it" },
+    { "id": "d", "text": "Nothing; certificates do not actually expire" }
+  ], "correct": ["b"], "explanation": "Browsers reject expired certificates and show a warning. This is a common cause of outages. (a) There is no silent fallback. (c) Auto-renewal must be set up separately (e.g. certbot). (d) All certificates have an expiration date.", "topicId": "tls-certificates", "difficulty": 1 },
+  { "id": "q6", "type": "single", "prompt": "Why is TLS commonly terminated at the load balancer rather than at each application server?", "options": [
+    { "id": "a", "text": "Application servers cannot run TLS" },
+    { "id": "b", "text": "It centralises certificate management and allows the LB to inspect HTTP headers for L7 routing" },
+    { "id": "c", "text": "It eliminates the need for certificates entirely" },
+    { "id": "d", "text": "TLS termination at the LB is required by law" }
+  ], "correct": ["b"], "explanation": "Terminating at the LB means one place to manage certificates and enables L7 routing (which requires decrypted traffic). It also offloads crypto CPU from app servers. (a) App servers can run TLS. (c) You still need at least one certificate at the LB. (d) There is no such legal requirement.", "topicId": "tls-termination", "difficulty": 1 },
+  { "id": "q7", "type": "scenario", "scenario": "A company terminates TLS at its load balancer. Traffic between the LB and application servers crosses a shared corporate network in plain HTTP. A security audit flags this as a risk.", "prompt": "What is the recommended fix?", "options": [
+    { "id": "a", "text": "Move the application servers to the same physical machine as the LB" },
+    { "id": "b", "text": "Re-encrypt traffic between the LB and app servers using TLS (either TLS passthrough or TLS re-encryption)" },
+    { "id": "c", "text": "Use UDP instead of TCP between the LB and app servers" },
+    { "id": "d", "text": "Remove the load balancer" }
+  ], "correct": ["b"], "explanation": "TLS re-encryption or passthrough keeps internal traffic encrypted. (a) Co-locating on one machine is impractical and defeats the purpose of multiple servers. (c) UDP does not add encryption. (d) Removing the LB removes load balancing.", "topicId": "tls-termination", "difficulty": 2 },
+  { "id": "q8", "type": "scenario", "scenario": "A microservice architecture has 20 services. The team wants to ensure that only legitimate services can communicate with each other, not just any process on the internal network.", "prompt": "Which approach provides strong service-to-service authentication?", "options": [
+    { "id": "a", "text": "IP allow-listing at the firewall" },
+    { "id": "b", "text": "Mutual TLS (mTLS): every service has its own certificate and verifies the other's certificate" },
+    { "id": "c", "text": "Using HTTPS with browser certificates" },
+    { "id": "d", "text": "Disabling TLS within the internal network" }
+  ], "correct": ["b"], "explanation": "mTLS requires both sides to present a certificate, proving identity at the transport layer. (a) IPs can be spoofed, and containers get new IPs frequently. (c) Browser certificates are for users, not services. (d) Disabling TLS removes security entirely.", "topicId": "tls-termination", "difficulty": 2 },
+  { "id": "q9", "type": "scenario", "scenario": "A team uses Let's Encrypt for free TLS certificates with 90-day validity. One Friday night, their automated renewal fails silently. On Monday, users report they cannot access the site.", "prompt": "What should the team add to prevent this?", "options": [
+    { "id": "a", "text": "Switch to a paid CA with longer certificate validity" },
+    { "id": "b", "text": "Monitoring and alerting on certificate expiration (e.g. alert 14 days before expiry)" },
+    { "id": "c", "text": "Disable certificate validation on the client" },
+    { "id": "d", "text": "Use self-signed certificates that never expire" }
+  ], "correct": ["b"], "explanation": "Monitoring certificate expiry catches renewal failures before they cause outages. (a) Longer validity helps but does not eliminate the risk; monitoring is still needed. (c) Disabling validation is a security hole. (d) Self-signed certificates are not trusted by browsers, and certificates should expire for security.", "topicId": "tls-certificates", "difficulty": 2 },
+  { "id": "q10", "type": "multi", "prompt": "Which of the following are benefits of terminating TLS at the load balancer? Select all that apply.", "options": [
+    { "id": "a", "text": "Centralised certificate management" },
+    { "id": "b", "text": "The LB can inspect HTTP headers for content-based routing" },
+    { "id": "c", "text": "Application servers do not need to handle crypto operations" },
+    { "id": "d", "text": "Internal traffic is automatically encrypted" }
+  ], "correct": ["a", "b", "c"], "explanation": "Centralised certs (a), L7 inspection (b) and offloading crypto (c) are all benefits. (d) is wrong: terminating TLS at the LB means internal traffic is plain HTTP unless you add re-encryption.", "topicId": "tls-termination", "difficulty": 2 }
+]
+

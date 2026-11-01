@@ -1,0 +1,186 @@
+## Why it matters
+
+Stack Overflow is one of the most visited sites on the internet, and for years its engineers described running it on a surprisingly small fleet: around nine web servers and a pair of large SQL Server machines (Nick Craver's 2016 architecture write-up has the details). Meanwhile, companies with far less traffic run hundreds of small instances. Both can be right. "Scaling" means handling more load, and there are two basic ways to do it: buy a bigger machine, or add more machines. Knowing when each one works, and which part of the system will break first, is the core skill this section teaches.
+
+## Vertical vs horizontal scaling
+
+<DepthStamp depth="deep" />
+
+<Term slug="vertical-scaling">Vertical scaling</Term> (scaling up) means giving one machine more resources: more CPU cores, more RAM, faster disks, a faster network card. Your code does not change. You stop the server, move it to a bigger instance type, start it again.
+
+<Term slug="horizontal-scaling">Horizontal scaling</Term> (scaling out) means running more machines and splitting the work between them, usually with a <Term slug="load-balancer">load balancer</Term> in front. Your code must be ready for it: any copy must be able to handle any request, which is why the client–server section pushed state out of the app servers.
+
+<Figure caption="FIG. 3.1 · SCALE UP VS SCALE OUT">
+  <Diagram label="Left: one server growing from 4 cores to 64 cores. Right: a load balancer spreading traffic over four identical 4-core servers." chart={`flowchart LR
+    subgraph UP[Scale up]
+      S1[Server 4 cores] -->|resize| S2[Server 64 cores]
+    end
+    subgraph OUT[Scale out]
+      LB[Load balancer] --> A1[4 cores]
+      LB --> A2[4 cores]
+      LB --> A3[4 cores]
+      LB --> A4[4 cores]
+    end`} />
+</Figure>
+
+The two are not rivals. Most real systems scale out the app tier and scale up the database for as long as they can, because scaling a database out is much harder (more on that below).
+
+| | Vertical (up) | Horizontal (out) |
+|---|---|---|
+| Code changes | None | App must be stateless or partitioned |
+| Ceiling | The biggest machine you can buy | Very high, if the design allows it |
+| Failure | One machine = single point of failure | Losing one of N machines loses 1/N capacity |
+| Cost curve | Big machines cost more per core at the top end | Roughly linear, plus coordination overhead |
+| Operations | Simple: one box | Needs load balancing, deploy tooling, monitoring per node |
+
+<Callout type="analogy" title="A bigger truck vs more trucks">
+Vertical scaling is replacing your delivery van with a lorry: one driver, no coordination, but there is a largest lorry ever built and if it breaks down nothing gets delivered. Horizontal scaling is buying ten vans: you need a dispatcher (the load balancer) and the vans must not each keep their own copy of the delivery list, but you can always add an eleventh, and one breakdown slows you rather than stops you.
+</Callout>
+
+## The limits of vertical scaling
+
+<DepthStamp depth="tradeoffs" />
+
+Vertical scaling is underrated. A modern cloud instance can have hundreds of vCPUs and terabytes of RAM, and a single well-tuned PostgreSQL server can handle a very large amount of traffic. Before you design a distributed system, check whether a bigger box solves the problem for the next two years.
+
+But it has four hard limits:
+
+1. **A ceiling.** At some point there is no bigger machine. If your load grows past it, you have to redesign anyway, under pressure.
+2. **A single point of failure.** One machine, however large, fails as one unit. A <Term slug="single-point-of-failure">single point of failure (SPOF)</Term> takes the whole service down with it. You need at least a standby copy, which is already a step toward more than one machine.
+3. **Downtime to resize.** Moving to a bigger instance usually means a restart. With a replica you can fail over to minimise this, but plain vertical scaling has a maintenance window.
+4. **Diminishing returns.** Software does not always use extra cores well. A single-threaded bottleneck, lock contention or a global mutex means doubling cores does not double throughput.
+
+<Callout type="analogy" title="The tallest ladder">
+Scaling up is like buying a taller ladder: each step up costs more than the last, the very tallest are rare and expensive, and you are still one person on one ladder. When the ladder is replaced (a resize or a reboot), nobody is up there working.
+</Callout>
+
+## Scaling the stateless app tier
+
+<DepthStamp depth="deep" />
+
+Once app servers keep no request-to-request state in memory, scaling them out is mechanical:
+
+1. Put a load balancer in front.
+2. Run N identical copies of the app.
+3. Add copies when load rises, remove them when it falls.
+
+The math is simple. If one app server handles 500 requests per second at the CPU level you are comfortable with (say 60–70%), and peak traffic is 6,000 requests per second, you need 6,000 / 500 = 12 servers, plus spare capacity so that losing one or two does not push the rest over the edge. With **N+2** redundancy you would run 14.
+
+Things that quietly break horizontal scaling:
+
+- **In-memory sessions or caches** that only one server can see (fix: shared session store or tokens).
+- **Local file uploads** written to one server's disk (fix: object storage).
+- **Scheduled jobs** that every copy runs at midnight, so they run 14 times (fix: a single scheduler or a distributed lock).
+- **Per-server rate limits** that only see 1/N of the traffic (fix: shared counters, covered in the rate-limiting section).
+
+## Why the data tier is the hard part
+
+<DepthStamp depth="deep" />
+
+The app tier was easy to scale because we moved its state somewhere else. That "somewhere else" is the database, and it cannot play the same trick. Data has to live somewhere, and every copy of it has to be kept in step with the others.
+
+The data tier usually scales in this order, from cheapest to most expensive:
+
+1. **Scale up** the database machine. Simple and effective for a long time.
+2. **Add a cache** in front of hot reads (Phase 3). Many workloads are 10–100× more reads than writes, so absorbing reads helps a lot.
+3. **Add read <Term slug="replica">replicas</Term>.** Copies of the database that serve reads. Writes still go to one leader. The cost: replicas lag behind, so a user may not see their own write if the next read hits a replica.
+4. **Split by feature** (vertical partitioning): orders in one database, users in another. Joins across them move to application code.
+5. **Shard** (horizontal partitioning): split one table's rows across many databases by a key such as user ID. Now each database holds a slice. This is powerful and expensive: cross-shard queries, rebalancing and hot keys all become your problem. Phase 2 covers it in depth.
+
+<Figure caption="FIG. 3.2 · DATA TIER · CHEAPEST STEP FIRST">
+  <Diagram label="Ladder of five steps from bottom to top: scale up the database, add a cache, add read replicas, split by feature, shard by key. Cost and complexity rise with each step." chart={`flowchart BT
+    A[1 Scale up the DB] --> B[2 Cache hot reads]
+    B --> C[3 Read replicas]
+    C --> D[4 Split by feature]
+    D --> E[5 Shard by key]`} />
+</Figure>
+
+Why is it hard? Writes. Reads can be copied anywhere. Every write must reach every copy that needs it, in an order everyone agrees on, while machines fail. That is the topic of most of Phase 4.
+
+<Callout type="analogy" title="Copying waiters is easy, copying the ledger is not">
+Adding waiters to a restaurant is easy because they hold nothing permanent. The order book is different: if you photocopy it for every waiter, the copies disagree the moment two waiters take the last table at once. Scaling the database is the art of sharing one ledger between many hands without it ever contradicting itself.
+</Callout>
+
+## Autoscaling basics
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="autoscaling">Autoscaling</Term> adds and removes app instances automatically based on a signal. Cloud providers offer it for virtual machines and containers; Kubernetes has the Horizontal Pod Autoscaler. The moving parts are:
+
+- **A metric.** CPU utilization is the classic. Requests per second per instance, queue depth (for workers) or p95 latency can be better signals for some services.
+- **A target.** "Keep average CPU around 60%." Below the target, remove instances; above it, add them.
+- **Limits.** A minimum (so you can absorb a spike before scaling reacts) and a maximum (so a bug or an attack cannot spend your whole budget).
+- **Cooldown.** A delay between scaling actions so the system does not flap up and down.
+
+Autoscaling is not instant. A new VM might take a minute or more to boot, pull the image, warm caches and pass health checks. A traffic spike that doubles load in 30 seconds will hit your existing instances first. That is why you keep headroom (do not run at 95% CPU) and why predictable peaks (a daily evening peak, a planned sale) are often handled with **scheduled scaling** ahead of time.
+
+Autoscaling also only scales the tier it controls. If the database is the bottleneck, adding 50 more app servers just sends 50 servers' worth of queries to an overloaded database, often making things worse.
+
+<Callout type="tip" title="Scale the bottleneck, not the thing that is easy to scale">
+Before adding servers, find which resource is saturated: app CPU, database CPU, database connections, disk I/O, or a downstream API's rate limit. Adding capacity anywhere else does nothing.
+</Callout>
+
+<Callout type="analogy" title="The thermostat">
+Autoscaling is a thermostat: measure the temperature (CPU, queue depth, request rate), compare with a target, and switch heaters on or off. Like a real thermostat it lags. A new server, like a heater, takes minutes to warm up, so you set the target with headroom, or the room is already freezing before the heat arrives.
+</Callout>
+
+## Worked example: sizing an API tier
+
+An API serves a mobile app with 2 million daily active users.
+
+**Average load.** Each user makes about 50 requests a day. That is 2,000,000 × 50 = 100 million requests/day. A day has 86,400 seconds, call it 10⁵ for estimation: 10⁸ / 10⁵ = **about 1,000 requests/s on average**.
+
+**Peak load.** Usage is concentrated in the evening. Assume a peak of 3× average: **3,000 requests/s**.
+
+**Per-server capacity.** A load test shows one 4-vCPU instance handles 400 requests/s at 65% CPU with p99 under 150 ms.
+
+**Instances needed.** 3,000 / 400 = 7.5, so 8 instances at peak. Add N+2 for failures and deploys: **10 instances at peak**. At night, traffic falls to 0.2× average (200 requests/s), so autoscaling could drop to a minimum of 3 (two for redundancy plus headroom).
+
+**The database.** If 10% of requests write (300 writes/s at peak) and 90% read (2,700 reads/s), a single well-sized PostgreSQL primary can usually handle that, especially with a cache absorbing most reads. No sharding needed yet. The right next step if reads grow is a cache, then read replicas.
+
+<TradeoffBox title="Scaling up vs scaling out" items={[
+  { gain: "Scale up: no code change and one machine to operate", cost: "Hard ceiling, single point of failure, restart to resize" },
+  { gain: "Scale out: near-linear growth and survives losing a node", cost: "Needs stateless code, a load balancer and per-node operations" },
+  { gain: "Autoscaling: pay for what you use and absorb daily cycles", cost: "Reacts in minutes, not seconds, and does not fix a database bottleneck" }
+]} />
+
+<NotWhenBox title="Scaling out (adding more machines)" items={[
+  "The bottleneck is the database or a downstream service: more app servers add more pressure on it.",
+  "Load fits comfortably on one larger machine for the foreseeable future and you already have a standby.",
+  "The work is inherently serial (one global lock, one ordered stream) and cannot be split across machines."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Horizontal scaling is always better than vertical scaling." right="Vertical scaling is simpler and often cheaper up to a point. Most systems scale the app tier out and keep the database scaled up for as long as possible." />
+
+<Misconception wrong="Autoscaling handles traffic spikes instantly." right="New instances take time to start and warm up. You still need headroom on existing instances, and scheduled scaling for predictable peaks." />
+
+<Misconception wrong="Doubling the servers doubles the throughput." right="Only if the bottleneck is the servers you doubled. Shared resources such as the database, locks or a downstream API cap the total." />
+
+## Interview angle
+
+<InterviewAngle title="Scaling" questions={[
+  "Traffic is going to grow 10×. Walk me through what breaks first and what you would change.",
+  "Why not just buy a bigger database server?",
+  "How do you decide how many app servers to run at peak?",
+  "What metric would you autoscale this worker pool on?"
+]}>
+Interviewers want to see that you scale the bottleneck. A strong answer starts with numbers (requests per second, per-server capacity), scales the stateless tier out, protects the database with caching and replicas, and only reaches for sharding when write volume or data size demands it.
+</InterviewAngle>
+
+## Try it
+
+<Simulator id="load-balancer" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+Take the worked example and triple the user count. Redo the instance count, then decide whether the database still fits on one machine at 900 writes/s and 8,100 reads/s. Sketch the result in the [Design Studio](/studio).

@@ -1,0 +1,104 @@
+[
+  {
+    "id": "f1",
+    "front": "What is short polling?",
+    "back": "The client sends an HTTP request every few seconds. The server responds immediately, with data or empty. Simple but wasteful.",
+    "topicId": "short-polling"
+  },
+  {
+    "id": "f2",
+    "front": "Short polling latency?",
+    "back": "Average delay = half the polling interval. A 10-second interval means 5 seconds average delay.",
+    "topicId": "short-polling"
+  },
+  {
+    "id": "f3",
+    "front": "What is long polling?",
+    "back": "The client sends a request. The server holds it open until data is available (or timeout). Then the client immediately re-requests.",
+    "topicId": "long-polling"
+  },
+  {
+    "id": "f4",
+    "front": "Long polling vs short polling?",
+    "back": "Long polling delivers updates near-instantly (no interval delay) and avoids empty responses. But it holds connections on the server.",
+    "topicId": "long-polling"
+  },
+  {
+    "id": "f5",
+    "front": "What are Server-Sent Events (SSE)?",
+    "back": "A long-lived HTTP connection where the server pushes text events. Browser API: new EventSource('/events'). Auto-reconnects with Last-Event-ID.",
+    "topicId": "sse"
+  },
+  {
+    "id": "f6",
+    "front": "SSE limitations?",
+    "back": "Server-to-client only (half-duplex). Text only (no binary). Limited to 6 connections per domain in HTTP/1.1.",
+    "topicId": "sse"
+  },
+  {
+    "id": "f7",
+    "front": "How does a WebSocket connection start?",
+    "back": "HTTP request with Upgrade: websocket header. Server responds 101 Switching Protocols. Connection becomes full-duplex WebSocket.",
+    "topicId": "websockets"
+  },
+  {
+    "id": "f8",
+    "front": "WebSocket advantages?",
+    "back": "Full-duplex, low per-message overhead (2–14 bytes framing), binary and text support, near-zero latency.",
+    "topicId": "websockets"
+  },
+  {
+    "id": "f9",
+    "front": "WebSocket disadvantages?",
+    "back": "Stateful (tied to one server), no auto-reconnect, proxy/firewall issues, high memory at scale.",
+    "topicId": "websockets"
+  },
+  {
+    "id": "f10",
+    "front": "How to scale WebSockets across servers?",
+    "back": "Multiple connection servers + pub/sub bus (Redis Pub/Sub, Kafka, NATS). Publish to the bus; subscribed servers push to their clients.",
+    "topicId": "scaling-websockets"
+  },
+  {
+    "id": "f11",
+    "front": "What are WebSocket heartbeats?",
+    "back": "Periodic ping/pong frames to detect dead connections (client lost network, NAT timeout). Missed heartbeat → close connection.",
+    "topicId": "scaling-websockets"
+  },
+  {
+    "id": "f12",
+    "front": "When to use SSE vs WebSockets?",
+    "back": "SSE: server-to-client only (notifications, feeds, dashboards). WebSockets: bidirectional (chat, collaboration, gaming).",
+    "topicId": "sse"
+  },
+  {
+    "id": "f13",
+    "front": "Connection server file descriptor limit?",
+    "back": "Each WebSocket connection uses one file descriptor. Linux default is ~1024; tuned to ~1M. Monitor and scale horizontally.",
+    "topicId": "scaling-websockets"
+  },
+  {
+    "id": "f14",
+    "front": "When is short polling acceptable?",
+    "back": "Low-frequency updates where latency is not critical: email check every 30s, dashboard refresh every minute.",
+    "topicId": "short-polling"
+  },
+  {
+    "id": "f15",
+    "front": "Full-duplex vs half-duplex?",
+    "back": "Full-duplex: both sides send at any time (WebSocket). Half-duplex: only one side sends at a time (SSE: server only).",
+    "topicId": "websockets"
+  },
+  {
+    "id": "f16",
+    "front": "What is a reconnect storm, and how do you prevent it?",
+    "back": "When a connection server dies, all its clients reconnect at once and flood the fleet and auth service. Clients use exponential backoff with random jitter to spread the reconnects out.",
+    "topicId": "scaling-websockets"
+  },
+  {
+    "id": "f17",
+    "front": "Polling QPS for N users polling every T seconds?",
+    "back": "N ÷ T. 10 million users every 3 s ≈ 3.3 million requests per second, mostly empty.",
+    "topicId": "short-polling"
+  }
+]

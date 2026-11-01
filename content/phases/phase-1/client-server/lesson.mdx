@@ -49,6 +49,10 @@ Two properties of this pattern shape everything else:
 Network distance usually costs more than server work. A user 100 ms away pays roughly 100 ms for TCP, 100 ms for TLS 1.3 and 100 ms for the request itself on a fresh connection: about 300 ms before your server spends a single millisecond. That is why connection reuse, CDNs and caching matter so much.
 </Callout>
 
+<Callout type="analogy" title="The restaurant order">
+A client is a diner, the server is the kitchen, and the network is the waiter walking between them. Ordering is the request; the plate is the response. Most of the wait is not cooking, it is the waiter's walks: looking up the address (DNS), being shown to a table (the TCP handshake), checking your ID at the door (TLS). That is why cutting round trips helps more than a faster chef.
+</Callout>
+
 ## Stateless vs stateful servers
 
 <DepthStamp depth="deep" />
@@ -82,6 +86,10 @@ The design skill is not "never be stateful". It is: **keep the tier that you nee
     A3 --> DB`} />
 </Figure>
 
+<Callout type="analogy" title="The goldfish waiter vs the regular's bartender">
+A stateless server is a waiter with a goldfish memory: every time you call them over, you hand them your full order slip, so any waiter in the building can serve you. A stateful server is the bartender who remembers your tab in their head. Lovely service, until that bartender goes home and your tab goes with them, or you must always wait for that one person even when five others are idle.
+</Callout>
+
 ### A quick test
 
 Ask: "If I kill this server right now and send the next request to a brand-new copy, does the user notice?" If the answer is "no", the server is stateless for practical purposes. If the user is logged out, loses a cart, or a job silently disappears, there is state in memory that you need to either move or accept losing.
@@ -98,6 +106,10 @@ Once you decide the app tier should be stateless, the state still has to go some
 | Server memory | In-process session map | No | No | Lost on restart; forces sticky routing |
 | Shared cache | Redis or Memcached session store | Usually (depends on config) | Yes | Extra network hop; cache is now critical |
 | Database | Sessions or carts table | Yes | Yes | Slower; adds load to the hardest tier to scale |
+
+<Callout type="analogy" title="Where you keep your coat">
+On the client is wearing the coat yourself: always with you, but anyone can see it and you can lose it. In server memory is handing it to one cloakroom attendant with no ticket. In a shared cache is the cloakroom with numbered tickets that any attendant can read. In the database is the bank vault: slowest to reach, but it survives a fire.
+</Callout>
 
 ### On the client
 
@@ -137,6 +149,10 @@ With in-memory sessions and sticky routing, each of these gets harder. New serve
 
 <Callout type="warning" title="Stateless app tier, stateful system">
 Moving state out of the app servers does not make the system stateless. It concentrates state in caches and databases, and those now carry the hard problems: replication, failover, consistency. That is the right trade, because you can put your best engineering into a few stateful components instead of spreading it across hundreds of app servers. Phases 2–4 are about exactly those components.
+</Callout>
+
+<Callout type="analogy" title="Identical checkout tills">
+A supermarket with identical tills can open a tenth till at rush hour and every shopper can use it at once, because no till holds anything special about you. If each shopper's basket were locked inside one till, a new till would sit empty and a broken till would trap the baskets inside it. Statelessness is what makes servers interchangeable tills.
 </Callout>
 
 ## Worked example: moving a shopping cart out of memory

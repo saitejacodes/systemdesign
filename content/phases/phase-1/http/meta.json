@@ -1,0 +1,18 @@
+{
+  "id": "p1-http",
+  "phase": 1,
+  "slug": "http",
+  "title": "HTTP: the language of the web",
+  "order": 8,
+  "week": 2,
+  "estimatedMinutes": 55,
+  "topics": [
+    { "id": "http-versions", "title": "HTTP/1.1, HTTP/2 and HTTP/3", "depth": "deep" },
+    { "id": "http-methods", "title": "Methods, status codes and idempotency", "depth": "deep" },
+    { "id": "http-caching-headers", "title": "Caching headers", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["request-journey"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-tcp-udp"]
+}
+

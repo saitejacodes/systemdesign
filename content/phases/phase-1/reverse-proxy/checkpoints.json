@@ -1,0 +1,27 @@
+[
+  {
+    "id": "c1",
+    "text": "I can explain the difference between a reverse proxy and a forward proxy.",
+    "topicId": "reverse-vs-forward"
+  },
+  {
+    "id": "c2",
+    "text": "I can list the key functions of a reverse proxy: TLS termination, load balancing, caching, compression, buffering, routing, static serving.",
+    "topicId": "proxy-roles"
+  },
+  {
+    "id": "c3",
+    "text": "I can explain TLS offload, response buffering and compression tradeoffs.",
+    "topicId": "proxy-tls-compression"
+  },
+  {
+    "id": "c4",
+    "text": "I can describe sidecar proxies and service meshes and explain when they are worth the complexity.",
+    "topicId": "sidecar-proxy"
+  },
+  {
+    "id": "c5",
+    "text": "I can compute how much worker capacity response buffering saves for slow clients, and say when to disable it.",
+    "topicId": "proxy-tls-compression"
+  }
+]

@@ -1,0 +1,75 @@
+[
+  { "id": "q1", "type": "single", "prompt": "What is the key difference between L4 and L7 load balancing?", "options": [
+    { "id": "a", "text": "L4 uses HTTP; L7 uses TCP" },
+    { "id": "b", "text": "L4 routes based on IP and port; L7 routes based on HTTP content (URL, headers, cookies)" },
+    { "id": "c", "text": "L4 is slower because it inspects every packet" },
+    { "id": "d", "text": "L7 cannot terminate TLS" }
+  ], "correct": ["b"], "explanation": "L4 sees only transport-layer info (IP + port). L7 decrypts TLS and parses HTTP, enabling content-based routing. (a) is reversed. (c) L4 is faster because it does less work. (d) L7 terminates TLS to inspect HTTP.", "topicId": "lb-l4-l7", "difficulty": 1 },
+  { "id": "q2", "type": "single", "prompt": "Which load-balancing algorithm adapts best when request durations vary significantly?", "options": [
+    { "id": "a", "text": "Round robin" },
+    { "id": "b", "text": "IP hash" },
+    { "id": "c", "text": "Least connections" },
+    { "id": "d", "text": "Random" }
+  ], "correct": ["c"], "explanation": "Least connections sends requests to the backend with the fewest active connections. Slow-query servers naturally accumulate connections and get fewer new ones. (a) Round robin ignores current load. (b) IP hash is about affinity, not load. (d) Random does not account for load.", "topicId": "lb-algorithms", "difficulty": 1 },
+  { "id": "q3", "type": "single", "prompt": "What advantage does consistent hashing have over simple IP hashing when backends are added or removed?", "options": [
+    { "id": "a", "text": "No requests are reassigned" },
+    { "id": "b", "text": "Only about 1/n of requests are reassigned, rather than most" },
+    { "id": "c", "text": "All requests are reassigned evenly" },
+    { "id": "d", "text": "Consistent hashing does not support adding backends" }
+  ], "correct": ["b"], "explanation": "Consistent hashing maps servers and keys to a ring. Adding a server only moves keys between the new server and its neighbour. About 1/n of keys move. (a) Some keys must move. (c) Most keys stay put. (d) That is false; consistent hashing handles membership changes gracefully.", "topicId": "lb-algorithms", "difficulty": 2 },
+  { "id": "q4", "type": "single", "prompt": "What does an active health check do?", "options": [
+    { "id": "a", "text": "The backend server checks whether the load balancer is alive" },
+    { "id": "b", "text": "The load balancer periodically probes each backend and removes those that fail" },
+    { "id": "c", "text": "The client checks whether the server is healthy before sending a request" },
+    { "id": "d", "text": "The load balancer checks DNS records for changes" }
+  ], "correct": ["b"], "explanation": "The LB sends periodic probes (HTTP GET, TCP connect, etc.) to each backend. Backends that fail multiple checks are removed from the pool. (a) Backends do not health-check the LB. (c) Clients rely on the LB to do this. (d) DNS is a separate concern.", "topicId": "lb-health-checks", "difficulty": 1 },
+  { "id": "q5", "type": "single", "prompt": "Why should you avoid sticky sessions?", "options": [
+    { "id": "a", "text": "They encrypt traffic, which adds latency" },
+    { "id": "b", "text": "They cause uneven load, fragile failover and make horizontal scaling harder" },
+    { "id": "c", "text": "They prevent health checks from working" },
+    { "id": "d", "text": "They are not supported by modern load balancers" }
+  ], "correct": ["b"], "explanation": "Sticky sessions tie a client to one server. High-traffic clients overload that server, and if it fails, their session is lost. New servers only help new sessions. (a) Sticky sessions are about routing, not encryption. (c) Health checks work independently. (d) All major LBs support them.", "topicId": "lb-sticky-sessions", "difficulty": 1 },
+  { "id": "q6", "type": "single", "prompt": "What is the recommended alternative to sticky sessions for managing user sessions?", "options": [
+    { "id": "a", "text": "Store session state in each server's local memory" },
+    { "id": "b", "text": "Store session state externally (Redis, database or encrypted cookie) so any server can handle any request" },
+    { "id": "c", "text": "Use a single server for all requests" },
+    { "id": "d", "text": "Disable sessions entirely" }
+  ], "correct": ["b"], "explanation": "External session storage makes servers stateless and interchangeable. The LB can use any algorithm, and server failures do not lose sessions. (a) That is what creates the sticky session problem. (c) A single server is a SPOF. (d) Many applications need sessions.", "topicId": "lb-sticky-sessions", "difficulty": 1 },
+  { "id": "q7", "type": "scenario", "scenario": "A company runs a single load balancer in front of 10 app servers. The LB crashes during peak traffic on Black Friday.", "prompt": "What happens, and how should this be prevented?", "options": [
+    { "id": "a", "text": "Traffic flows directly to app servers; no impact" },
+    { "id": "b", "text": "All traffic stops because the LB is a single point of failure. Prevent with active-passive or active-active LB redundancy." },
+    { "id": "c", "text": "The app servers automatically elect a new LB" },
+    { "id": "d", "text": "DNS automatically reroutes to a backup LB" }
+  ], "correct": ["b"], "explanation": "A single LB is a SPOF. If it fails, no requests reach the backends. The solution is a redundant pair (active-passive with VIP failover, or active-active with DNS or upstream L4). (a) Without the LB, clients cannot reach the servers. (c) App servers do not become LBs. (d) DNS does not detect LB failures automatically.", "topicId": "lb-redundancy", "difficulty": 2 },
+  { "id": "q8", "type": "scenario", "scenario": "An API gateway routes /api/users to a user service and /api/orders to an order service. It also terminates TLS and enforces rate limits per API key.", "prompt": "Is this an L4 or L7 load balancer?", "options": [
+    { "id": "a", "text": "L4, because it uses IP addresses" },
+    { "id": "b", "text": "L7, because it routes based on URL paths, terminates TLS and inspects API keys in headers" },
+    { "id": "c", "text": "Neither; this is a DNS server" },
+    { "id": "d", "text": "L4, because it handles TCP connections" }
+  ], "correct": ["b"], "explanation": "Routing by URL path, inspecting headers for API keys, and terminating TLS all require application-layer inspection—this is L7. (a) and (d) L4 cannot see URLs or headers. (c) DNS is a name resolution system, not a request router.", "topicId": "lb-l4-l7", "difficulty": 2 },
+  { "id": "q9", "type": "scenario", "scenario": "A backend team is deploying a new version of their service. They want to drain connections from old servers gracefully before shutting them down.", "prompt": "What mechanism should they use?", "options": [
+    { "id": "a", "text": "Kill the old servers immediately; the LB will retry on other servers" },
+    { "id": "b", "text": "The old servers return 503 from their health endpoint, the LB stops sending new requests, in-flight requests complete, then the server shuts down" },
+    { "id": "c", "text": "Remove the servers from DNS and wait 24 hours" },
+    { "id": "d", "text": "Scale up the new servers to 10x capacity to absorb all traffic" }
+  ], "correct": ["b"], "explanation": "Connection draining: the server signals unhealthy, the LB stops new traffic, existing requests finish, then shutdown. (a) Killing immediately drops in-flight requests. (c) DNS changes are too slow for deploys. (d) Over-scaling is wasteful and does not address in-flight requests.", "topicId": "lb-health-checks", "difficulty": 2 },
+  { "id": "q10", "type": "multi", "prompt": "Which of the following are benefits of an L7 load balancer? Select all that apply.", "options": [
+    { "id": "a", "text": "Content-based routing (by URL, headers, cookies)" },
+    { "id": "b", "text": "TLS termination" },
+    { "id": "c", "text": "Higher throughput than L4 due to less processing" },
+    { "id": "d", "text": "Rate limiting per user or API key" }
+  ], "correct": ["a", "b", "d"], "explanation": "L7 can route by content (a), terminate TLS (b) and rate-limit (d) because it inspects the full HTTP request. (c) L7 is actually slower than L4 due to TLS decryption and HTTP parsing.", "topicId": "lb-l4-l7", "difficulty": 2 },
+  { "id": "q11", "type": "single", "prompt": "In an active-passive LB setup, what triggers failover?", "options": [
+    { "id": "a", "text": "The passive LB always handles 50% of traffic" },
+    { "id": "b", "text": "The passive LB detects the active LB has failed (via heartbeat) and takes over the virtual IP" },
+    { "id": "c", "text": "The client detects the failure and switches to the passive LB" },
+    { "id": "d", "text": "DNS automatically removes the failed LB's IP" }
+  ], "correct": ["b"], "explanation": "The passive LB monitors the active via heartbeats. When it stops responding, the passive takes over the shared VIP using VRRP or a similar protocol. (a) In active-passive, only the active handles traffic. (c) The failover is transparent to clients. (d) DNS is too slow for this.", "topicId": "lb-redundancy", "difficulty": 2 },
+  { "id": "q12", "type": "scenario", "scenario": "A distributed cache has 5 nodes. The team uses consistent hashing with the LB. They need to add a 6th node to handle increased traffic.", "prompt": "About what fraction of cached keys will be invalidated (moved) when the 6th node is added?", "options": [
+    { "id": "a", "text": "All keys are redistributed" },
+    { "id": "b", "text": "About 1/6 (≈17%) of keys move" },
+    { "id": "c", "text": "About 1/2 (50%) of keys move" },
+    { "id": "d", "text": "No keys move; the new node starts empty" }
+  ], "correct": ["b"], "explanation": "Consistent hashing moves about 1/n of keys when a node is added (n = new total). Adding a 6th node moves ≈1/6 of keys from their neighbours. (a) That is what happens with simple modular hashing. (c) Overstates the disruption. (d) The new node must take some keys to serve traffic.", "topicId": "lb-algorithms", "difficulty": 3 }
+]
+

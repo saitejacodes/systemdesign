@@ -1,0 +1,5 @@
+[
+  { "id": "norvig-21-days", "title": "Teach Yourself Programming in Ten Years (latency table)", "author": "Peter Norvig", "kind": "blog", "url": "https://norvig.com/21-days.html", "why": "The essay includes the classic table of approximate timings for memory, disk and network operations.", "topicIds": ["latency-numbers"], "free": true },
+  { "id": "sre-availability-table", "title": "Availability Table", "author": "Google SRE book", "kind": "free-book", "url": "https://sre.google/sre-book/availability-table/", "why": "Downtime allowed per year, quarter, month and day for each availability level.", "topicIds": ["availability-nines"], "free": true },
+  { "id": "sre-embracing-risk", "title": "Embracing Risk", "author": "Google SRE book", "kind": "free-book", "url": "https://sre.google/sre-book/embracing-risk/", "why": "Why each extra nine costs more and how to choose an availability target.", "topicIds": ["availability-nines", "estimation-method"], "free": true }
+]

@@ -1,0 +1,17 @@
+[
+  { "id": "f1", "front": "Vertical scaling?", "back": "Scaling up: give one machine more CPU, RAM, disk or network. No code change.", "topicId": "vertical-horizontal" },
+  { "id": "f2", "front": "Horizontal scaling?", "back": "Scaling out: run more machines and split work between them, usually behind a load balancer. Needs stateless or partitioned code.", "topicId": "vertical-horizontal" },
+  { "id": "f3", "front": "Typical real-world split between up and out?", "back": "Scale the stateless app tier out; scale the database up as long as possible.", "topicId": "vertical-horizontal" },
+  { "id": "f4", "front": "Four limits of vertical scaling?", "back": "A size ceiling, a single point of failure, restart to resize, and diminishing returns when software can't use more cores.", "topicId": "vertical-limits" },
+  { "id": "f5", "front": "What is a single point of failure (SPOF)?", "back": "A component whose failure takes down the whole system because nothing else can take over.", "topicId": "vertical-limits" },
+  { "id": "f6", "front": "How do you size an app tier?", "back": "Peak RPS ÷ comfortable RPS per server, then add spares (e.g. N+2) for failures and deploys.", "topicId": "stateless-tier" },
+  { "id": "f7", "front": "Four things that quietly break scale-out?", "back": "In-memory sessions, local file uploads, cron jobs on every copy, and per-server rate limits.", "topicId": "stateless-tier" },
+  { "id": "f8", "front": "Why is the data tier hard to scale out?", "back": "Every write must reach every copy that needs it, in an agreed order, while machines fail.", "topicId": "data-tier" },
+  { "id": "f9", "front": "Data-tier scaling ladder (cheap → expensive)?", "back": "Scale up → cache hot reads → read replicas → split by feature → shard by key.", "topicId": "data-tier" },
+  { "id": "f10", "front": "Main cost of read replicas?", "back": "Replication lag: a read from a replica may not include a write that just happened on the leader.", "topicId": "data-tier" },
+  { "id": "f11", "front": "What is sharding?", "back": "Splitting one table's rows across several databases by a key, so each holds a slice. Powerful but brings cross-shard queries and rebalancing.", "topicId": "data-tier" },
+  { "id": "f12", "front": "Parts of an autoscaling policy?", "back": "A metric, a target value, min/max instance limits and a cooldown between actions.", "topicId": "autoscaling" },
+  { "id": "f13", "front": "Why isn't autoscaling instant?", "back": "New instances must boot, pull images, warm up and pass health checks, often a minute or more.", "topicId": "autoscaling" },
+  { "id": "f14", "front": "How to handle a predictable daily peak?", "back": "Scheduled scaling: add capacity shortly before the known peak.", "topicId": "autoscaling" },
+  { "id": "f15", "front": "Why can adding app servers make things worse?", "back": "If the database is the bottleneck, more app servers send more queries and connections to it.", "topicId": "data-tier" }
+]

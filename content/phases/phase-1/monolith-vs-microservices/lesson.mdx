@@ -1,0 +1,198 @@
+## Why it matters
+
+In 2023 the Amazon Prime Video team published a post about their audio/video quality monitoring tool. It had been built as a set of distributed components (serverless functions passing video frames through storage), and it hit scaling limits and high costs. They moved it into a single process and reported cutting the infrastructure cost of that tool by about 90%. Around the same time, Shopify was publicly running one of the largest Ruby on Rails <Term slug="monolith">monoliths</Term> in the world, split into well-guarded internal components instead of separate services. Neither story means microservices are wrong. They mean the choice is a tradeoff with real costs on both sides, and good engineers pick the shape that fits the team and the load, not the one that is fashionable. This section gives you the vocabulary and the decision rules.
+
+## The monolith and the modular monolith
+
+<DepthStamp depth="deep" />
+
+A **monolith** is one deployable unit. All the code for users, orders, payments and search is built together, released together and usually runs as one process (copied onto many servers behind a load balancer). "Monolith" is not an insult. It describes how you deploy, not how well the code is organised.
+
+A monolith has real strengths:
+
+- **Function calls are fast and reliable.** Calling `orders.create()` takes nanoseconds and cannot time out halfway.
+- **Transactions are easy.** One database, one transaction: either the order and the payment record are both written, or neither is.
+- **One thing to deploy, monitor and debug.** A stack trace shows the whole path of a request.
+- **Refactoring is cheap.** Your IDE can rename a function across the whole codebase in one change.
+
+Its weaknesses show up as the team and the codebase grow. Every change ships with every other change, so one team's risky migration blocks another team's bug fix. Build and test times climb. And without discipline, any module can reach into any other module's tables, so the code turns into what people call a "big ball of mud": everything depends on everything.
+
+A <Term slug="modular-monolith">modular monolith</Term> keeps the single deployable but enforces boundaries inside it. Each module (orders, payments, catalog) owns its own code and its own tables, exposes a small public interface, and other modules may only call that interface. Many teams enforce the rules with build tooling, for example a check that fails the build when `payments` imports a private class from `orders`. Shopify described doing exactly this with their Rails codebase.
+
+<Figure caption="FIG. 2.1 · THREE SHAPES · SAME DOMAIN">
+  <Diagram label="Three diagrams side by side. Left: a big ball of mud where users, orders and payments modules all read each other's tables. Middle: a modular monolith where each module owns its tables and talks through interfaces, all inside one deployable. Right: microservices where each service owns its own database and they talk over the network." chart={`flowchart LR
+    subgraph M1[Big ball of mud]
+      U1[Users] --- O1[Orders]
+      O1 --- P1[Payments]
+      P1 --- U1
+      U1 --> DB1[(Shared tables)]
+      O1 --> DB1
+      P1 --> DB1
+    end
+    subgraph M2[Modular monolith]
+      U2[Users API] --> O2[Orders API]
+      O2 --> P2[Payments API]
+      U2 --> T2a[(users tables)]
+      O2 --> T2b[(orders tables)]
+      P2 --> T2c[(payments tables)]
+    end
+    subgraph M3[Microservices]
+      U3[Users svc] -- HTTP --> O3[Orders svc]
+      O3 -- events --> P3[Payments svc]
+      U3 --> D3a[(Users DB)]
+      O3 --> D3b[(Orders DB)]
+      P3 --> D3c[(Payments DB)]
+    end`} />
+</Figure>
+
+The modular monolith gives you most of the code-organisation benefits people want from microservices without paying for a network between modules. It is also the best starting point if you might split later: a module with its own tables and a narrow interface is already most of the way to being a service.
+
+<Callout type="analogy" title="One building, many rooms">
+A monolith is one big house: one front door, one set of pipes, every room a short walk away. A modular monolith is the same house with proper walls and labelled doors, so the kitchen cannot spill into the bedroom. You still have one roof and one address, but you could later move a room into its own building because its doors are already clearly marked.
+</Callout>
+
+## What microservices buy you
+
+<DepthStamp depth="tradeoffs" />
+
+A <Term slug="microservice">microservice</Term> architecture splits the system into separately deployable services, each owning one business capability and its own data. Services talk over the network, either synchronously (HTTP or gRPC calls) or asynchronously (events on a queue). The benefits are real, and almost all of them are organisational:
+
+- **Independent deploys.** The payments team ships ten times a day without waiting for the catalog team's release train. A bad deploy rolls back one service, not the whole product.
+- **Team ownership.** One team owns one service end to end: code, database, on-call. Fewer people need to agree before a change ships.
+- **Independent scaling.** The image-resizing service needs 200 CPU-heavy instances at peak; the account settings service needs 3. In a monolith you scale everything together.
+- **Fault isolation (if you design for it).** A memory leak in the recommendations service crashes recommendations, not checkout. This only holds if callers handle the failure, which is the theme of the next topic.
+- **Technology choice per service.** A search service can use a search engine and a different language. Use this sparingly: every extra stack is one more thing to patch, hire for and operate.
+
+Notice what is missing from that list: "better code". Microservices do not make code cleaner. A badly modelled domain split into services becomes a distributed big ball of mud, which is the worst of both worlds.
+
+<Callout type="analogy" title="Food trucks instead of one restaurant">
+Microservices are a row of food trucks. Each truck has its own menu, staff and opening hours. The taco truck can double its staff for lunch without touching the coffee truck, and if the burger truck's grill catches fire, everyone else keeps serving. Each team runs its own truck on its own schedule.
+</Callout>
+
+## What microservices cost you
+
+<DepthStamp depth="deep" />
+
+Every arrow between two services is now a network call, and the network changes the rules.
+
+**Latency.** An in-process call is around 100 nanoseconds. A call to another service in the same data centre is typically somewhere around half a millisecond to a few milliseconds once you add serialisation, the network hop and the other service's own work. A page that makes 20 sequential service calls at 3 ms each spends 60 ms just on hops. Teams fight this with parallel calls, caching and coarser APIs.
+
+**Partial failure.** In a monolith, a function call either returns or the whole process dies. Across a network, a call can succeed on the server while the response is lost, time out after the work was done, or hang forever. Your code must decide, every time: how long do I wait (timeouts)? Do I try again (retries, which need <Term slug="idempotency">idempotency</Term>)? What do I show the user if the dependency is down (fallbacks)? Phase 4 covers these patterns in depth.
+
+**Distributed data.** Each service owns its database, so there is no single transaction across "create order" and "charge card". You replace transactions with patterns such as sagas (a sequence of local transactions with compensating steps, covered in Phase 4) and accept that different services may briefly disagree. Queries that were one SQL join now need an API call or a copied read model.
+
+**Observability burden.** When a request touches eight services, a single log file no longer tells the story. You need request IDs passed through every hop, centralised logs, metrics per service and distributed tracing (Phase 5). That is real infrastructure and real work.
+
+**Operational overhead.** Every service needs a build pipeline, deployment config, dashboards, alerts, an on-call owner and security patches. Fifty services means fifty of each.
+
+<Callout type="warning" title="The distributed monolith">
+If services must be deployed together, share one database, or call each other synchronously in long chains, you have a distributed monolith: all the costs of microservices with none of the independence. A common sign is a "release train" where six services must ship in a fixed order.
+</Callout>
+
+<Callout type="analogy" title="Now you need a car park">
+But food trucks need a car park, power hookups, a map so customers can find them, and a way to pay at all of them with one card. An order that touches three trucks now waits on three queues, and if one truck runs out of buns your meal is half-delivered. Those car parks and maps are your service discovery, networking, tracing and distributed failure handling.
+</Callout>
+
+## Conway's law and team ownership
+
+<DepthStamp depth="tradeoffs" />
+
+In 1968 Melvin Conway observed that organisations which design systems tend to produce designs that copy their communication structure. This is <Term slug="conways-law">Conway's law</Term>. If three teams build a compiler, you get a three-pass compiler. If the payments and orders teams rarely talk, the boundary between their code becomes a hard interface whether you planned it or not.
+
+Microservice advocates often use this deliberately, sometimes called the "inverse Conway manoeuvre": first decide which teams you want, each owning a business capability, then let service boundaries follow team boundaries. The practical rules are:
+
+- **One service, one owning team.** A service owned by "everyone" is owned by no one.
+- **Split along business capabilities, not technical layers.** A "database service" and an "API service" force every feature to change both. "Orders" and "Payments" let one team ship a feature alone.
+- **Team size bounds service count.** A team of six can own a few services well. A team of six owning thirty services spends its time on upkeep.
+
+The flip side: if you are one team of eight engineers, Conway's law says your natural architecture is one deployable, probably a modular monolith.
+
+<Callout type="analogy" title="Org chart as blueprint">
+Ask four teams to design a car and you will get a four-part car, with the joins exactly where the teams stopped talking to each other. Conway's law says your system diagram ends up a photocopy of your org chart, so draw the service boundaries where you want team boundaries to be.
+</Callout>
+
+## When not to use microservices
+
+<DepthStamp depth="tradeoffs" />
+
+Martin Fowler's "MonolithFirst" argument is that almost every successful microservice system he saw started as a monolith that got too big, and that teams who started with microservices often drew the boundaries in the wrong places, because they did not yet understand the domain. Moving a boundary between modules is a refactor. Moving a boundary between services is a migration with API versioning and data copying.
+
+Signs you should stay with a (modular) monolith:
+
+- A small team, roughly one or two teams. You do not have the coordination problem microservices solve.
+- An early product where the domain is still changing every month.
+- No platform support yet: no automated deploys, no centralised logging, no tracing.
+- Strong consistency needs across most operations, which are easy in one database and hard across services.
+
+Signs it may be time to split a piece out:
+
+- One module has a very different scaling profile (heavy CPU, GPU, bursty traffic).
+- One module needs a different release cadence or a stricter security boundary (payments, PII).
+- Teams are regularly blocked by each other's deploys and the module boundaries are already stable.
+
+The usual path is the **strangler fig pattern**: put a routing layer in front of the monolith, build the new service next to it, move traffic for one capability at a time, and delete the old code once nothing calls it.
+
+## Worked example: splitting out image processing
+
+A photo-sharing startup runs a Rails monolith on 12 servers. Uploads trigger thumbnail generation inside the web process.
+
+**Numbers.** 50 uploads/s at peak, each taking about 800 ms of CPU to produce 4 thumbnail sizes. That is 50 × 0.8 = **40 CPU-seconds per second**, so 40 cores busy just resizing images at peak. The web requests themselves (feeds, likes, comments) need about 16 cores at peak.
+
+**Problem.** To have 40 spare cores for resizing at peak, all 12 servers are sized for the combined load, and slow resizes tie up web workers, so p99 latency for feed requests spikes during upload bursts.
+
+**Option A: stay in the monolith, move the work to a background job.** The web process writes the original to object storage and enqueues a job. Worker processes (same codebase, different process type) do the resizing. Web latency recovers, and the workers can scale on queue depth. No new service, no new repo.
+
+**Option B: a separate image service.** Its own deploy, its own autoscaling on CPU, possibly a different language with a faster image library. The cost is a new pipeline, a new on-call surface and an API contract to version.
+
+**Decision.** Option A fixes the latency and the scaling problem with almost no new operational cost. Option B becomes worth it later if a separate team forms around media, or if the image library choice really demands a different stack. Moving the work out of the request path was the important step; the deploy boundary is secondary.
+
+<TradeoffBox title="Microservices vs a modular monolith" items={[
+  { gain: "Teams deploy independently and own their service end to end", cost: "Every cross-service call adds latency and a new way to fail" },
+  { gain: "Each service scales on its own resource profile", cost: "No cross-service transactions; consistency needs sagas and events" },
+  { gain: "Faults can be contained to one service", cost: "Tracing, centralised logs and per-service dashboards become mandatory" },
+  { gain: "Each service can pick the right storage and runtime", cost: "More pipelines, more patching, more on-call rotations" }
+]} />
+
+<NotWhenBox title="Starting with microservices" items={[
+  "One or two small teams: you pay the coordination tax without having the coordination problem.",
+  "A young product whose domain boundaries still move every few weeks.",
+  "No automated deploys, central logging or tracing yet: you will not be able to operate twenty services.",
+  "Most operations need one consistent transaction across what would become several services."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Microservices are more scalable than monoliths." right="A stateless monolith scales horizontally just fine. Microservices let you scale parts independently, which matters when parts have very different load profiles." />
+
+<Misconception wrong="Microservices make the codebase cleaner." right="Boundaries make code cleaner. You can enforce boundaries inside a modular monolith; splitting a messy domain over the network just makes the mess slower and harder to change." />
+
+<Misconception wrong="Each microservice should be tiny." right="Size is not the goal. A service should match a business capability one team can own. Many teams regret splitting into nano-services that must change together." />
+
+<Misconception wrong="Sharing one database between services is a harmless shortcut." right="A shared database couples services through their schemas, so one team's migration can break another team's service. It removes most of the independence you split for." />
+
+## Interview angle
+
+<InterviewAngle title="Monolith vs microservices" questions={[
+  "You are a team of six building a new product. Would you start with microservices? Why or why not?",
+  "Order creation and payment are in different services. How do you keep them consistent if the payment call times out?",
+  "A request now touches nine services and p99 latency doubled. How would you find and fix the cause?",
+  "How do you decide where to draw service boundaries?"
+]}>
+Interviewers rarely want a slogan. They want to hear you name the costs (network latency, partial failure, distributed data, observability) and tie the choice to team size and scaling needs. In system design rounds it is fine to draw separate services for clarity, but say that some could start as modules in one deployable.
+</InterviewAngle>
+
+## Try it
+
+There is no simulator for this section. Instead, take the worked example above and redo the numbers with 200 uploads/s: how many cores does resizing need, and does that change the decision?
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+In the [Design Studio](/studio), draw the photo-sharing app twice: once as a modular monolith with a background worker pool, and once with a separate image service. Label which arrows are network calls and write one failure you must handle for each.

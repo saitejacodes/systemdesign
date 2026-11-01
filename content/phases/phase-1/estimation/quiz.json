@@ -1,0 +1,62 @@
+[
+  { "id": "q1", "type": "single", "prompt": "Roughly how many seconds are in a day, for estimation purposes?", "options": [
+    { "id": "a", "text": "10³" },
+    { "id": "b", "text": "10⁵" },
+    { "id": "c", "text": "10⁷" },
+    { "id": "d", "text": "3.6 × 10³" }
+  ], "correct": ["b"], "explanation": "86,400 rounds to 10⁵. (a) is about 17 minutes. (c) is about four months. (d) is the number of seconds in an hour.", "topicId": "estimation-method", "difficulty": 1 },
+  { "id": "q2", "type": "single", "prompt": "5 million DAU each make 40 requests a day. What is the **average** QPS?", "options": [
+    { "id": "a", "text": "About 200" },
+    { "id": "b", "text": "About 2,000" },
+    { "id": "c", "text": "About 20,000" },
+    { "id": "d", "text": "About 200,000" }
+  ], "correct": ["b"], "explanation": "5 × 10⁶ × 40 = 2 × 10⁸ per day; ÷ 10⁵ = 2,000 QPS. (a) and (c) are off by 10×, (d) by 100×.", "topicId": "qps-math", "difficulty": 1 },
+  { "id": "q3", "type": "single", "prompt": "A service stores 2 million new records a day at 1 KB each, kept as 3 copies. About how much storage is added per year?", "options": [
+    { "id": "a", "text": "About 730 GB" },
+    { "id": "b", "text": "About 2.2 TB" },
+    { "id": "c", "text": "About 22 TB" },
+    { "id": "d", "text": "About 220 TB" }
+  ], "correct": ["b"], "explanation": "2 × 10⁶ × 1 KB = 2 GB/day; × 365 ≈ 730 GB; × 3 copies ≈ 2.2 TB. (a) forgets the copies. (c) and (d) are 10× and 100× too high.", "topicId": "storage-bandwidth", "difficulty": 1 },
+  { "id": "q4", "type": "single", "prompt": "Which is closest to the ratio between a random 4 KB SSD read and a main-memory reference?", "options": [
+    { "id": "a", "text": "About 10×" },
+    { "id": "b", "text": "About 1,000×" },
+    { "id": "c", "text": "About 1,000,000×" },
+    { "id": "d", "text": "They are about the same" }
+  ], "correct": ["b"], "explanation": "Memory is ~100 ns and an SSD random read is ~100–150 µs, roughly 1,000×. (a) underestimates the gap, (c) overstates it, and (d) ignores why caches exist.", "topicId": "latency-numbers", "difficulty": 2 },
+  { "id": "q5", "type": "single", "prompt": "About how much downtime per **year** does 99.99% availability allow?", "options": [
+    { "id": "a", "text": "About 5 minutes" },
+    { "id": "b", "text": "About 53 minutes" },
+    { "id": "c", "text": "About 8.8 hours" },
+    { "id": "d", "text": "About 3.65 days" }
+  ], "correct": ["b"], "explanation": "0.01% of a year is about 52.6 minutes. (a) is five nines. (c) is three nines. (d) is two nines.", "topicId": "availability-nines", "difficulty": 1 },
+  { "id": "q6", "type": "single", "prompt": "A request must call service A (99.9%) **and** service B (99.9%) to succeed. What is the best-case availability of the request path?", "options": [
+    { "id": "a", "text": "99.99%" },
+    { "id": "b", "text": "99.9%" },
+    { "id": "c", "text": "About 99.8%" },
+    { "id": "d", "text": "About 98%" }
+  ], "correct": ["c"], "explanation": "In series, availabilities multiply: 0.999 × 0.999 ≈ 0.998. (a) treats the dependencies as redundant, which they are not. (b) ignores the second dependency. (d) overstates the drop.", "topicId": "availability-nines", "difficulty": 2 },
+  { "id": "q7", "type": "scenario", "scenario": "In an interview you are asked to design a food-delivery app for one country. You estimate 2 million DAU, 15 requests each per day, and almost all orders happen between 18:00 and 21:00 local time.", "prompt": "Which peak estimate is most defensible?", "options": [
+    { "id": "a", "text": "Peak = average (300 QPS), because traffic averages out" },
+    { "id": "b", "text": "Peak ≈ 5–10× the average (1,500–3,000 QPS), because demand is packed into a few evening hours in one time zone" },
+    { "id": "c", "text": "Peak = 2× average, because that is the standard rule" },
+    { "id": "d", "text": "Peak = 100× average, to be safe" }
+  ], "correct": ["b"], "explanation": "Average is 2 × 10⁶ × 15 / 10⁵ = 300 QPS. One time zone and a sharp dinner peak justify a high factor. (a) ignores traffic shape. (c) applies a global-service factor without considering this traffic. (d) overprovisions wildly without a reason.", "topicId": "qps-math", "difficulty": 2 },
+  { "id": "q8", "type": "scenario", "scenario": "A video platform estimates 40,000 video segment requests/s at peak, each about 1 MB. The team plans to serve all of it from 20 origin servers with 10 Gbps network cards.", "prompt": "What does the estimate tell you?", "options": [
+    { "id": "a", "text": "The plan is fine: 20 × 10 Gbps = 200 Gbps is plenty" },
+    { "id": "b", "text": "40,000 × 1 MB = 40 GB/s ≈ 320 Gbps, more than the origins' 200 Gbps total, so a CDN must serve most of it" },
+    { "id": "c", "text": "The bottleneck is CPU, not the network" },
+    { "id": "d", "text": "The plan needs a bigger database" }
+  ], "correct": ["b"], "explanation": "40 GB/s × 8 bits = 320 Gbps, which exceeds 200 Gbps before any headroom. Video egress at this scale belongs on a CDN. (a) skips the arithmetic. (c) is a guess the estimate doesn't support. (d) is unrelated to serving segments.", "topicId": "storage-bandwidth", "difficulty": 3 },
+  { "id": "q9", "type": "scenario", "scenario": "A chat service expects 30 million DAU, with 10% connected at the same moment at peak. One connection server can comfortably hold 50,000 WebSocket connections.", "prompt": "About how many connection servers are needed at peak, before redundancy?", "options": [
+    { "id": "a", "text": "6" },
+    { "id": "b", "text": "60" },
+    { "id": "c", "text": "600" },
+    { "id": "d", "text": "6,000" }
+  ], "correct": ["b"], "explanation": "10% of 30 million = 3 million connections; ÷ 50,000 = 60 servers. (a), (c) and (d) are each off by a factor of 10 or more.", "topicId": "qps-math", "difficulty": 2 },
+  { "id": "q10", "type": "multi", "prompt": "Which steps belong in a good back-of-envelope estimate? Select all that apply.", "options": [
+    { "id": "a", "text": "State assumptions out loud" },
+    { "id": "b", "text": "Compute peak, not just average" },
+    { "id": "c", "text": "Carry exact figures to three decimal places" },
+    { "id": "d", "text": "Finish with what the numbers mean for the design" }
+  ], "correct": ["a", "b", "d"], "explanation": "Assumptions, peak load and a design conclusion are the point. (c) wastes time: estimates only need to be right to within a small factor.", "topicId": "estimation-method", "difficulty": 1 }
+]

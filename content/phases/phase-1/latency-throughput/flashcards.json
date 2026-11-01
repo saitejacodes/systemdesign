@@ -1,0 +1,17 @@
+[
+  { "id": "f1", "front": "Latency?", "back": "How long one operation takes, start to finish. Measured in time per request.", "topicId": "lt-definitions" },
+  { "id": "f2", "front": "Throughput?", "back": "How many operations complete per unit of time, e.g. requests per second.", "topicId": "lt-definitions" },
+  { "id": "f3", "front": "How does batching affect latency and throughput?", "back": "Raises throughput (fewer, bigger operations) and raises latency (items wait for their batch).", "topicId": "lt-definitions" },
+  { "id": "f4", "front": "M/M/1 average time in system?", "back": "1 / (μ − λ). At μ=100/s: 20 ms at λ=50, 100 ms at λ=90, 1 s at λ=99.", "topicId": "lt-definitions" },
+  { "id": "f5", "front": "What is p95?", "back": "The latency 95% of requests are at or below; 1 in 20 is slower.", "topicId": "percentiles" },
+  { "id": "f6", "front": "Why watch p99, not just the average?", "back": "Averages hide slow outliers; heavy users and multi-call pages hit the tail often, and problems show there first.", "topicId": "percentiles" },
+  { "id": "f7", "front": "Can you average p99s across servers?", "back": "No. Merge raw samples or histograms, then compute the percentile.", "topicId": "percentiles" },
+  { "id": "f8", "front": "Fan-out slow probability formula?", "back": "P(at least one slow) = 1 − (1 − p)ᴺ for N parallel calls each slow with probability p.", "topicId": "tail-latency" },
+  { "id": "f9", "front": "100-way fan-out, each call slow 1% of the time?", "back": "About 63% of requests are slow.", "topicId": "tail-latency" },
+  { "id": "f10", "front": "What is a hedged request?", "back": "If a call hasn't answered by about its p95, send a duplicate to another replica and use whichever answers first.", "topicId": "tail-latency" },
+  { "id": "f11", "front": "Four ways to fight tail latency?", "back": "Reduce fan-out, hedge requests, time-box with partial results, and fix tail causes (GC, contention, hot keys).", "topicId": "tail-latency" },
+  { "id": "f12", "front": "Little's Law?", "back": "L = λW: average items in system = arrival rate × average time in system.", "topicId": "littles-law" },
+  { "id": "f13", "front": "1,000 req/s × 20 ms each = how many in flight?", "back": "20 (L = 1,000 × 0.02).", "topicId": "littles-law" },
+  { "id": "f14", "front": "Why can a slow dependency exhaust a healthy service's threads?", "back": "Little's Law: same traffic, longer latency → more requests in flight → more threads held.", "topicId": "littles-law" },
+  { "id": "f15", "front": "Queue wait from depth and drain rate?", "back": "W = L / λ, e.g. 6,000 queued ÷ 300 per second = 20 s.", "topicId": "littles-law" }
+]

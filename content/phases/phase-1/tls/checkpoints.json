@@ -1,0 +1,27 @@
+[
+  {
+    "id": "c1",
+    "text": "I can name the three guarantees TLS provides and explain what each means.",
+    "topicId": "tls-provides"
+  },
+  {
+    "id": "c2",
+    "text": "I can describe the TLS 1.3 handshake and explain why it is faster than TLS 1.2.",
+    "topicId": "tls-handshake"
+  },
+  {
+    "id": "c3",
+    "text": "I can explain the certificate chain (root → intermediate → leaf) and the role of certificate authorities.",
+    "topicId": "tls-certificates"
+  },
+  {
+    "id": "c4",
+    "text": "I can explain TLS termination at a load balancer, its tradeoffs, and when to use mTLS for service-to-service auth.",
+    "topicId": "tls-termination"
+  },
+  {
+    "id": "c5",
+    "text": "I can explain Diffie–Hellman with the paint analogy and say what forward secrecy protects against.",
+    "topicId": "tls-handshake"
+  }
+]

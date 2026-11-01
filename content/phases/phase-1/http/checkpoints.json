@@ -1,0 +1,8 @@
+[
+  { "id": "c1", "text": "I can compare HTTP/1.1, HTTP/2 and HTTP/3 on multiplexing, HOL blocking and transport protocol.", "topicId": "http-versions" },
+  { "id": "c2", "text": "I can classify HTTP methods as safe, idempotent, or neither, and explain why idempotency matters for retries.", "topicId": "http-methods" },
+  { "id": "c3", "text": "I can explain the status code ranges and name the key codes for system design (200, 304, 401, 429, 502, 503).", "topicId": "http-methods" },
+  { "id": "c4", "text": "I can design a caching strategy using Cache-Control, ETag and content-hashed filenames.", "topicId": "http-caching-headers" },
+  { "id": "c5", "text": "I can explain the difference between no-cache and no-store and when to use each.", "topicId": "http-caching-headers" }
+]
+

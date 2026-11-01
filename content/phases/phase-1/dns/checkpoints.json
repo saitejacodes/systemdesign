@@ -1,0 +1,7 @@
+[
+  { "id": "c1", "text": "I can trace a DNS query from stub resolver through recursive, root, TLD and authoritative nameservers.", "topicId": "dns-resolution" },
+  { "id": "c2", "text": "I can explain the purpose of A, AAAA, CNAME, NS and TXT records and the CNAME-at-apex restriction.", "topicId": "dns-records" },
+  { "id": "c3", "text": "I can reason about TTL tradeoffs and describe how to prepare for a DNS migration.", "topicId": "dns-ttl" },
+  { "id": "c4", "text": "I can explain how GeoDNS routes users to the nearest data centre and why DNS load balancing needs a real LB behind it.", "topicId": "dns-load-balancing" },
+  { "id": "c5", "text": "I can describe what anycast is and where it is used.", "topicId": "dns-anycast" }
+]
