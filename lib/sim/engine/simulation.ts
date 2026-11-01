@@ -62,6 +62,8 @@ export class Simulation<Config, State> {
     const fn = this.model.actions[name];
     if (!fn) throw new Error(`Unknown action "${name}"`);
     this.state = fn(this.state, payload);
+    // Refresh the cards now: actions often happen while paused.
+    this.latest = this.model.metrics(this.state, this.metrics, this.clock.t);
   }
 
   toggleFault(id: string) {

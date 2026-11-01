@@ -46,6 +46,8 @@ export interface Challenge<Config, State> {
   /** Which way a better value points; used to keep the best result. Default "lower". */
   better?: "lower" | "higher";
   winCondition(history: MetricHistory, state: State): ChallengeOutcome;
+  /** Ends the run before durationMs once true (interactive challenges like drills or a quiz answer). */
+  done?(state: State): boolean;
   hint: string;
 }
 

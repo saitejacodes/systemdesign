@@ -16,7 +16,7 @@ export function QueueView({ state, config, t, reducedMotion }: ViewProps<QueueCo
   const svc = state.inService;
   const p = svc ? (t - svc.start) / (svc.end - svc.start) : 0;
   return (
-    <svg viewBox="10 70 690 200" className="h-auto w-full" role="img" aria-label={`Queue with ${q} waiting requests feeding one server at ${Math.round(Math.min(rho, 9.99) * 100)}% offered load`}>
+    <svg viewBox="10 70 690 200" className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`Queue with ${q} waiting requests feeding one server at ${Math.round(Math.min(rho, 9.99) * 100)}% offered load`}>
       <Wire from={SRC} to={Q_IN} />
       <Wire from={[Q_IN[0] + SLOTS * 18 + 4, 150]} to={[SRV[0] - 60, 150]} />
       <Wire from={[SRV[0] + 60, 150]} to={SINK} />

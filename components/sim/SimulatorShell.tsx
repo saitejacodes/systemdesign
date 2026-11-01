@@ -242,7 +242,7 @@ export function SimulatorShell({ entry, def, compact = false }: { entry: SimEntr
       {[...sim.faults].map((id) => {
         const f = def.model.faults.find((x) => x.id === id)!;
         return (
-          <button key={id} type="button" className="fm-btn fm-btn--tool !h-7 border-[var(--status-over)]" style={{ background: "var(--status-over-fill)", color: "#121212" }} onClick={() => s.toggleFault(id)} aria-label={`Remove fault: ${f.label}`}>
+          <button key={id} type="button" className="fm-btn fm-btn--tool !h-7 border-[var(--status-over)]" style={{ background: "var(--status-over-fill)", color: "var(--ink)" }} onClick={() => s.toggleFault(id)} aria-label={`Remove fault: ${f.label}`}>
             {f.label}<X className="size-3" />
           </button>
         );
@@ -253,8 +253,8 @@ export function SimulatorShell({ entry, def, compact = false }: { entry: SimEntr
   const canvas = (
     <div data-tour="canvas" className="fm-grid fm-grid--fine relative overflow-x-auto border border-ink p-3 sm:p-6" style={{ borderRadius: 2 }}>
       <span className="fm-cross tl" /><span className="fm-cross tr" /><span className="fm-cross bl" /><span className="fm-cross br" />
-      {/* Narrow screens scroll the drawing sideways instead of shrinking its labels to nothing. */}
-      <div className="max-sm:min-w-[560px]"><def.View state={sim.state} config={sim.config} t={sim.clock.t} reducedMotion={reduced} act={s.act} /></div>
+      {/* Views give their SVG drawings a min width; narrow screens scroll those sideways instead of shrinking labels to nothing. */}
+      <div><def.View state={sim.state} config={sim.config} t={sim.clock.t} reducedMotion={reduced} act={s.act} /></div>
     </div>
   );
 
@@ -301,10 +301,10 @@ export function SimulatorShell({ entry, def, compact = false }: { entry: SimEntr
           <details className="fm-card"><summary className="fm-card__head cursor-pointer">Controls and challenges</summary><div className="grid gap-4 p-4">{controls}<ChallengesPanel simId={entry.id} def={def} run={run} onStart={s.startChallenge} onStop={s.stopChallenge} /></div></details>
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)_280px]">
-          <div className="grid content-start gap-4 max-lg:order-2">{controls}<ChallengesPanel simId={entry.id} def={def} run={run} onStart={s.startChallenge} onStop={s.stopChallenge} /></div>
-          <div className="grid min-w-0 content-start gap-4 max-lg:order-1">{canvas}<EventLogPanel entries={sim.log.entries()} /></div>
-          <div className="min-w-0 max-lg:order-3">{metrics}</div>
+        <div className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_280px]">
+          <div className="grid content-start gap-4 max-xl:order-2">{controls}<ChallengesPanel simId={entry.id} def={def} run={run} onStart={s.startChallenge} onStop={s.stopChallenge} /></div>
+          <div className="grid min-w-0 content-start gap-4 max-xl:order-1">{canvas}<EventLogPanel entries={sim.log.entries()} /></div>
+          <div className="min-w-0 max-xl:order-3">{metrics}</div>
         </div>
       )}
 

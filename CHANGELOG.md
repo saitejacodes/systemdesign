@@ -51,3 +51,13 @@
 - Glossary grows to 116 terms; every `<Term>` in a lesson resolves.
 - The smoke test now covers all 12 lesson pages in both themes at desktop and mobile widths.
 - Verify: open /phase/1/realtime and /phase/1/tls; `pnpm test` (content validation); `pnpm test:e2e smoke`.
+
+## Prompt 07 · Phase 1 simulators
+- S-01 Estimation calculator: up to 4 actions per user, live QPS, read:write, storage, bandwidth, servers, DB reads after cache and cache size, each with its formula and numbers substituted. 10 timed drills (illustrative inputs) accept ±50%.
+- S-02 Request journey: step through browser cache, cold DNS walk, TCP and TLS 1.3, LB, app, cache and DB with editable RTTs; toggles for DNS cache, reuse, HTTP/2, cache hit and CDN; latency breakdown bar; lost-SYN and cache-down faults; a quiz challenge.
+- S-03 Load balancer: 2–10 servers, round robin, smooth weighted round robin, least connections, IP hash and random; health checks with interval and threshold; kill, slow, flaky and ×3 spike faults.
+- S-04 Consistent hashing: 2³² ring with virtual nodes and 100–10,000 keys, keys per node vs modulo, % moved on each change, moved keys flash.
+- S-05 Rate limiter: token bucket, leaky bucket, fixed window, sliding log and sliding counter on the same traffic (steady, bursty, boundary attack, ramp), plus 3 servers with local buckets vs one shared bucket.
+- Each has 2–3 machine-checked challenges, a 5-step tour and model tests. Embedded in their lessons; S-04 and S-05 sit in load-balancers under "Related simulators".
+- Framework: challenges can end early (`done`), actions refresh metric cards while paused, the 3-column simulator layout starts at xl (the canvas was 128 px wide at ~1100 px), and status-tone blocks use ink text so they read in Blueprint.
+- Verify: open each /simulators/<id>, press Play, try a challenge. `pnpm test` (93 tests), `pnpm test:e2e` (all 5 routes in the smoke test).

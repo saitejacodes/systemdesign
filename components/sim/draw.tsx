@@ -10,8 +10,8 @@ const FILL: Record<Tone, string> = { ok: "var(--status-ok-fill)", hot: "var(--st
 export function IsoBlock({ x, y, w, h, d = 16, tone = "idle", fill, label, sub }: { x: number; y: number; w: number; h: number; d?: number; tone?: Tone; fill?: string; label?: string; sub?: string }) {
   const dx = d, dy = -d * ISO;
   const f = fill ?? FILL[tone];
-  // Status fills are light in both themes; the idle surface follows the theme.
-  const text = tone === "idle" && !fill ? "var(--ink)" : "#121212";
+  // Status fills are light in Paper and dark in Blueprint, so ink contrasts with both.
+  const text = fill ? "#121212" : "var(--ink)";
   return (
     <g>
       <path d={`M${x},${y} l${dx},${dy} h${w} l${-dx},${-dy} z`} fill={f} stroke="var(--ink)" strokeWidth={1} style={{ filter: "brightness(1.08)" }} />

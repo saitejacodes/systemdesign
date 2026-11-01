@@ -47,10 +47,10 @@ export function useSimulation(simId: string, def: SimDefinition) {
       last = now;
       if (n > 0) {
         const r = runRef.current;
-        const end = r?.status === "running" ? def.challenges.find((c) => c.id === r.id)?.durationMs : undefined;
+        const c = r?.status === "running" ? def.challenges.find((x) => x.id === r.id) : undefined;
         for (let i = 0; i < n; i++) {
           sim.step();
-          if (end !== undefined && sim.clock.t >= end) { finish(); break; }
+          if (c && (sim.clock.t >= c.durationMs || c.done?.(sim.state))) { finish(); break; }
         }
         notify();
       }

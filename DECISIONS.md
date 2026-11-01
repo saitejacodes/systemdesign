@@ -60,3 +60,13 @@
 - Seven Phase 1 sections (DNS through realtime) were drafted in Antigravity, then rewritten and fact-checked here. Unverifiable company stats were replaced or removed rather than kept.
 - Analogies use a new `analogy` Callout type instead of a separate component, so they share the box styling and the MDX stays simple.
 - Lessons that embed simulators not built yet (Prompt 07) keep the `<Simulator id>` tag; the embed falls back to the plain simulator card until the registry has the id.
+
+## Prompt 07
+- Simulator config and controls live in each module's index.ts (as in Prompt 05) rather than a separate config.ts.
+- Interactive simulators (estimation, request journey) still use the shared shell: the clock drives drill timers and the journey animation, and `Challenge.done` ends a run as soon as its goal is met.
+- Load balancer service time is 60% fixed plus an exponential part (p99 ≈ 2.4× mean). A pure exponential put p99 near 270 ms with no queueing at all, which hid the effect of the algorithms.
+- The heterogeneous-servers challenge accepts least connections as well as weighted round robin: both adapt to capacity, and the result explains the difference.
+- Request journey: the "under 100 ms" challenge uses a 35 ms CDN edge, so it needs CDN, connection reuse and a cached DNS answer together (each alone fails). Resolvers usually cache root and TLD answers; the cold walk is shown as a worst case and stated in the simplifications.
+- The fixed-window challenge requires choosing the boundary-attack pattern: plain Poisson traffic can also slip 2× through by chance, which is true but not the lesson.
+- The token-burst challenge checks the measured burst (≥ 20 in one second) and that the refill rate is 5/s; average throughput alone can't distinguish R under bursty traffic with idle gaps.
+- Drill inputs are labelled as illustrative assumptions, not company figures.

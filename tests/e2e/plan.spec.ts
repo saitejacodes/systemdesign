@@ -1,12 +1,15 @@
 import fs from "node:fs";
 import { expect, test } from "@playwright/test";
 
-test("plan shows week 1 open with live and coming-soon items; today points at the next lesson", async ({ page }) => {
+test("plan shows week 1 open and live, later weeks coming soon; today points at the next lesson", async ({ page }) => {
   await page.goto("/plan");
   const wk1 = page.locator("details").first();
   await expect(wk1).toHaveAttribute("open", "");
   await expect(wk1.getByRole("link", { name: "Client–server and where state lives" })).toBeVisible();
-  await expect(wk1.getByText("· Coming soon").first()).toBeVisible();
+  // Phase 1 is fully built, so week 1 is all live; week 3 (Phase 2) still has coming-soon items.
+  await expect(wk1.getByText("· Coming soon")).toHaveCount(0);
+  await page.locator("details").nth(2).locator("summary").click();
+  await expect(page.locator("details").nth(2).getByText("· Coming soon").first()).toBeVisible();
   await page.locator("details").nth(4).locator("summary").click();
   await expect(page.locator("details").nth(4).getByText("Deliverable")).toBeVisible();
 
