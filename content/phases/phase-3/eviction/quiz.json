@@ -1,95 +1,172 @@
 [
   {
-    "id": "q1", "type": "single",
+    "id": "q1",
+    "type": "single",
     "prompt": "What is the difference between expiration and eviction?",
-    "options": [ { "id": "a", "text": "Expiration removes entries past their TTL; eviction removes entries to make room when the cache is full" }, { "id": "b", "text": "They are two names for the same thing" }, { "id": "c", "text": "Expiration happens only when the cache is full" }, { "id": "d", "text": "Eviction removes entries that are wrong; expiration removes popular ones" } ],
+    "options": [
+      { "id": "a", "text": "Expiration drops entries past their TTL; eviction drops entries to free room when memory is full" },
+      { "id": "b", "text": "They are two names for the same mechanism: removing entries once the cache runs out of room" },
+      { "id": "c", "text": "Expiration happens only when the cache is full; eviction happens on a timer per entry" },
+      { "id": "d", "text": "Eviction removes entries that are wrong or stale; expiration removes the most popular ones" }
+    ],
     "correct": ["a"],
-    "explanation": "Expiration is about freshness and happens on a timer; eviction is about capacity and happens under memory pressure. (b) conflates them. (c) describes eviction, not expiration. (d) Neither mechanism knows whether an entry is wrong, and no sane policy targets popular entries.",
-    "topicId": "why-evict", "difficulty": 1
+    "explanation": "Expiration is about freshness and happens on a timer; eviction is about capacity and happens under memory pressure. (b) conflates them. (c) swaps them: running out of room triggers eviction, and the timer is expiration. (d) Neither mechanism knows whether an entry is wrong, and no sane policy targets popular entries.",
+    "topicId": "why-evict",
+    "difficulty": 1
   },
   {
-    "id": "q2", "type": "scenario",
+    "id": "q2",
+    "type": "scenario",
     "prompt": "Under LRU, which key is evicted when E is inserted?",
     "scenario": "An LRU cache holds 3 entries. It receives the requests A, B, C, B, A, then E.",
-    "options": [ { "id": "a", "text": "A" }, { "id": "b", "text": "B" }, { "id": "c", "text": "C" }, { "id": "d", "text": "E is rejected" } ],
+    "options": [
+      { "id": "a", "text": "A" },
+      { "id": "b", "text": "B" },
+      { "id": "c", "text": "C" },
+      { "id": "d", "text": "E is rejected" }
+    ],
     "correct": ["c"],
     "explanation": "After A, B, C, B, A the recency order (oldest first) is C, B, A, so C is least recently used. (a) A was just used. (b) B was used after C. (d) LRU always admits the new entry and evicts the victim.",
-    "topicId": "lru", "difficulty": 1
+    "topicId": "lru",
+    "difficulty": 1
   },
   {
-    "id": "q3", "type": "scenario",
+    "id": "q3",
+    "type": "scenario",
     "prompt": "What most likely caused the morning's low hit ratio?",
     "scenario": "A product cache uses plain LRU and runs at 97% hits all day. Every night at 02:00 a reconciliation job reads every one of 4 million products once through the same cache. Each morning the hit ratio starts near 40% and takes an hour to recover.",
-    "options": [ { "id": "a", "text": "The job's one-off reads became the most recent entries and evicted the hot set (cache pollution)" }, { "id": "b", "text": "The TTLs are too long" }, { "id": "c", "text": "The cache node restarts every night" }, { "id": "d", "text": "LRU evicts the most recently used keys first" } ],
+    "options": [
+      { "id": "a", "text": "The job's one-off reads became the most recent entries and pushed out the hot set" },
+      { "id": "b", "text": "The TTLs are too long, so the cache is full of stale products by each morning" },
+      { "id": "c", "text": "The cache node restarts every night after the job and comes back empty each morning" },
+      { "id": "d", "text": "LRU evicts the most recently used keys first, so the hot daytime set goes first" }
+    ],
     "correct": ["a"],
-    "explanation": "A scan makes millions of keys 'recent', pushing out the hot ones; morning traffic then misses until they reload. Fix it by routing the job around the cache or using a scan-resistant policy such as LFU. (b) Long TTLs would raise the hit ratio, not lower it. (c) Nothing suggests a restart, and the timing matches the job. (d) LRU evicts the least recently used.",
-    "topicId": "lru", "difficulty": 2
+    "explanation": "A scan makes millions of keys 'recent', pushing out the hot ones (cache pollution); morning traffic then misses until they reload. Fix it by routing the job around the cache or using a scan-resistant policy such as LFU. (b) Long TTLs would raise the hit ratio, not lower it. (c) Nothing suggests a restart, and the timing matches the job. (d) LRU evicts the least recently used.",
+    "topicId": "lru",
+    "difficulty": 2
   },
   {
-    "id": "q4", "type": "single",
+    "id": "q4",
+    "type": "single",
     "prompt": "Why does an O(1) LRU cache use a doubly linked list rather than a singly linked list?",
-    "options": [ { "id": "a", "text": "To unlink a node in O(1), you need a pointer to its previous node" }, { "id": "b", "text": "Doubly linked lists use less memory" }, { "id": "c", "text": "So the list can be sorted by key" }, { "id": "d", "text": "Singly linked lists can't hold more than one entry" } ],
+    "options": [
+      { "id": "a", "text": "To unlink a node in O(1), you need a pointer to its previous node" },
+      { "id": "b", "text": "Doubly linked lists use less memory per node than singly linked ones" },
+      { "id": "c", "text": "So the list can stay sorted by key, which makes lookups by key faster" },
+      { "id": "d", "text": "Singly linked lists can't store a key and a value together in each node" }
+    ],
     "correct": ["a"],
-    "explanation": "Moving a hit entry to the front means unlinking it from the middle, which needs its predecessor; a singly linked list would need an O(n) walk. (b) They use more memory: one extra pointer per node. (c) LRU orders by recency, not key. (d) is simply false.",
-    "topicId": "lru-implementation", "difficulty": 2
+    "explanation": "Moving a hit entry to the front means unlinking it from the middle, which needs its predecessor; a singly linked list would need an O(n) walk. (b) They use more memory: one extra pointer per node. (c) LRU orders by recency, not key, and lookups go through the hash map. (d) is simply false: any node can hold a key and a value.",
+    "topicId": "lru-implementation",
+    "difficulty": 2
   },
   {
-    "id": "q5", "type": "multi",
+    "id": "q5",
+    "type": "multi",
     "prompt": "In the hash map + doubly linked list LRU, which operations are O(1)? (Choose all that apply.)",
-    "options": [ { "id": "a", "text": "Looking up a key" }, { "id": "b", "text": "Moving a hit entry to the most-recent end" }, { "id": "c", "text": "Finding and removing the least recently used entry" }, { "id": "d", "text": "Listing all keys in recency order" } ],
+    "options": [
+      { "id": "a", "text": "Looking up a key" },
+      { "id": "b", "text": "Moving a hit entry to the most-recent end" },
+      { "id": "c", "text": "Finding and removing the least recently used entry" },
+      { "id": "d", "text": "Listing all keys in recency order" }
+    ],
     "correct": ["a", "b", "c"],
     "explanation": "(a) is a hash map lookup. (b) is a constant number of pointer changes. (c) The victim is always the node next to the tail sentinel. (d) is O(n) because it must visit every node.",
-    "topicId": "lru-implementation", "difficulty": 2
+    "topicId": "lru-implementation",
+    "difficulty": 2
   },
   {
-    "id": "q6", "type": "single",
+    "id": "q6",
+    "type": "single",
     "prompt": "Why does a shared in-process LRU cache become a bottleneck on a many-core server?",
-    "options": [ { "id": "a", "text": "Every get reorders the list, so every access, even a read, needs exclusive access to shared state" }, { "id": "b", "text": "Hash maps can't be read concurrently by design" }, { "id": "c", "text": "LRU caches must write to disk on every hit" }, { "id": "d", "text": "The capacity is divided by the number of cores" } ],
+    "options": [
+      { "id": "a", "text": "Every get reorders the list, so even reads need exclusive access to shared state" },
+      { "id": "b", "text": "Hash maps can't be read concurrently by design, so every lookup takes a global lock" },
+      { "id": "c", "text": "LRU caches must write each hit to disk to persist recency, so reads queue on I/O" },
+      { "id": "d", "text": "The capacity is split by the number of cores, so each core's share keeps missing" }
+    ],
     "correct": ["a"],
     "explanation": "Reads mutate recency order, so they contend on a lock; libraries shard the cache or batch access updates. (b) Concurrent hash map reads are routine. (c) In-memory caches don't touch disk on hits. (d) Capacity doesn't depend on core count.",
-    "topicId": "lru-implementation", "difficulty": 3
+    "topicId": "lru-implementation",
+    "difficulty": 3
   },
   {
-    "id": "q7", "type": "scenario",
+    "id": "q7",
+    "type": "scenario",
     "prompt": "What is the problem with this LFU cache?",
     "scenario": "A video site's cache uses pure LFU with no decay. Last month's viral video, with 40 million hits, is still cached. Today's trending videos, each with a few thousand hits, keep getting evicted and reloaded.",
-    "options": [ { "id": "a", "text": "Without decay, old counts never fade, so stale favourites crowd out what's popular now" }, { "id": "b", "text": "LFU always evicts the most popular entry" }, { "id": "c", "text": "The cache is using LRU by mistake" }, { "id": "d", "text": "The viral video's TTL is too short" } ],
+    "options": [
+      { "id": "a", "text": "Without decay, old counts never fade, so stale favourites crowd out what's popular now" },
+      { "id": "b", "text": "LFU always evicts the most popular entry first, so trending videos are pushed out" },
+      { "id": "c", "text": "The cache is actually using LRU by mistake, which keeps the oldest entries longest" },
+      { "id": "d", "text": "The viral video's TTL is too short, so it keeps being reloaded ahead of new ones" }
+    ],
     "correct": ["a"],
-    "explanation": "Pure LFU remembers all history; decaying counts (as Redis's LFU mode does) lets past popularity fade. (b) LFU evicts the least frequently used. (c) Under LRU the old video would have been evicted long ago. (d) A short TTL would have removed the old video, which is the opposite of what's happening.",
-    "topicId": "lfu", "difficulty": 2
+    "explanation": "Pure LFU remembers all history; decaying counts (as Redis's LFU mode does) lets past popularity fade. (b) LFU evicts the least frequently used. (c) LRU evicts the oldest-used entries first, so the old video would have been evicted long ago. (d) A short TTL would have removed the old video, which is the opposite of what's happening.",
+    "topicId": "lfu",
+    "difficulty": 2
   },
   {
-    "id": "q8", "type": "single",
+    "id": "q8",
+    "type": "single",
     "prompt": "Which is a real advantage of FIFO eviction over LRU?",
-    "options": [ { "id": "a", "text": "It never evicts hot keys" }, { "id": "b", "text": "It does no bookkeeping on hits, so reads don't contend on shared state" }, { "id": "c", "text": "It always achieves a higher hit ratio" }, { "id": "d", "text": "It doesn't need a capacity limit" } ],
+    "options": [
+      { "id": "a", "text": "It never evicts hot keys, since they keep getting re-inserted on access" },
+      { "id": "b", "text": "It does no bookkeeping on hits, so reads don't contend on shared state" },
+      { "id": "c", "text": "It always achieves a higher hit ratio, since it keeps entries in order" },
+      { "id": "d", "text": "It doesn't need a capacity limit, since old entries simply fall off" }
+    ],
     "correct": ["b"],
-    "explanation": "FIFO only acts on insert and evict, so hits are cheap and concurrent. (a) It can evict hot keys just because they're old. (c) Plain FIFO usually hits less than LRU; only some FIFO-based variants compete. (d) Every eviction policy exists because of a capacity limit.",
-    "topicId": "other-policies", "difficulty": 2
+    "explanation": "FIFO only acts on insert and evict, so hits are cheap and concurrent. (a) A hit doesn't re-insert anything, so FIFO can evict hot keys just because they're old. (c) Plain FIFO usually hits less than LRU; only some FIFO-based variants compete. (d) Entries only 'fall off' because of a capacity limit; every eviction policy exists because of one.",
+    "topicId": "other-policies",
+    "difficulty": 2
   },
   {
-    "id": "q9", "type": "scenario",
+    "id": "q9",
+    "type": "scenario",
     "prompt": "Why are writes failing?",
     "scenario": "A team starts a fresh Redis instance, sets `maxmemory 4gb`, and uses it as a cache with a 1-hour TTL on every key. Under peak load, writes start failing with out-of-memory errors while reads keep working.",
-    "options": [ { "id": "a", "text": "The default maxmemory-policy is noeviction, so Redis rejects writes once memory is full instead of evicting" }, { "id": "b", "text": "TTLs disable eviction" }, { "id": "c", "text": "Redis can't store more than 4 GB" }, { "id": "d", "text": "The keys are too large to evict" } ],
+    "options": [
+      { "id": "a", "text": "The default policy is noeviction, so Redis rejects writes once full instead of evicting" },
+      { "id": "b", "text": "Setting a TTL on every key disables eviction, so Redis can only wait for expiry" },
+      { "id": "c", "text": "Redis can't store more than 4 GB per instance, so writes past that point fail" },
+      { "id": "d", "text": "The keys are too large to evict, so Redis refuses new writes until some expire" }
+    ],
     "correct": ["a"],
     "explanation": "With noeviction, hitting maxmemory makes memory-needing writes fail. More than 4 GB was written within one TTL period, so expiry alone couldn't keep up. Set allkeys-lru or allkeys-lfu. (b) TTLs make keys eligible for volatile-* policies; they don't disable eviction. (c) 4 GB is the configured limit, not a Redis maximum. (d) Key size doesn't block eviction.",
-    "topicId": "redis-eviction", "difficulty": 2
+    "topicId": "redis-eviction",
+    "difficulty": 2
   },
   {
-    "id": "q10", "type": "scenario",
+    "id": "q10",
+    "type": "scenario",
     "prompt": "Which policy lets the cache entries be evicted while protecting the sessions?",
     "scenario": "One Redis instance holds user sessions, which must never be evicted, and cached page fragments, which can be. Memory is nearly full.",
-    "options": [ { "id": "a", "text": "allkeys-lru, with no TTLs anywhere" }, { "id": "b", "text": "volatile-lru, with TTLs set on page fragments and no TTL on sessions" }, { "id": "c", "text": "noeviction" }, { "id": "d", "text": "allkeys-random" } ],
+    "options": [
+      { "id": "a", "text": "allkeys-lru, with no TTLs anywhere, so the least-used keys go first" },
+      { "id": "b", "text": "volatile-lru, with TTLs set on page fragments and no TTL on sessions" },
+      { "id": "c", "text": "noeviction, so nothing is ever removed and the sessions stay safe" },
+      { "id": "d", "text": "allkeys-random, so sessions and fragments are evicted at an equal rate" }
+    ],
     "correct": ["b"],
     "explanation": "volatile-* policies only evict keys that have a TTL, so fragments with TTLs are candidates and sessions without TTLs aren't. Separate instances would be cleaner still. (a) and (d) could evict sessions. (c) would make writes fail instead of evicting fragments.",
-    "topicId": "redis-eviction", "difficulty": 3
+    "topicId": "redis-eviction",
+    "difficulty": 3
   },
   {
-    "id": "q11", "type": "single",
+    "id": "q11",
+    "type": "single",
     "prompt": "How does Redis approximate LRU?",
-    "options": [ { "id": "a", "text": "It keeps a full doubly linked list across all keys" }, { "id": "b", "text": "It samples a few keys (maxmemory-samples, default 5) and evicts the one idle longest, keeping a pool of candidates between rounds" }, { "id": "c", "text": "It evicts keys in alphabetical order" }, { "id": "d", "text": "It evicts the largest keys first" } ],
+    "options": [
+      { "id": "a", "text": "It keeps a full doubly linked list across all keys, like a textbook LRU cache" },
+      { "id": "b", "text": "It samples a few keys (maxmemory-samples, default 5) and evicts the one idle longest" },
+      { "id": "c", "text": "It evicts keys in key-name order, starting from the lowest hash slot number" },
+      { "id": "d", "text": "It evicts the largest keys first, since they free the most memory per eviction" }
+    ],
     "correct": ["b"],
-    "explanation": "Sampling with a per-key access stamp avoids per-key list pointers. (a) is exactly what Redis avoids to save memory. (c) and (d) aren't Redis policies.",
-    "topicId": "redis-eviction", "difficulty": 2
+    "explanation": "Redis samples a few keys using a per-key access stamp, evicts the one idle longest, and keeps a pool of good candidates between rounds; this avoids per-key list pointers. (a) is exactly what Redis avoids to save memory. (c) and (d) aren't Redis policies.",
+    "topicId": "redis-eviction",
+    "difficulty": 2
   }
 ]

@@ -6,25 +6,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Stores data in a database"
+        "text": "Discovers healthy servers and spreads calls evenly across them"
       },
       {
         "id": "b",
-        "text": "Serialises arguments, sends them, and decodes the reply so a remote call looks like a function call"
+        "text": "Encodes args, sends them, and decodes the reply like a local call"
       },
       {
         "id": "c",
-        "text": "Balances load across servers"
+        "text": "Translates each call into a JSON REST request for the server"
       },
       {
         "id": "d",
-        "text": "Encrypts the disk"
+        "text": "Caches replies locally so repeated calls skip the network"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "The stub hides the network round trip. (a), (c) and (d) are other components' jobs.",
+    "explanation": "The stub serialises arguments, sends them, and decodes the reply, so a remote call looks like a function call. (a) Discovery and balancing are separate components (a resolver and balancer). (c) gRPC sends protobuf over HTTP/2, not JSON REST. (d) Stubs don't cache; every call goes over the network.",
     "topicId": "rpc",
     "difficulty": 1
   },
@@ -35,7 +35,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Protobuf ignores all changes"
+        "text": "Generated code maps old names to new ones automatically"
       },
       {
         "id": "b",
@@ -43,17 +43,17 @@
       },
       {
         "id": "c",
-        "text": "Old clients re-download the schema"
+        "text": "Old clients fetch the latest .proto file at startup"
       },
       {
         "id": "d",
-        "text": "gRPC adds the name in a header"
+        "text": "gRPC sends a name-to-tag map in each call's headers"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "The tag is the contract; names exist only in generated code. (a), (c) and (d) are false.",
+    "explanation": "The tag number is the contract; names exist only in generated code. (a) There's no renaming map; old code just keeps its old name for the same tag. (c) Clients use the schema they were compiled with. (d) No name map is sent; that would defeat protobuf's compactness.",
     "topicId": "protobuf",
     "difficulty": 2
   },
@@ -65,25 +65,25 @@
     "options": [
       {
         "id": "a",
-        "text": "The new field needs a default value"
+        "text": "The new email field needed an explicit default value"
       },
       {
         "id": "b",
-        "text": "Tag 4 was reused, so old clients decode the new field's bytes as the old one"
+        "text": "Tag 4 was reused, so old clients read email as nickname"
       },
       {
         "id": "c",
-        "text": "Protobuf can't add fields"
+        "text": "Protobuf can't add fields once clients have shipped"
       },
       {
         "id": "d",
-        "text": "The server needs HTTP/3"
+        "text": "Deleting a field breaks old clients that still read it"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Reusing a tag corrupts data for old readers. Removed tags must be `reserved`. Adding a field with a fresh tag (a, c) is fine.",
+    "explanation": "Reusing a tag corrupts data for old readers: they decode tag 4's bytes as nickname. Removed tags must be marked `reserved`. (a) Defaults don't change which field a tag maps to. (c) Adding a field with a fresh tag is fine. (d) Deleting alone is safe; old clients just see the field as unset.",
     "topicId": "protobuf",
     "difficulty": 3
   },
@@ -102,17 +102,17 @@
       },
       {
         "id": "c",
-        "text": "About 80 bytes"
+        "text": "About 25 bytes"
       },
       {
         "id": "d",
-        "text": "About 2 bytes"
+        "text": "About 3 bytes"
       }
     ],
     "correct": [
       "a"
     ],
-    "explanation": "3 + 5 + 2 bytes: tag and value for each field, no names or punctuation.",
+    "explanation": "About 3 + 5 + 2 bytes: a tag plus a compact value for each field, with no field names or punctuation. (b) is the JSON size. (c) assumes names are still sent. (d) is about the size of a single field.",
     "topicId": "protobuf",
     "difficulty": 1
   },
@@ -124,25 +124,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Server 1 is faster; nothing to fix"
+        "text": "Backend 1 is the fastest, so the balancer sends it more work"
       },
       {
         "id": "b",
-        "text": "The L4 balancer pins each long-lived HTTP/2 connection to one backend; use an L7 proxy like Envoy or client-side balancing"
+        "text": "L4 pins the one HTTP/2 connection to a backend; balance at L7"
       },
       {
         "id": "c",
-        "text": "gRPC needs sticky sessions turned off"
+        "text": "Sticky sessions are on; turn them off so calls spread evenly"
       },
       {
         "id": "d",
-        "text": "Increase TCP keepalive"
+        "text": "TCP keepalive is too long; shorten it so the client reconnects"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "L4 balances connections, and one connection carries all the calls. (a) misreads it, (c) and (d) don't change per-connection pinning.",
+    "explanation": "An L4 balancer balances connections, and one long-lived HTTP/2 connection carries all the calls, so use an L7 proxy like Envoy or client-side balancing. (a) misreads the symptom. (c) Without session affinity, L4 still pins a connection. (d) Forced reconnects just move the whole load to another single backend.",
     "topicId": "http2",
     "difficulty": 3
   },
@@ -153,15 +153,15 @@
     "options": [
       {
         "id": "a",
-        "text": "Unary"
+        "text": "Unary request-response"
       },
       {
         "id": "b",
-        "text": "Server streaming"
+        "text": "Server-side streaming"
       },
       {
         "id": "c",
-        "text": "Client streaming"
+        "text": "Client-side streaming"
       },
       {
         "id": "d",
@@ -171,7 +171,7 @@
     "correct": [
       "d"
     ],
-    "explanation": "Both sides stream independently. The others stream one way or not at all.",
+    "explanation": "In a chat both sides stream independently, which is bidirectional streaming. (a) Unary is one request, one reply. (b) only the server streams. (c) only the client streams.",
     "topicId": "streaming",
     "difficulty": 2
   },
@@ -194,7 +194,7 @@
       },
       {
         "id": "d",
-        "text": "Broadcast to all clients"
+        "text": "Broadcast streaming"
       }
     ],
     "correct": [
@@ -202,7 +202,7 @@
       "b",
       "c"
     ],
-    "explanation": "gRPC has unary, server, client and bidirectional streaming. Broadcast (d) is something you build on top.",
+    "explanation": "gRPC has unary, server streaming, client streaming and bidirectional streaming. Broadcast (d) isn't a call kind; you build fan-out on top.",
     "topicId": "streaming",
     "difficulty": 2
   },
@@ -214,25 +214,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Do the work anyway and return late"
+        "text": "Do the work anyway and return late, so the result is not wasted"
       },
       {
         "id": "b",
-        "text": "Fail fast with DEADLINE_EXCEEDED since the caller has nearly given up"
+        "text": "Fail fast with DEADLINE_EXCEEDED; the caller has nearly given up"
       },
       {
         "id": "c",
-        "text": "Retry pricing"
+        "text": "Ignore the 20 ms and use its own default 1 s deadline for the query"
       },
       {
         "id": "d",
-        "text": "Double the deadline"
+        "text": "Return a cached or empty result after 20 ms, reporting success"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Propagated deadlines let downstream services skip work nobody will wait for. (a) wastes capacity; (c) and (d) aren't inventory's to change.",
+    "explanation": "Propagated deadlines let downstream services skip work nobody will wait for, so fail fast. (a) wastes capacity on a reply the caller has already abandoned. (c) Ignoring the propagated deadline defeats its purpose. (d) Silently returning stale or empty data as success hides the failure from checkout.",
     "topicId": "deadlines",
     "difficulty": 2
   },
@@ -261,7 +261,7 @@
     "correct": [
       "c"
     ],
-    "explanation": "UNAVAILABLE signals a transient failure. The others will fail the same way again.",
+    "explanation": "UNAVAILABLE signals a transient failure, such as a server restarting, so retrying with backoff can succeed. INVALID_ARGUMENT, PERMISSION_DENIED and NOT_FOUND describe the request itself and will fail the same way again.",
     "topicId": "deadlines",
     "difficulty": 2
   },
@@ -272,25 +272,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Browsers don't support TLS"
+        "text": "Browsers block HTTP/2 to non-standard ports"
       },
       {
         "id": "b",
-        "text": "JavaScript can't control HTTP/2 framing or read the trailers gRPC uses; gRPC-Web plus a proxy is needed"
+        "text": "Browser JS can't read gRPC's HTTP/2 trailers"
       },
       {
         "id": "c",
-        "text": "gRPC only works on port 22"
+        "text": "Browsers can't open long-lived connections"
       },
       {
         "id": "d",
-        "text": "Protobuf can't be parsed in JavaScript"
+        "text": "Protobuf can't be decoded in JavaScript"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Browser fetch APIs hide framing and trailers. (a), (c) and (d) are false.",
+    "explanation": "Browser fetch APIs hide HTTP/2 framing and trailers, which gRPC uses for status, so gRPC-Web plus a proxy is needed. (a) Browsers speak HTTP/2 on any port. (c) WebSockets and streaming fetch are long-lived connections. (d) Protobuf libraries exist for JavaScript.",
     "topicId": "browser",
     "difficulty": 2
   },
@@ -319,7 +319,7 @@
     "correct": [
       "c"
     ],
-    "explanation": "REST GETs have unique URLs that HTTP caches understand. gRPC and POST GraphQL don't.",
+    "explanation": "REST GETs have unique URLs that HTTP caches and CDNs understand. gRPC (a) and GraphQL over POST (b) send everything as POSTs to fixed paths. Streaming (d) isn't cacheable.",
     "topicId": "comparison",
     "difficulty": 2
   }

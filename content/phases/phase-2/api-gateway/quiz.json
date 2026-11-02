@@ -6,7 +6,7 @@
     "options": [
       {
         "id": "a",
-        "text": "It stores data"
+        "text": "It caches every response body so services rarely see repeat traffic"
       },
       {
         "id": "b",
@@ -14,17 +14,17 @@
       },
       {
         "id": "c",
-        "text": "It only works with gRPC"
+        "text": "It spreads traffic evenly across identical copies of one service"
       },
       {
         "id": "d",
-        "text": "It replaces DNS"
+        "text": "It resolves service names to IPs, replacing DNS inside the cluster"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "A gateway is an API-aware reverse proxy. (a), (c) and (d) are false.",
+    "explanation": "A gateway is an API-aware reverse proxy: it routes by API path and knows about keys, users, quotas and versions. (a) Caching is something many proxies do; it isn't what makes a gateway. (c) describes a load balancer, which the lesson warns is a different thing. (d) Service discovery and DNS are separate infrastructure; a gateway doesn't replace them.",
     "topicId": "basics",
     "difficulty": 1
   },
@@ -39,21 +39,21 @@
       },
       {
         "id": "b",
-        "text": "It makes services faster"
+        "text": "Each extra hop through the gateway lowers backend response times"
       },
       {
         "id": "c",
-        "text": "It removes the need for databases"
+        "text": "Services no longer need their own authorisation or ownership checks"
       },
       {
         "id": "d",
-        "text": "Clients can't use DNS"
+        "text": "Clients get one connection per service, which spreads load evenly"
       }
     ],
     "correct": [
       "a"
     ],
-    "explanation": "Routing hides the internal layout. The others aren't benefits of routing.",
+    "explanation": "Routing hides the internal layout, so you can split, move or version services without shipping new clients. (b) An extra hop adds latency; it doesn't speed services up. (c) is the lesson's top misconception: the gateway proves identity but services still authorise. (d) is backwards: the client talks to one gateway endpoint, not one connection per service.",
     "topicId": "routing",
     "difficulty": 1
   },
@@ -65,7 +65,7 @@
     "options": [
       {
         "id": "a",
-        "text": "JWTs can't be verified at the gateway"
+        "text": "JWTs can't be trusted once verified at the gateway; each service must re-verify the signature itself"
       },
       {
         "id": "b",
@@ -73,17 +73,17 @@
       },
       {
         "id": "c",
-        "text": "The gateway should use API keys instead"
+        "text": "The gateway should switch to API keys, which are tied to an account and so stop cross-user access"
       },
       {
         "id": "d",
-        "text": "Nothing; this is correct"
+        "text": "Nothing is wrong; once the gateway has authenticated the caller, every request it forwards is allowed"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Authentication at the edge, authorisation in the service. Only orders knows who owns order 991. (a) is false; (c) doesn't fix it.",
+    "explanation": "Authentication at the edge, authorisation in the service: only orders knows who owns order 991, so it must check ownership. (a) Verifying at the gateway is fine; re-verifying the token still wouldn't tell you who owns the order. (c) API keys also only identify the caller, so the same hole remains. (d) is exactly the misconception that caused the bug.",
     "topicId": "auth",
     "difficulty": 3
   },
@@ -94,25 +94,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Forward it unchanged"
+        "text": "Forward it unchanged so services can see who the client says it is"
       },
       {
         "id": "b",
-        "text": "Strip it and set its own from the verified credential"
+        "text": "Strip it and set its own value from the verified credential"
       },
       {
         "id": "c",
-        "text": "Log it and ignore the JWT"
+        "text": "Keep it if it matches a real user ID, otherwise reject the call"
       },
       {
         "id": "d",
-        "text": "Return 500"
+        "text": "Append the verified ID next to it and let services pick one"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Otherwise clients could impersonate anyone. (a) is the vulnerability; (c) and (d) are wrong.",
+    "explanation": "The gateway must strip any client-supplied identity header and set its own from the verified credential. (a) lets any client impersonate anyone. (c) A real user ID is still someone else's ID; existence isn't ownership. (d) leaves the forged value in the request, and services may read the wrong one.",
     "topicId": "auth",
     "difficulty": 2
   },
@@ -123,19 +123,19 @@
     "options": [
       {
         "id": "a",
-        "text": "TLS termination"
+        "text": "TLS termination for all public traffic"
       },
       {
         "id": "b",
-        "text": "Per-API-key rate limiting"
+        "text": "Per-API-key rate limiting and quotas"
       },
       {
         "id": "c",
-        "text": "Calculating an order's discount"
+        "text": "Calculating an order's discount total"
       },
       {
         "id": "d",
-        "text": "Attaching a trace ID"
+        "text": "Attaching a trace ID to each request"
       }
     ],
     "correct": [
@@ -143,7 +143,7 @@
       "b",
       "d"
     ],
-    "explanation": "Shared, business-free concerns go to the gateway. Discounts (c) need business data and belong in a service.",
+    "explanation": "Shared, business-free concerns go in the gateway: TLS (a), per-key rate limits (b) and trace IDs (d). Discounts (c) need business data and rules, so they belong in a service.",
     "topicId": "cross-cutting",
     "difficulty": 2
   },
@@ -173,7 +173,7 @@
     "correct": [
       "b"
     ],
-    "explanation": "One phone round trip (100 ms) plus the slowest parallel call (120 ms) plus small internal hops ≈ 230 ms. (a) is the sequential sum; (c) and (d) ignore the services.",
+    "explanation": "One phone round trip (100 ms) plus the slowest parallel call (120 ms) plus small internal hops ≈ 230 ms. (a) adds every call as if they ran sequentially, plus extra round trips. (c) counts only the round trip and ignores the service work. (d) ignores the round trip, and parallel calls finish when the slowest one does, not the fastest.",
     "topicId": "aggregation",
     "difficulty": 2
   },
@@ -184,7 +184,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Call services sequentially"
+        "text": "Call services one after another so a slow one is easier to spot"
       },
       {
         "id": "b",
@@ -192,17 +192,17 @@
       },
       {
         "id": "c",
-        "text": "Remove the gateway"
+        "text": "Wait for every dependency, then retry the slowest one at once"
       },
       {
         "id": "d",
-        "text": "Cache everything forever"
+        "text": "Raise the gateway's overall timeout so all calls can finish"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "A timeout bounds the wait; the screen renders without the slow part. (a) makes it worse; (c) and (d) don't address it.",
+    "explanation": "A per-dependency timeout bounds the wait, and the screen renders without the slow part. (a) Sequential calls make total latency the sum, which is worse. (c) Waiting then retrying adds even more delay. (d) A longer timeout just lets the slow dependency hold the whole response longer.",
     "topicId": "aggregation",
     "difficulty": 2
   },
@@ -214,7 +214,7 @@
     "options": [
       {
         "id": "a",
-        "text": "One shared gateway with per-client if-statements"
+        "text": "Keep one shared gateway but add more per-client if-statements"
       },
       {
         "id": "b",
@@ -222,17 +222,17 @@
       },
       {
         "id": "c",
-        "text": "Let clients call services directly"
+        "text": "Let each client call the services directly and shape data itself"
       },
       {
         "id": "d",
-        "text": "Merge the apps into one"
+        "text": "Move the per-client rules into every backend service instead"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "BFFs let each client shape its data without coordinating every change. (a) is the problem being described.",
+    "explanation": "BFFs let each client team shape its own data without coordinating every change through one team. (a) is the problem being described. (c) loses the gateway's shared concerns and forces many round trips over slow networks. (d) spreads client-specific logic into every service, so every client change now touches many teams.",
     "topicId": "bff",
     "difficulty": 2
   },
@@ -243,25 +243,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Running one large instance"
+        "text": "One large instance with lots of headroom so it never runs out of capacity"
       },
       {
         "id": "b",
-        "text": "Several stateless instances across zones, with shared state in a store like Redis and gradual config rollouts"
+        "text": "Several stateless instances across zones, with shared state in Redis"
       },
       {
         "id": "c",
-        "text": "Putting business logic in it"
+        "text": "Several instances, each keeping its own rate-limit counters in memory"
       },
       {
         "id": "d",
-        "text": "Disabling health checks"
+        "text": "Pushing every config change to all instances at once to keep them in sync"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Redundancy plus statelessness, and careful config deploys. (a) is a SPOF; (c) and (d) increase risk.",
+    "explanation": "Redundancy plus statelessness: several instances across zones, with shared state such as rate-limit counters in a store like Redis. (a) One instance is a single point of failure no matter how big. (c) Per-instance counters make limits inconsistent and lose state when an instance dies. (d) A bad config rolled everywhere at once takes every instance down; rollouts should be gradual.",
     "topicId": "spof",
     "difficulty": 2
   },
@@ -276,7 +276,7 @@
       },
       {
         "id": "b",
-        "text": "99.99%"
+        "text": "99.999%"
       },
       {
         "id": "c",
@@ -284,13 +284,13 @@
       },
       {
         "id": "d",
-        "text": "100%"
+        "text": "99.99999%"
       }
     ],
     "correct": [
       "c"
     ],
-    "explanation": "Both down at once: 0.001 × 0.001 = 0.000001. Correlated failures make the real number lower.",
+    "explanation": "The pair is down only when both are down: 0.001 × 0.001 = 0.000001, so 99.9999%. (a) ignores the redundancy. (b) adds two nines instead of the three that multiplying the failure probabilities gives. (d) overshoots by a nine; two instances can't do better than the product of their failure rates. Correlated failures make the real number lower.",
     "topicId": "spof",
     "difficulty": 3
   }

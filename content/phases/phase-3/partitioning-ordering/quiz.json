@@ -4,10 +4,10 @@
     "type": "single",
     "prompt": "Within one Kafka consumer group, how many consumers can read a given partition at the same time?",
     "options": [
-      { "id": "a", "text": "Exactly one" },
-      { "id": "b", "text": "All consumers in the group" },
-      { "id": "c", "text": "Up to the replication factor" },
-      { "id": "d", "text": "Any number, chosen by the producer" }
+      { "id": "a", "text": "Exactly one consumer per partition" },
+      { "id": "b", "text": "All consumers in the group, in parallel" },
+      { "id": "c", "text": "Up to the topic's replication factor" },
+      { "id": "d", "text": "Any number, as chosen by the producer" }
     ],
     "correct": ["a"],
     "explanation": "Each partition is assigned to one member of a group, which is what preserves per-partition order. (b) describes separate groups, each reading everything. (c) confuses broker replication with consumption. (d) is wrong: producers don't control consumer assignment.",
@@ -20,13 +20,13 @@
     "prompt": "How many partitions should the topic have?",
     "scenario": "A topic must handle 60,000 messages/s at peak. One consumer handles 3,000 messages/s. Traffic is expected to grow 50% over the next two years, and the team wants per-account ordering.",
     "options": [
-      { "id": "a", "text": "At least 30 (20 today × 1.5 growth), rounded up with headroom, keyed by account ID" },
-      { "id": "b", "text": "1, to keep global order" },
-      { "id": "c", "text": "20 exactly, then add partitions whenever needed" },
-      { "id": "d", "text": "3, one per broker" }
+      { "id": "a", "text": "At least 30 (20 now × 1.5), plus headroom, keyed by account ID" },
+      { "id": "b", "text": "1 partition, so every account's events keep a single global order" },
+      { "id": "c", "text": "20 exactly, matching today's load, and add partitions as traffic grows" },
+      { "id": "d", "text": "3, one per broker, since more partitions than brokers adds no throughput" }
     ],
     "correct": ["a"],
-    "explanation": "60,000 ÷ 3,000 = 20 consumers now and about 30 after growth, so at least 30 partitions with some headroom. Keying by account gives the per-account order needed. (b) caps throughput at 3,000/s and gives global order nobody asked for. (c) leaves no headroom, and adding partitions later remaps keys, briefly breaking per-account order. (d) caps the group at 3 consumers.",
+    "explanation": "60,000 ÷ 3,000 = 20 consumers now and about 30 after growth, so at least 30 partitions with some headroom. Keying by account gives the per-account order needed. (b) caps throughput at 3,000/s and gives global order nobody asked for. (c) leaves no headroom, and adding partitions later remaps keys, briefly breaking per-account order. (d) caps the group at 3 consumers; partitions, not brokers, set a group's parallelism.",
     "topicId": "partitions",
     "difficulty": 2
   },
@@ -36,9 +36,9 @@
     "prompt": "With Kafka's default partitioner, where do messages with the same non-null key go?",
     "options": [
       { "id": "a", "text": "Always to the same partition, as long as the partition count doesn't change" },
-      { "id": "b", "text": "Round-robin across all partitions" },
-      { "id": "c", "text": "To the least-loaded partition" },
-      { "id": "d", "text": "To a random partition each time" }
+      { "id": "b", "text": "Round-robin across all partitions, so load spreads evenly per key" },
+      { "id": "c", "text": "To whichever partition currently has the least data when the message is produced" },
+      { "id": "d", "text": "To a random partition each time, to avoid hot spots on popular keys" }
     ],
     "correct": ["a"],
     "explanation": "The key is hashed modulo the partition count, so the same key maps to the same partition until the count changes. (b), (c) and (d) would scatter one key's messages and destroy per-key ordering; spreading without per-key order only happens for messages with no key.",
@@ -51,13 +51,13 @@
     "prompt": "What will adding partitions do to the hot spot?",
     "scenario": "A payments topic has 24 partitions keyed by merchant_id. One huge merchant produces 30% of all events, and the consumer for its partition is always behind. The team proposes increasing to 96 partitions.",
     "options": [
-      { "id": "a", "text": "Nothing for that merchant: all its events still hash to one partition, so one consumer still gets 30% of traffic" },
-      { "id": "b", "text": "It splits the merchant's events across 4 partitions" },
-      { "id": "c", "text": "It fixes the hot spot because each partition gets a quarter of the traffic" },
-      { "id": "d", "text": "Kafka automatically salts hot keys when partitions are added" }
+      { "id": "a", "text": "Nothing for that merchant: its events all still hash to one partition and one consumer" },
+      { "id": "b", "text": "It spreads the merchant's events across 4 partitions, since each old partition splits in four" },
+      { "id": "c", "text": "It fixes the hot spot, because each partition now carries a quarter of the old traffic" },
+      { "id": "d", "text": "Kafka automatically salts hot keys across the new partitions when the count grows" }
     ],
     "correct": ["a"],
-    "explanation": "One key always maps to one partition, so its share can't shrink by adding partitions. Fixes are a finer key, salting (losing cross-salt order) or a separate topic. (b) and (c) assume keys are split, which they aren't. (d) is false; Kafka has no automatic key salting.",
+    "explanation": "One key always maps to one partition, so its 30% share can't shrink by adding partitions. Fixes are a finer key, salting (losing cross-salt order) or a separate topic. (b) and (c) assume one key's events are split, which they aren't: partitions don't split, and a key hashes to exactly one. (d) is false; Kafka has no automatic key salting.",
     "topicId": "partition-keys",
     "difficulty": 2
   },
@@ -66,13 +66,13 @@
     "type": "single",
     "prompt": "What happens to existing keyed data when you increase a Kafka topic's partition count?",
     "options": [
-      { "id": "a", "text": "Old messages stay where they are, but new messages for many keys map to different partitions" },
-      { "id": "b", "text": "Kafka moves all old messages to their new partitions" },
-      { "id": "c", "text": "Nothing changes for any key" },
-      { "id": "d", "text": "The topic is deleted and recreated" }
+      { "id": "a", "text": "Old messages stay put, but new messages for many keys map to different partitions" },
+      { "id": "b", "text": "Kafka moves every old message to its key's new partition in the background" },
+      { "id": "c", "text": "Nothing changes for any key, because Kafka pins each key to its first partition" },
+      { "id": "d", "text": "The topic is deleted and recreated, so retained messages are lost during resize" }
     ],
     "correct": ["a"],
-    "explanation": "hash(key) mod N changes when N changes, and Kafka doesn't migrate existing data, so a key's old and new events can sit in different partitions for a while. (b) is false; no data is moved. (c) is false for most keys. (d) is false; it's an online change.",
+    "explanation": "hash(key) mod N changes when N changes, and Kafka doesn't migrate existing data, so a key's old and new events can sit in different partitions for a while. (b) is false; no data is moved. (c) is false for most keys: Kafka keeps no key-to-partition pinning, only the hash. (d) is false; it's an online change and existing data stays.",
     "topicId": "partition-keys",
     "difficulty": 2
   },
@@ -81,10 +81,10 @@
     "type": "single",
     "prompt": "Which statement about Kafka ordering is accurate?",
     "options": [
-      { "id": "a", "text": "Messages are delivered in write order within a partition; there is no order across partitions" },
-      { "id": "b", "text": "All messages in a topic are delivered in global write order" },
-      { "id": "c", "text": "Order is guaranteed only within a consumer group" },
-      { "id": "d", "text": "Kafka provides no ordering guarantees at all" }
+      { "id": "a", "text": "Order holds within a partition in write order; there is no order across partitions" },
+      { "id": "b", "text": "All messages in a topic are delivered in global write order across partitions" },
+      { "id": "c", "text": "Order is guaranteed only within a consumer group, and differs between groups" },
+      { "id": "d", "text": "Kafka gives no ordering guarantee at all, even inside a single partition" }
     ],
     "correct": ["a"],
     "explanation": "Ordering is a per-partition property. (b) is only true for a single-partition topic. (c) mixes up consumer groups with ordering; every group sees the same per-partition order. (d) is too strong; per-partition order is guaranteed.",
@@ -97,13 +97,13 @@
     "prompt": "Why are some accounts' events processed out of order?",
     "scenario": "A topic is keyed by account_id. Each consumer polls 500 messages and submits them all to a 16-thread pool to speed up processing. Occasionally a withdrawal is processed before the deposit that preceded it.",
     "options": [
-      { "id": "a", "text": "The thread pool processes one account's messages concurrently; route each key to the same thread instead" },
-      { "id": "b", "text": "Kafka reordered messages inside the partition" },
-      { "id": "c", "text": "The key should be a random UUID" },
-      { "id": "d", "text": "The consumer group has too few members" }
+      { "id": "a", "text": "The thread pool runs one account's messages concurrently; send each key to a fixed thread" },
+      { "id": "b", "text": "Kafka reordered messages inside the partition when the consumer polled in batches" },
+      { "id": "c", "text": "The key should be a random UUID so events spread evenly across all partitions" },
+      { "id": "d", "text": "The group has too few members, so each consumer polls batches too large to order" }
     ],
     "correct": ["a"],
-    "explanation": "Kafka delivered them in order; the unkeyed thread pool threw that order away. Hash each key to a fixed thread to keep per-key order with in-consumer parallelism. (b) is wrong: per-partition order holds. (c) would scatter an account's events across partitions, making it worse. (d) is unrelated to ordering.",
+    "explanation": "Kafka delivered them in order; the unkeyed thread pool threw that order away. Hash each key to a fixed thread to keep per-key order with in-consumer parallelism. (b) is wrong: per-partition order holds, and batching doesn't reorder. (c) would scatter an account's events across partitions, making it worse. (d) is unrelated: batch size doesn't affect order, the concurrent processing does.",
     "topicId": "ordering",
     "difficulty": 3
   },
@@ -114,9 +114,9 @@
     "scenario": "A consumer group on a 6-partition topic is scaled from 6 to 10 consumers to reduce lag.",
     "options": [
       { "id": "a", "text": "No improvement: 6 consumers get one partition each and 4 sit idle" },
-      { "id": "b", "text": "Throughput rises by about two thirds" },
-      { "id": "c", "text": "Each partition is split between consumers" },
-      { "id": "d", "text": "The extra consumers form a second group automatically" }
+      { "id": "b", "text": "Throughput rises by about two thirds, since there are 10 consumers instead of 6" },
+      { "id": "c", "text": "Each partition is split between consumers, so all 10 share the load" },
+      { "id": "d", "text": "The 4 extra consumers form a second group automatically and share the load" }
     ],
     "correct": ["a"],
     "explanation": "Partition count caps a group's parallelism. (b) assumes the extra consumers get work. (c) is false: a partition is never shared within a group. (d) is false: group membership comes from the group ID the consumer is configured with.",
@@ -144,13 +144,13 @@
     "prompt": "Which change most directly reduces disruption during deploys?",
     "scenario": "Every rolling deploy of a 30-consumer group causes many rebalances; each pauses all consumption for several seconds and produces a burst of duplicate processing. Consumers restart within 20 seconds.",
     "options": [
-      { "id": "a", "text": "Static membership (group.instance.id) plus cooperative rebalancing, and committing offsets when partitions are revoked" },
-      { "id": "b", "text": "Increase the partition count" },
-      { "id": "c", "text": "Switch producers to acks=0" },
-      { "id": "d", "text": "Disable offset commits" }
+      { "id": "a", "text": "Static membership plus cooperative rebalancing, and committing offsets on revoke" },
+      { "id": "b", "text": "Increase the partition count so each rebalance moves less data per consumer" },
+      { "id": "c", "text": "Switch producers to acks=0 so publishing isn't held up while consumers rebalance" },
+      { "id": "d", "text": "Disable offset commits so restarted consumers never conflict over committed offsets" }
     ],
     "correct": ["a"],
-    "explanation": "Static membership lets a quickly-restarted consumer reclaim its partitions without a rebalance; cooperative rebalancing moves only what must move; committing on revoke cuts duplicates. (b) makes rebalances move more partitions. (c) weakens producer durability and doesn't affect consumers. (d) makes every restart reprocess from the last commit, causing more duplicates.",
+    "explanation": "Static membership (group.instance.id) lets a quickly-restarted consumer reclaim its partitions without a rebalance; cooperative rebalancing moves only what must move; committing on revoke cuts duplicates. (b) makes rebalances move more partitions, not less. (c) weakens producer durability and doesn't affect consumers. (d) makes every restart reprocess from the last commit, causing more duplicates.",
     "topicId": "rebalancing",
     "difficulty": 3
   },
@@ -175,10 +175,10 @@
     "type": "single",
     "prompt": "Why alert on time lag rather than lag in messages?",
     "options": [
-      { "id": "a", "text": "Time lag (age of the oldest unprocessed message) maps to the user-facing delay regardless of throughput" },
-      { "id": "b", "text": "Message lag can't be measured in Kafka" },
-      { "id": "c", "text": "Time lag is always smaller" },
-      { "id": "d", "text": "Message lag only exists for SQS" }
+      { "id": "a", "text": "Time lag (oldest unprocessed message's age) matches user delay at any throughput" },
+      { "id": "b", "text": "Message lag can't be measured in Kafka, since offsets aren't exposed to clients" },
+      { "id": "c", "text": "Time lag is always the smaller number, so alerts fire less often and are less noisy" },
+      { "id": "d", "text": "Message lag only exists for SQS queues, while Kafka reports lag in seconds" }
     ],
     "correct": ["a"],
     "explanation": "50,000 messages is negligible at 100,000/s and severe at 10/s; time lag captures what users feel. (b) is false: it's log-end offset minus committed offset. (c) is meaningless since the units differ. (d) is false: Kafka reports per-partition message lag.",

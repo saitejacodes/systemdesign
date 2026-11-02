@@ -35,25 +35,25 @@
     "options": [
       {
         "id": "a",
-        "text": "It keeps it in RAM"
+        "text": "It keeps committed rows pinned in RAM until the next checkpoint"
       },
       {
         "id": "b",
-        "text": "It writes to a log on disk (write-ahead log) before the commit returns"
+        "text": "It writes to an on-disk write-ahead log before commit returns"
       },
       {
         "id": "c",
-        "text": "It emails a backup"
+        "text": "It takes a full backup of the changed tables after each commit"
       },
       {
         "id": "d",
-        "text": "It replicates to the client"
+        "text": "It returns the written rows to the client to keep as a copy"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "The WAL survives crashes and is replayed on restart.",
+    "explanation": "The write-ahead log is flushed to disk before the commit is acknowledged, so it survives a crash and is replayed on restart. RAM is lost on a crash, per-commit backups would be far too slow, and clients don't hold the database's durable copy.",
     "topicId": "acid",
     "difficulty": 2
   },
@@ -124,25 +124,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Reading uncommitted data"
+        "text": "Reading another transaction's writes before it has committed"
       },
       {
         "id": "b",
-        "text": "A repeated range query returns a different set of rows because another transaction inserted or deleted matching rows"
+        "text": "A repeated range query sees rows another transaction added or removed"
       },
       {
         "id": "c",
-        "text": "Reading a deleted table"
+        "text": "Reading a row whose table was dropped while the query was running"
       },
       {
         "id": "d",
-        "text": "A cached result"
+        "text": "Getting an old result from a cache instead of the current table"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Phantoms are about the set of rows matching a condition.",
+    "explanation": "A phantom is about the set of rows matching a condition: re-running the range query returns rows another transaction inserted or deleted. Reading uncommitted data is a dirty read, and dropped tables and stale caches aren't isolation anomalies.",
     "topicId": "anomalies",
     "difficulty": 2
   },
@@ -157,21 +157,21 @@
       },
       {
         "id": "b",
-        "text": "Reading a corrupted disk block"
+        "text": "Reading a disk block that failed its checksum"
       },
       {
         "id": "c",
-        "text": "Reading without an index"
+        "text": "Reading a value that changed since your last read"
       },
       {
         "id": "d",
-        "text": "Reading a stale cache"
+        "text": "Reading a stale value from a cache in front of the DB"
       }
     ],
     "correct": [
       "a"
     ],
-    "explanation": "Dirty means uncommitted.",
+    "explanation": "Dirty means uncommitted: you see writes that may yet be rolled back. A corrupted block is a storage fault, a value that changed between your reads is a non-repeatable read, and cache staleness is outside the database's isolation.",
     "topicId": "anomalies",
     "difficulty": 1
   },
@@ -211,7 +211,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Nothing extra"
+        "text": "Nothing extra, since the database queues conflicting transactions"
       },
       {
         "id": "b",
@@ -219,17 +219,17 @@
       },
       {
         "id": "c",
-        "text": "Disable indexes"
+        "text": "Disable indexes on hot tables so predicate locks stay small"
       },
       {
         "id": "d",
-        "text": "Use Read Uncommitted for reads"
+        "text": "Run every read at Read Uncommitted so writers aren't blocked"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Serializable aborts conflicting transactions instead of letting anomalies through.",
+    "explanation": "Serializable aborts conflicting transactions instead of letting anomalies through, so the application must catch serialisation failures and retry. It doesn't silently queue them, dropping indexes makes locking coarser, and mixing in Read Uncommitted reads defeats the guarantee.",
     "topicId": "levels",
     "difficulty": 3
   },
@@ -240,25 +240,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Smaller tables"
+        "text": "Tables stay smaller because each row keeps only its latest version"
       },
       {
         "id": "b",
-        "text": "Readers don't block writers and writers don't block readers"
+        "text": "Readers don't block writers, and writers don't block readers"
       },
       {
         "id": "c",
-        "text": "No need for indexes"
+        "text": "Version numbers on each row remove the need for most indexes"
       },
       {
         "id": "d",
-        "text": "Automatic sharding"
+        "text": "Row versions can be spread across nodes, giving free sharding"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Each transaction reads its snapshot of row versions.",
+    "explanation": "With MVCC each transaction reads its own snapshot of row versions, so reads and writes don't wait on each other. It actually keeps several versions (more space until VACUUM), still needs indexes, and has nothing to do with sharding.",
     "topicId": "mvcc",
     "difficulty": 2
   },
@@ -270,25 +270,25 @@
     "options": [
       {
         "id": "a",
-        "text": "The disk is failing"
+        "text": "The disk is failing, so the same pages are written again and again"
       },
       {
         "id": "b",
-        "text": "An open transaction's snapshot keeps old row versions visible, so cleanup (VACUUM) can't remove them"
+        "text": "An open transaction's snapshot stops VACUUM removing old versions"
       },
       {
         "id": "c",
-        "text": "Indexes are duplicated"
+        "text": "Each update writes a duplicate index entry that is never removed"
       },
       {
         "id": "d",
-        "text": "Writes are being lost"
+        "text": "Writes are being lost and retried, so each row is inserted twice"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Old versions can't be reclaimed while any transaction might still need them.",
+    "explanation": "Old row versions can't be reclaimed while any transaction might still need them, so a session open since 9 a.m. blocks VACUUM and dead versions pile up. A failing disk doesn't grow tables, index entries are cleaned up by VACUUM too once it can run, and lost writes would shrink data, not double it.",
     "topicId": "mvcc",
     "difficulty": 3
   },
@@ -300,7 +300,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Use Read Uncommitted"
+        "text": "Use Read Uncommitted so each booking sees the other"
       },
       {
         "id": "b",
@@ -308,17 +308,17 @@
       },
       {
         "id": "c",
-        "text": "Add a cache"
+        "text": "Cache room availability and check the cache first"
       },
       {
         "id": "d",
-        "text": "Retry on every error"
+        "text": "Retry every failed booking until one finally wins"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "A unique constraint blocks the second insert at any isolation level. (a) makes things worse.",
+    "explanation": "A unique constraint on (room, day) blocks the second insert at any isolation level. Read Uncommitted makes races worse, a cache adds another stale read before the same race, and retries don't stop two inserts that both succeed.",
     "topicId": "choosing",
     "difficulty": 2
   }

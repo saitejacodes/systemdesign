@@ -1,63 +1,155 @@
 [
-  { "id": "q1", "type": "single", "prompt": "What problem does HTTP/2 multiplexing solve that HTTP/1.1 keep-alive does not?", "options": [
-    { "id": "a", "text": "HTTP/2 encrypts traffic; HTTP/1.1 does not" },
-    { "id": "b", "text": "HTTP/2 allows multiple request–response streams on one connection without waiting for each to complete" },
-    { "id": "c", "text": "HTTP/2 uses UDP instead of TCP" },
-    { "id": "d", "text": "HTTP/2 compresses response bodies; HTTP/1.1 does not" }
-  ], "correct": ["b"], "explanation": "HTTP/1.1 keep-alive reuses a connection but still processes one request at a time (serial). HTTP/2 multiplexes many concurrent streams on one connection. (a) Both versions can use TLS. (c) HTTP/2 uses TCP; HTTP/3 uses QUIC over UDP. (d) Both versions support body compression via Content-Encoding.", "topicId": "http-versions", "difficulty": 1 },
-  { "id": "q2", "type": "single", "prompt": "Why does HTTP/3 use QUIC (over UDP) instead of TCP?", "options": [
-    { "id": "a", "text": "UDP is more reliable than TCP" },
-    { "id": "b", "text": "QUIC provides per-stream reliability, eliminating TCP-level head-of-line blocking" },
-    { "id": "c", "text": "TCP does not support encryption" },
-    { "id": "d", "text": "UDP is required for binary protocols" }
-  ], "correct": ["b"], "explanation": "TCP enforces ordering across the entire connection; one lost packet blocks all streams. QUIC handles reliability per stream, so a loss on one stream does not affect others. (a) UDP itself is unreliable; QUIC adds reliability on top. (c) TCP supports TLS just fine. (d) There is no such requirement.", "topicId": "http-versions", "difficulty": 2 },
-  { "id": "q3", "type": "single", "prompt": "Which HTTP method is both **safe** and **idempotent**?", "options": [
-    { "id": "a", "text": "POST" },
-    { "id": "b", "text": "PUT" },
-    { "id": "c", "text": "GET" },
-    { "id": "d", "text": "DELETE" }
-  ], "correct": ["c"], "explanation": "GET does not change server state (safe) and repeating it gives the same result (idempotent). (a) POST is neither safe nor idempotent. (b) PUT is idempotent but not safe (it changes the resource). (d) DELETE is idempotent but not safe.", "topicId": "http-methods", "difficulty": 1 },
-  { "id": "q4", "type": "single", "prompt": "What does it mean for PUT to be **idempotent**?", "options": [
-    { "id": "a", "text": "PUT requests are always successful" },
-    { "id": "b", "text": "Sending the same PUT request multiple times has the same effect as sending it once" },
-    { "id": "c", "text": "PUT requests do not change server state" },
-    { "id": "d", "text": "PUT requests cannot be cached" }
-  ], "correct": ["b"], "explanation": "Idempotent means the result is the same whether you send the request once or many times. The first PUT sets the resource; subsequent identical PUTs set it to the same value. (a) PUT can fail with 4xx or 5xx. (c) PUT does change state; it is not safe. (d) Cacheability is separate from idempotency.", "topicId": "http-methods", "difficulty": 1 },
-  { "id": "q5", "type": "single", "prompt": "A client receives a `304 Not Modified` response. What does this mean?", "options": [
-    { "id": "a", "text": "The resource does not exist" },
-    { "id": "b", "text": "The resource has not changed since the client's last request; use the cached version" },
-    { "id": "c", "text": "The server encountered an error" },
-    { "id": "d", "text": "The request was redirected to a different URL" }
-  ], "correct": ["b"], "explanation": "304 is returned when a conditional request (If-None-Match or If-Modified-Since) shows the content has not changed. The server sends no body, saving bandwidth. (a) That is 404. (c) Server errors are 5xx. (d) Redirects are 3xx but specifically 301, 302, 307, 308.", "topicId": "http-caching-headers", "difficulty": 1 },
-  { "id": "q6", "type": "single", "prompt": "What is the difference between `Cache-Control: no-cache` and `Cache-Control: no-store`?", "options": [
-    { "id": "a", "text": "They are identical" },
-    { "id": "b", "text": "no-cache caches the response but revalidates on every use; no-store prevents caching entirely" },
-    { "id": "c", "text": "no-cache prevents caching; no-store allows caching with revalidation" },
-    { "id": "d", "text": "no-cache applies to browsers; no-store applies to CDNs" }
-  ], "correct": ["b"], "explanation": "no-cache stores the response but requires the client to check with the origin before using it (via conditional request). no-store means do not store the response at all. (a) and (c) confuse the two. (d) Both apply to any cache.", "topicId": "http-caching-headers", "difficulty": 2 },
-  { "id": "q7", "type": "scenario", "scenario": "Your API has a POST /orders endpoint. A client sends an order but gets a network timeout and does not know if the server received it.", "prompt": "How should the system handle retries safely?", "options": [
-    { "id": "a", "text": "The client retries the same POST; duplicate orders are acceptable" },
-    { "id": "b", "text": "The client includes an idempotency key with each request. The server checks the key and returns the original response if it has already processed that key." },
-    { "id": "c", "text": "Change POST to GET so retries are safe" },
-    { "id": "d", "text": "Never retry; show an error and make the user re-enter the order" }
-  ], "correct": ["b"], "explanation": "An idempotency key lets the server detect duplicate requests and return the same response without processing the order twice. (a) Duplicate orders are a business problem. (c) GET is for retrieval, not creation. (d) Poor user experience and does not solve the underlying issue.", "topicId": "http-methods", "difficulty": 2 },
-  { "id": "q8", "type": "scenario", "scenario": "A front-end team deploys a new version of their JavaScript bundle. The old bundle is cached by browsers and a CDN with `Cache-Control: public, max-age=86400`. Users still see the old version.", "prompt": "What caching strategy would prevent this problem?", "options": [
-    { "id": "a", "text": "Use Cache-Control: no-store for all JavaScript files" },
-    { "id": "b", "text": "Include a content hash in the filename (e.g. app.3f8a.js) and cache with max-age=31536000, immutable. The HTML page references the new filename." },
-    { "id": "c", "text": "Set max-age=0 so every request hits the origin" },
-    { "id": "d", "text": "Use PUT instead of GET to fetch the bundle" }
-  ], "correct": ["b"], "explanation": "Content-hashed filenames change when the code changes, so the browser requests the new URL (cache miss) and caches it for a long time. The HTML page (served with a short max-age or no-cache) references the new filename. (a) and (c) eliminate caching entirely, increasing load and latency. (d) PUT is for writing, not reading.", "topicId": "http-caching-headers", "difficulty": 3 },
-  { "id": "q9", "type": "scenario", "scenario": "An API returns user profile data. The profile changes infrequently (maybe once a month). You want browsers to cache it but not serve stale data after an update.", "prompt": "Which caching approach is best?", "options": [
-    { "id": "a", "text": "Cache-Control: public, max-age=2592000 (30 days)" },
-    { "id": "b", "text": "Cache-Control: private, no-cache with an ETag. The browser caches but revalidates on each use; the server returns 304 if unchanged." },
-    { "id": "c", "text": "Cache-Control: no-store" },
-    { "id": "d", "text": "Cache-Control: public, s-maxage=2592000" }
-  ], "correct": ["b"], "explanation": "private keeps user data out of shared caches (CDNs). no-cache with ETag revalidation ensures the browser always checks for updates, but avoids re-downloading the body when nothing changed (304). (a) and (d) are public and could leak user data to shared caches; also, a 30-day max-age serves stale data after an update. (c) Works but wastes bandwidth by always re-downloading.", "topicId": "http-caching-headers", "difficulty": 3 },
-  { "id": "q10", "type": "multi", "prompt": "Which of the following HTTP methods are **idempotent**? Select all that apply.", "options": [
-    { "id": "a", "text": "GET" },
-    { "id": "b", "text": "POST" },
-    { "id": "c", "text": "PUT" },
-    { "id": "d", "text": "DELETE" }
-  ], "correct": ["a", "c", "d"], "explanation": "GET, PUT and DELETE are all idempotent: repeating them produces the same result. POST is not idempotent: repeating it may create multiple resources. (b) is the exception because each POST can have a different side effect.", "topicId": "http-methods", "difficulty": 1 }
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "What problem does HTTP/2 multiplexing solve that HTTP/1.1 keep-alive does not?",
+    "options": [
+      { "id": "a", "text": "HTTP/2 encrypts every request by default, while HTTP/1.1 keep-alive sends traffic in plaintext" },
+      { "id": "b", "text": "HTTP/2 runs many request–response streams at once on one connection, without waiting in turn" },
+      { "id": "c", "text": "HTTP/2 switches the transport from TCP to UDP, so one lost packet never stalls the connection" },
+      { "id": "d", "text": "HTTP/2 compresses response bodies automatically, which HTTP/1.1 keep-alive cannot do at all" }
+    ],
+    "correct": ["b"],
+    "explanation": "HTTP/1.1 keep-alive reuses a connection but still processes one request at a time (serial). HTTP/2 multiplexes many concurrent streams on one connection. (a) Both versions can use TLS; encryption is not what multiplexing adds. (c) HTTP/2 still uses TCP; HTTP/3 uses QUIC over UDP. (d) Both versions support body compression via Content-Encoding; HTTP/2 adds header compression, not body compression.",
+    "topicId": "http-versions",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "Why does HTTP/3 use QUIC (over UDP) instead of TCP?",
+    "options": [
+      { "id": "a", "text": "UDP is more reliable than TCP on lossy links, so QUIC can skip its own retransmissions" },
+      { "id": "b", "text": "QUIC provides per-stream reliability, eliminating TCP-level head-of-line blocking" },
+      { "id": "c", "text": "TCP cannot carry TLS-encrypted traffic, so encrypted HTTP needed a new transport" },
+      { "id": "d", "text": "UDP is required for binary framing, which HTTP/3 needs and TCP's byte stream cannot carry" }
+    ],
+    "correct": ["b"],
+    "explanation": "TCP enforces ordering across the entire connection; one lost packet blocks all streams. QUIC handles reliability per stream, so a loss on one stream does not affect others. (a) UDP itself is unreliable; QUIC adds its own retransmission on top. (c) TCP carries TLS just fine; that is how HTTPS over HTTP/1.1 and HTTP/2 works. (d) There is no such requirement: HTTP/2 already uses binary framing over TCP.",
+    "topicId": "http-versions",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "Which HTTP method is both **safe** and **idempotent**?",
+    "options": [
+      { "id": "a", "text": "POST" },
+      { "id": "b", "text": "PUT" },
+      { "id": "c", "text": "GET" },
+      { "id": "d", "text": "DELETE" }
+    ],
+    "correct": ["c"],
+    "explanation": "GET does not change server state (safe) and repeating it gives the same result (idempotent). (a) POST is neither safe nor idempotent. (b) PUT is idempotent but not safe (it changes the resource). (d) DELETE is idempotent but not safe.",
+    "topicId": "http-methods",
+    "difficulty": 1
+  },
+  {
+    "id": "q4",
+    "type": "single",
+    "prompt": "What does it mean for PUT to be **idempotent**?",
+    "options": [
+      { "id": "a", "text": "PUT requests always succeed, so a client never has to check the response status code" },
+      { "id": "b", "text": "Sending the same PUT request multiple times has the same effect as sending it once" },
+      { "id": "c", "text": "PUT requests never change server state, so repeating them can never cause side effects" },
+      { "id": "d", "text": "PUT responses can never be cached, so every repeat goes all the way to the origin server" }
+    ],
+    "correct": ["b"],
+    "explanation": "Idempotent means the result is the same whether you send the request once or many times. The first PUT sets the resource; subsequent identical PUTs set it to the same value. (a) PUT can fail with 4xx or 5xx. (c) PUT does change state; that makes it unsafe, while idempotency is about repeats having the same effect. (d) Cacheability is separate from idempotency.",
+    "topicId": "http-methods",
+    "difficulty": 1
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "A client receives a `304 Not Modified` response. What does this mean?",
+    "options": [
+      { "id": "a", "text": "The resource does not exist at this URL anymore, so the client should drop its copy" },
+      { "id": "b", "text": "The resource has not changed since the client's last request; use the cached version" },
+      { "id": "c", "text": "The server hit an error and could not build a fresh response, so it sent no body" },
+      { "id": "d", "text": "The resource moved to the URL in the Location header, so the client should follow it" }
+    ],
+    "correct": ["b"],
+    "explanation": "304 is returned when a conditional request (If-None-Match or If-Modified-Since) shows the content has not changed. The server sends no body, saving bandwidth. (a) That is 404 (or 410). (c) Server errors are 5xx. (d) Redirects are 3xx but specifically 301, 302, 307, 308; 304 carries no new location.",
+    "topicId": "http-caching-headers",
+    "difficulty": 1
+  },
+  {
+    "id": "q6",
+    "type": "single",
+    "prompt": "What is the difference between `Cache-Control: no-cache` and `Cache-Control: no-store`?",
+    "options": [
+      { "id": "a", "text": "They are identical; both tell every cache to keep no copy of the response at all" },
+      { "id": "b", "text": "no-cache stores the response but revalidates before each use; no-store never stores it" },
+      { "id": "c", "text": "no-cache forbids storing the response; no-store stores it but revalidates before each use" },
+      { "id": "d", "text": "no-cache applies only to browser caches; no-store applies only to shared caches like CDNs" }
+    ],
+    "correct": ["b"],
+    "explanation": "no-cache stores the response but requires the client to check with the origin before using it (via conditional request). no-store means do not store the response at all. (a) is the common misreading of no-cache as 'don't cache'. (c) swaps the two meanings. (d) Both directives apply to any cache, private or shared.",
+    "topicId": "http-caching-headers",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "scenario": "Your API has a POST /orders endpoint. A client sends an order but gets a network timeout and does not know if the server received it.",
+    "prompt": "How should the system handle retries safely?",
+    "options": [
+      { "id": "a", "text": "Retry the same POST blindly; an occasional duplicate order is cheaper than any extra server logic" },
+      { "id": "b", "text": "Send an idempotency key with each request; the server returns the stored response for a seen key" },
+      { "id": "c", "text": "Switch the endpoint from POST to GET, since GET is idempotent and can be retried without harm" },
+      { "id": "d", "text": "Never retry automatically; show an error and make the user re-enter the whole order from scratch" }
+    ],
+    "correct": ["b"],
+    "explanation": "An idempotency key lets the server detect duplicate requests and return the same response without processing the order twice. (a) Duplicate orders mean double charges and double deliveries, a real business problem. (c) GET must be safe; using it to create orders breaks HTTP semantics, and caches or prefetchers could trigger it. (d) is poor user experience and does not solve the issue: the user's re-entry is itself a retry that can duplicate the order.",
+    "topicId": "http-methods",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "scenario": "A front-end team deploys a new version of their JavaScript bundle. The old bundle is cached by browsers and a CDN with `Cache-Control: public, max-age=86400`. Users still see the old version.",
+    "prompt": "What caching strategy would prevent this problem?",
+    "options": [
+      { "id": "a", "text": "Serve every JavaScript file with Cache-Control: no-store so browsers and the CDN never keep a copy" },
+      { "id": "b", "text": "Put a content hash in the filename (app.3f8a.js), cache it a year as immutable, update the HTML" },
+      { "id": "c", "text": "Set max-age=0 on the bundle so every request goes back to the origin and always gets the latest" },
+      { "id": "d", "text": "Purge the CDN after each deploy, which also forces browsers to re-fetch the bundle on next load" }
+    ],
+    "correct": ["b"],
+    "explanation": "Content-hashed filenames change when the code changes, so the browser requests the new URL (cache miss) and caches it for a long time. The HTML page (served with a short max-age or no-cache) references the new filename. (a) and (c) eliminate caching entirely, increasing load and latency. (d) A CDN purge does not reach browser caches: browsers keep their copy until their own max-age of 86400 runs out.",
+    "topicId": "http-caching-headers",
+    "difficulty": 3
+  },
+  {
+    "id": "q9",
+    "type": "scenario",
+    "scenario": "An API returns user profile data. The profile changes infrequently (maybe once a month). You want browsers to cache it but not serve stale data after an update.",
+    "prompt": "Which caching approach is best?",
+    "options": [
+      { "id": "a", "text": "public, max-age=2592000 (30 days), since the profile only changes about once a month anyway" },
+      { "id": "b", "text": "private, no-cache with an ETag: the browser stores it but revalidates each use, 304 if unchanged" },
+      { "id": "c", "text": "no-store, so the browser downloads a fresh copy on every view and can never show a stale profile" },
+      { "id": "d", "text": "public, s-maxage=2592000, so the CDN holds it for 30 days while browsers fetch it every time" }
+    ],
+    "correct": ["b"],
+    "explanation": "private keeps user data out of shared caches (CDNs). no-cache with ETag revalidation ensures the browser always checks for updates, but avoids re-downloading the body when nothing changed (304). (a) and (d) are public and could leak user data through shared caches; also, a 30-day lifetime serves stale data after an update. (c) is fresh but wastes bandwidth by always re-downloading, and it does not cache at all, which the requirement asked for.",
+    "topicId": "http-caching-headers",
+    "difficulty": 3
+  },
+  {
+    "id": "q10",
+    "type": "multi",
+    "prompt": "Which of the following HTTP methods are **idempotent**? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "GET" },
+      { "id": "b", "text": "POST" },
+      { "id": "c", "text": "PUT" },
+      { "id": "d", "text": "DELETE" }
+    ],
+    "correct": ["a", "c", "d"],
+    "explanation": "GET, PUT and DELETE are all idempotent: repeating them produces the same result. POST is not idempotent: repeating it may create multiple resources. (b) is the exception because each POST can have a different side effect.",
+    "topicId": "http-methods",
+    "difficulty": 1
+  }
 ]
-

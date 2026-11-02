@@ -5,12 +5,12 @@
     "prompt": "What is a cache stampede?",
     "options": [
       { "id": "a", "text": "Many concurrent requests miss the same expired key and all rebuild it from the database at once" },
-      { "id": "b", "text": "Requests for keys that do not exist in the database" },
-      { "id": "c", "text": "One key receiving far more traffic than its cache node can serve" },
-      { "id": "d", "text": "The cache evicting keys because memory is full" }
+      { "id": "b", "text": "Many concurrent requests for IDs that do not exist in the database, so every one of them misses" },
+      { "id": "c", "text": "One key receiving far more reads per second than the single cache node holding it can serve" },
+      { "id": "d", "text": "The cache evicting large batches of keys at once because memory is full and maxmemory is hit" }
     ],
     "correct": ["a"],
-    "explanation": "A stampede is the burst of duplicate rebuilds when a popular key expires or is evicted. Requests for non-existent keys are cache penetration, not a stampede. One overloaded key is a hot key: the key is present, it just has too much traffic. Eviction under memory pressure is normal cache behaviour; it can trigger a stampede but is not one itself.",
+    "explanation": "A stampede is the burst of duplicate rebuilds when a popular key expires or is evicted. Requests for IDs that do not exist are cache penetration, not a stampede. One overloaded key is a hot key: the key is present, it just has too much traffic for its node. Eviction under memory pressure is normal cache behaviour; it can trigger a stampede but is not one itself.",
     "topicId": "stampede",
     "difficulty": 1
   },
@@ -38,7 +38,7 @@
       { "id": "a", "text": "A short-lived rebuild lock taken with SET NX PX" },
       { "id": "b", "text": "In-process request coalescing such as Go's singleflight" },
       { "id": "c", "text": "Probabilistic early expiration (XFetch)" },
-      { "id": "d", "text": "Doubling the number of cache nodes" }
+      { "id": "d", "text": "Doubling the number of cache nodes in the cluster" }
     ],
     "correct": ["a", "b", "c"],
     "explanation": "A lock lets one caller rebuild while the others wait and re-read. Coalescing merges concurrent fetches within each process. Early expiration refreshes the key before it expires, so the miss never happens. More cache nodes does nothing: the expired key still lives on one node and every miss still goes to the database.",
@@ -51,12 +51,12 @@
     "prompt": "Why must a rebuild lock have an expiry (for example PX 5000)?",
     "options": [
       { "id": "a", "text": "So a crashed lock holder cannot block rebuilds of that key forever" },
-      { "id": "b", "text": "Because Redis rejects SET NX without an expiry" },
-      { "id": "c", "text": "To make the cached value expire at the same time" },
-      { "id": "d", "text": "To guarantee only one rebuild across all of time" }
+      { "id": "b", "text": "Because Redis rejects SET NX without an expiry, so the lock call would fail" },
+      { "id": "c", "text": "So the cached value and the lock expire together and the rebuild starts fresh" },
+      { "id": "d", "text": "To guarantee that only one rebuild of the key ever happens across the cluster" }
     ],
     "correct": ["a"],
-    "explanation": "If the winner crashes after taking the lock, nobody would ever rebuild the key without an expiry. Redis accepts SET NX without an expiry, so that is not the reason. The lock and the value have independent TTLs. And an expiring lock allows another rebuild later, the opposite of 'one rebuild ever'.",
+    "explanation": "If the winner crashes after taking the lock, nobody would ever rebuild the key without an expiry. Redis accepts SET NX without an expiry, so that is not the reason. The lock and the cached value have independent TTLs; the lock expiry has nothing to do with when the value expires. And an expiring lock allows another rebuild later, the opposite of 'one rebuild ever'.",
     "topicId": "stampede",
     "difficulty": 1
   },
@@ -66,13 +66,13 @@
     "prompt": "What is the best primary defence?",
     "scenario": "Logs show 4,000 requests a second for /users/<id> with random IDs that never repeat and never exist. Every one misses the cache and queries the database.",
     "options": [
-      { "id": "a", "text": "Cache a NULL marker for each missing ID with a 60-second TTL" },
+      { "id": "a", "text": "Cache a NULL marker for each missing ID with a 60-second TTL so repeats are served" },
       { "id": "b", "text": "A Bloom filter of valid IDs checked before the cache, plus per-client rate limiting" },
-      { "id": "c", "text": "Increase the TTL of all cached users" },
-      { "id": "d", "text": "Add a local in-process cache" }
+      { "id": "c", "text": "Increase the TTL of all cached users so the cache covers more of the ID space" },
+      { "id": "d", "text": "Add a local in-process cache on each app server in front of the shared cache" }
     ],
     "correct": ["b"],
-    "explanation": "This is cache penetration with never-repeated IDs. A Bloom filter rejects almost all non-existent IDs without touching the cache or database, and rate limiting makes scanning expensive. NULL markers only help when the same missing ID is asked again; here each marker is used once and just wastes memory. Longer TTLs on real users do nothing for IDs that were never cached. A local cache also only stores things that exist.",
+    "explanation": "This is cache penetration with never-repeated IDs. A Bloom filter rejects almost all non-existent IDs without touching the cache or database, and rate limiting makes scanning expensive. NULL markers only help when the same missing ID is asked again; here each marker is used once and just wastes memory. Longer TTLs on real users do nothing for IDs that were never cached. A local cache also only stores things that exist, so random IDs miss it too.",
     "topicId": "penetration",
     "difficulty": 2
   },
@@ -81,13 +81,13 @@
     "type": "single",
     "prompt": "A Bloom filter says an ID is 'possibly present'. What do you know?",
     "options": [
-      { "id": "a", "text": "The ID definitely exists" },
-      { "id": "b", "text": "The ID probably exists, but it could be a false positive, so continue to the cache and database" },
-      { "id": "c", "text": "The ID definitely does not exist" },
-      { "id": "d", "text": "The filter needs to be rebuilt" }
+      { "id": "a", "text": "It definitely exists, because a Bloom filter never reports an ID that was not added" },
+      { "id": "b", "text": "It probably exists but may be a false positive, so check the cache and database" },
+      { "id": "c", "text": "It is missing from the cache but definitely in the database, so skip the cache" },
+      { "id": "d", "text": "The filter is saturated and must be rebuilt before its answers can be trusted" }
     ],
     "correct": ["b"],
-    "explanation": "Bloom filters have false positives but no false negatives, so 'possibly present' must be checked against the real data. 'Definitely exists' ignores false positives. 'Definitely not' is the answer when the filter says absent, not present. A positive answer is normal operation and says nothing about rebuilding.",
+    "explanation": "Bloom filters have false positives but no false negatives, so 'possibly present' must be checked against the real data. 'Definitely exists' ignores false positives: bits set by other IDs can match. The filter knows nothing about what is in the cache, so it cannot tell you to skip it, and it cannot promise the database has the row. A positive answer is normal operation and says nothing about the filter needing a rebuild.",
     "topicId": "penetration",
     "difficulty": 1
   },
@@ -97,13 +97,13 @@
     "prompt": "Which change fixes this most directly?",
     "scenario": "A flash-sale product key receives 250,000 reads a second. The cache cluster has 12 nodes and one node is at 100% CPU while the other 11 are below 20%. The product data changes once an hour.",
     "options": [
-      { "id": "a", "text": "Add 12 more cache nodes" },
+      { "id": "a", "text": "Add 12 more cache nodes so the key's traffic is spread across 24 nodes" },
       { "id": "b", "text": "Cache the product in each application server's memory with a 2-second TTL" },
-      { "id": "c", "text": "Increase the key's TTL in the shared cache" },
-      { "id": "d", "text": "Switch the eviction policy to LRU" }
+      { "id": "c", "text": "Increase the key's TTL in the shared cache so it is refreshed less often" },
+      { "id": "d", "text": "Switch the cluster's eviction policy to LRU so the hot key is never evicted" }
     ],
     "correct": ["b"],
-    "explanation": "This is a hot key: one key lives on one node, so a local cache with a short TTL absorbs the reads and the cache node sees roughly one read per app server per TTL. Since data changes hourly, 2 seconds of staleness is fine. More nodes do not split one key. A longer TTL does not reduce reads, which are already hits. The eviction policy decides what to remove when memory is full, not how reads spread.",
+    "explanation": "This is a hot key: one key lives on one node, so a local cache with a short TTL absorbs the reads and the cache node sees roughly one read per app server per TTL. Since data changes hourly, 2 seconds of staleness is fine. More nodes do not split one key; it still hashes to a single node. A longer TTL does not reduce reads, which are already hits. The eviction policy decides what to remove when memory is full, not how reads spread, and the key is not being evicted.",
     "topicId": "hot-keys",
     "difficulty": 2
   },
@@ -112,13 +112,13 @@
     "type": "single",
     "prompt": "What is the main cost of replicating a hot key as post:42#0 to post:42#7?",
     "options": [
-      { "id": "a", "text": "Reads become slower" },
+      { "id": "a", "text": "Every read must query all eight copies and merge them, so read latency rises" },
       { "id": "b", "text": "Every write must update all eight copies, and copies can briefly disagree" },
-      { "id": "c", "text": "The key can no longer have a TTL" },
-      { "id": "d", "text": "It requires a Bloom filter" }
+      { "id": "c", "text": "The copies can no longer carry TTLs, so they must be deleted by hand on update" },
+      { "id": "d", "text": "Each read needs a Bloom filter check first to find which copy actually exists" }
     ],
     "correct": ["b"],
-    "explanation": "Key replication spreads reads across nodes but multiplies writes and opens a window where copies differ. Reads are not slower; each read hits one copy. Each copy can have its own TTL. Bloom filters address penetration and are unrelated.",
+    "explanation": "Key replication spreads reads across nodes but multiplies writes and opens a window where copies differ. Reads are not slower: each read picks one copy at random and hits only that one. Each copy can have its own TTL like any other key. Every copy exists by construction, so no Bloom filter is needed; Bloom filters address penetration and are unrelated.",
     "topicId": "hot-keys",
     "difficulty": 2
   },
@@ -128,13 +128,13 @@
     "prompt": "What is the most likely cause and fix?",
     "scenario": "Every day at 10:00 the database spikes to full CPU for about a minute. A warm-up job loads 2 million keys into the cache at 09:00 each morning with SET ... EX 3600.",
     "options": [
-      { "id": "a", "text": "A hot key; add a local cache" },
+      { "id": "a", "text": "A hot key overloading one node at peak traffic; add a local in-process cache" },
       { "id": "b", "text": "Synchronised expiry (an avalanche); add random jitter to the TTL" },
-      { "id": "c", "text": "Cache penetration; add a Bloom filter" },
-      { "id": "d", "text": "The cache is too small; add memory" }
+      { "id": "c", "text": "Cache penetration from the warm-up job's keys; add a Bloom filter of valid IDs" },
+      { "id": "d", "text": "The cache is too small for 2 million keys and is evicting; add more memory" }
     ],
     "correct": ["b"],
-    "explanation": "All 2 million keys share one write time and one TTL, so they expire together an hour later and the misses land on the database: an avalanche. Jitter (for example 3,600 ± 10%) spreads expiry over minutes. A hot key is a single key, not a daily spike tied to the warm-up schedule. Penetration involves keys that never exist. Memory size would cause evictions throughout the day, not a spike precisely one TTL after warming.",
+    "explanation": "All 2 million keys share one write time and one TTL, so they expire together an hour later and the misses land on the database: an avalanche. Jitter (for example 3,600 ± 10%) spreads expiry over minutes. A hot key is a single key, not a daily spike tied to the warm-up schedule. Penetration involves keys that never exist, but the warm-up keys are real. A cache that is too small would evict throughout the day, not cause a spike precisely one TTL after warming.",
     "topicId": "avalanche",
     "difficulty": 2
   },
@@ -146,10 +146,10 @@
       { "id": "a", "text": "Warm the cache from a list of hot keys before routing traffic" },
       { "id": "b", "text": "Rate-limit or circuit-break database reads and cap client retries" },
       { "id": "c", "text": "Replicate the cache across availability zones" },
-      { "id": "d", "text": "Lower every TTL to 1 second" }
+      { "id": "d", "text": "Lower every TTL to 1 second so stale entries from before the restart cannot linger" }
     ],
     "correct": ["a", "b", "c"],
-    "explanation": "Warming restores the hit rate before load arrives; rate limits and circuit breakers stop retries piling onto a struggling database; cross-zone replication means one failure does not empty the cache. Lowering TTLs makes the cache hold less and miss more, which increases database load.",
+    "explanation": "Warming restores the hit rate before load arrives; rate limits and circuit breakers stop retries piling onto a struggling database; cross-zone replication means one failure does not empty the cache. Lowering TTLs makes the cache hold less and miss more, which increases database load, and an empty cache has no stale entries to worry about anyway.",
     "topicId": "avalanche",
     "difficulty": 3
   },
@@ -158,13 +158,13 @@
     "type": "single",
     "prompt": "In XFetch, why does a key with a longer rebuild time (larger delta) refresh earlier?",
     "options": [
-      { "id": "a", "text": "The early-refresh term scales with delta, so expensive keys start refreshing further ahead of expiry, leaving time to finish" },
-      { "id": "b", "text": "Longer rebuilds are given a shorter TTL" },
-      { "id": "c", "text": "delta is the number of readers" },
-      { "id": "d", "text": "It doesn't; delta only affects the lock timeout" }
+      { "id": "a", "text": "The early-refresh term scales with delta, so slow rebuilds start further ahead of expiry" },
+      { "id": "b", "text": "XFetch gives keys with longer rebuilds a shorter TTL, so they expire and refresh sooner" },
+      { "id": "c", "text": "delta counts concurrent readers, so busier keys roll the refresh dice more often per second" },
+      { "id": "d", "text": "It doesn't; delta only sets the rebuild lock's timeout, not when a refresh is triggered" }
     ],
     "correct": ["a"],
-    "explanation": "The check is now − delta × beta × ln(random()) ≥ expiry, so a larger delta pushes the effective time later and refreshes start sooner, giving slow rebuilds time to complete before expiry. XFetch does not change the TTL. delta is the measured rebuild time, not a reader count. XFetch uses no lock at all.",
+    "explanation": "The check is now − delta × beta × ln(random()) ≥ expiry, so a larger delta pushes the effective time later and refreshes start sooner, giving slow rebuilds time to complete before expiry. XFetch does not change the TTL. delta is the measured rebuild time, not a reader count. XFetch uses no lock at all, so delta cannot be a lock timeout.",
     "topicId": "stampede",
     "difficulty": 3
   }

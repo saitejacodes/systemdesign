@@ -35,25 +35,25 @@
     "options": [
       {
         "id": "a",
-        "text": "It caches everything in RAM"
+        "text": "It keeps the whole table cached in RAM, so it never touches disk"
       },
       {
         "id": "b",
-        "text": "It reads only the needed columns, which compress well, instead of whole rows"
+        "text": "It reads only the needed columns, which compress well, not whole rows"
       },
       {
         "id": "c",
-        "text": "It uses B-tree indexes"
+        "text": "It walks a B-tree index on amount instead of scanning the table"
       },
       {
         "id": "d",
-        "text": "It skips the WHERE clause"
+        "text": "It pre-computes every SUM at write time, so queries just look it up"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Bytes scanned drop from all columns to a few, then compression shrinks them further.",
+    "explanation": "A column store reads only the columns a query names, and same-typed columns compress very well, so bytes scanned drop sharply. It doesn't rely on RAM-caching everything, B-tree lookups (useless for full-year aggregates) or precomputing every possible SUM.",
     "topicId": "columnar",
     "difficulty": 2
   },
@@ -94,25 +94,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Column stores can't store JSON"
+        "text": "Column stores can't hold the JSON cart payloads, so each write is converted"
       },
       {
         "id": "b",
-        "text": "Column stores are slow at frequent single-row updates: each touches every column and writes are batched; keep carts in an OLTP store"
+        "text": "Column stores are slow at frequent single-row updates; keep carts in OLTP"
       },
       {
         "id": "c",
-        "text": "The cart table needs more columns"
+        "text": "The warehouse needs more columns per cart so updates stay narrower"
       },
       {
         "id": "d",
-        "text": "Column stores don't support primary keys"
+        "text": "Column stores lack primary keys, so each update scans for the cart row"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Column layouts trade single-row write speed for scan speed. Shopping carts are a classic OLTP workload.",
+    "explanation": "Column layouts trade single-row write speed for scan speed: an update touches every column file and writes are batched. Carts are a classic OLTP workload. Warehouses can store JSON and have keys, and adding columns makes writes worse, not better.",
     "topicId": "columnar",
     "difficulty": 3
   },
@@ -155,25 +155,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Add more CPU to the primary"
+        "text": "Give the primary more CPU and RAM so the report and checkout both fit"
       },
       {
         "id": "b",
-        "text": "Move reporting off the primary: CDC or batch extracts from a replica into a column-oriented warehouse"
+        "text": "Move reporting off the primary: CDC or replica extracts to a warehouse"
       },
       {
         "id": "c",
-        "text": "Run the report at midnight on the primary"
+        "text": "Schedule the report at midnight on the primary when traffic is quiet"
       },
       {
         "id": "d",
-        "text": "Add indexes on every column"
+        "text": "Add an index on every column the GROUP BY touches to speed the scan"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Long analytical scans compete with transactions. A separate analytics path removes the contention. Midnight (c) isn't quiet for global users.",
+    "explanation": "Long analytical scans compete with transactions for CPU, I/O and cache; a separate analytics path (CDC or extracts into a column store) removes the contention. More hardware only delays it, global users mean there is no quiet midnight, and indexes don't help a full aggregate and slow every write.",
     "topicId": "pipelines",
     "difficulty": 3
   },
@@ -184,25 +184,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Nightly CSV exports"
+        "text": "Nightly CSV exports of each table, loaded into the warehouse in bulk"
       },
       {
         "id": "b",
-        "text": "Streaming inserts, updates and deletes from the database's log into other systems"
+        "text": "Streaming inserts, updates and deletes from the DB log to other systems"
       },
       {
         "id": "c",
-        "text": "A backup tool"
+        "text": "A backup tool that snapshots the database files for point-in-time restore"
       },
       {
         "id": "d",
-        "text": "A type of index"
+        "text": "An index type that records which rows changed since the last query"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "CDC reads the replication log and streams changes within seconds or minutes.",
+    "explanation": "CDC reads the database's replication log and streams each change to other systems within seconds or minutes. Nightly CSV dumps are batch extracts, snapshots are backups, and it isn't an index.",
     "topicId": "pipelines",
     "difficulty": 2
   },
@@ -213,7 +213,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Faster disks"
+        "text": "Faster SSD-backed disks under the bucket so file reads have lower latency"
       },
       {
         "id": "b",
@@ -221,17 +221,17 @@
       },
       {
         "id": "c",
-        "text": "Row-oriented storage"
+        "text": "A row-oriented layout so single-row updates become cheap on the lake"
       },
       {
         "id": "d",
-        "text": "Email alerts"
+        "text": "A built-in BI dashboard layer that queries the files with no engine"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "They make a set of files behave like a reliable table.",
+    "explanation": "Iceberg and Delta add a metadata layer that makes a set of files behave like a reliable table: atomic commits, schema evolution and time travel. They don't change the storage hardware, files stay columnar (Parquet), and you still need a query engine.",
     "topicId": "warehouse-lake",
     "difficulty": 2
   },
@@ -243,25 +243,25 @@
     "options": [
       {
         "id": "a",
-        "text": "A row-store table with one row per reading, kept forever"
+        "text": "A row-store table with one row per reading, indexed on time, kept forever"
       },
       {
         "id": "b",
-        "text": "A time-series database with time partitioning, compression, downsampling and retention"
+        "text": "A time-series DB with time partitions, compression, downsampling, retention"
       },
       {
         "id": "c",
-        "text": "A graph database"
+        "text": "A graph database linking each server node to its metric readings"
       },
       {
         "id": "d",
-        "text": "Object storage only, with no query engine"
+        "text": "Raw files in object storage only, scanned directly by the dashboards"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Time-series stores are built for high append rates, time-range queries and ageing data out.",
+    "explanation": "Time-series stores are built for high append rates, time-range queries, compression and ageing data out via downsampling and retention. A forever row table grows without bound, a graph model fits relationships not series, and raw files with no engine can't serve dashboards.",
     "topicId": "time-series",
     "difficulty": 2
   },

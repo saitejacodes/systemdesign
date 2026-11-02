@@ -1,62 +1,155 @@
 [
-  { "id": "q1", "type": "single", "prompt": "What is **vertical scaling**?", "options": [
-    { "id": "a", "text": "Adding more servers behind a load balancer" },
-    { "id": "b", "text": "Giving one machine more CPU, memory or faster disks" },
-    { "id": "c", "text": "Splitting a table's rows across databases" },
-    { "id": "d", "text": "Adding a cache in front of the database" }
-  ], "correct": ["b"], "explanation": "Vertical scaling means a bigger machine. (a) is horizontal scaling. (c) is sharding, a form of horizontal scaling for data. (d) is caching, which reduces load rather than adding capacity to one box.", "topicId": "vertical-horizontal", "difficulty": 1 },
-  { "id": "q2", "type": "multi", "prompt": "Which are real limits of vertical scaling? Select all that apply.", "options": [
-    { "id": "a", "text": "There is a largest machine you can buy" },
-    { "id": "b", "text": "One machine is a single point of failure" },
-    { "id": "c", "text": "It requires rewriting the application" },
-    { "id": "d", "text": "Resizing usually needs a restart" }
-  ], "correct": ["a", "b", "d"], "explanation": "Ceiling, SPOF and resize downtime are the classic limits. (c) is wrong: needing no code change is vertical scaling's main advantage.", "topicId": "vertical-limits", "difficulty": 1 },
-  { "id": "q3", "type": "single", "prompt": "Peak traffic is 4,800 requests/s and one app server handles 400 requests/s comfortably. With N+2 redundancy, how many servers do you run at peak?", "options": [
-    { "id": "a", "text": "10" },
-    { "id": "b", "text": "12" },
-    { "id": "c", "text": "14" },
-    { "id": "d", "text": "24" }
-  ], "correct": ["c"], "explanation": "4,800 / 400 = 12 servers for the load, plus 2 spares = 14. (a) undersizes the load. (b) has no spare capacity for failures or deploys. (d) doubles the fleet for no stated reason.", "topicId": "stateless-tier", "difficulty": 1 },
-  { "id": "q4", "type": "single", "prompt": "Why is the data tier harder to scale out than the app tier?", "options": [
-    { "id": "a", "text": "Databases cannot run on more than one machine" },
-    { "id": "b", "text": "Writes must reach every copy that needs them in an agreed order, even when machines fail" },
-    { "id": "c", "text": "Databases do not support load balancers" },
-    { "id": "d", "text": "SQL is slower than application code" }
-  ], "correct": ["b"], "explanation": "Keeping copies consistent under writes and failures is the core difficulty. (a) is false: replicas and shards exist. (c) is false: you can balance reads across replicas. (d) is irrelevant to scaling out.", "topicId": "data-tier", "difficulty": 2 },
-  { "id": "q5", "type": "single", "prompt": "In the usual order of data-tier scaling steps, which comes **last** because it is most expensive?", "options": [
-    { "id": "a", "text": "Adding a cache" },
-    { "id": "b", "text": "Adding read replicas" },
-    { "id": "c", "text": "Scaling up the database machine" },
-    { "id": "d", "text": "Sharding rows across databases by key" }
-  ], "correct": ["d"], "explanation": "Sharding brings cross-shard queries, rebalancing and hot keys, so it usually comes last. (a), (b) and (c) are cheaper steps that teams try first.", "topicId": "data-tier", "difficulty": 1 },
-  { "id": "q6", "type": "scenario", "scenario": "During a flash sale, p99 latency jumps from 120 ms to 4 s. Autoscaling has already doubled the app servers from 10 to 20. App CPU is at 30%. The database CPU is at 98% and its connection count is at its maximum.", "prompt": "What should the team do next?", "options": [
-    { "id": "a", "text": "Raise the autoscaling maximum to 60 app servers" },
-    { "id": "b", "text": "Reduce load on the database: cache hot reads, route reads to replicas and cap app connections with a pool" },
-    { "id": "c", "text": "Switch to a different programming language for the app" },
-    { "id": "d", "text": "Lower the autoscaling CPU target to 10%" }
-  ], "correct": ["b"], "explanation": "The bottleneck is the database, not the app tier. Caching, replicas and connection limits reduce pressure on it. (a) and (d) add more app servers, which open more connections and send more queries to the already saturated database. (c) does not address the database at all.", "topicId": "data-tier", "difficulty": 2 },
-  { "id": "q7", "type": "scenario", "scenario": "A team moves from one app server to six behind a load balancer. Users now report being logged out randomly, uploaded avatars sometimes show as broken images, and the nightly email digest is sent six times.", "prompt": "What is the common cause?", "options": [
-    { "id": "a", "text": "The load balancer is misconfigured" },
-    { "id": "b", "text": "The app keeps state on each server: in-memory sessions, local disk uploads and a scheduled job that every copy runs" },
-    { "id": "c", "text": "The database needs sharding" },
-    { "id": "d", "text": "Six servers is too many for the traffic" }
-  ], "correct": ["b"], "explanation": "Each symptom is local state: sessions in memory, files on one disk and a cron job on every copy. Fix with a shared session store, object storage and a single scheduler. (a) would not cause duplicate emails. (c) is unrelated. (d) does not explain any symptom.", "topicId": "stateless-tier", "difficulty": 2 },
-  { "id": "q8", "type": "scenario", "scenario": "A news site gets a predictable 5× traffic spike every weekday at 7:00 when a newsletter goes out. Autoscaling on CPU takes about 3 minutes to add instances, and the first 3 minutes after 7:00 show errors.", "prompt": "What is the most effective fix?", "options": [
-    { "id": "a", "text": "Use scheduled scaling to add capacity at 6:50 every weekday" },
-    { "id": "b", "text": "Raise the CPU target so instances work harder" },
-    { "id": "c", "text": "Remove the cooldown so autoscaling flaps faster" },
-    { "id": "d", "text": "Send the newsletter at random times" }
-  ], "correct": ["a"], "explanation": "Predictable peaks are best handled by scaling ahead of time. (b) gives less headroom, making the spike worse. (c) cannot make new instances boot faster and risks flapping. (d) changes the product to hide an infrastructure problem.", "topicId": "autoscaling", "difficulty": 2 },
-  { "id": "q9", "type": "single", "prompt": "Which signal is usually the best one to autoscale a **queue worker pool** on?", "options": [
-    { "id": "a", "text": "Number of HTTP requests per second" },
-    { "id": "b", "text": "Queue depth or the age of the oldest message" },
-    { "id": "c", "text": "Disk space used" },
-    { "id": "d", "text": "Number of deployments per day" }
-  ], "correct": ["b"], "explanation": "Workers exist to drain the queue, so backlog size or age tells you whether you have enough of them. (a) measures web traffic, not worker load. (c) and (d) are unrelated to throughput.", "topicId": "autoscaling", "difficulty": 2 },
-  { "id": "q10", "type": "single", "prompt": "Why keep app servers at around 60–70% CPU at peak instead of 95%?", "options": [
-    { "id": "a", "text": "CPUs wear out faster above 70%" },
-    { "id": "b", "text": "Headroom absorbs spikes, a lost instance and the minutes before autoscaling reacts, and latency rises sharply near full utilization" },
-    { "id": "c", "text": "Cloud providers charge more above 70%" },
-    { "id": "d", "text": "Load balancers stop sending traffic above 70%" }
-  ], "correct": ["b"], "explanation": "Queueing latency climbs steeply as utilization approaches 100%, and you need room for failures and slow autoscaling. (a), (c) and (d) are not true.", "topicId": "stateless-tier", "difficulty": 2 }
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "What is **vertical scaling**?",
+    "options": [
+      { "id": "a", "text": "Adding more identical servers behind a load balancer" },
+      { "id": "b", "text": "Giving one machine more CPU, memory or faster disks" },
+      { "id": "c", "text": "Splitting a table's rows across databases" },
+      { "id": "d", "text": "Adding a cache in front of the database" }
+    ],
+    "correct": ["b"],
+    "explanation": "Vertical scaling means a bigger machine. (a) is horizontal scaling. (c) is sharding, a form of horizontal scaling for data. (d) is caching, which reduces load rather than adding capacity to one box.",
+    "topicId": "vertical-horizontal",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "multi",
+    "prompt": "Which are real limits of vertical scaling? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "There is a largest machine you can buy" },
+      { "id": "b", "text": "One machine is a single point of failure" },
+      { "id": "c", "text": "It requires rewriting the application" },
+      { "id": "d", "text": "Resizing usually needs a restart" }
+    ],
+    "correct": ["a", "b", "d"],
+    "explanation": "Ceiling, SPOF and resize downtime are the classic limits. (c) is wrong: needing no code change is vertical scaling's main advantage.",
+    "topicId": "vertical-limits",
+    "difficulty": 1
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "Peak traffic is 4,800 requests/s and one app server handles 400 requests/s comfortably. With N+2 redundancy, how many servers do you run at peak?",
+    "options": [
+      { "id": "a", "text": "10" },
+      { "id": "b", "text": "12" },
+      { "id": "c", "text": "14" },
+      { "id": "d", "text": "24" }
+    ],
+    "correct": ["c"],
+    "explanation": "4,800 / 400 = 12 servers for the load, plus 2 spares = 14. (a) undersizes the load. (b) has no spare capacity for failures or deploys. (d) doubles the fleet for no stated reason.",
+    "topicId": "stateless-tier",
+    "difficulty": 1
+  },
+  {
+    "id": "q4",
+    "type": "single",
+    "prompt": "Why is the data tier harder to scale out than the app tier?",
+    "options": [
+      { "id": "a", "text": "Databases cannot run on more than one machine, so the only option is a bigger box" },
+      { "id": "b", "text": "Writes must reach every copy that needs them in an agreed order, even when machines fail" },
+      { "id": "c", "text": "Databases cannot sit behind load balancers, so read traffic cannot be spread out" },
+      { "id": "d", "text": "SQL queries are slower than application code, so each extra database node adds far less capacity" }
+    ],
+    "correct": ["b"],
+    "explanation": "Keeping copies consistent under writes and failures is the core difficulty. (a) is false: replicas and shards exist. (c) is false: you can balance reads across replicas. (d) is irrelevant to scaling out; query speed affects per-node capacity, not why adding nodes is hard.",
+    "topicId": "data-tier",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "In the usual order of data-tier scaling steps, which comes **last** because it is most expensive?",
+    "options": [
+      { "id": "a", "text": "Putting a cache in front of hot reads" },
+      { "id": "b", "text": "Adding read replicas for read traffic" },
+      { "id": "c", "text": "Scaling up the database machine" },
+      { "id": "d", "text": "Sharding rows across databases by key" }
+    ],
+    "correct": ["d"],
+    "explanation": "Sharding brings cross-shard queries, rebalancing and hot keys, so it usually comes last. (a), (b) and (c) are cheaper steps that teams try first.",
+    "topicId": "data-tier",
+    "difficulty": 1
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "scenario": "During a flash sale, p99 latency jumps from 120 ms to 4 s. Autoscaling has already doubled the app servers from 10 to 20. App CPU is at 30%. The database CPU is at 98% and its connection count is at its maximum.",
+    "prompt": "What should the team do next?",
+    "options": [
+      { "id": "a", "text": "Raise the autoscaling maximum to 60 app servers so each one handles a smaller share of load" },
+      { "id": "b", "text": "Cut database load: cache hot reads, send reads to replicas and cap app connections with a pool" },
+      { "id": "c", "text": "Rewrite the app in a faster compiled language so each request spends less time on CPU" },
+      { "id": "d", "text": "Lower the autoscaling CPU target to 10% so new app servers are added much earlier" }
+    ],
+    "correct": ["b"],
+    "explanation": "The bottleneck is the database, not the app tier. Caching, replicas and connection limits reduce pressure on it. (a) and (d) add more app servers, which open more connections and send more queries to the already saturated database. (c) speeds up app code that is only at 30% CPU and does not address the database at all.",
+    "topicId": "data-tier",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "scenario": "A team moves from one app server to six behind a load balancer. Users now report being logged out randomly, uploaded avatars sometimes show as broken images, and the nightly email digest is sent six times.",
+    "prompt": "What is the common cause?",
+    "options": [
+      { "id": "a", "text": "The load balancer is misconfigured and is spreading each user's requests across different servers" },
+      { "id": "b", "text": "The app keeps state on each server: in-memory sessions, uploads on local disk, and a cron on every copy" },
+      { "id": "c", "text": "The database needs sharding, since six servers now overload it and drop writes at random" },
+      { "id": "d", "text": "Six servers is too many for the traffic, so idle instances keep timing out and resetting" }
+    ],
+    "correct": ["b"],
+    "explanation": "Each symptom is local state: sessions in memory, files on one disk and a cron job on every copy. Fix with a shared session store, object storage and a single scheduler. (a) Spreading requests is the load balancer's job; sticky routing would only mask the sessions and would not explain duplicate emails. (c) is unrelated: an overloaded database does not drop writes at random or send digests six times. (d) does not explain any symptom.",
+    "topicId": "stateless-tier",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "scenario": "A news site gets a predictable 5× traffic spike every weekday at 7:00 when a newsletter goes out. Autoscaling on CPU takes about 3 minutes to add instances, and the first 3 minutes after 7:00 show errors.",
+    "prompt": "What is the most effective fix?",
+    "options": [
+      { "id": "a", "text": "Use scheduled scaling to add capacity at 6:50 every weekday" },
+      { "id": "b", "text": "Raise the CPU target so existing instances absorb more of the spike" },
+      { "id": "c", "text": "Remove the scale-out cooldown so autoscaling reacts much faster" },
+      { "id": "d", "text": "Send the newsletter at random times so the spike is spread out" }
+    ],
+    "correct": ["a"],
+    "explanation": "Predictable peaks are best handled by scaling ahead of time. (b) gives less headroom, making the spike worse. (c) cannot make new instances boot faster and risks flapping. (d) changes the product to hide an infrastructure problem.",
+    "topicId": "autoscaling",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "single",
+    "prompt": "Which signal is usually the best one to autoscale a **queue worker pool** on?",
+    "options": [
+      { "id": "a", "text": "Incoming HTTP requests per second at the API" },
+      { "id": "b", "text": "Queue depth or the age of the oldest message" },
+      { "id": "c", "text": "Disk space used on each worker's local volume" },
+      { "id": "d", "text": "Average CPU of the database the workers write to" }
+    ],
+    "correct": ["b"],
+    "explanation": "Workers exist to drain the queue, so backlog size or age tells you whether you have enough of them. (a) measures web traffic, not worker load. (c) is unrelated to throughput. (d) measures a downstream system; it says nothing about whether the backlog is growing.",
+    "topicId": "autoscaling",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "Why keep app servers at around 60–70% CPU at peak instead of 95%?",
+    "options": [
+      { "id": "a", "text": "CPUs wear out and thermally throttle much faster when they run above 70% for long periods" },
+      { "id": "b", "text": "Headroom absorbs spikes, a lost instance and slow autoscaling, and latency soars near full load" },
+      { "id": "c", "text": "Cloud providers bill CPU time at a higher rate once an instance runs above 70% utilization" },
+      { "id": "d", "text": "Load balancers stop routing new traffic to any instance whose CPU is reported above 70%" }
+    ],
+    "correct": ["b"],
+    "explanation": "Queueing latency climbs steeply as utilization approaches 100%, and you need room for failures and slow autoscaling. (a) is false: servers are built to run at high CPU. (c) is false: instances are billed by time, not by utilization. (d) is false: load balancers route by their algorithm and health checks, not by a 70% CPU cut-off.",
+    "topicId": "stateless-tier",
+    "difficulty": 2
+  }
 ]

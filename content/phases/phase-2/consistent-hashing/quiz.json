@@ -24,7 +24,7 @@
     "correct": [
       "c"
     ],
-    "explanation": "Going from mod 10 to mod 9 remaps about 90% of keys.",
+    "explanation": "Going from mod 10 to mod 9 changes the result for about 90% of keys, since a key stays put only when both formulas happen to agree. (a) is what consistent hashing would move. (b) underestimates how badly mod N reshuffles. (d) Keys on the failed node must move at minimum.",
     "topicId": "mod-n",
     "difficulty": 2
   },
@@ -36,25 +36,25 @@
     "options": [
       {
         "id": "a",
-        "text": "The new node was faulty"
+        "text": "The new node was misconfigured and dropped every write sent to it"
       },
       {
         "id": "b",
-        "text": "mod N remapped about 80% of keys, so the cache emptied at once and the database was flooded"
+        "text": "Changing to % 5 remapped about 80% of keys and emptied the cache"
       },
       {
         "id": "c",
-        "text": "Too many vnodes"
+        "text": "Only the new node's 20% share was cold, which overloaded the DB"
       },
       {
         "id": "d",
-        "text": "The hash function was slow"
+        "text": "The new node's slower hash function made every cache lookup time out"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Changing N reassigns most keys; every reassigned key is a miss. Consistent hashing would have moved about 20%.",
+    "explanation": "Changing N reassigns most keys: going from % 4 to % 5 moves about 80%, and every moved key is a miss, so the database is flooded. (a) A single faulty node would cost about 20% of keys, not a 15× jump. (c) describes what consistent hashing would have done; a 20% cold share wouldn't cause a 15× spike. (d) Hash cost is tiny and the same function runs everywhere.",
     "topicId": "mod-n",
     "difficulty": 3
   },
@@ -65,7 +65,7 @@
     "options": [
       {
         "id": "a",
-        "text": "The node with the closest ID number"
+        "text": "The node whose ID number is numerically closest"
       },
       {
         "id": "b",
@@ -73,17 +73,17 @@
       },
       {
         "id": "c",
-        "text": "A random node"
+        "text": "The node at the key's position mod the node count"
       },
       {
         "id": "d",
-        "text": "The node with most free memory"
+        "text": "The node currently holding the fewest stored keys"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Walk clockwise from the key to the first node.",
+    "explanation": "Hash the key onto the ring and walk clockwise to the first node. (a) 'Closest' in either direction isn't the rule, and node IDs aren't ring positions. (c) brings back mod N, which is what the ring replaces. (d) Ownership is fixed by position, not by current load.",
     "topicId": "ring",
     "difficulty": 1
   },
@@ -94,25 +94,25 @@
     "options": [
       {
         "id": "a",
-        "text": "None"
+        "text": "None; existing keys stay where they are"
       },
       {
         "id": "b",
-        "text": "About 1/(N+1)"
+        "text": "About 1/(N+1) of the keys"
       },
       {
         "id": "c",
-        "text": "About half"
+        "text": "About half, split with its neighbour"
       },
       {
         "id": "d",
-        "text": "All of them"
+        "text": "About N/(N+1), as with mod N"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "The new node takes only the arc between itself and its predecessor.",
+    "explanation": "The new node takes only the arc between itself and its predecessor, about 1/(N+1) of the keys; nothing else moves. (a) is the lesson's misconception: some keys must move to the new node. (c) The new node takes part of one arc, not half the keyspace. (d) is the mod-N figure the ring avoids.",
     "topicId": "ring",
     "difficulty": 2
   },
@@ -123,25 +123,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Scan every key"
+        "text": "Hash the key mod the node count"
       },
       {
         "id": "b",
-        "text": "Binary search over the sorted node positions"
+        "text": "Binary search over sorted node positions"
       },
       {
         "id": "c",
-        "text": "Ask every node"
+        "text": "Broadcast the key and let its owner reply"
       },
       {
         "id": "d",
-        "text": "Use mod N"
+        "text": "Walk every node position in ring order"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "O(log N) lookup over sorted ring positions.",
+    "explanation": "Keep node positions in a sorted array and binary search for the first one at or after the key's hash: O(log N). (a) is mod N, not the ring. (c) costs a network round to every node. (d) works but is O(N) per lookup.",
     "topicId": "ring",
     "difficulty": 2
   },
@@ -152,25 +152,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Slow hash functions"
+        "text": "One very popular key overloading the single node that owns it"
       },
       {
         "id": "b",
-        "text": "Uneven arcs from few random positions, and one neighbour absorbing a failed node's whole load"
+        "text": "Uneven arcs, and one neighbour absorbing a failed node's load"
       },
       {
         "id": "c",
-        "text": "Replication lag"
+        "text": "The ring's need to rehash every key when the node count changes"
       },
       {
         "id": "d",
-        "text": "Hot keys"
+        "text": "Slow lookups, since vnodes let you skip the sorted-position search"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Many small arcs per node even out load and spread failure impact. They don't fix hot keys (d).",
+    "explanation": "With only a few random positions, arcs are uneven, and when a node fails its single neighbour gets all its load. Many small arcs per node fix both. (a) Hot keys aren't fixed by vnodes; one key still lands on one node. (c) The ring already avoids rehashing everything. (d) Vnodes add positions, so the binary search is over more entries, not fewer.",
     "topicId": "vnodes",
     "difficulty": 2
   },
@@ -182,25 +182,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Same vnode count for all"
+        "text": "Keep 100 vnodes each and let eviction even out the load"
       },
       {
         "id": "b",
-        "text": "Give the 128 GB nodes about twice as many vnodes as the 64 GB nodes"
+        "text": "Give the 128 GB nodes about twice as many vnodes"
       },
       {
         "id": "c",
-        "text": "Put the big nodes at fixed positions"
+        "text": "Give the 64 GB nodes more vnodes so they get smaller arcs"
       },
       {
         "id": "d",
-        "text": "Use mod N"
+        "text": "Place the big nodes at fixed, evenly spaced ring positions"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Vnode count acts as a weight, so share of keys follows capacity.",
+    "explanation": "Vnode count acts as a weight, so each node's share of keys follows its capacity: twice the memory, about twice the vnodes. (a) Equal counts are what cause the imbalance. (c) More vnodes means more total arc, so this sends the small nodes even more keys. (d) Fixed positions don't change how many keys each node gets relative to its size.",
     "topicId": "vnodes",
     "difficulty": 2
   },
@@ -212,25 +212,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Too few vnodes; add more"
+        "text": "200 vnodes is too few; raising it to 1,000 per node spreads the key"
       },
       {
         "id": "b",
-        "text": "It balances keys, not traffic: one hot key always lands on one node; cache it locally or split it"
+        "text": "It balances keys, not traffic; cache the hot key locally or split it"
       },
       {
         "id": "c",
-        "text": "The ring is broken"
+        "text": "The key's hash collides with another hot key; switch hash functions"
       },
       {
         "id": "d",
-        "text": "Switch to mod N"
+        "text": "That node has too few replicas; add more and read from any of them"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "No placement scheme spreads one key's traffic. Local caching or key-splitting does.",
+    "explanation": "Consistent hashing spreads keys, not requests: one hot key always lands on one node. Cache it locally in app servers or split it into several sub-keys. (a) More vnodes still place one key on one node. (c) A collision isn't the cause; all the traffic is genuinely for one key. (d) Replicas can help reads only if the client spreads reads to them, and that is a separate fix, not something adding replicas does by itself.",
     "topicId": "uses",
     "difficulty": 3
   },
@@ -241,25 +241,25 @@
     "options": [
       {
         "id": "a",
-        "text": "On 3 random nodes"
+        "text": "On the next 3 vnode positions clockwise, whichever nodes own them"
       },
       {
         "id": "b",
-        "text": "On the next 3 distinct physical nodes clockwise (the preference list)"
+        "text": "On the next 3 distinct physical nodes clockwise from the key"
       },
       {
         "id": "c",
-        "text": "On the 3 largest nodes"
+        "text": "On 3 nodes picked at random, recorded in a central lookup table"
       },
       {
         "id": "d",
-        "text": "On every node"
+        "text": "On the owner plus the 2 nodes directly counter-clockwise from it"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Walk clockwise, skipping extra vnodes of nodes already chosen.",
+    "explanation": "Walk clockwise and take the next 3 distinct physical nodes (the preference list), skipping extra vnodes of nodes already chosen. (a) Consecutive vnodes can belong to the same machine, so two 'replicas' could share a node. (c) Dynamo avoids a central table; placement comes from the ring. (d) The direction is clockwise, matching how ownership is found.",
     "topicId": "replication",
     "difficulty": 2
   },
@@ -274,15 +274,15 @@
       },
       {
         "id": "b",
-        "text": "Cache client libraries choosing a memcached node"
+        "text": "Cache clients picking a memcached node"
       },
       {
         "id": "c",
-        "text": "Load balancers needing stable backend affinity"
+        "text": "Load balancers wanting sticky backends"
       },
       {
         "id": "d",
-        "text": "Sorting a list in memory"
+        "text": "Hashing user passwords before storage"
       }
     ],
     "correct": [
@@ -290,7 +290,7 @@
       "b",
       "c"
     ],
-    "explanation": "All three spread keys over changing sets of nodes. Sorting (d) isn't a placement problem.",
+    "explanation": "All of (a), (b) and (c) spread keys over a changing set of nodes. Password hashing (d) is a security hash, not a placement scheme; consistent hashing isn't itself a hash function.",
     "topicId": "uses",
     "difficulty": 2
   }

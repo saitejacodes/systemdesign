@@ -35,25 +35,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Durability"
+        "text": "Durability, since objects keep fewer copies than disks"
       },
       {
         "id": "b",
-        "text": "In-place updates, appends and renames"
+        "text": "In-place updates, appends and renames of files"
       },
       {
         "id": "c",
-        "text": "HTTP access"
+        "text": "Direct access over HTTP from browsers and clients"
       },
       {
         "id": "d",
-        "text": "Metadata"
+        "text": "Custom metadata attached alongside each stored file"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Objects are replaced whole; there's no POSIX semantics.",
+    "explanation": "Objects are written and replaced whole: there is no in-place edit, append or atomic rename (no POSIX semantics). Object storage is actually more durable than a single disk (many copies across zones), is accessed over HTTP, and supports per-object metadata.",
     "topicId": "types",
     "difficulty": 2
   },
@@ -64,25 +64,25 @@
     "options": [
       {
         "id": "a",
-        "text": "A real directory"
+        "text": "A real directory that S3 creates and tracks"
       },
       {
         "id": "b",
-        "text": "A key prefix; the namespace is flat"
+        "text": "Just a key prefix; the namespace is flat"
       },
       {
         "id": "c",
-        "text": "A separate bucket"
+        "text": "A separate bucket nested inside the parent"
       },
       {
         "id": "d",
-        "text": "A storage class"
+        "text": "A storage class applied to a group of keys"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Slashes are just characters in keys.",
+    "explanation": "The S3 namespace is flat; slashes are just characters in keys and the console shows shared prefixes as 'folders'. There is no directory object, no nested bucket, and storage class is set per object, not by folder.",
     "topicId": "s3-model",
     "difficulty": 2
   },
@@ -94,25 +94,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Add more database replicas"
+        "text": "Add more read replicas so backups and reads spread across copies"
       },
       {
         "id": "b",
-        "text": "Move images to object storage and keep only metadata (key, size, owner) in the database"
+        "text": "Move images to object storage; keep only metadata rows in the DB"
       },
       {
         "id": "c",
-        "text": "Compress the images in the table"
+        "text": "Compress the image bytes inside the table to shrink the 14 TB"
       },
       {
         "id": "d",
-        "text": "Shard the images table"
+        "text": "Shard the images table by user ID across several Postgres nodes"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Bytes in object storage, metadata in the DB. Replicas and shards copy or spread the same problem.",
+    "explanation": "Bytes belong in object storage and metadata (key, size, owner) in the database. Replicas copy all 14 TB again, shards spread the same bloat around, and images are already compressed formats so in-table compression barely helps.",
     "topicId": "not-in-db",
     "difficulty": 3
   },
@@ -123,25 +123,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Read any object in the bucket forever"
+        "text": "Read any object in the bucket for as long as the key exists"
       },
       {
         "id": "b",
-        "text": "Perform one specific operation on one object directly with storage, until it expires"
+        "text": "Do one operation on one object directly, until it expires"
       },
       {
         "id": "c",
-        "text": "Bypass authentication in your API"
+        "text": "Skip your API's authentication for all later requests too"
       },
       {
         "id": "d",
-        "text": "Change the bucket policy"
+        "text": "Change the bucket policy so the object becomes public"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "It's scoped to a method, key and expiry, signed by your service.",
+    "explanation": "A presigned URL is scoped to one method, one key and an expiry, signed by your service. It doesn't grant bucket-wide or permanent access, doesn't touch your API's auth, and can't change bucket policy.",
     "topicId": "presigned",
     "difficulty": 2
   },
@@ -153,25 +153,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Bigger app servers"
+        "text": "Scale app servers up to larger instances with more network bandwidth"
       },
       {
         "id": "b",
-        "text": "Presigned URLs so clients upload directly to object storage; the API only issues URLs and records metadata"
+        "text": "Presigned URLs so clients upload straight to storage; API records metadata"
       },
       {
         "id": "c",
-        "text": "A larger database"
+        "text": "Add a load balancer with sticky sessions so uploads spread more evenly"
       },
       {
         "id": "d",
-        "text": "Lower image quality"
+        "text": "Re-encode images at lower quality on the server before forwarding them"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Taking the bytes out of the app path removes the bandwidth and memory pressure.",
+    "explanation": "Presigned uploads take the bytes out of the app path, so the API only issues URLs and records metadata. Bigger servers, sticky load balancing or server-side re-encoding all still pull every byte through the app tier.",
     "topicId": "presigned",
     "difficulty": 2
   },
@@ -182,25 +182,25 @@
     "options": [
       {
         "id": "a",
-        "text": "It's the only way to set metadata"
+        "text": "It is the only upload method that lets you set custom metadata"
       },
       {
         "id": "b",
-        "text": "Parts upload in parallel and a failure retries one part, not the whole file"
+        "text": "Parts upload in parallel and a failure retries only one part"
       },
       {
         "id": "c",
-        "text": "It encrypts the file"
+        "text": "It encrypts each part separately, which a single PUT cannot do"
       },
       {
         "id": "d",
-        "text": "It makes the object smaller"
+        "text": "It deduplicates the parts, so the stored object ends up smaller"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Parallelism and resumability. (S3 also caps a single PUT at 5 GB.)",
+    "explanation": "Multipart gives parallelism and resumability: a failed part is retried alone (S3 also caps a single PUT at 5 GB). Metadata and encryption work on a normal PUT too, and parts are concatenated, not deduplicated.",
     "topicId": "multipart",
     "difficulty": 2
   },
@@ -211,25 +211,25 @@
     "options": [
       {
         "id": "a",
-        "text": "They're deleted instantly"
+        "text": "They are deleted automatically as soon as the client disconnects"
       },
       {
         "id": "b",
-        "text": "They stay stored (and billed) until aborted, so a lifecycle rule should clean them up"
+        "text": "They stay stored and billed until aborted; use a lifecycle rule"
       },
       {
         "id": "c",
-        "text": "They become public"
+        "text": "They become publicly readable because no object ACL applies yet"
       },
       {
         "id": "d",
-        "text": "They're merged automatically"
+        "text": "They are merged into a partial object after a short timeout"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Abort incomplete uploads with a lifecycle rule.",
+    "explanation": "Uploaded parts sit (and are billed) until the upload is completed or aborted, so add a lifecycle rule to abort incomplete uploads. Nothing deletes or merges them automatically, and they are never exposed publicly.",
     "topicId": "multipart",
     "difficulty": 2
   },
@@ -241,25 +241,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Archive is always more expensive"
+        "text": "Archive tiers always cost more per GB than the standard class"
       },
       {
         "id": "b",
-        "text": "Infrequent-access classes charge per GB retrieved (and have minimum durations), and these files are still read often"
+        "text": "IA classes charge per GB retrieved, and these files are read often"
       },
       {
         "id": "c",
-        "text": "Lifecycle rules are broken"
+        "text": "Lifecycle transitions copy objects, so you now pay for both copies"
       },
       {
         "id": "d",
-        "text": "The CDN stopped caching"
+        "text": "The CDN stops caching objects once they move to a colder class"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Cheaper storage with retrieval fees only pays off for data that's rarely read.",
+    "explanation": "Infrequent-access classes have cheaper storage but charge per GB retrieved (plus minimum durations), so daily-read files cost more there. Cold tiers are cheaper per GB stored, transitions don't leave a second billed copy, and storage class doesn't change CDN caching.",
     "topicId": "lifecycle",
     "difficulty": 3
   },
@@ -270,25 +270,25 @@
     "options": [
       {
         "id": "a",
-        "text": "They're shorter"
+        "text": "Hashed keys are shorter, so CDN lookups and logs are cheaper"
       },
       {
         "id": "b",
-        "text": "A changed file gets a new key, so long cache lifetimes are safe with no purges"
+        "text": "A changed file gets a new key, so long cache TTLs need no purges"
       },
       {
         "id": "c",
-        "text": "CDNs require them"
+        "text": "CDNs refuse to cache objects whose keys carry no version marker"
       },
       {
         "id": "d",
-        "text": "They encrypt the file"
+        "text": "Hashing the key encrypts the file so the CDN cannot read it"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Immutable keys make caching simple and correct.",
+    "explanation": "Content-hashed keys are immutable: a new version gets a new URL, so long cache lifetimes are safe and no purge is needed. Key length doesn't matter, CDNs cache any key, and hashing a name encrypts nothing.",
     "topicId": "cdn",
     "difficulty": 2
   }

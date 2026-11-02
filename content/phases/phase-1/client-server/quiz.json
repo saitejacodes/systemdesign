@@ -4,13 +4,13 @@
     "type": "single",
     "prompt": "Which definition of a **stateless** app server is correct?",
     "options": [
-      { "id": "a", "text": "It never reads or writes any data." },
+      { "id": "a", "text": "It never reads or writes persistent data itself, leaving every database call to a separate tier." },
       { "id": "b", "text": "It keeps no request-to-request data in its own memory, so any copy can serve any request." },
-      { "id": "c", "text": "It only serves GET requests." },
-      { "id": "d", "text": "It stores sessions on its local disk instead of in RAM." }
+      { "id": "c", "text": "It only handles safe, read-only GET requests, so repeating a request can never change anything." },
+      { "id": "d", "text": "It keeps sessions on its local disk instead of in RAM, so they survive a process restart." }
     ],
     "correct": ["b"],
-    "explanation": "Stateless means the server holds no data between requests that only it knows; state lives in the request or in shared stores. (a) is wrong: stateless servers read and write databases all the time. (c) confuses statelessness with HTTP method safety. (d) is still local state: another server cannot see that disk.",
+    "explanation": "Stateless means the server holds no data between requests that only it knows; state lives in the request or in shared stores. (a) is wrong: stateless app servers read and write databases all the time; stateless describes where state lives, not whether data exists. (c) confuses statelessness with HTTP method safety. (d) is still local state: surviving a restart does not help, because another server cannot see that disk.",
     "topicId": "stateless-stateful",
     "difficulty": 1
   },
@@ -19,13 +19,13 @@
     "type": "single",
     "prompt": "On a fresh HTTPS connection using TLS 1.3, roughly how many network round trips happen before the server receives the request?",
     "options": [
-      { "id": "a", "text": "Zero" },
-      { "id": "b", "text": "One (TCP)" },
+      { "id": "a", "text": "Zero (sent with the SYN)" },
+      { "id": "b", "text": "One (TLS rides on TCP)" },
       { "id": "c", "text": "Two (TCP, then TLS)" },
-      { "id": "d", "text": "Five" }
+      { "id": "d", "text": "Three (TCP, then 2x TLS)" }
     ],
     "correct": ["c"],
-    "explanation": "TCP needs one round trip for its handshake and TLS 1.3 needs one more, so the request goes out on the third trip. (a) only applies to a reused connection (or 0-RTT resumption, a special case). (b) forgets TLS. (d) overstates it; TLS 1.2 adds two round trips, not four.",
+    "explanation": "TCP needs one round trip for its handshake and TLS 1.3 needs one more, so the request goes out on the third trip. (a) only applies to a reused connection (or 0-RTT resumption, a special case); a fresh connection cannot carry the request on the SYN. (b) is wrong: the TLS handshake starts only after the TCP handshake completes, so it adds its own round trip. (d) describes TLS 1.2, which needs two round trips; TLS 1.3 cut that to one.",
     "topicId": "request-response",
     "difficulty": 2
   },
@@ -35,13 +35,13 @@
     "scenario": "You run 6 app servers with in-memory sessions and sticky routing. During each deploy, servers restart one at a time and support tickets spike: \"I got logged out\" and \"my cart is empty\".",
     "prompt": "What is the best fix?",
     "options": [
-      { "id": "a", "text": "Deploy at night so fewer users notice." },
+      { "id": "a", "text": "Deploy during the overnight low-traffic window so far fewer users are mid-session when servers restart." },
       { "id": "b", "text": "Move sessions and carts to a shared store such as Redis and turn off sticky routing." },
-      { "id": "c", "text": "Add more app servers so each restart affects fewer users." },
-      { "id": "d", "text": "Increase the session cookie lifetime." }
+      { "id": "c", "text": "Add more app servers so each rolling restart wipes a smaller share of users' sessions and carts." },
+      { "id": "d", "text": "Lengthen the session cookie lifetime so users stay logged in across the restart of their server." }
     ],
     "correct": ["b"],
-    "explanation": "The root cause is that the only copy of session state lives in process memory. Moving it to a shared store makes restarts harmless and removes the need for sticky routing. (a) and (c) shrink the damage but keep losing state. (d) changes nothing: the cookie still points at data that was wiped.",
+    "explanation": "The root cause is that the only copy of session state lives in process memory. Moving it to a shared store makes restarts harmless and removes the need for sticky routing. (a) and (c) shrink the damage but every restart still wipes real sessions. (d) changes nothing: the cookie still points at session data that was wiped from memory.",
     "topicId": "where-state-lives",
     "difficulty": 2
   },
@@ -96,13 +96,13 @@
     "type": "single",
     "prompt": "Why does statelessness make autoscaling simple?",
     "options": [
-      { "id": "a", "text": "Stateless servers use less CPU." },
+      { "id": "a", "text": "Stateless servers use much less CPU and memory, so each box can absorb more traffic." },
       { "id": "b", "text": "Adding or removing a server neither requires moving data nor loses any." },
-      { "id": "c", "text": "Stateless servers do not need a load balancer." },
-      { "id": "d", "text": "Autoscalers can only start stateless containers." }
+      { "id": "c", "text": "Stateless servers need no load balancer, since clients can connect to any copy directly." },
+      { "id": "d", "text": "Autoscalers can only start and stop stateless containers; stateful ones need manual scaling." }
     ],
     "correct": ["b"],
-    "explanation": "Because no server owns unique data, the platform can add copies under load and remove them later without migrating or destroying anything. (a) is unrelated: CPU depends on the work, not on where state lives. (c) is false; you still need to spread traffic. (d) is false; autoscalers can start anything, the problem is what you lose when they stop it.",
+    "explanation": "Because no server owns unique data, the platform can add copies under load and remove them later without migrating or destroying anything. (a) is unrelated: CPU and memory depend on the work, not on where state lives. (c) is false; you still need something to spread traffic and remove failed copies. (d) is false; autoscalers can start anything, the problem is what you lose when they stop a stateful instance.",
     "topicId": "statelessness-scaling",
     "difficulty": 1
   },
@@ -112,13 +112,13 @@
     "scenario": "You moved sessions to Redis and removed sticky routing. A week later, Redis restarts during a maintenance window with persistence turned off.",
     "prompt": "What happens, and what is the lesson?",
     "options": [
-      { "id": "a", "text": "Nothing; stateless app servers are immune to this." },
+      { "id": "a", "text": "Nothing changes for users; stateless app servers are immune because they never held the sessions." },
       { "id": "b", "text": "Every user is logged out; the state moved to Redis, so Redis now needs replication or persistence." },
-      { "id": "c", "text": "Only users on the restarted app server are logged out." },
-      { "id": "d", "text": "Sessions are rebuilt automatically from the load balancer." }
+      { "id": "c", "text": "Only users whose requests were pinned to one particular app server are logged out; the rest are fine." },
+      { "id": "d", "text": "Sessions are rebuilt automatically from the load balancer's routing table, so users stay logged in." }
     ],
     "correct": ["b"],
-    "explanation": "Moving state does not remove it. The session store is now the stateful component, so its durability matters: use a replica, persistence, or accept that a restart logs everyone out. (a) ignores where the state went. (c) describes the old in-memory design. (d) is false; load balancers do not keep session data.",
+    "explanation": "Moving state does not remove it. The session store is now the stateful component, so its durability matters: use a replica, persistence, or accept that a restart logs everyone out. (a) ignores where the state went: the app servers are stateless precisely because Redis holds the sessions. (c) describes the old in-memory sticky design; with Redis every user's session was in the restarted store. (d) is false; load balancers do not keep session data.",
     "topicId": "statelessness-scaling",
     "difficulty": 3
   },
@@ -127,13 +127,13 @@
     "type": "single",
     "prompt": "Which of these is a good use of an app server's local memory?",
     "options": [
-      { "id": "a", "text": "The only copy of each user's shopping cart" },
+      { "id": "a", "text": "The only copy of each user's shopping cart, since reading it from local RAM avoids a network hop" },
       { "id": "b", "text": "A copy of feature-flag settings that is refreshed every 30 seconds from a central store" },
-      { "id": "c", "text": "Upload progress that must survive a deploy" },
-      { "id": "d", "text": "Payment records awaiting settlement" }
+      { "id": "c", "text": "Progress of large uploads, which must survive a deploy so users can resume where they stopped" },
+      { "id": "d", "text": "Payment records awaiting settlement, held in memory so the nightly batch job can read them fast" }
     ],
     "correct": ["b"],
-    "explanation": "Memory is for copies, not for the only copy. A refreshed copy of feature flags can be rebuilt after a restart. (a), (c) and (d) are the only copies of data that matters, so losing them on a restart is real damage.",
+    "explanation": "Memory is for copies, not for the only copy. A refreshed copy of feature flags can be rebuilt after a restart. (a), (c) and (d) are the only copies of data that matters: saving a network hop or a fast batch read is not worth losing carts or payments on a restart, and upload progress held in memory cannot survive a deploy by definition.",
     "topicId": "where-state-lives",
     "difficulty": 1
   },

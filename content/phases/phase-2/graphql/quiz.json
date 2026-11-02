@@ -6,7 +6,7 @@
     "options": [
       {
         "id": "a",
-        "text": "A cache in front of the database"
+        "text": "A cache layer that sits in front of the database"
       },
       {
         "id": "b",
@@ -14,17 +14,17 @@
       },
       {
         "id": "c",
-        "text": "The schema file"
+        "text": "The schema file that declares every type and field"
       },
       {
         "id": "d",
-        "text": "A DNS server for the API"
+        "text": "A component that turns a GraphQL query into SQL"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "The engine calls a resolver for each field in the query. (a), (c) and (d) are different things.",
+    "explanation": "The engine calls a resolver for each field in the query to fetch its value. (a) A cache may sit behind a resolver, but it isn't one. (c) The schema declares types; resolvers implement them. (d) GraphQL doesn't translate to SQL; resolvers fetch from whatever source they like.",
     "topicId": "schema",
     "difficulty": 1
   },
@@ -35,25 +35,25 @@
     "options": [
       {
         "id": "a",
-        "text": "The field is deprecated"
+        "text": "The field is deprecated and should be avoided"
       },
       {
         "id": "b",
-        "text": "The field is required in mutations only"
+        "text": "The field is required in mutation inputs only"
       },
       {
         "id": "c",
-        "text": "The field is never null"
+        "text": "The field is non-null, so it is never null"
       },
       {
         "id": "d",
-        "text": "The field is indexed"
+        "text": "The field must always be requested by clients"
       }
     ],
     "correct": [
       "c"
     ],
-    "explanation": "! marks a non-null type. The others aren't GraphQL meanings of !.",
+    "explanation": "! marks a non-null type: the server promises never to return null for it. (a) Deprecation uses the @deprecated directive. (b) ! applies to output and input types alike, not only mutations. (d) Clients still choose which fields to request; ! says nothing about that.",
     "topicId": "schema",
     "difficulty": 1
   },
@@ -64,25 +64,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Slow databases"
+        "text": "Slow database queries behind REST endpoints"
       },
       {
         "id": "b",
-        "text": "Clients needing many round trips and receiving fields they don't use"
+        "text": "Many round trips and unused fields for clients"
       },
       {
         "id": "c",
-        "text": "TLS handshake latency"
+        "text": "Hard-to-cache responses for public content"
       },
       {
         "id": "d",
-        "text": "Server-side caching"
+        "text": "Too many services for a gateway to route"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Under-fetching (many round trips) and over-fetching (unused fields). It doesn't speed up databases (a) or TLS (c), and it makes caching harder (d).",
+    "explanation": "GraphQL targets under-fetching (many round trips) and over-fetching (unused fields). (a) It doesn't speed up databases; without batching it often adds queries. (c) It makes HTTP caching harder, not easier. (d) Routing many services is a gateway's job.",
     "topicId": "fetching",
     "difficulty": 2
   },
@@ -94,25 +94,25 @@
     "options": [
       {
         "id": "a",
-        "text": "The database needs more RAM"
+        "text": "The database is short on RAM; add memory so lookups hit cache"
       },
       {
         "id": "b",
-        "text": "The N+1 problem: one query for the list plus one per item; batch with a DataLoader"
+        "text": "N+1: one list query plus one per item; batch with a DataLoader"
       },
       {
         "id": "c",
-        "text": "The schema is too large; split it"
+        "text": "The query asks for too many fields; split it into two requests"
       },
       {
         "id": "d",
-        "text": "Clients should cache more"
+        "text": "Missing index on sellers.id; add one so each lookup is cheap"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "1 + 100 queries is classic N+1 from per-object resolvers. DataLoader batches the 100 lookups into one IN query. (a), (c) and (d) don't address the query pattern.",
+    "explanation": "1 + 100 queries is classic N+1 from per-object resolvers; DataLoader batches the 100 seller lookups into one IN query. (a) More RAM makes each query cheaper but still runs 101. (c) Splitting the request keeps the same per-item pattern. (d) An index speeds each lookup, but you still make 100 of them.",
     "topicId": "n-plus-one",
     "difficulty": 2
   },
@@ -123,25 +123,25 @@
     "options": [
       {
         "id": "a",
-        "text": "It compresses SQL"
+        "text": "It caches every query result across all users for minutes"
       },
       {
         "id": "b",
-        "text": "It collects keys requested during one tick and loads them in one batched query, caching results per request"
+        "text": "It batches keys from one tick into one query, cached per request"
       },
       {
         "id": "c",
-        "text": "It runs resolvers on the client"
+        "text": "It rewrites nested queries into a single SQL join up front"
       },
       {
         "id": "d",
-        "text": "It uses a CDN"
+        "text": "It runs each resolver in parallel on its own DB connection"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Batching plus per-request memoisation. The others don't describe DataLoader.",
+    "explanation": "DataLoader collects keys requested in one tick, loads them in one batched query, and memoises results for that request only. (a) Its cache is per request, not shared across users. (c) It doesn't rewrite queries into joins. (d) Running lookups in parallel still makes N queries and uses N connections.",
     "topicId": "n-plus-one",
     "difficulty": 2
   },
@@ -152,25 +152,25 @@
     "options": [
       {
         "id": "a",
-        "text": "GraphQL responses are binary"
+        "text": "GraphQL responses are a binary format CDNs can't read"
       },
       {
         "id": "b",
-        "text": "Queries are usually POSTs to one URL, so requests look identical and aren't cacheable"
+        "text": "Queries are POSTs to one URL, so caches can't key them"
       },
       {
         "id": "c",
-        "text": "GraphQL forbids caching"
+        "text": "The GraphQL spec forbids caching of query responses"
       },
       {
         "id": "d",
-        "text": "CDNs can't parse JSON"
+        "text": "Responses vary per field, so they're always too large"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "HTTP caches key on method and URL; POST to /graphql gives them nothing to key on. (a), (c) and (d) are false.",
+    "explanation": "HTTP caches key on method and URL; POST to /graphql gives them nothing to key on. (a) Responses are JSON. (c) The spec says nothing against caching; persisted queries over GET cache fine. (d) Response size isn't why CDNs skip them.",
     "topicId": "caching",
     "difficulty": 2
   },
@@ -185,15 +185,15 @@
       },
       {
         "id": "b",
-        "text": "CDN-cacheable GETs with stable URLs"
+        "text": "Cacheable GET URLs"
       },
       {
         "id": "c",
-        "text": "An allow-list that blocks arbitrary queries"
+        "text": "A query allow-list"
       },
       {
         "id": "d",
-        "text": "Automatic DataLoader batching"
+        "text": "Automatic batching"
       }
     ],
     "correct": [
@@ -201,7 +201,7 @@
       "b",
       "c"
     ],
-    "explanation": "Hashes replace query text (a), stable GET URLs cache (b), and unknown queries can be rejected (c). Batching (d) is a separate server concern.",
+    "explanation": "Hashes replace query text (a), stable GET URLs can be cached by a CDN (b), and unknown queries can be rejected (c). Batching (d) is a separate server concern handled by DataLoader.",
     "topicId": "caching",
     "difficulty": 2
   },
@@ -213,25 +213,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Enable HTTPS"
+        "text": "Require HTTPS and an API key so anonymous clients are identified"
       },
       {
         "id": "b",
-        "text": "Depth limits and query cost analysis that reject or rate-limit expensive queries"
+        "text": "Depth limits and query cost analysis that reject costly queries"
       },
       {
         "id": "c",
-        "text": "Add more database replicas"
+        "text": "Add read replicas so the deep queries spread across more servers"
       },
       {
         "id": "d",
-        "text": "Switch to HTTP/2"
+        "text": "Add DataLoader so the nested friend lookups are batched together"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Cost and depth limits stop the query before it runs. HTTPS (a) and HTTP/2 (d) don't limit work. Replicas (c) only raise the ceiling an attacker can still exceed.",
+    "explanation": "Cost and depth limits stop the query before it runs. (a) Identifying clients helps rate limiting but doesn't cap what one query can do. (c) Replicas only raise a ceiling an attacker can still exceed. (d) Batching cuts query count but the work still grows exponentially with depth.",
     "topicId": "protection",
     "difficulty": 3
   },
@@ -243,25 +243,25 @@
     "options": [
       {
         "id": "a",
-        "text": "GraphQL, so it can evolve"
+        "text": "GraphQL, so the single client can change fields freely"
       },
       {
         "id": "b",
-        "text": "REST with cacheable GETs behind a CDN"
+        "text": "REST with cacheable GETs served behind a CDN"
       },
       {
         "id": "c",
-        "text": "WebSockets"
+        "text": "WebSockets that push each article to open readers"
       },
       {
         "id": "d",
-        "text": "GraphQL subscriptions"
+        "text": "GraphQL subscriptions for live article updates"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Public, read-heavy, cacheable content is exactly where HTTP caching shines and GraphQL's flexibility isn't needed. WebSockets and subscriptions are for pushed updates.",
+    "explanation": "Public, read-heavy, cacheable content is where HTTP caching shines, and with one client GraphQL's flexibility isn't needed. (a) costs you easy CDN caching for little benefit. (c) and (d) are for pushed real-time updates, overkill for content that changes a few times a day.",
     "topicId": "when-not",
     "difficulty": 2
   },
@@ -272,25 +272,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Inside the database"
+        "text": "Inside the database, replacing SQL for apps"
       },
       {
         "id": "b",
-        "text": "At the edge serving front-end clients, calling REST or gRPC services behind it"
+        "text": "At the edge, calling REST or gRPC services"
       },
       {
         "id": "c",
-        "text": "Between the load balancer and DNS"
+        "text": "Between services, replacing internal gRPC"
       },
       {
         "id": "d",
-        "text": "Inside each microservice's storage layer"
+        "text": "In front of the CDN, caching every response"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "GraphQL is commonly an aggregation layer for clients. The other placements don't make sense.",
+    "explanation": "GraphQL is commonly an aggregation layer for front-end clients, calling REST or gRPC services behind it. (a) GraphQL is not a database and doesn't replace SQL. (c) Internal service calls usually favour gRPC for speed and strict contracts. (d) It sits behind the edge cache, not in front of it, and isn't a cache.",
     "topicId": "when-not",
     "difficulty": 2
   }

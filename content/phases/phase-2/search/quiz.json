@@ -6,7 +6,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Documents to their size"
+        "text": "Each document to the sorted list of words it contains"
       },
       {
         "id": "b",
@@ -14,17 +14,17 @@
       },
       {
         "id": "c",
-        "text": "Users to passwords"
+        "text": "Each document ID to its byte offset in the data file"
       },
       {
         "id": "d",
-        "text": "Shards to nodes"
+        "text": "Each shard to the nodes that hold its replica copies"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Term → postings list.",
+    "explanation": "An inverted index maps each term to its postings list: the documents that contain it. Document-to-words is the forward index, ID-to-offset is a plain lookup index, and shard placement is cluster routing metadata.",
     "topicId": "inverted-index",
     "difficulty": 1
   },
@@ -35,25 +35,25 @@
     "options": [
       {
         "id": "a",
-        "text": "B-trees don't store text"
+        "text": "B-trees can't store text columns, only fixed-width values"
       },
       {
         "id": "b",
-        "text": "A leading wildcard means there's no prefix to search the sorted order by"
+        "text": "A leading wildcard leaves no prefix to seek the sorted index by"
       },
       {
         "id": "c",
-        "text": "LIKE is deprecated"
+        "text": "LIKE is evaluated after the index scan, so it always reads rows"
       },
       {
         "id": "d",
-        "text": "Indexes only work on numbers"
+        "text": "Indexes only cover exact equality, never pattern matches at all"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Without a known prefix the database must scan every row.",
+    "explanation": "A B-tree is sorted, so it can seek by a known prefix ('jacket%') but not by '%jacket%', which forces a scan of every row. B-trees index text fine, LIKE with a fixed prefix can use the index, and B-trees support range and prefix lookups, not just equality.",
     "topicId": "inverted-index",
     "difficulty": 2
   },
@@ -64,25 +64,25 @@
     "options": [
       {
         "id": "a",
-        "text": "For speed"
+        "text": "Running one analyser lets the engine cache query and index tokens together"
       },
       {
         "id": "b",
-        "text": "So query terms are normalised the same way as indexed terms and can match"
+        "text": "So query terms are normalised like indexed terms and can match"
       },
       {
         "id": "c",
-        "text": "It's required by HTTP"
+        "text": "The analyser assigns the shard, so both must agree on routing"
       },
       {
         "id": "d",
-        "text": "To compress the index"
+        "text": "The analyser compresses postings, so queries need it to decode them"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "If documents are lowercased and stemmed but queries aren't, nothing matches.",
+    "explanation": "If documents are lowercased and stemmed but queries aren't, the query terms never equal the indexed terms and nothing matches. Analysers don't exist to share a cache, routing uses the document ID not the analyser, and postings compression is separate from text analysis.",
     "topicId": "analysis",
     "difficulty": 2
   },
@@ -94,7 +94,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Stop words"
+        "text": "Stop-word removal, so 'running' is dropped from the titles"
       },
       {
         "id": "b",
@@ -102,17 +102,17 @@
       },
       {
         "id": "c",
-        "text": "Sharding"
+        "text": "More shards, so each title is indexed on its own node"
       },
       {
         "id": "d",
-        "text": "Replication"
+        "text": "Replication, so the new titles reach every search node"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Stemming reduces 'shoes' to 'shoe' so both forms match.",
+    "explanation": "Stemming reduces 'shoes' to 'shoe' so both forms match the same term. Stop words are common words like 'the', and sharding or replication change where data lives, not which terms match.",
     "topicId": "analysis",
     "difficulty": 2
   },
@@ -152,7 +152,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Vector embeddings"
+        "text": "Vector embeddings so similar meanings match without shared words"
       },
       {
         "id": "b",
@@ -160,17 +160,17 @@
       },
       {
         "id": "c",
-        "text": "Spell checking"
+        "text": "Built-in spelling correction that rewrites misspelled query terms"
       },
       {
         "id": "d",
-        "text": "Sharding"
+        "text": "Popularity boosts that rank documents by clicks and sales data"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Repeated terms add diminishing credit, and long documents don't win just by being long.",
+    "explanation": "BM25 makes repeated terms add diminishing credit (saturation) and stops long documents winning just by being long. Embeddings are semantic search, spelling correction is a separate query step, and popularity signals are blended in outside BM25.",
     "topicId": "relevance",
     "difficulty": 2
   },
@@ -182,25 +182,25 @@
     "options": [
       {
         "id": "a",
-        "text": "The index is corrupt"
+        "text": "The index is corrupt; reindexing restores the correct ranking order"
       },
       {
         "id": "b",
-        "text": "Raw term frequency rewards repetition; BM25's saturation limits it, and business signals like ratings and sales improve ranking"
+        "text": "Raw TF rewards repetition; use BM25 saturation plus rating signals"
       },
       {
         "id": "c",
-        "text": "Too few shards"
+        "text": "Too few shards, so per-shard IDF is skewed toward the spammy listings"
       },
       {
         "id": "d",
-        "text": "Typos"
+        "text": "The analyser lacks stemming, so 'phone case' only matches spam text"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Saturation stops stuffing from winning; real ranking blends BM25 with quality signals.",
+    "explanation": "Raw term frequency rewards keyword stuffing. BM25's saturation caps the gain from repetition, and blending in business signals (ratings, sales) ranks good products higher. Nothing is corrupt, shard count doesn't create this pattern, and stemming affects matching, not repetition.",
     "topicId": "relevance",
     "difficulty": 3
   },
@@ -211,25 +211,25 @@
     "options": [
       {
         "id": "a",
-        "text": "It reads the database"
+        "text": "It queries the source database, then filters rows by relevance"
       },
       {
         "id": "b",
-        "text": "The coordinating node scatters the query to one copy of every shard and merges their top results"
+        "text": "The coordinator queries a copy of every shard and merges top hits"
       },
       {
         "id": "c",
-        "text": "Only the primary shard of shard 0 is searched"
+        "text": "It searches only shard 0's primary, which holds a global summary"
       },
       {
         "id": "d",
-        "text": "It searches the client cache"
+        "text": "It hashes the query terms to the one shard that owns those terms"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Scatter-gather across shards, then merge.",
+    "explanation": "Elasticsearch scatter-gathers: the coordinating node sends the query to one copy of every shard and merges their top results. The index is separate from the database, no single shard holds a global summary, and shards are split by document, not by term.",
     "topicId": "elasticsearch",
     "difficulty": 2
   },
@@ -240,25 +240,25 @@
     "options": [
       {
         "id": "a",
-        "text": "It has a 1-hour delay"
+        "text": "Index updates run as an hourly batch, so results trail by an hour"
       },
       {
         "id": "b",
-        "text": "New documents become searchable after a periodic refresh, by default about once a second"
+        "text": "New documents become searchable after a periodic (~1 s) refresh"
       },
       {
         "id": "c",
-        "text": "It only searches yesterday's data"
+        "text": "Writes go to a replica first and are searchable after it syncs"
       },
       {
         "id": "d",
-        "text": "It uses GPS time"
+        "text": "Queries read a nightly snapshot, so only yesterday's data appears"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Refresh makes recent writes visible.",
+    "explanation": "Writes are buffered and become visible when the shard refreshes, by default about once a second, hence near-real-time. There's no hourly batch or nightly snapshot, and writes go to the primary shard before replicas.",
     "topicId": "elasticsearch",
     "difficulty": 2
   },
@@ -270,25 +270,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Run a full BM25 search on every keystroke"
+        "text": "Run a full BM25 search on every keystroke behind a big result cache"
       },
       {
         "id": "b",
-        "text": "Precompute the top-k completions for each prefix in a trie, rebuilt offline, served from memory on replicas, with client debouncing"
+        "text": "Serve precomputed top-k per prefix from in-memory tries, debounced"
       },
       {
         "id": "c",
-        "text": "Query the database with LIKE 'prefix%'"
+        "text": "Query the products database with LIKE 'prefix%' on an indexed column"
       },
       {
         "id": "d",
-        "text": "Send all queries to one server"
+        "text": "Send every keystroke to one large server that holds the whole index"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "A memory lookup per keystroke fits the budget; full search per keystroke doesn't.",
+    "explanation": "A memory lookup per keystroke (precomputed top-k completions per prefix, rebuilt offline, served from replicas, plus client debouncing) fits 50 ms at 100k/s. Full search per keystroke is too heavy, a database LIKE doesn't rank by popularity or scale to that load, and one server is a bottleneck and single point of failure.",
     "topicId": "typeahead",
     "difficulty": 3
   },
@@ -299,25 +299,25 @@
     "options": [
       {
         "id": "a",
-        "text": "To save disk"
+        "text": "So the trie needs less memory, since child nodes can be dropped"
       },
       {
         "id": "b",
-        "text": "So a keystroke is a walk to the node plus returning its list, instead of exploring and ranking the whole subtree"
+        "text": "A keystroke becomes a walk to the node plus returning its list"
       },
       {
         "id": "c",
-        "text": "Tries require it"
+        "text": "Tries can't be traversed below a node unless a list is stored there"
       },
       {
         "id": "d",
-        "text": "To avoid caching"
+        "text": "So completions can skip the debounce step and fire on every key"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Precomputation moves the ranking work offline.",
+    "explanation": "Storing top-k at each node moves the ranking work offline: a keystroke just walks to the prefix node and returns its list instead of exploring and ranking the whole subtree. It costs memory rather than saving it, tries traverse fine without it, and debouncing is still useful.",
     "topicId": "typeahead",
     "difficulty": 2
   }

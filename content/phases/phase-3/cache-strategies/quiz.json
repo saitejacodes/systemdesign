@@ -1,95 +1,172 @@
 [
   {
-    "id": "q1", "type": "single",
+    "id": "q1",
+    "type": "single",
     "prompt": "In cache-aside, who loads data into the cache on a miss?",
-    "options": [ { "id": "a", "text": "The application" }, { "id": "b", "text": "The cache, using a loader function" }, { "id": "c", "text": "The database, through a trigger" }, { "id": "d", "text": "Nobody; cache-aside only caches writes" } ],
+    "options": [
+      { "id": "a", "text": "The application code, after reading the database" },
+      { "id": "b", "text": "The cache itself, using a registered loader function" },
+      { "id": "c", "text": "The database, by pushing rows through a trigger" },
+      { "id": "d", "text": "Nobody; cache-aside only caches values on writes" }
+    ],
     "correct": ["a"],
     "explanation": "In cache-aside the cache is passive; the application reads the database on a miss and stores the result. (b) describes read-through. (c) Databases don't push into the cache in this pattern. (d) Cache-aside is primarily a read pattern; writes just invalidate.",
-    "topicId": "cache-aside", "difficulty": 1
+    "topicId": "cache-aside",
+    "difficulty": 1
   },
   {
-    "id": "q2", "type": "scenario",
+    "id": "q2",
+    "type": "scenario",
     "prompt": "What happens to user-facing reads?",
     "scenario": "A service uses cache-aside with Redis. The Redis cluster becomes unreachable for ten minutes. The code treats any cache error as a miss.",
-    "options": [ { "id": "a", "text": "All reads fail until Redis returns" }, { "id": "b", "text": "Reads still succeed from the database, but slower, and the database takes the full read load" }, { "id": "c", "text": "Reads return stale data from Redis's disk" }, { "id": "d", "text": "Writes fail but reads are unaffected" } ],
+    "options": [
+      { "id": "a", "text": "All reads fail with errors until Redis comes back, since every read goes through it" },
+      { "id": "b", "text": "Reads still succeed from the database, just slower, and it takes the full read load" },
+      { "id": "c", "text": "Reads return slightly stale data from Redis's on-disk snapshot until it recovers" },
+      { "id": "d", "text": "Writes fail because the cache delete errors, but reads carry on exactly as before" }
+    ],
     "correct": ["b"],
-    "explanation": "Cache-aside falls back to the source of truth, so reads stay correct; the real danger is whether the database can absorb 100% of reads. (a) would only happen if cache errors weren't handled. (c) Unreachable means nothing is served from Redis at all. (d) Writes go to the database and only the delete fails, while reads are definitely affected in latency and load.",
-    "topicId": "cache-aside", "difficulty": 2
+    "explanation": "Cache-aside falls back to the source of truth, so reads stay correct; the real danger is whether the database can absorb 100% of reads. (a) would only happen if cache errors weren't handled; here they are treated as misses. (c) Unreachable means nothing is served from Redis at all, snapshot or not. (d) Writes go to the database and only the delete fails, while reads are definitely affected in latency and load.",
+    "topicId": "cache-aside",
+    "difficulty": 2
   },
   {
-    "id": "q3", "type": "single",
+    "id": "q3",
+    "type": "single",
     "prompt": "What is a practical advantage of a read-through cache library over hand-written cache-aside?",
-    "options": [ { "id": "a", "text": "It removes the need for a database" }, { "id": "b", "text": "Loading logic lives in one place, and concurrent misses for a key can be coalesced into one database read" }, { "id": "c", "text": "It guarantees the cache is never stale" }, { "id": "d", "text": "It makes writes faster" } ],
+    "options": [
+      { "id": "a", "text": "It lets the cache act as the source of truth, so the database is consulted far less often" },
+      { "id": "b", "text": "Loading logic lives in one place, and concurrent misses for a key coalesce into one load" },
+      { "id": "c", "text": "It guarantees the cache is never stale, because the library loads every value itself" },
+      { "id": "d", "text": "It makes writes faster, because the library batches them on the way to the database" }
+    ],
     "correct": ["b"],
-    "explanation": "Read-through centralises the miss path and good libraries coalesce concurrent loads. (a) The database is still the source of truth. (c) Staleness still depends on invalidation and TTLs. (d) Read-through is about reads; write speed depends on the write strategy.",
-    "topicId": "read-through", "difficulty": 2
+    "explanation": "Read-through centralises the miss path and good libraries coalesce concurrent loads. (a) The database is still the source of truth; the cache only holds copies. (c) Staleness still depends on invalidation and TTLs; loading on a miss says nothing about later updates. (d) Read-through is about reads; write speed depends on the write strategy.",
+    "topicId": "read-through",
+    "difficulty": 2
   },
   {
-    "id": "q4", "type": "single",
+    "id": "q4",
+    "type": "single",
     "prompt": "Under write-through, when is the client told the write succeeded?",
-    "options": [ { "id": "a", "text": "As soon as the cache has the value" }, { "id": "b", "text": "After both the cache and the database have the value" }, { "id": "c", "text": "After the next read confirms it" }, { "id": "d", "text": "After the TTL expires" } ],
+    "options": [
+      { "id": "a", "text": "As soon as the cache has the value, before the database" },
+      { "id": "b", "text": "After both the cache and the database have the value" },
+      { "id": "c", "text": "After the next read of the key confirms the new value" },
+      { "id": "d", "text": "After the database has it, before the cache is updated" }
+    ],
     "correct": ["b"],
-    "explanation": "Write-through is synchronous to both stores. (a) describes write-behind. (c) and (d) aren't part of any standard write strategy.",
-    "topicId": "write-through", "difficulty": 1
+    "explanation": "Write-through is synchronous to both stores. (a) describes write-behind. (c) No standard write strategy waits for a later read. (d) Acknowledging before the cache is written is closer to write-around; write-through waits for both.",
+    "topicId": "write-through",
+    "difficulty": 1
   },
   {
-    "id": "q5", "type": "multi",
+    "id": "q5",
+    "type": "multi",
     "prompt": "Which statements about write-through are true? (Choose all that apply.)",
-    "options": [ { "id": "a", "text": "A read straight after a write is usually a hit with the new value" }, { "id": "b", "text": "Each write pays the latency of both the cache and the database" }, { "id": "c", "text": "It guarantees cache and database can never disagree" }, { "id": "d", "text": "It can fill the cache with values nobody reads, so a TTL is still useful" } ],
+    "options": [
+      { "id": "a", "text": "A read straight after a write is usually a hit with the new value" },
+      { "id": "b", "text": "Each write pays the latency of both the cache and the database" },
+      { "id": "c", "text": "It guarantees cache and database can never disagree" },
+      { "id": "d", "text": "It can fill the cache with values nobody reads, so a TTL is still useful" }
+    ],
     "correct": ["a", "b", "d"],
     "explanation": "(a) The written value is placed in the cache. (b) Both hops are synchronous. (d) Every write is cached, read or not. (c) is false: the two updates aren't atomic, so a crash between them or concurrent writers in different orders can leave them out of step.",
-    "topicId": "write-through", "difficulty": 2
+    "topicId": "write-through",
+    "difficulty": 2
   },
   {
-    "id": "q6", "type": "scenario",
+    "id": "q6",
+    "type": "scenario",
     "prompt": "How many acknowledged writes could be lost?",
     "scenario": "A write-behind cache takes 8,000 writes a second, spread evenly across 4 nodes, and flushes each node's dirty entries to the database every 3 seconds. One node crashes just before its flush.",
-    "options": [ { "id": "a", "text": "About 2,000" }, { "id": "b", "text": "About 6,000" }, { "id": "c", "text": "About 24,000" }, { "id": "d", "text": "None, because the writes were acknowledged" } ],
+    "options": [
+      { "id": "a", "text": "About 2,000" },
+      { "id": "b", "text": "About 6,000" },
+      { "id": "c", "text": "About 24,000" },
+      { "id": "d", "text": "None, because the writes were acknowledged" }
+    ],
     "correct": ["b"],
     "explanation": "The node receives 8,000 ÷ 4 = 2,000 writes a second, and up to 3 seconds are unflushed: 6,000. (a) counts only one second. (c) counts all four nodes. (d) is the trap: under write-behind, acknowledged means 'in the cache', not 'durable'.",
-    "topicId": "write-behind", "difficulty": 2
+    "topicId": "write-behind",
+    "difficulty": 2
   },
   {
-    "id": "q7", "type": "scenario",
+    "id": "q7",
+    "type": "scenario",
     "prompt": "Which data is the safest fit for write-behind?",
     "scenario": "A social app is considering write-behind for four kinds of writes: new user sign-ups, payment captures, per-post view counters, and direct messages.",
-    "options": [ { "id": "a", "text": "New user sign-ups" }, { "id": "b", "text": "Payment captures" }, { "id": "c", "text": "Per-post view counters" }, { "id": "d", "text": "Direct messages" } ],
+    "options": [
+      { "id": "a", "text": "New user sign-up records" },
+      { "id": "b", "text": "Payment capture records" },
+      { "id": "c", "text": "Per-post view counters" },
+      { "id": "d", "text": "Direct messages between users" }
+    ],
     "correct": ["c"],
     "explanation": "View counters are high-rate, benefit from batching, and losing a few seconds of increments is harmless. (a) A lost sign-up means a user who was told their account exists has none. (b) Losing a captured payment is a financial error. (d) Users notice and care about lost messages.",
-    "topicId": "write-behind", "difficulty": 1
+    "topicId": "write-behind",
+    "difficulty": 1
   },
   {
-    "id": "q8", "type": "scenario",
+    "id": "q8",
+    "type": "scenario",
     "prompt": "Which write strategy fits this data best?",
     "scenario": "An audit service writes 30,000 audit events a second. Fewer than 1% are ever read, usually weeks later during an investigation. The service also caches hot user records in the same Redis cluster.",
-    "options": [ { "id": "a", "text": "Write-through, so every event is in the cache" }, { "id": "b", "text": "Write-behind, to make the writes faster" }, { "id": "c", "text": "Write-around: write events to the database only and let rare reads fill the cache" }, { "id": "d", "text": "Cache every event with no TTL" } ],
+    "options": [
+      { "id": "a", "text": "Write-through, so every event is in the cache for fast lookups later" },
+      { "id": "b", "text": "Write-behind, so the 30,000 writes a second are batched to the database" },
+      { "id": "c", "text": "Write-around: write events only to the database; rare reads fill the cache" },
+      { "id": "d", "text": "Cache every event with no TTL so investigations never touch the database" }
+    ],
     "correct": ["c"],
-    "explanation": "Write-around keeps rarely read data out of the cache, so it doesn't evict the hot user records. (a) would flood the cache with 30,000 entries a second that are almost never read. (b) risks losing audit events, which defeats their purpose. (d) is (a) made worse: the cache fills and evicts everything useful.",
-    "topicId": "write-around", "difficulty": 2
+    "explanation": "Write-around keeps rarely read data out of the cache, so it doesn't evict the hot user records. (a) would flood the cache with 30,000 entries a second that are almost never read. (b) still fills the cache and risks losing acknowledged audit events, which defeats their purpose. (d) is (a) made worse: the cache fills and evicts everything useful.",
+    "topicId": "write-around",
+    "difficulty": 2
   },
   {
-    "id": "q9", "type": "single",
+    "id": "q9",
+    "type": "single",
     "prompt": "Why is 'update the database, then delete the cache key' called write-around?",
-    "options": [ { "id": "a", "text": "The write goes around the cache to the database, and the cache refills only on a later read" }, { "id": "b", "text": "The write goes to the cache and around the database" }, { "id": "c", "text": "Writes go around in a ring of cache nodes" }, { "id": "d", "text": "The cache writes to the database on a timer" } ],
+    "options": [
+      { "id": "a", "text": "The write goes around the cache to the database, and the cache refills only on a later read" },
+      { "id": "b", "text": "The write goes to the cache only and goes around the database until a later flush" },
+      { "id": "c", "text": "Writes travel clockwise around a ring of cache nodes until the node that owns the key stores them" },
+      { "id": "d", "text": "The cache writes around to the database on a timer, batching dirty keys together" }
+    ],
     "correct": ["a"],
-    "explanation": "The cache isn't written; the database is, and a later miss reloads. (b) is closer to write-behind. (c) confuses this with consistent hashing. (d) describes write-behind flushing.",
-    "topicId": "write-around", "difficulty": 1
+    "explanation": "The cache isn't written; the database is, and a later miss reloads. (b) describes write-behind, where the database is skipped until a flush. (c) confuses this with consistent hashing. (d) describes write-behind flushing.",
+    "topicId": "write-around",
+    "difficulty": 1
   },
   {
-    "id": "q10", "type": "scenario",
+    "id": "q10",
+    "type": "scenario",
     "prompt": "Which design is the best starting point?",
     "scenario": "You're adding a cache for product pages: 50,000 reads a second, about 20 product edits a minute, edits by staff who don't mind a few seconds' delay, and a database that can handle about 10,000 reads a second.",
-    "options": [ { "id": "a", "text": "Cache-aside reads, update the database then delete the key on edits, plus a TTL" }, { "id": "b", "text": "Write-behind for product edits" }, { "id": "c", "text": "No cache; scale the database instead" }, { "id": "d", "text": "Write-through with no TTL" } ],
+    "options": [
+      { "id": "a", "text": "Cache-aside reads, update the database then delete the key on edits, plus a TTL" },
+      { "id": "b", "text": "Write-behind for product edits, so staff edits return instantly from the cache" },
+      { "id": "c", "text": "No cache; let the database serve all 50,000 reads and add indexes for speed" },
+      { "id": "d", "text": "Write-through with no TTL, so every edit lands in the cache immediately" }
+    ],
     "correct": ["a"],
-    "explanation": "A hugely read-heavy workload with rare edits that tolerate slight delay is the textbook case for cache-aside with delete on write and a TTL safety net. (b) risks losing edits to save time nobody needs saved. (c) The database is five times too small for the read load. (d) Write-through without a TTL lets any missed update or race persist forever.",
-    "topicId": "choosing", "difficulty": 2
+    "explanation": "A hugely read-heavy workload with rare edits that tolerate slight delay is the textbook case for cache-aside with delete on write and a TTL safety net. (b) risks losing edits to save time nobody needs saved. (c) The database can handle about 10,000 reads a second, five times too few, and indexes don't change that. (d) Write-through without a TTL lets any missed update or race persist forever.",
+    "topicId": "choosing",
+    "difficulty": 2
   },
   {
-    "id": "q11", "type": "single",
+    "id": "q11",
+    "type": "single",
     "prompt": "Which strategy carries a durability risk from the cache itself?",
-    "options": [ { "id": "a", "text": "Cache-aside" }, { "id": "b", "text": "Write-through" }, { "id": "c", "text": "Write-around" }, { "id": "d", "text": "Write-behind" } ],
+    "options": [
+      { "id": "a", "text": "Cache-aside" },
+      { "id": "b", "text": "Write-through" },
+      { "id": "c", "text": "Write-around" },
+      { "id": "d", "text": "Write-behind" }
+    ],
     "correct": ["d"],
     "explanation": "Only write-behind acknowledges writes before the database has them. (a) and (c) write the database directly. (b) writes the database synchronously before acknowledging.",
-    "topicId": "choosing", "difficulty": 1
+    "topicId": "choosing",
+    "difficulty": 1
   }
 ]

@@ -6,11 +6,11 @@
     "options": [
       {
         "id": "a",
-        "text": "Yes, exclusively"
+        "text": "Yes, an exclusive row lock until commit"
       },
       {
         "id": "b",
-        "text": "Yes, with a shared lock"
+        "text": "Yes, a shared lock that blocks writers"
       },
       {
         "id": "c",
@@ -18,13 +18,13 @@
       },
       {
         "id": "d",
-        "text": "Only on indexed columns"
+        "text": "Only rows it reads through an index"
       }
     ],
     "correct": [
       "c"
     ],
-    "explanation": "That's why read-then-write isn't protected without FOR UPDATE or a version check.",
+    "explanation": "Under MVCC a plain SELECT reads a snapshot and takes no row locks, which is why read-then-write isn't protected without FOR UPDATE, an atomic UPDATE or a version check. (a) and (b) describe FOR UPDATE and FOR SHARE, which you must ask for. (d) The access path doesn't change locking.",
     "topicId": "basics",
     "difficulty": 2
   },
@@ -35,25 +35,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Updates the row"
+        "text": "Applies the update immediately as it reads each row"
       },
       {
         "id": "b",
-        "text": "Locks the selected rows so other lockers wait until commit"
+        "text": "Locks the selected rows; other lockers wait until commit"
       },
       {
         "id": "c",
-        "text": "Reads uncommitted data"
+        "text": "Locks the whole table so no other query can read it"
       },
       {
         "id": "d",
-        "text": "Creates an index"
+        "text": "Marks the rows so concurrent writes fail on commit"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "It takes a row lock up front, making read-check-write safe.",
+    "explanation": "It takes row locks up front, so other transactions that try to lock or update those rows wait until you commit, making read-check-write safe. (a) It only reads; you still run the UPDATE. (c) It locks rows, not the table, and plain readers aren't blocked. (d) describes optimistic conflict detection, not FOR UPDATE.",
     "topicId": "pessimistic",
     "difficulty": 1
   },
@@ -76,13 +76,13 @@
       },
       {
         "id": "d",
-        "text": "LIMIT 1"
+        "text": "FOR NO KEY UPDATE"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "SKIP LOCKED skips rows other transactions hold. NOWAIT errors instead.",
+    "explanation": "SKIP LOCKED skips rows other transactions hold, so each worker gets a different job without waiting. (a) NOWAIT errors instead of skipping. (c) and (d) are lock strengths; on their own they still wait for a locked row.",
     "topicId": "pessimistic",
     "difficulty": 2
   },
@@ -94,25 +94,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Add more app servers"
+        "text": "Add more app servers so more sales run in parallel"
       },
       {
         "id": "b",
-        "text": "Split the stock into many bucket rows (or use an atomic conditional UPDATE) to remove the single hot row"
+        "text": "Split stock into bucket rows to remove the hot row"
       },
       {
         "id": "c",
-        "text": "Use Read Uncommitted"
+        "text": "Drop to Read Uncommitted so reads skip the lock"
       },
       {
         "id": "d",
-        "text": "Increase lock_timeout"
+        "text": "Raise lock_timeout so fewer waiting sales give up"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "The single row lock serialises everything; more servers just queue more. Buckets let transactions run in parallel.",
+    "explanation": "One row lock held 5 ms caps you at about 200 per second whatever the server count. Splitting stock into bucket rows (or an atomic conditional UPDATE that holds the lock only briefly) removes the single hot row. (a) More servers just queue more. (c) Postgres treats Read Uncommitted as Read Committed, and writers still lock. (d) A longer timeout means longer queues, not more throughput.",
     "topicId": "pessimistic",
     "difficulty": 3
   },
@@ -123,7 +123,7 @@
     "options": [
       {
         "id": "a",
-        "text": "It waits for a lock"
+        "text": "It takes a lock first and waits if another writer has it"
       },
       {
         "id": "b",
@@ -131,17 +131,17 @@
       },
       {
         "id": "c",
-        "text": "The database emails the user"
+        "text": "The database raises a deadlock error on the second write"
       },
       {
         "id": "d",
-        "text": "It reads uncommitted data"
+        "text": "It re-reads the row after writing and compares the values"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "A version mismatch means someone else committed first.",
+    "explanation": "The UPDATE matches on the version it read; if someone else committed first, the version changed and 0 rows are updated. (a) describes pessimistic locking. (c) A version mismatch isn't a deadlock. (d) Re-reading after the write is too late: the other change has already been overwritten.",
     "topicId": "optimistic",
     "difficulty": 2
   },
@@ -153,25 +153,25 @@
     "options": [
       {
         "id": "a",
-        "text": "SELECT … FOR UPDATE held while the user edits"
+        "text": "SELECT … FOR UPDATE held on the page while the user edits"
       },
       {
         "id": "b",
-        "text": "Optimistic locking with a version column; on conflict, show a merge screen"
+        "text": "A version column; on conflict, show a merge screen"
       },
       {
         "id": "c",
-        "text": "Table locks"
+        "text": "Last write wins; conflicts are rare enough to ignore"
       },
       {
         "id": "d",
-        "text": "No concurrency control"
+        "text": "A table lock taken when a user opens any page to edit"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Never hold DB locks over user think-time. Conflicts are rare, so optimistic fits.",
+    "explanation": "Never hold database locks over user think-time; conflicts are rare, so optimistic locking with a merge screen fits. (a) holds a lock and a connection for up to 20 minutes. (c) silently loses one person's edits when it does happen. (d) blocks every other editor on the whole wiki.",
     "topicId": "optimistic",
     "difficulty": 2
   },
@@ -183,25 +183,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Optimistic locking under high contention: most writes fail the version check and retry, wasting work"
+        "text": "High contention: most writes fail the version check and retry"
       },
       {
         "id": "b",
-        "text": "The database is out of disk"
+        "text": "Deadlocks: the retries lock rows in a different order each time"
       },
       {
         "id": "c",
-        "text": "Indexes are missing"
+        "text": "Lock waits: each retry queues behind a row lock held by others"
       },
       {
         "id": "d",
-        "text": "Deadlocks"
+        "text": "A missing index on version makes each UPDATE scan the table"
       }
     ],
     "correct": [
       "a"
     ],
-    "explanation": "With hundreds of writers on one row, nearly every attempt conflicts. Pessimistic locking or removing the hot row works better.",
+    "explanation": "With hundreds of writers on one row, nearly every attempt fails the version check and retries, burning CPU. Pessimistic locking or removing the hot row works better. (b) Optimistic writes on one row don't form lock cycles. (c) Optimistic locking doesn't hold locks across the read; the waste is retries, not waits. (d) The UPDATE finds the row by id; version is just an extra condition.",
     "topicId": "optimistic",
     "difficulty": 3
   },
@@ -212,25 +212,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Longer transactions"
+        "text": "Keep each transfer in a longer transaction"
       },
       {
         "id": "b",
-        "text": "Always lock accounts in a consistent order, such as lower ID first"
+        "text": "Always lock accounts in a consistent order"
       },
       {
         "id": "c",
-        "text": "Disable deadlock detection"
+        "text": "Lock each account with NOWAIT, never retry"
       },
       {
         "id": "d",
-        "text": "Use more indexes"
+        "text": "Raise the deadlock_timeout to a few seconds"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Consistent ordering removes cycles.",
+    "explanation": "If every transfer locks the lower account ID first, two transfers can't each hold what the other needs, so no cycle forms. (a) Longer transactions make overlaps more likely. (c) NOWAIT turns waits into errors, and not retrying fails real transfers. (d) A longer timeout only delays detection; the deadlock still happens.",
     "topicId": "deadlocks",
     "difficulty": 2
   },
@@ -241,25 +241,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Waits forever"
+        "text": "Waits until lock_timeout ends both"
       },
       {
         "id": "b",
-        "text": "Aborts one of the transactions with an error"
+        "text": "Aborts one transaction with an error"
       },
       {
         "id": "c",
-        "text": "Restarts the server"
+        "text": "Lets the older transaction go first"
       },
       {
         "id": "d",
-        "text": "Commits both"
+        "text": "Rolls back both and retries them"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "The victim must be retried by the application.",
+    "explanation": "Postgres picks a victim and aborts it with a deadlock error; the application must retry it. (a) Deadlock detection fires without any lock_timeout. (c) It doesn't reorder waits; a cycle can't be resolved without aborting someone. (d) It aborts only one, and never retries for you.",
     "topicId": "deadlocks",
     "difficulty": 2
   },
@@ -270,25 +270,25 @@
     "options": [
       {
         "id": "a",
-        "text": "To encrypt the lock"
+        "text": "So holders can renew the lease without asking the lock service"
       },
       {
         "id": "b",
-        "text": "So storage can reject writes from a holder whose lease expired during a pause"
+        "text": "So storage rejects writes from a holder whose lease expired"
       },
       {
         "id": "c",
-        "text": "To make the lock faster"
+        "text": "So two clients can't acquire the lock at the same instant"
       },
       {
         "id": "d",
-        "text": "To avoid using a lease"
+        "text": "So the lock service can tell which holder crashed and why"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "A paused process may still believe it holds the lock; an increasing token lets storage spot stale holders.",
+    "explanation": "A process paused by GC or the network may still believe it holds the lock after its lease expired; an increasing token lets storage reject its stale writes. (a) Renewal still goes through the lock service. (c) Mutual exclusion at acquire time is the lock service's job; fencing protects against holders acting late. (d) Tokens don't diagnose crashes.",
     "topicId": "distributed",
     "difficulty": 3
   }

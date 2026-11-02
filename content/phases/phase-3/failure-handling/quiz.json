@@ -4,13 +4,13 @@
     "type": "single",
     "prompt": "What does adding jitter to exponential backoff fix?",
     "options": [
-      { "id": "a", "text": "It makes each individual retry more likely to succeed" },
-      { "id": "b", "text": "It spreads out retries from clients that failed at the same moment, so they don't arrive in synchronised spikes" },
-      { "id": "c", "text": "It reduces the total number of retry attempts" },
-      { "id": "d", "text": "It makes retries safe for non-idempotent operations" }
+      { "id": "a", "text": "It makes each individual retry more likely to succeed by avoiding the busiest instants" },
+      { "id": "b", "text": "It spreads out retries from clients that failed together, so they don't arrive as one spike" },
+      { "id": "c", "text": "It cuts the total number of retry attempts, since some clients give up during the wait" },
+      { "id": "d", "text": "It makes retries safe for non-idempotent operations by keeping duplicates far apart" }
     ],
     "correct": ["b"],
-    "explanation": "Clients that failed together follow the same backoff schedule and retry together; randomising the delay spreads them over a window. (a) is wrong: a single retry's chance of success depends on the server's state, not on randomness. (c) is wrong: jitter changes timing, not the attempt cap. (d) is wrong: duplicates still happen; only idempotency makes retries safe.",
+    "explanation": "Clients that failed together follow the same backoff schedule and retry together; randomising the delay spreads them over a window. (a) is wrong: a single retry's chance of success depends on the server's state, not on its own random delay. (c) is wrong: jitter changes timing, not the attempt cap. (d) is wrong: spacing duplicates out doesn't stop them happening; only idempotency makes retries safe.",
     "topicId": "retries-backoff",
     "difficulty": 1
   },
@@ -35,13 +35,13 @@
     "prompt": "How many calls can reach the database for one user request in the worst case, and what is the fix?",
     "scenario": "A mobile app retries failed requests 3 times (4 attempts total). The API gateway also makes up to 4 attempts, the order service up to 4 attempts to the inventory service, and the inventory service up to 4 attempts to the database. The database slows down during a failover.",
     "options": [
-      { "id": "a", "text": "16 calls; add jitter" },
+      { "id": "a", "text": "16 calls; add jitter to spread retries across the window" },
       { "id": "b", "text": "256 calls; retry at one layer or enforce a retry budget" },
-      { "id": "c", "text": "4 calls; nothing to fix" },
+      { "id": "c", "text": "4 calls; each layer reuses the app's retry, so nothing to fix" },
       { "id": "d", "text": "256 calls; increase the database connection pool" }
     ],
     "correct": ["b"],
-    "explanation": "Four layers each making up to 4 attempts multiply: 4 × 4 × 4 × 4 = 256. Retrying at one layer (close to the failure) or capping retries as a share of traffic stops the amplification. (a) undercounts and jitter doesn't reduce volume. (c) ignores that every layer retries independently. (d) gets the count right but a bigger pool feeds more load into a database that is already struggling.",
+    "explanation": "Four layers each making up to 4 attempts multiply: 4 × 4 × 4 × 4 = 256. Retrying at one layer (close to the failure) or capping retries as a share of traffic stops the amplification. (a) undercounts and jitter doesn't reduce volume. (c) ignores that every layer retries independently; nothing is shared between them. (d) gets the count right but a bigger pool feeds more load into a database that is already struggling.",
     "topicId": "retries-backoff",
     "difficulty": 3
   },
@@ -66,13 +66,13 @@
     "prompt": "What is happening?",
     "scenario": "A Kafka consumer for the `payments` topic has stopped making progress on partition 3, while partitions 0 to 2 are fine. Consumer lag on partition 3 grows by thousands per minute. Logs show the same offset, 88412, failing deserialisation over and over.",
     "options": [
-      { "id": "a", "text": "A rebalance storm" },
+      { "id": "a", "text": "A rebalance storm that keeps reassigning partition 3 between consumers" },
       { "id": "b", "text": "A poison message causing head-of-line blocking on partition 3" },
-      { "id": "c", "text": "The broker for partition 3 is down" },
-      { "id": "d", "text": "The consumer's prefetch is too low" }
+      { "id": "c", "text": "The broker leading partition 3 is down, so its fetches keep failing" },
+      { "id": "d", "text": "The consumer's prefetch is too low, so partition 3 can't keep up" }
     ],
     "correct": ["b"],
-    "explanation": "One record at a fixed offset fails every time, and because the consumer won't commit past it, the whole ordered partition stalls behind it. The fix is to publish it to a dead-letter topic and commit past it. (a) would affect all partitions and show reassignment logs. (c) would show connection errors, not repeated deserialisation failures at one offset. (d) slows throughput but doesn't freeze a single offset.",
+    "explanation": "One record at a fixed offset fails every time, and because the consumer won't commit past it, the whole ordered partition stalls behind it. The fix is to publish it to a dead-letter topic and commit past it. (a) would affect all partitions and show reassignment logs. (c) would show connection or fetch errors, not repeated deserialisation failures at one offset. (d) slows throughput but doesn't freeze a single offset.",
     "topicId": "poison-messages",
     "difficulty": 2
   },
@@ -81,10 +81,10 @@
     "type": "single",
     "prompt": "In Amazon SQS, what moves a message to a dead-letter queue?",
     "options": [
-      { "id": "a", "text": "The consumer explicitly sends it to the DLQ" },
-      { "id": "b", "text": "Its receive count exceeds the maxReceiveCount in the source queue's redrive policy" },
-      { "id": "c", "text": "It sits in the queue longer than the visibility timeout" },
-      { "id": "d", "text": "Its message retention period expires" }
+      { "id": "a", "text": "The consumer code explicitly sends it to the DLQ after its own retries run out" },
+      { "id": "b", "text": "Its receive count passes maxReceiveCount in the source queue's redrive policy" },
+      { "id": "c", "text": "It sits in the queue past the visibility timeout without being deleted by anyone" },
+      { "id": "d", "text": "Its message retention period expires, and SQS moves it rather than deleting it" }
     ],
     "correct": ["b"],
     "explanation": "SQS counts how many times a message has been received; once that exceeds maxReceiveCount it is moved to the DLQ named in the redrive policy. (a) is possible as an application pattern but isn't the SQS mechanism. (c) only makes the message visible again for redelivery. (d) deletes the message; it does not dead-letter it.",
@@ -97,10 +97,10 @@
     "prompt": "What went wrong, and what should change?",
     "scenario": "An SQS DLQ was set up for an invoice queue with default settings. Three weeks after a bad deploy, finance reports missing invoices. The DLQ is empty and there were no alerts.",
     "options": [
-      { "id": "a", "text": "The DLQ was never used; the bug lost messages earlier" },
-      { "id": "b", "text": "Dead letters expired under the DLQ's retention period because nobody was alerted; alarm on DLQ depth and set DLQ retention to the 14-day maximum" },
-      { "id": "c", "text": "SQS DLQs automatically redrive after a week" },
-      { "id": "d", "text": "The visibility timeout was too long" }
+      { "id": "a", "text": "The DLQ was never used; the bad deploy lost the invoices before they reached the queue" },
+      { "id": "b", "text": "Dead letters expired unseen under default retention; alarm on DLQ depth and use 14-day retention" },
+      { "id": "c", "text": "SQS DLQs automatically redrive messages back after a week, where they failed again" },
+      { "id": "d", "text": "The visibility timeout was too long, so SQS deleted the invoices before redelivery" }
     ],
     "correct": ["b"],
     "explanation": "SQS's default retention is 4 days and the maximum is 14; with no alarm, dead-lettered invoices sat unseen and were deleted. An alarm on DLQ depth above zero and maximum retention give people time to act. (a) contradicts the setup: failures with a redrive policy go to the DLQ. (c) is false: redrive is manual. (d) delays redelivery but doesn't delete messages.",
@@ -113,9 +113,9 @@
     "prompt": "After fixing a bug, you have 2 million messages in a DLQ. What is the safest redrive approach?",
     "options": [
       { "id": "a", "text": "Redrive all of them at full speed so they are processed as fast as possible" },
-      { "id": "b", "text": "Delete them and ask users to retry" },
+      { "id": "b", "text": "Delete them and ask affected users to retry their actions once the fix is live" },
       { "id": "c", "text": "Redrive at a throttled rate, after confirming the fix on a small sample" },
-      { "id": "d", "text": "Leave them in the DLQ permanently" }
+      { "id": "d", "text": "Leave them in the DLQ permanently as a record, and only process new messages" }
     ],
     "correct": ["c"],
     "explanation": "Testing on a sample proves the fix, and throttling keeps the replay from becoming a load spike competing with live traffic. (a) can overload consumers and dependencies. (b) and (d) throw away work the DLQ was there to protect.",
@@ -159,13 +159,13 @@
     "prompt": "What is the most likely cause?",
     "scenario": "A RabbitMQ queue has 50,000 ready messages. Of five consumers, one shows 5,000 unacknowledged messages and is at 100% CPU; the other four are nearly idle with almost no unacked messages. Messages take 200 ms to process. Consumers were started with no prefetch limit.",
     "options": [
-      { "id": "a", "text": "The queue is partitioned unevenly" },
-      { "id": "b", "text": "Unlimited prefetch let the first consumer hoard messages; set a prefetch near its concurrency" },
-      { "id": "c", "text": "The four idle consumers have crashed" },
-      { "id": "d", "text": "Prefetch is too low, so consumers wait on round trips" }
+      { "id": "a", "text": "The queue is partitioned unevenly, so most messages hash to one consumer's shard" },
+      { "id": "b", "text": "Unlimited prefetch let one consumer hoard messages; set prefetch near its concurrency" },
+      { "id": "c", "text": "The four idle consumers have crashed but their connections still look healthy" },
+      { "id": "d", "text": "Prefetch is too low, so the idle consumers keep waiting on broker round trips" }
     ],
     "correct": ["b"],
-    "explanation": "Without a prefetch limit RabbitMQ pushes as many messages as the consumer will take, so one consumer holds thousands while others starve. A limit (for example 2 to 3 times its concurrency) balances load. (a) is wrong: a classic RabbitMQ queue isn't partitioned. (c) is unlikely: crashed consumers would disappear, not sit idle and connected. (d) is the opposite symptom.",
+    "explanation": "Without a prefetch limit RabbitMQ pushes as many messages as the consumer will take, so one consumer holds thousands while others starve. A limit (for example 2 to 3 times its concurrency) balances load. (a) is wrong: a classic RabbitMQ queue isn't partitioned. (c) is unlikely: crashed consumers would disappear, not sit idle and connected. (d) is the opposite problem: with no limit, prefetch is unbounded, not too low.",
     "topicId": "prefetch",
     "difficulty": 2
   },

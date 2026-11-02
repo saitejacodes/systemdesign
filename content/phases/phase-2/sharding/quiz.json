@@ -95,7 +95,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Range queries are slow"
+        "text": "Range queries over time become slow because they span shards"
       },
       {
         "id": "b",
@@ -103,17 +103,17 @@
       },
       {
         "id": "c",
-        "text": "It can't use indexes"
+        "text": "Timestamp keys can't be indexed, so lookups scan each shard"
       },
       {
         "id": "d",
-        "text": "It needs a directory"
+        "text": "It needs a separate directory service to locate every row"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Sequential keys concentrate writes.",
+    "explanation": "Sequential keys concentrate writes: every insert lands on the newest range, so one shard runs hot while the rest idle. Time-range queries are actually a strength of range sharding, timestamps index fine, and range routing only needs a small boundary table.",
     "topicId": "strategies",
     "difficulty": 2
   },
@@ -183,25 +183,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Keys are encrypted"
+        "text": "Shard keys are hashed one-way, so the new value can't be routed"
       },
       {
         "id": "b",
-        "text": "Changing it means moving the row to a different shard, a cross-shard operation"
+        "text": "Changing it means moving the row to another shard, a cross-shard op"
       },
       {
         "id": "c",
-        "text": "Indexes break"
+        "text": "Secondary indexes on the key break and must be rebuilt from scratch"
       },
       {
         "id": "d",
-        "text": "It slows reads"
+        "text": "The old value stays cached in clients, so reads return stale rows"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Rows live where their key says.",
+    "explanation": "A row lives where its key says, so changing the key means moving it to a different shard: a cross-shard delete-plus-insert that loses single-shard atomicity. Hashing is for routing (new values route fine), indexes update normally, and client caching isn't the core issue.",
     "topicId": "shard-key",
     "difficulty": 2
   },
@@ -213,25 +213,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Re-hash all users with a new function"
+        "text": "Re-hash all users with a new hash function to spread load evenly"
       },
       {
         "id": "b",
-        "text": "Cache the celebrity's hot posts and add read replicas to that shard"
+        "text": "Cache the celebrity's hot posts and add read replicas to shard 7"
       },
       {
         "id": "c",
-        "text": "Reduce the number of shards"
+        "text": "Reduce the shard count so every server gets more CPU headroom"
       },
       {
         "id": "d",
-        "text": "Move the celebrity to every shard"
+        "text": "Double the shard count so the celebrity's data is split in half"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "The problem is one hot key, not uneven hashing. Caching and replicas absorb reads; key-splitting helps writes.",
+    "explanation": "The problem is one hot key, not uneven hashing: re-hashing just moves the celebrity elsewhere, and more or fewer shards still put one user on one shard. Caching and read replicas absorb the read load; key-splitting is the tool for hot writes.",
     "topicId": "hot-shards",
     "difficulty": 3
   },
@@ -243,25 +243,25 @@
     "options": [
       {
         "id": "a",
-        "text": "The network is slow; add bandwidth"
+        "text": "Cross-region network latency; add bandwidth between the app and DB"
       },
       {
         "id": "b",
-        "text": "Scatter-gather: the query lacks the shard key, so it hits all 64 shards and waits for the slowest; add an orders_by_merchant table sharded by merchant_id"
+        "text": "Scatter-gather on all 64 shards; add an orders table by merchant_id"
       },
       {
         "id": "c",
-        "text": "Too few shards; add more"
+        "text": "Too few shards for the data; double to 128 so each one scans less"
       },
       {
         "id": "d",
-        "text": "Indexes are missing on customer_id"
+        "text": "A missing index on customer_id; add it so the dashboard can seek"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Without the shard key every shard is asked, so latency is the slowest of 64 and load is ×64. A secondary table keyed by merchant serves it from one shard. More shards (c) makes it worse.",
+    "explanation": "Without the shard key every shard is asked, so latency is the slowest of 64 and load is x64. A secondary orders_by_merchant table sharded by merchant_id serves it from one shard. Bandwidth isn't the cause, more shards make scatter-gather worse, and the query filters on merchant_id, not customer_id.",
     "topicId": "cross-shard",
     "difficulty": 2
   },
@@ -272,7 +272,7 @@
     "options": [
       {
         "id": "a",
-        "text": "It's not secure"
+        "text": "It sends data unencrypted between shards, which fails audits"
       },
       {
         "id": "b",
@@ -280,17 +280,17 @@
       },
       {
         "id": "c",
-        "text": "It only works with NoSQL"
+        "text": "It only works on NoSQL stores, not on sharded SQL databases"
       },
       {
         "id": "d",
-        "text": "It needs a directory"
+        "text": "It needs a central directory service listing every shard row"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Keep transactions within one shard by choosing the key well.",
+    "explanation": "Two-phase commit adds round trips and holds locks, and if the coordinator dies between phases participants are stuck waiting. That's why designs keep transactions within one shard by choosing the key well. It isn't a security, NoSQL-only or directory issue.",
     "topicId": "cross-shard",
     "difficulty": 2
   },
@@ -301,25 +301,25 @@
     "options": [
       {
         "id": "a",
-        "text": "To use more disk"
+        "text": "So each server uses more of its disk and fewer servers are needed"
       },
       {
         "id": "b",
-        "text": "So growth means moving whole logical shards between servers, without re-splitting rows"
+        "text": "Growth moves whole logical shards to new servers; no row re-splitting"
       },
       {
         "id": "c",
-        "text": "To avoid replication"
+        "text": "So you can skip replication, since logical shards act as copies"
       },
       {
         "id": "d",
-        "text": "To make queries scatter"
+        "text": "So queries fan out across more shards and finish in parallel faster"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Only the mapping changes when servers are added.",
+    "explanation": "With many logical shards, adding a server only changes the shard-to-server mapping and moves whole shards; rows never need re-splitting. It doesn't change disk use, logical shards are not replicas, and more fan-out makes queries slower, not faster.",
     "topicId": "resharding",
     "difficulty": 2
   }

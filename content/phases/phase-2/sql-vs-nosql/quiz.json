@@ -6,25 +6,25 @@
     "options": [
       {
         "id": "a",
-        "text": "They can only look up by key"
+        "text": "Faster single-key lookups than any key-value store can offer"
       },
       {
         "id": "b",
-        "text": "Flexible queries with joins, plus multi-row transactions and constraints"
+        "text": "Flexible queries with joins, plus transactions and constraints"
       },
       {
         "id": "c",
-        "text": "They never need indexes"
+        "text": "They scale writes horizontally out of the box with no sharding"
       },
       {
         "id": "d",
-        "text": "They have no schema"
+        "text": "No fixed schema, so each row can hold different fields freely"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Joins, ACID transactions and constraints are the relational strengths. (a), (c) and (d) are false.",
+    "explanation": "Joins, ACID multi-row transactions and constraints are the relational strengths. Key lookups are fast in both (not faster than a KV store), scaling writes takes deliberate sharding or distributed SQL, and relational tables have a declared schema.",
     "topicId": "relational",
     "difficulty": 1
   },
@@ -35,25 +35,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Orders become unreadable"
+        "text": "Order documents grow so large that reading one order becomes slow"
       },
       {
         "id": "b",
-        "text": "The data is duplicated, so updates must touch many documents or accept old copies"
+        "text": "Customer data is duplicated, so updates touch many docs or go stale"
       },
       {
         "id": "c",
-        "text": "Documents can't nest"
+        "text": "Document stores can't nest objects more than one level deep"
       },
       {
         "id": "d",
-        "text": "You can't fetch one order"
+        "text": "You can no longer fetch one order without also loading its customer"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Embedding trades update cost and duplication for fast single reads.",
+    "explanation": "Embedding copies the customer into every order: fast single reads, but an address change must update many documents or accept old copies. Embedded customer data is small, documents nest freely, and fetching an order with its customer is the point of embedding, not a cost.",
     "topicId": "document",
     "difficulty": 2
   },
@@ -64,25 +64,25 @@
     "options": [
       {
         "id": "a",
-        "text": "GET session:abc"
+        "text": "GET session:abc to load one session by its exact key"
       },
       {
         "id": "b",
-        "text": "PUT cart:42"
+        "text": "PUT cart:42 to overwrite one user's cart in a single write"
       },
       {
         "id": "c",
-        "text": "Find all sessions belonging to user 42, unless that's stored as its own key"
+        "text": "Find every session of user 42, unless stored under its own key"
       },
       {
         "id": "d",
-        "text": "DELETE flag:x"
+        "text": "DELETE flag:x to remove one feature flag after it's retired"
       }
     ],
     "correct": [
       "c"
     ],
-    "explanation": "Key-value stores only look up by key; queries by value need another key or index.",
+    "explanation": "Key-value stores only look up by key; a query by value (all sessions for a user) needs another key or index you maintain yourself. GET, PUT and DELETE by exact key are exactly what they do best.",
     "topicId": "key-value",
     "difficulty": 1
   },
@@ -93,7 +93,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Which node holds the data"
+        "text": "Which node in the ring stores the partition"
       },
       {
         "id": "b",
@@ -101,17 +101,17 @@
       },
       {
         "id": "c",
-        "text": "Encryption"
+        "text": "Which columns are encrypted on disk at rest"
       },
       {
         "id": "d",
-        "text": "The replication factor"
+        "text": "How many replicas each partition is copied to"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Partition key → node; clustering key → order inside the partition.",
+    "explanation": "The partition key decides which node holds the data; the clustering key orders rows inside that partition. Encryption and replication factor are table or keyspace settings, not part of the key.",
     "topicId": "wide-column",
     "difficulty": 2
   },
@@ -123,25 +123,25 @@
     "options": [
       {
         "id": "a",
-        "text": "A single MySQL server"
+        "text": "One large MySQL server with an index on (conversation_id, time)"
       },
       {
         "id": "b",
-        "text": "A wide-column store partitioned by conversation ID and clustered by time"
+        "text": "A wide-column store partitioned by conversation, clustered by time"
       },
       {
         "id": "c",
-        "text": "A graph database"
+        "text": "A graph database linking each message node to its conversation"
       },
       {
         "id": "d",
-        "text": "A key-value store with one key for all messages"
+        "text": "A key-value store with one key that holds the full message list"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Append-heavy, time-ordered reads per conversation, at huge volume, is the wide-column sweet spot. One key for everything (d) is a hot key.",
+    "explanation": "Append-heavy, time-ordered reads per conversation at huge volume is the wide-column sweet spot. One MySQL server can't absorb 200,000 writes a second, a graph model adds nothing without relationship queries, and one key for everything is a giant hot key.",
     "topicId": "wide-column",
     "difficulty": 2
   },
@@ -152,7 +152,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Single-row lookups by ID"
+        "text": "Single-row lookups by ID across very large tables"
       },
       {
         "id": "b",
@@ -160,17 +160,17 @@
       },
       {
         "id": "c",
-        "text": "Summing a column"
+        "text": "Summing one numeric column across millions of rows"
       },
       {
         "id": "d",
-        "text": "Storing images"
+        "text": "Storing large binary files such as images or videos"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Traversing adjacency avoids exploding join costs at many hops. The others aren't graph problems.",
+    "explanation": "Graph databases follow adjacency directly, avoiding the exploding join cost of many hops. ID lookups are fast in any indexed store, column sums are an analytics workload, and large files belong in object storage.",
     "topicId": "graph",
     "difficulty": 2
   },
@@ -182,7 +182,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Redis, because it's fastest"
+        "text": "Redis, because in-memory writes keep transfers fastest"
       },
       {
         "id": "b",
@@ -190,17 +190,17 @@
       },
       {
         "id": "c",
-        "text": "A wide-column store with eventual consistency"
+        "text": "A wide-column store tuned for eventual-consistency writes"
       },
       {
         "id": "d",
-        "text": "A document store without transactions"
+        "text": "A document store with each account in its own document"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Money needs atomic multi-row updates and constraints. Speed (a) or write scale (c) doesn't matter if a transfer can half-apply.",
+    "explanation": "Money needs atomic multi-row updates and constraints like balance >= 0. Speed and write scale don't matter if a transfer can half-apply, and separate account documents without multi-document transactions can't debit and credit atomically.",
     "topicId": "access-patterns",
     "difficulty": 3
   },
@@ -212,7 +212,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Postgres with ORDER BY on every request"
+        "text": "Postgres running ORDER BY score LIMIT 100 on each request"
       },
       {
         "id": "b",
@@ -220,17 +220,17 @@
       },
       {
         "id": "c",
-        "text": "A graph database"
+        "text": "A graph database linking players who share a game match"
       },
       {
         "id": "d",
-        "text": "Object storage"
+        "text": "Object storage holding one JSON file per player's score"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Sorted sets keep scores ordered as they change, making increments and top-N reads cheap.",
+    "explanation": "Sorted sets keep scores ordered as they change, so increments and top-N reads are cheap. Sorting on every request at 50,000 updates a second overloads Postgres, a graph model doesn't help ranking, and object storage has no ordering or atomic increments.",
     "topicId": "access-patterns",
     "difficulty": 2
   },
@@ -241,26 +241,26 @@
     "options": [
       {
         "id": "a",
-        "text": "An access pattern the main store can't serve well, like full-text search"
+        "text": "A pattern the main store serves poorly, like full-text search"
       },
       {
         "id": "b",
-        "text": "A hot key-value workload like sessions"
+        "text": "A hot key-value workload such as user sessions"
       },
       {
         "id": "c",
-        "text": "Because NoSQL is newer"
+        "text": "NoSQL is newer, so new features should start on it"
       },
       {
         "id": "d",
-        "text": "Because every service should have three databases"
+        "text": "Each service should own at least three databases"
       }
     ],
     "correct": [
       "a",
       "b"
     ],
-    "explanation": "Add a store for a pattern that needs it (polyglot persistence). Novelty (c) and rules of thumb (d) aren't reasons.",
+    "explanation": "Add a store for an access pattern that needs it (polyglot persistence): full-text search or high-rate session lookups. Novelty and fixed rules of thumb aren't reasons, and every extra store adds operational cost.",
     "topicId": "access-patterns",
     "difficulty": 2
   },
@@ -271,25 +271,25 @@
     "options": [
       {
         "id": "a",
-        "text": "There is no schema anywhere"
+        "text": "There's no schema anywhere, so any shape of data is always fine"
       },
       {
         "id": "b",
-        "text": "The schema lives in application code, which must handle every stored shape"
+        "text": "The schema lives in app code, which must handle every stored shape"
       },
       {
         "id": "c",
-        "text": "The database validates every field"
+        "text": "The database infers a schema and validates every field on write"
       },
       {
         "id": "d",
-        "text": "Data can't change"
+        "text": "Documents can't change shape once the first one has been written"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "The structure still exists; it's enforced by code instead of the database.",
+    "explanation": "The structure still exists; it's enforced by application code instead of the database, which must cope with every document shape ever stored. Nothing validates for you by default, and documents can change shape freely.",
     "topicId": "access-patterns",
     "difficulty": 2
   }

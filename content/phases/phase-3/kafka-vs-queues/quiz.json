@@ -4,13 +4,13 @@
     "type": "single",
     "prompt": "What happens to a Kafka record after every consumer group has read it?",
     "options": [
-      { "id": "a", "text": "It is deleted immediately" },
+      { "id": "a", "text": "It is deleted as soon as the last consumer group commits past it" },
       { "id": "b", "text": "It stays until retention (time or size) or compaction removes it" },
-      { "id": "c", "text": "It moves to a dead-letter topic" },
-      { "id": "d", "text": "It is archived to object storage automatically" }
+      { "id": "c", "text": "It moves to the topic's dead-letter topic once every group has read it" },
+      { "id": "d", "text": "It is archived to object storage automatically and removed from the broker" }
     ],
     "correct": ["b"],
-    "explanation": "Kafka is a log: reading only advances each group's offset, and records are removed by retention or compaction policies. (a) describes a queue like RabbitMQ or SQS. (c) only happens if client code publishes failed records there. (d) is not default behaviour; tiered storage is an explicit feature you configure.",
+    "explanation": "Kafka is a log: reading only advances each group's offset, and records are removed by retention or compaction policies. (a) describes a queue like RabbitMQ or SQS; Kafka doesn't delete on consumption. (c) only happens if client code publishes failed records there. (d) is not default behaviour; tiered storage is an explicit feature you configure.",
     "topicId": "kafka-log",
     "difficulty": 1
   },
@@ -20,13 +20,13 @@
     "prompt": "What does the consumer do after restarting?",
     "scenario": "A Kafka consumer processed offsets 500 to 599 of partition 2 and wrote results to a database. It last committed offset 560, then crashed.",
     "options": [
-      { "id": "a", "text": "Resumes at 600; nothing is reprocessed" },
+      { "id": "a", "text": "Resumes at 600, because the broker knows it already processed up to 599" },
       { "id": "b", "text": "Resumes at 560 and reprocesses 560 to 599, so writes must be idempotent" },
-      { "id": "c", "text": "Starts again from offset 0" },
-      { "id": "d", "text": "Skips to the newest offset and loses 560 to 599" }
+      { "id": "c", "text": "Starts again from offset 0 and reprocesses the whole partition" },
+      { "id": "d", "text": "Skips to the newest offset, so records 560 to 599 are never processed" }
     ],
     "correct": ["b"],
-    "explanation": "The committed offset is where the group resumes, so records processed after the last commit are processed again: at-least-once. (a) would need a commit at 600. (c) only happens if there were no committed offset and auto.offset.reset were earliest. (d) would need auto.offset.reset=latest with no committed offset.",
+    "explanation": "The committed offset is where the group resumes, so records processed after the last commit are processed again: at-least-once. (a) would need a commit at 600; the broker only knows the committed offset, not what was processed. (c) only happens if there were no committed offset and auto.offset.reset were earliest. (d) would need auto.offset.reset=latest with no committed offset.",
     "topicId": "kafka-log",
     "difficulty": 2
   },
@@ -36,13 +36,13 @@
     "prompt": "How do you repair the read model with the least effort?",
     "scenario": "A bug deployed at 09:00 made the `search-indexer` consumer group write wrong prices into Elasticsearch from the `product-updates` Kafka topic. It was fixed at 11:00. Retention is 7 days.",
     "options": [
-      { "id": "a", "text": "Restore Elasticsearch from last week's backup" },
-      { "id": "b", "text": "Reset the search-indexer group's offsets to the 09:00 timestamp and let the fixed consumer replay" },
-      { "id": "c", "text": "Ask the product service to republish every product" },
-      { "id": "d", "text": "It can't be repaired; the messages were consumed" }
+      { "id": "a", "text": "Restore Elasticsearch from last week's backup and let the consumer carry on from there" },
+      { "id": "b", "text": "Reset the group's offsets to the 09:00 timestamp and let the fixed consumer replay" },
+      { "id": "c", "text": "Ask the product service to republish every product so the index is rebuilt" },
+      { "id": "d", "text": "It can't be repaired from Kafka, because consumed messages are gone from the topic" }
     ],
     "correct": ["b"],
-    "explanation": "The records from 09:00 are still in the log, so resetting offsets to that timestamp replays exactly the affected window through the fixed code. (a) loses a week of correct updates. (c) works but needs another team and republishes everything. (d) applies to queues, not to a log within retention.",
+    "explanation": "The records from 09:00 are still in the log, so resetting the search-indexer group's offsets to that timestamp replays exactly the affected window through the fixed code. (a) loses a week of correct updates, since the consumer continues from its current offset. (c) works but needs another team and republishes everything. (d) applies to queues, not to a log within retention.",
     "topicId": "kafka-log",
     "difficulty": 2
   },
@@ -113,13 +113,13 @@
     "prompt": "Why is throughput so low, and what is the fix?",
     "scenario": "A team moved ledger updates to an SQS FIFO queue for ordering. They set MessageGroupId to the constant \"ledger\" for every message. Throughput is a fraction of what 50 consumers should handle, and most consumers receive nothing.",
     "options": [
-      { "id": "a", "text": "FIFO queues only allow one consumer; switch to standard" },
-      { "id": "b", "text": "One message group serialises the whole queue; use the account id as the MessageGroupId" },
-      { "id": "c", "text": "Turn off deduplication" },
-      { "id": "d", "text": "Increase the visibility timeout" }
+      { "id": "a", "text": "FIFO queues allow only one consumer at a time; switch to a standard queue" },
+      { "id": "b", "text": "One message group serialises the whole queue; use the account id as the group id" },
+      { "id": "c", "text": "Turn off content-based deduplication, which checks every message against the rest" },
+      { "id": "d", "text": "Raise the visibility timeout so consumers stop losing their in-flight batches" }
     ],
     "correct": ["b"],
-    "explanation": "SQS FIFO delivers messages within one group in order, one in-flight batch at a time, so a single group allows almost no parallelism. Per-account groups keep each account ordered while groups run in parallel. (a) is wrong: FIFO supports many consumers across groups, and standard would lose ordering. (c) doesn't affect parallelism. (d) makes redelivery slower but doesn't add parallelism.",
+    "explanation": "SQS FIFO delivers messages within one group in order, one in-flight batch at a time, so a single group allows almost no parallelism. Per-account MessageGroupIds keep each account ordered while groups run in parallel. (a) is wrong: FIFO supports many consumers across groups, and standard would lose ordering. (c) doesn't affect parallelism. (d) makes redelivery slower but doesn't add parallelism.",
     "topicId": "sqs",
     "difficulty": 3
   },
@@ -128,13 +128,13 @@
     "type": "single",
     "prompt": "What does SQS FIFO deduplication protect against?",
     "options": [
-      { "id": "a", "text": "Any duplicate processing by consumers, forever" },
+      { "id": "a", "text": "Any duplicate processing by consumers, for as long as the queue exists" },
       { "id": "b", "text": "The same message being sent again (same deduplication id) within 5 minutes" },
-      { "id": "c", "text": "Two different messages with the same body sent a day apart" },
-      { "id": "d", "text": "Messages being received out of order" }
+      { "id": "c", "text": "Two different messages with the same body, even when sent a day apart" },
+      { "id": "d", "text": "Messages in the same group being received out of order by consumers" }
     ],
     "correct": ["b"],
-    "explanation": "FIFO deduplication drops repeated sends with the same MessageDeduplicationId (or content hash) inside a 5-minute window, which covers producer retries. (a) overclaims: a consumer that doesn't delete before the visibility timeout can still get the message again. (c) is outside the window. (d) is ordering, a separate feature based on message groups.",
+    "explanation": "FIFO deduplication drops repeated sends with the same MessageDeduplicationId (or content hash) inside a 5-minute window, which covers producer retries. (a) overclaims: a consumer that doesn't delete before the visibility timeout can still get the message again. (c) is outside the 5-minute window. (d) is ordering, a separate feature based on message groups.",
     "topicId": "sqs",
     "difficulty": 2
   },
@@ -144,10 +144,10 @@
     "prompt": "Which is the best fit?",
     "scenario": "Five teams (recommendations, fraud, analytics, search, notifications) all need every user-activity event. Analytics wants to reprocess the last 3 days when it changes its model. Volume is 80,000 events a second.",
     "options": [
-      { "id": "a", "text": "One SQS standard queue that all five teams consume from" },
+      { "id": "a", "text": "One SQS standard queue that all five teams consume from, each at its own pace" },
       { "id": "b", "text": "Kafka: one topic, one consumer group per team, retention of at least 3 days" },
-      { "id": "c", "text": "RabbitMQ direct exchange with one classic queue" },
-      { "id": "d", "text": "SQS FIFO with one message group per team" }
+      { "id": "c", "text": "A RabbitMQ direct exchange routing every event into one classic queue" },
+      { "id": "d", "text": "SQS FIFO with one message group per team, so each team gets ordered events" }
     ],
     "correct": ["b"],
     "explanation": "Many independent readers, replay of recent history and high throughput are exactly what a log is for. (a) makes teams compete for messages, so each sees only some of them, and there's no replay. (c) has the same competing-consumer problem and no replay. (d) misuses message groups (they partition messages, not readers) and FIFO limits are a poor fit for 80,000/s.",

@@ -5,7 +5,7 @@
     "prompt": "Which message is an event rather than a command?",
     "options": [
       { "id": "a", "text": "ReserveStock { orderId: 991, sku: \"A12\", qty: 2 }" },
-      { "id": "b", "text": "SendWelcomeEmail { userId: 42 }" },
+      { "id": "b", "text": "SendWelcomeEmail { userId: 42, template: \"welcome-v2\" }" },
       { "id": "c", "text": "PaymentCaptured { paymentId: \"p-7\", amount: 59.00 }" },
       { "id": "d", "text": "ChargeCard { cardToken: \"tok_1\", amount: 59.00 }" }
     ],
@@ -35,13 +35,13 @@
     "prompt": "Which change best fixes this?",
     "scenario": "The customer service publishes `CustomerUpdated { customerId }` events. Eight services subscribe, and each calls `GET /customers/:id` on every event. During a bulk import of 2 million customers, the customer service is overwhelmed by 16 million callback requests and starts timing out, which makes all eight consumers fail.",
     "options": [
-      { "id": "a", "text": "Switch to event-carried state transfer: include the changed fields in the event so consumers don't call back" },
-      { "id": "b", "text": "Turn the event into eight commands, one per service" },
-      { "id": "c", "text": "Make the consumers retry the callbacks faster" },
+      { "id": "a", "text": "Event-carried state transfer: put the changed fields in the event so no one calls back" },
+      { "id": "b", "text": "Turn the event into eight commands, one per service, so each call is paced separately" },
+      { "id": "c", "text": "Have consumers retry failed callbacks faster, with shorter timeouts, to clear the backlog" },
       { "id": "d", "text": "Stop publishing events and have consumers poll the customer service every second" }
     ],
     "correct": ["a"],
-    "explanation": "This is the classic cost of event notification: callback load scales with subscribers × events and couples consumers to the publisher's availability. Carrying the data in the event removes both. (b) couples the publisher to every consumer and still leaves callbacks. (c) adds load to a service that is already overloaded. (d) creates constant read load even when nothing changes.",
+    "explanation": "This is the classic cost of event notification: callback load scales with subscribers × events and couples consumers to the publisher's availability. Carrying the data in the event removes both. (b) couples the publisher to every consumer and each service still calls back for the data. (c) adds load to a service that is already overloaded. (d) creates constant read load even when nothing changes.",
     "topicId": "notification-vs-state-transfer",
     "difficulty": 2
   },
@@ -50,13 +50,13 @@
     "type": "single",
     "prompt": "In an event-sourced system, an account has 250,000 events and reads have become slow. What is the standard fix?",
     "options": [
-      { "id": "a", "text": "Delete the oldest events" },
-      { "id": "b", "text": "Store periodic snapshots of the state and replay only the events after the latest snapshot" },
-      { "id": "c", "text": "Edit old events to merge them into fewer events" },
-      { "id": "d", "text": "Switch the account to a read-through cache with no events" }
+      { "id": "a", "text": "Delete events older than a year, since the current balance already reflects them" },
+      { "id": "b", "text": "Store periodic snapshots of state and replay only the events after the latest one" },
+      { "id": "c", "text": "Rewrite old events by merging them into a few summary events with the same totals" },
+      { "id": "d", "text": "Move the account to a read-through cache and stop storing new events for it" }
     ],
     "correct": ["b"],
-    "explanation": "Snapshots cap the replay cost while keeping the full log as the source of truth. (a) and (c) destroy or rewrite history, which defeats the point of event sourcing (events are append-only). (d) abandons event sourcing rather than fixing it.",
+    "explanation": "Snapshots cap the replay cost while keeping the full log as the source of truth. (a) and (c) destroy or rewrite history, which defeats the point of event sourcing (events are append-only and immutable). (d) abandons event sourcing rather than fixing it.",
     "topicId": "event-sourcing",
     "difficulty": 2
   },
@@ -65,13 +65,13 @@
     "type": "single",
     "prompt": "Which statement about CQRS is correct?",
     "options": [
-      { "id": "a", "text": "CQRS requires event sourcing" },
+      { "id": "a", "text": "CQRS requires event sourcing, because read models can only be built from an event log" },
       { "id": "b", "text": "CQRS uses separate models for writes and reads, and read models usually lag behind writes" },
-      { "id": "c", "text": "CQRS guarantees read models are always consistent with writes" },
-      { "id": "d", "text": "CQRS means every service has exactly one database table" }
+      { "id": "c", "text": "CQRS guarantees read models are updated in the same transaction as every write" },
+      { "id": "d", "text": "CQRS means each service owns exactly one database table, used for both its reads and writes" }
     ],
     "correct": ["b"],
-    "explanation": "CQRS splits the write model from read models, which are projections updated asynchronously, so they are eventually consistent. (a) is wrong: CQRS works with an ordinary database. (c) is wrong: asynchronous projections lag. (d) is unrelated.",
+    "explanation": "CQRS splits the write model from read models, which are projections updated asynchronously, so they are eventually consistent. (a) is wrong: CQRS works with an ordinary database, and projections can be fed from it. (c) is wrong: asynchronous projections lag behind writes. (d) is unrelated, and CQRS is the opposite of one shared model.",
     "topicId": "cqrs",
     "difficulty": 1
   },
@@ -81,13 +81,13 @@
     "prompt": "What is the bug?",
     "scenario": "Support reports that about 40 orders a week have no confirmation email and were never shipped. The orders exist in the database. The order service code does: insert order, commit, then publish `OrderPlaced` to RabbitMQ. The losses cluster around deploy times.",
     "options": [
-      { "id": "a", "text": "RabbitMQ is dropping acknowledged messages" },
-      { "id": "b", "text": "A dual write: pods are killed after the commit but before the publish completes, so the order exists without an event" },
-      { "id": "c", "text": "The email service has a poison message" },
-      { "id": "d", "text": "The database is losing commits" }
+      { "id": "a", "text": "RabbitMQ is dropping acknowledged messages whenever its nodes are restarted during deploys" },
+      { "id": "b", "text": "A dual write: pods die after the commit but before the publish, so orders have no event" },
+      { "id": "c", "text": "A poison message is stuck at the head of the email queue, blocking those orders" },
+      { "id": "d", "text": "The database is losing commits when pods are killed, so the events have no order" }
     ],
     "correct": ["b"],
-    "explanation": "The database and broker are updated separately; a deploy that kills a pod between commit and publish leaves an order with no event, silently. An outbox fixes it. (a) is unlikely and wouldn't cluster at deploys. (c) would block emails but not shipping, and the messages would exist. (d) is contradicted: the orders are in the database.",
+    "explanation": "The database and broker are updated separately; a deploy that kills a pod between commit and publish leaves an order with no event, silently. An outbox fixes it. (a) is unlikely; the deploys restart the order service's pods, not the broker. (c) would block emails but not shipping, and the messages would exist. (d) is contradicted: the orders are in the database.",
     "topicId": "outbox",
     "difficulty": 2
   },
@@ -97,13 +97,13 @@
     "prompt": "What happens, and does it fix the problem from the previous design?",
     "scenario": "To avoid lost events, a team changes the order to: publish `OrderPlaced`, then insert the order and commit. A customer submits an order whose insert violates a unique constraint.",
     "options": [
-      { "id": "a", "text": "Nothing is published, so it's safe" },
-      { "id": "b", "text": "The event is published for an order that never gets saved; the dual-write problem just moved" },
-      { "id": "c", "text": "The broker automatically rolls back the event" },
-      { "id": "d", "text": "The database retries the insert until it succeeds" }
+      { "id": "a", "text": "Nothing is published, because the failed insert aborts the publish along with it" },
+      { "id": "b", "text": "The event goes out for an order that is never saved; the dual-write problem just moved" },
+      { "id": "c", "text": "The broker rolls back the event automatically when the database transaction fails" },
+      { "id": "d", "text": "The database keeps retrying the insert until it succeeds, so the event is eventually true" }
     ],
     "correct": ["b"],
-    "explanation": "The publish already happened, so downstream services act on a phantom order. Reordering two non-atomic writes changes which failure you get, not whether one exists. (a) is wrong because the publish came first. (c) is wrong: brokers have no transaction shared with your database. (d) is wrong: a constraint violation fails every retry.",
+    "explanation": "The publish already happened, so downstream services act on a phantom order. Reordering two non-atomic writes changes which failure you get, not whether one exists. (a) is wrong because the publish came first and is not part of the database transaction. (c) is wrong: brokers have no transaction shared with your database. (d) is wrong: a constraint violation fails every retry.",
     "topicId": "outbox",
     "difficulty": 2
   },
@@ -112,13 +112,13 @@
     "type": "single",
     "prompt": "Why must consumers of outbox-published events still deduplicate?",
     "options": [
-      { "id": "a", "text": "Because the outbox row might never be written" },
-      { "id": "b", "text": "Because the relay can publish an event and crash before marking the row published, then publish it again" },
-      { "id": "c", "text": "Because the database might commit the transaction twice" },
-      { "id": "d", "text": "They don't; the outbox gives exactly-once delivery" }
+      { "id": "a", "text": "The outbox row might never be written if the business transaction commits first" },
+      { "id": "b", "text": "The relay can publish an event, crash before marking the row sent, then publish it again" },
+      { "id": "c", "text": "The database can commit one transaction twice under load, writing two outbox rows" },
+      { "id": "d", "text": "They don't need to; the outbox gives exactly-once delivery from database to broker" }
     ],
     "correct": ["b"],
-    "explanation": "Publishing and marking are two steps, so a crash between them causes a re-publish: at-least-once. (a) is wrong: the row commits atomically with the business change. (c) is not how commits work. (d) is the misconception this question targets.",
+    "explanation": "Publishing and marking are two steps, so a crash between them causes a re-publish: at-least-once. (a) is wrong: the row commits atomically with the business change, in the same transaction. (c) is not how commits work. (d) is the misconception this question targets.",
     "topicId": "outbox",
     "difficulty": 2
   },
@@ -128,13 +128,13 @@
     "prompt": "What is wrong with this relay, and what is the simplest fix?",
     "scenario": "An outbox relay sleeps 1 second, then selects up to 100 unpublished rows and publishes them, in a loop. The service writes 1,500 events a second at peak. The outbox's unpublished count grows all day.",
     "options": [
-      { "id": "a", "text": "It can publish at most about 100 events a second; loop without sleeping while batches come back full and raise the batch size" },
-      { "id": "b", "text": "The broker is too slow; add partitions" },
-      { "id": "c", "text": "The outbox table needs an index on payload" },
-      { "id": "d", "text": "Nothing is wrong; unpublished rows always grow" }
+      { "id": "a", "text": "It caps out near 100 events a second; skip the sleep while batches are full and enlarge them" },
+      { "id": "b", "text": "The broker is too slow for 1,500 events a second; add partitions so publishes go faster" },
+      { "id": "c", "text": "The outbox table lacks an index on the payload column, so each select scans the table" },
+      { "id": "d", "text": "Nothing is wrong; the unpublished count always grows during the day and drains at night" }
     ],
     "correct": ["a"],
-    "explanation": "100 rows per second-long cycle caps throughput near 100/s against 1,500/s of input. Only sleeping when the batch is not full, plus larger batches (or several relays with SKIP LOCKED, or CDC), fixes it. (b) treats the wrong bottleneck. (c) indexes a column the query doesn't filter on. (d) is false: a healthy relay keeps the unpublished count near zero.",
+    "explanation": "100 rows per second-long cycle caps throughput near 100/s against 1,500/s of input. Only sleeping when the batch is not full, plus larger batches (or several relays with SKIP LOCKED, or CDC), fixes it. (b) treats the wrong bottleneck: the relay, not the broker, limits the rate. (c) indexes a column the query doesn't filter on. (d) is false: a healthy relay keeps the unpublished count near zero.",
     "topicId": "outbox",
     "difficulty": 3
   },
@@ -143,10 +143,10 @@
     "type": "single",
     "prompt": "How does Debezium capture changes from PostgreSQL?",
     "options": [
-      { "id": "a", "text": "By polling every table with SELECT queries" },
+      { "id": "a", "text": "By polling every table with SELECT queries for rows changed since the last poll" },
       { "id": "b", "text": "By reading the write-ahead log through logical decoding, like a replica" },
-      { "id": "c", "text": "By installing triggers that call Kafka directly" },
-      { "id": "d", "text": "By parsing the application's logs" }
+      { "id": "c", "text": "By installing triggers on each table that send every change to Kafka directly" },
+      { "id": "d", "text": "By parsing the application's request logs to rebuild each write that was made" }
     ],
     "correct": ["b"],
     "explanation": "Debezium's Postgres connector uses logical decoding and a replication slot to stream committed changes from the WAL. (a) is the polling-relay approach CDC replaces. (c) and (d) are not how Debezium works.",
@@ -160,7 +160,7 @@
     "options": [
       { "id": "a", "text": "A Postgres replication slot that nobody consumes keeps WAL on disk until the disk fills" },
       { "id": "b", "text": "CDC on raw business tables makes the internal schema a contract for consumers" },
-      { "id": "c", "text": "CDC can only capture inserts, never updates or deletes" },
+      { "id": "c", "text": "CDC can capture only inserts, so updates and deletes need a separate polling job" },
       { "id": "d", "text": "It needs database configuration such as logical replication or row-based binlog" }
     ],
     "correct": ["a", "b", "d"],

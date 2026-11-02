@@ -35,7 +35,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Slow writes"
+        "text": "Every write is slowed down because it must wait for all followers"
       },
       {
         "id": "b",
@@ -43,17 +43,17 @@
       },
       {
         "id": "c",
-        "text": "Followers can't serve reads"
+        "text": "Followers can't serve any reads until they're fully caught up"
       },
       {
         "id": "d",
-        "text": "It needs three data centres"
+        "text": "It only works when replicas sit in at least three data centres"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Async acks before followers have the data.",
+    "explanation": "Async replication acknowledges the client before followers have the data, so a leader crash can lose acknowledged writes. Waiting for all followers is synchronous replication, lagging followers still serve (possibly stale) reads, and there's no data-centre requirement.",
     "topicId": "sync-async",
     "difficulty": 2
   },
@@ -93,25 +93,25 @@
     "options": [
       {
         "id": "a",
-        "text": "All followers"
+        "text": "Every follower to acknowledge before the write is confirmed"
       },
       {
         "id": "b",
-        "text": "At least one follower to acknowledge"
+        "text": "At least one follower to acknowledge before confirming"
       },
       {
         "id": "c",
-        "text": "No followers"
+        "text": "No followers at all; it confirms as soon as the leader writes"
       },
       {
         "id": "d",
-        "text": "A backup to finish"
+        "text": "A full backup snapshot to finish before the commit returns"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "One ack bounds loss without waiting for every follower.",
+    "explanation": "Semi-sync waits for one follower's ack, which bounds data loss without waiting for every follower. Waiting for all is fully synchronous, waiting for none is async, and backups are unrelated to commit acknowledgement.",
     "topicId": "sync-async",
     "difficulty": 2
   },
@@ -123,25 +123,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Atomicity; use transactions"
+        "text": "Atomicity; wrap the rename and the page read in one transaction"
       },
       {
         "id": "b",
-        "text": "Read-your-writes; read the user's own data from the leader (or after their last write position)"
+        "text": "Read-your-writes; read the user's own data from the leader"
       },
       {
         "id": "c",
-        "text": "Durability; add disks"
+        "text": "Durability; add disks so the follower stores the write sooner"
       },
       {
         "id": "d",
-        "text": "Monotonic reads; add more followers"
+        "text": "Monotonic reads; add more followers so lag drops for everyone"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "The user's write hasn't reached the follower yet. Routing their own reads to the leader fixes it.",
+    "explanation": "The user's own write hasn't reached the follower yet: a read-your-writes gap. Route their own reads to the leader (or wait for their last write position). Atomicity and durability aren't broken (the write committed), and monotonic reads is about going backwards between reads; more followers don't remove lag.",
     "topicId": "lag",
     "difficulty": 2
   },
@@ -153,7 +153,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Read-your-writes; read from leader"
+        "text": "Read-your-writes; send every read to the leader"
       },
       {
         "id": "b",
@@ -161,17 +161,17 @@
       },
       {
         "id": "c",
-        "text": "Split brain; add fencing"
+        "text": "Split brain; add fencing for the old leader"
       },
       {
         "id": "d",
-        "text": "Durability; use sync replication"
+        "text": "Durability; switch to synchronous replication"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Different followers at different lag make time go backwards. Pinning a user to one follower fixes it.",
+    "explanation": "Different followers at different lag make time go backwards between reads: a monotonic-reads violation. Pinning each user to one follower fixes it. The user didn't write anything (not read-your-writes), there's only one leader (no split brain), and no data was lost.",
     "topicId": "lag",
     "difficulty": 3
   },
@@ -183,25 +183,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Replication lag; add followers"
+        "text": "Replication lag; add more followers so each one catches up faster"
       },
       {
         "id": "b",
-        "text": "Split brain; require quorum-based election and fence the old leader"
+        "text": "Split brain; use quorum-based election and fence the old leader"
       },
       {
         "id": "c",
-        "text": "A deadlock; retry"
+        "text": "A distributed deadlock; abort one side's writes and retry them later"
       },
       {
         "id": "d",
-        "text": "Normal failover; nothing"
+        "text": "Normal failover; the orders simply merge once the network heals"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Two leaders accepted writes. Majority votes plus fencing stop a cut-off leader from acting.",
+    "explanation": "Two leaders accepted writes at once: split brain. Requiring a majority to elect a leader, and fencing a cut-off leader so it can't act, prevents it. It isn't lag or a deadlock, and divergent writes don't merge on their own.",
     "topicId": "failover",
     "difficulty": 3
   },
@@ -212,25 +212,25 @@
     "options": [
       {
         "id": "a",
-        "text": "It's too slow"
+        "text": "One second is too slow; failover should start within milliseconds"
       },
       {
         "id": "b",
-        "text": "Brief hiccups would trigger needless failovers, each risking data loss and disruption"
+        "text": "Brief hiccups would trigger needless failovers, each risking data loss"
       },
       {
         "id": "c",
-        "text": "Databases forbid it"
+        "text": "Most databases forbid detection timeouts shorter than ten seconds"
       },
       {
         "id": "d",
-        "text": "Heartbeats need 1 minute"
+        "text": "Heartbeats are only sent once a minute, so 1 s would always fire"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Too short a timeout causes flapping failovers.",
+    "explanation": "Too short a timeout turns GC pauses and network blips into failovers, and each one risks losing unreplicated writes and disrupting clients (flapping). One second is aggressive, not slow, and there is no universal minimum or fixed one-minute heartbeat.",
     "topicId": "failover",
     "difficulty": 2
   },
@@ -241,7 +241,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Writes become slower in every region"
+        "text": "Writes become slower in every region since all leaders must agree"
       },
       {
         "id": "b",
@@ -249,17 +249,17 @@
       },
       {
         "id": "c",
-        "text": "Reads stop working"
+        "text": "Reads stop working in a region whenever another leader is offline"
       },
       {
         "id": "d",
-        "text": "It needs synchronous links"
+        "text": "It requires synchronous links between regions to stay consistent"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Conflicts need resolution such as last-write-wins, merging or app logic.",
+    "explanation": "Each leader accepts writes independently, so concurrent edits to the same record conflict and need resolution (last-write-wins, merging or app logic). Leaders don't wait for each other, regions keep serving when one is down, and replication between them is usually async.",
     "topicId": "multi-leader",
     "difficulty": 2
   },
@@ -299,26 +299,26 @@
     "options": [
       {
         "id": "a",
-        "text": "Read repair"
+        "text": "Read repair during client reads"
       },
       {
         "id": "b",
-        "text": "Anti-entropy background processes"
+        "text": "Anti-entropy background syncing"
       },
       {
         "id": "c",
-        "text": "Failover"
+        "text": "Failover to a promoted replica"
       },
       {
         "id": "d",
-        "text": "Deleting the stale node"
+        "text": "Leader-driven log replay to followers"
       }
     ],
     "correct": [
       "a",
       "b"
     ],
-    "explanation": "Read repair and anti-entropy both bring replicas back in sync. There's no leader to fail over.",
+    "explanation": "Read repair (fixing stale replicas spotted during a read) and anti-entropy (background comparison, e.g. Merkle trees) both bring replicas back in sync. Leaderless systems have no leader to fail over to or to replay a log from.",
     "topicId": "leaderless",
     "difficulty": 2
   }

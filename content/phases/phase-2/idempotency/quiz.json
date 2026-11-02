@@ -6,15 +6,15 @@
     "options": [
       {
         "id": "a",
-        "text": "ADD 10 TO balance"
+        "text": "UPDATE accounts SET balance = balance + 10"
       },
       {
         "id": "b",
-        "text": "SET balance = 100"
+        "text": "UPDATE accounts SET balance = 100"
       },
       {
         "id": "c",
-        "text": "POST /payments"
+        "text": "POST /payments with a new body each time"
       },
       {
         "id": "d",
@@ -24,7 +24,7 @@
     "correct": [
       "b"
     ],
-    "explanation": "Repeating SET leaves the same state. The others add or create again.",
+    "explanation": "Repeating SET balance = 100 leaves the same state however many times it runs. (a) adds 10 again on every repeat. (c) A plain POST creates a new payment each time unless it carries an idempotency key. (d) Each repeat creates another row with a new ID.",
     "topicId": "meaning",
     "difficulty": 1
   },
@@ -35,25 +35,25 @@
     "options": [
       {
         "id": "a",
-        "text": "No, the response changed"
+        "text": "No; idempotent means every call returns the same response"
       },
       {
         "id": "b",
-        "text": "Yes, idempotency is about the resulting state, not the response"
+        "text": "Yes; idempotency is about the resulting state, not the response"
       },
       {
         "id": "c",
-        "text": "Only if the cart is recreated"
+        "text": "No; only GET and PUT count as idempotent HTTP methods"
       },
       {
         "id": "d",
-        "text": "Only over HTTPS"
+        "text": "Only if the server returns 204 for both calls instead"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "The state (cart gone) is the same. (a) confuses responses with state.",
+    "explanation": "Idempotency is about state: after one DELETE or two, the cart is gone. (a) is the lesson's misconception that confuses responses with state. (c) DELETE is also defined as idempotent in HTTP. (d) A matching status code isn't required; the end state is what counts.",
     "topicId": "meaning",
     "difficulty": 2
   },
@@ -64,25 +64,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Its own IP"
+        "text": "Whether its own request was malformed or rejected by the server"
       },
       {
         "id": "b",
-        "text": "Whether the server never got the request, crashed midway, or finished and lost the response"
+        "text": "Whether the server never got it, crashed midway, or lost the reply"
       },
       {
         "id": "c",
-        "text": "The server's TLS version"
+        "text": "Whether retrying would hit the same server instance or another one"
       },
       {
         "id": "d",
-        "text": "Which load balancer was used"
+        "text": "Whether the network or the server caused the slowdown it saw"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "All three cases look like a timeout. The others are knowable or irrelevant.",
+    "explanation": "Never received, crashed midway, and finished-but-response-lost all look identical: a timeout. That's why retries need idempotency. (a) A rejected request returns an error, not a timeout. (c) Which instance a retry hits doesn't change whether the first one ran. (d) Knowing the cause of slowness wouldn't tell you whether the work happened.",
     "topicId": "retries",
     "difficulty": 2
   },
@@ -94,25 +94,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Keys should be integers"
+        "text": "UUIDs collide too often; keys should be sequential integers"
       },
       {
         "id": "b",
-        "text": "The client generates a new key on every retry, so the server can't recognise retries"
+        "text": "A new key per retry means the server can't spot repeats"
       },
       {
         "id": "c",
-        "text": "The server should store keys forever"
+        "text": "The server drops keys too soon; it should keep them forever"
       },
       {
         "id": "d",
-        "text": "Stripe doesn't support retries"
+        "text": "The key belongs in the body, so the header is being ignored"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "A key must be created once per user intent and reused on every attempt. (a) and (c) aren't the problem; (d) is false.",
+    "explanation": "A key must be created once per user intent and reused on every attempt; a fresh UUID per retry looks like a brand-new payment. (a) UUID collisions are vanishingly rare. (c) Keys only need to outlive the retry window. (d) A header is the usual place for the key.",
     "topicId": "keys",
     "difficulty": 3
   },
@@ -123,25 +123,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Process it as a new payment"
+        "text": "Process it as a new payment since the amount differs"
       },
       {
         "id": "b",
-        "text": "Return the stored response"
+        "text": "Return the stored response from the first request"
       },
       {
         "id": "c",
-        "text": "Reject it with an error because the key was reused for a different request"
+        "text": "Reject it with an error: key reused for a new request"
       },
       {
         "id": "d",
-        "text": "Delete the old key"
+        "text": "Replace the stored request with the new amount and run it"
       }
     ],
     "correct": [
       "c"
     ],
-    "explanation": "Comparing a request hash catches key reuse. Returning the old response (b) would hide a client bug.",
+    "explanation": "Store a hash of the request with the key; a mismatch means the client reused a key for a different request, which is a bug to surface. (a) and (d) could charge the wrong amount or charge twice. (b) would hide the client bug by pretending the new amount was processed.",
     "topicId": "keys",
     "difficulty": 2
   },
@@ -153,15 +153,15 @@
     "options": [
       {
         "id": "a",
-        "text": "A second charge"
+        "text": "A second charge, since it can't tell"
       },
       {
         "id": "b",
-        "text": "409 Conflict (or similar), because the first attempt is still in progress; retry shortly"
+        "text": "409 Conflict; retry shortly"
       },
       {
         "id": "c",
-        "text": "The stored response, which doesn't exist yet"
+        "text": "The stored response for the key"
       },
       {
         "id": "d",
@@ -171,7 +171,7 @@
     "correct": [
       "b"
     ],
-    "explanation": "The key exists with status in_progress. Doing the work again (a) double-charges; there's no stored response yet (c).",
+    "explanation": "The key exists with status in_progress, so tell the client to retry shortly with 409 Conflict or similar. (a) doing the work again double-charges. (c) there is no stored response yet. (d) 500 says the server failed, which isn't true and may trigger the wrong client behaviour.",
     "topicId": "storage",
     "difficulty": 3
   },
@@ -182,25 +182,25 @@
     "options": [
       {
         "id": "a",
-        "text": "A unique constraint with INSERT … ON CONFLICT DO NOTHING"
+        "text": "A unique constraint with INSERT … ON CONFLICT"
       },
       {
         "id": "b",
-        "text": "Checking with SELECT first"
+        "text": "A SELECT for the key first, INSERT if missing"
       },
       {
         "id": "c",
-        "text": "A longer timeout"
+        "text": "Keeping claimed keys in an in-process hash map"
       },
       {
         "id": "d",
-        "text": "Using GET instead of POST"
+        "text": "A short sleep before claiming to let races settle"
       }
     ],
     "correct": [
       "a"
     ],
-    "explanation": "The database enforces one winner atomically. SELECT-then-INSERT (b) races.",
+    "explanation": "A unique constraint lets the database pick exactly one winner atomically. (b) SELECT-then-INSERT races: both can see 'missing'. (c) An in-process map isn't shared across server instances. (d) Sleeping narrows the race window but never closes it.",
     "topicId": "storage",
     "difficulty": 2
   },
@@ -229,7 +229,7 @@
     "correct": [
       "c"
     ],
-    "explanation": "1,000 × 86,400 ≈ 86 million.",
+    "explanation": "1,000 per second × 86,400 seconds in a day ≈ 86 million rows. (a) and (b) are off by 1,000× and 10×. (d) is 100× too many.",
     "topicId": "storage",
     "difficulty": 2
   },
@@ -241,25 +241,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Ignore it; crashes are rare"
+        "text": "Wrap the charge and the status update in one DB transaction"
       },
       {
         "id": "b",
-        "text": "Pass a key derived from the idempotency key to the card network and track progress steps, so a retry resumes without charging again"
+        "text": "Send the card network a key derived from ours, so it dedupes"
       },
       {
         "id": "c",
-        "text": "Charge the card again on retry"
+        "text": "Charge again on retry, then refund the first charge if found"
       },
       {
         "id": "d",
-        "text": "Store keys only in memory"
+        "text": "Keep the key in memory so the retry finds it after restart"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "External calls can't join your DB transaction, so the downstream must deduplicate too. (a), (c) and (d) risk double charges or lost state.",
+    "explanation": "External calls can't join your database transaction, so the downstream must deduplicate too: pass it a key derived from the idempotency key and track progress steps, so a retry resumes without charging again. (a) The card network isn't part of your transaction, so a crash can still split them. (c) risks a visible double charge. (d) Memory is lost in the crash.",
     "topicId": "payments",
     "difficulty": 3
   },
@@ -270,26 +270,26 @@
     "options": [
       {
         "id": "a",
-        "text": "Store processed message IDs in the same transaction as the effect"
+        "text": "Record message IDs in the effect's transaction"
       },
       {
         "id": "b",
-        "text": "Use naturally idempotent operations like 'set status PAID'"
+        "text": "Use naturally idempotent writes like 'set PAID'"
       },
       {
         "id": "c",
-        "text": "Trust the queue's exactly-once claim"
+        "text": "Rely on the queue's exactly-once delivery claim"
       },
       {
         "id": "d",
-        "text": "Increment counters on every message"
+        "text": "Increment a counter on every message received"
       }
     ],
     "correct": [
       "a",
       "b"
     ],
-    "explanation": "Dedupe tables and naturally idempotent effects both work. (c) and (d) break on redelivery.",
+    "explanation": "A dedupe table updated in the same transaction (a) and naturally idempotent effects (b) both survive redelivery. (c) Real 'exactly once' is usually at-least-once plus idempotent processing, so duplicates still arrive. (d) Increments double-count on redelivery.",
     "topicId": "consumers",
     "difficulty": 2
   }

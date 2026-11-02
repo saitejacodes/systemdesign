@@ -6,7 +6,7 @@
     "options": [
       {
         "id": "a",
-        "text": "One thread shared by all"
+        "text": "One thread shared by all clients"
       },
       {
         "id": "b",
@@ -14,17 +14,17 @@
       },
       {
         "id": "c",
-        "text": "A browser tab"
+        "text": "A lightweight green thread per client"
       },
       {
         "id": "d",
-        "text": "A Redis key"
+        "text": "A slot in a fixed in-memory queue"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "A process per connection is why idle connections still cost memory.",
+    "explanation": "Postgres forks one operating-system process per connection, which is why even idle connections cost memory. (a) and (c) describe thread-based designs Postgres doesn't use. (d) Connections aren't queue slots; each is a full backend process.",
     "topicId": "cost",
     "difficulty": 2
   },
@@ -35,25 +35,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Caches query results"
+        "text": "Caches query results so repeated reads skip the database"
       },
       {
         "id": "b",
-        "text": "Keeps open connections and lends them to requests, avoiding a new handshake each time"
+        "text": "Keeps open connections and lends them out to requests"
       },
       {
         "id": "c",
-        "text": "Shards the database"
+        "text": "Spreads each query across several database replicas"
       },
       {
         "id": "d",
-        "text": "Encrypts the disk"
+        "text": "Opens a fresh connection per request, then closes it"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Reuse avoids TCP, TLS and auth costs per request.",
+    "explanation": "A pool keeps connections open and lends them to requests, so each request skips the TCP, TLS and auth handshake. (a) is a query cache, not a pool. (c) is read-replica routing. (d) is exactly the per-request cost a pool exists to avoid.",
     "topicId": "pools",
     "difficulty": 1
   },
@@ -64,25 +64,25 @@
     "options": [
       {
         "id": "a",
-        "text": "To speed up queries"
+        "text": "To cancel slow queries that run past their time budget"
       },
       {
         "id": "b",
-        "text": "So requests fail fast when the pool is exhausted instead of queuing forever"
+        "text": "So requests fail fast when the pool is exhausted"
       },
       {
         "id": "c",
-        "text": "To close idle connections"
+        "text": "To close connections that have sat idle in the pool"
       },
       {
         "id": "d",
-        "text": "It's required by SQL"
+        "text": "To force the pool to open extra connections on demand"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Without it, stuck requests pile up behind a saturated pool.",
+    "explanation": "An acquire timeout makes a request fail fast when no connection is free, instead of queuing forever behind a saturated pool. (a) is a statement timeout. (c) is an idle timeout. (d) Pools don't grow past their maximum because a wait is long; the timeout just ends the wait.",
     "topicId": "pools",
     "difficulty": 2
   },
@@ -94,25 +94,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Slow queries; add indexes"
+        "text": "Slow queries hold connections too long; add indexes to free them up"
       },
       {
         "id": "b",
-        "text": "Total connections = instances × pool size exceeded max_connections; cap the total with smaller pools or a pooler"
+        "text": "Instances × pool size now exceeds max_connections; cap the total"
       },
       {
         "id": "c",
-        "text": "A DNS failure"
+        "text": "max_connections is too low for 40 instances; raise it to 1,000"
       },
       {
         "id": "d",
-        "text": "The database needs more disk"
+        "text": "The new instances' pools are too small; give each one 40 connections"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "40 × 20 = 800 > 500. Raising max_connections just makes the database slower; cap the total.",
+    "explanation": "40 × 20 = 800 > 500, so new instances can't connect. Cap the total with smaller pools or a pooler like PgBouncer. (a) The error is about connection count, not query speed. (c) Raising max_connections makes the database slower as connections contend. (d) Bigger pools make the overflow worse.",
     "topicId": "exhaustion",
     "difficulty": 3
   },
@@ -124,25 +124,25 @@
     "options": [
       {
         "id": "a",
-        "text": "The database is too small"
+        "text": "The database is too small and slowly runs out of memory"
       },
       {
         "id": "b",
-        "text": "A connection leak: some code path (likely an error path) borrows a connection and never returns it"
+        "text": "A connection leak: an error path never returns its connection"
       },
       {
         "id": "c",
-        "text": "Too many indexes"
+        "text": "The pool is too small for peak traffic and needs to be raised"
       },
       {
         "id": "d",
-        "text": "Replication lag"
+        "text": "Long-running analytics queries pile up and never finish"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "A pool slowly draining to zero under steady load is the classic leak signature.",
+    "explanation": "Usage climbing steadily regardless of traffic until a restart fixes it is the classic leak signature: some code path, often an error path, borrows a connection and never returns it. (a) A memory problem wouldn't show as pool slots 'in use'. (c) A too-small pool tracks traffic; it doesn't creep up hour by hour. (d) Stuck queries would be visible on the database and wouldn't clear on an app restart.",
     "topicId": "exhaustion",
     "difficulty": 2
   },
@@ -153,25 +153,25 @@
     "options": [
       {
         "id": "a",
-        "text": "HTTP is insecure"
+        "text": "The connection and its locks are held while the slow call waits"
       },
       {
         "id": "b",
-        "text": "The transaction holds a pooled connection (and locks) while waiting on a slow call"
+        "text": "The HTTP response can't be rolled back if the transaction fails"
       },
       {
         "id": "c",
-        "text": "Transactions can't make network calls"
+        "text": "Postgres blocks outbound network calls while a transaction is open"
       },
       {
         "id": "d",
-        "text": "It causes dirty reads"
+        "text": "It makes other transactions see the uncommitted rows (dirty reads)"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Slow external calls drain the pool and hold locks longer.",
+    "explanation": "The transaction holds a pooled connection, and its locks, the whole time the slow external call waits, which drains the pool. (b) is a real consistency concern, but not why it hurts the pool. (c) Postgres doesn't know about your app's HTTP calls. (d) Postgres doesn't allow dirty reads at any isolation level.",
     "topicId": "exhaustion",
     "difficulty": 2
   },
@@ -182,25 +182,25 @@
     "options": [
       {
         "id": "a",
-        "text": "It keeps rising"
+        "text": "It keeps rising roughly in line with the connection count"
       },
       {
         "id": "b",
-        "text": "It peaks and then falls because sessions contend"
+        "text": "It peaks and then falls as sessions contend with each other"
       },
       {
         "id": "c",
-        "text": "It doubles"
+        "text": "It levels off at the peak and stays flat however many you add"
       },
       {
         "id": "d",
-        "text": "It stays perfectly flat"
+        "text": "It rises until max_connections, then the database rejects calls"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Beyond the efficient concurrency, overhead grows faster than useful work.",
+    "explanation": "Throughput peaks around a small multiple of the CPU cores, then falls because sessions contend for CPU, locks and memory. (a) is the lesson's misconception that more connections means more throughput. (c) misses that overhead keeps growing, so it declines rather than plateaus. (d) mixes up a hard limit with the throughput curve.",
     "topicId": "sizing",
     "difficulty": 2
   },
@@ -229,7 +229,7 @@
     "correct": [
       "b"
     ],
-    "explanation": "Little's Law: 4,000 × 0.005 = 20.",
+    "explanation": "Little's Law: busy connections = arrival rate × time each takes = 4,000 × 0.005 s = 20. (a) is off by 10×. (c) uses 50 ms instead of 5 ms. (d) multiplies 4,000 by 0.2 instead of 0.005.",
     "topicId": "sizing",
     "difficulty": 2
   },
@@ -241,25 +241,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Disk space"
+        "text": "Whether the replica the pooler routes reads to is lagging behind the primary"
       },
       {
         "id": "b",
-        "text": "Whether the code relies on session state, such as session-level SET, advisory locks or LISTEN/NOTIFY, which transaction pooling doesn't preserve"
+        "text": "Whether the code relies on session state, like a session-level SET"
       },
       {
         "id": "c",
-        "text": "Replication lag"
+        "text": "Whether the pooler's own connection limit is lower than max_connections"
       },
       {
         "id": "d",
-        "text": "The CDN"
+        "text": "Whether the tenant_id column is missing an index, so filters are skipped"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Transaction pooling gives each transaction possibly a different server connection, so session state disappears.",
+    "explanation": "In transaction pooling mode each transaction may get a different server connection, so session state such as session-level SET, advisory locks or LISTEN/NOTIFY doesn't carry over. (a) PgBouncer doesn't route to replicas, and lag wouldn't show other tenants' rows. (c) A low limit causes waiting, not wrong data. (d) A missing index makes queries slow, never wrong.",
     "topicId": "poolers",
     "difficulty": 3
   },
@@ -288,7 +288,7 @@
     "correct": [
       "b"
     ],
-    "explanation": "A server connection is held only for each transaction's duration.",
+    "explanation": "Transaction pooling holds a server connection only for each transaction's duration, so many clients share a few connections. (a) Session pooling holds one per client session, saving little. (c) Statement pooling breaks multi-statement transactions, which typical web apps use. (d) gives no savings.",
     "topicId": "poolers",
     "difficulty": 2
   }

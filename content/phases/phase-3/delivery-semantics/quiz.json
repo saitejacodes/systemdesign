@@ -5,12 +5,12 @@
     "prompt": "What happens to an SQS message if the consumer that received it neither deletes it nor extends its visibility before the visibility timeout ends?",
     "options": [
       { "id": "a", "text": "It becomes visible again and can be delivered to another consumer" },
-      { "id": "b", "text": "It is deleted automatically" },
-      { "id": "c", "text": "It is moved to a dead-letter queue immediately" },
-      { "id": "d", "text": "It stays hidden until the original consumer reconnects" }
+      { "id": "b", "text": "It is deleted automatically, since the timeout counts as an implicit ack" },
+      { "id": "c", "text": "It is moved to the dead-letter queue immediately for manual inspection" },
+      { "id": "d", "text": "It stays hidden until the original consumer reconnects and finishes it" }
     ],
     "correct": ["a"],
-    "explanation": "SQS assumes the consumer failed and makes the message visible for redelivery. (b) is wrong: only DeleteMessage (or the retention period expiring) removes it. (c) is wrong: a message moves to a dead-letter queue only after exceeding the redrive policy's maxReceiveCount, not after one timeout. (d) is wrong: SQS doesn't track consumer identity for redelivery.",
+    "explanation": "SQS assumes the consumer failed and makes the message visible for redelivery. (b) is wrong: only DeleteMessage (or the retention period expiring) removes it; a timeout is the opposite of an ack. (c) is wrong: a message moves to a dead-letter queue only after exceeding the redrive policy's maxReceiveCount, not after one timeout. (d) is wrong: SQS doesn't track consumer identity for redelivery.",
     "topicId": "acks",
     "difficulty": 1
   },
@@ -20,9 +20,9 @@
     "prompt": "In Kafka, what does a consumer 'acknowledge' when it has processed messages?",
     "options": [
       { "id": "a", "text": "It commits its consumer group's offset for the partition" },
-      { "id": "b", "text": "It deletes each message from the topic" },
+      { "id": "b", "text": "It deletes each processed message from the topic's partition log" },
       { "id": "c", "text": "It sends a per-message ack that the broker tracks individually" },
-      { "id": "d", "text": "Nothing: Kafka has no notion of progress" }
+      { "id": "d", "text": "Nothing: Kafka keeps no record of how far a consumer has read" }
     ],
     "correct": ["a"],
     "explanation": "Kafka tracks progress as one committed offset per partition per consumer group. (b) is wrong: messages stay in the log until retention expires, regardless of consumption. (c) describes RabbitMQ or SQS, not Kafka. (d) is wrong: committed offsets are exactly how a restarted consumer resumes.",
@@ -36,12 +36,12 @@
     "scenario": "A metrics consumer reads a batch from Kafka, commits the offsets immediately, then writes the batch to a time-series database. During a deploy, pods are killed mid-write.",
     "options": [
       { "id": "a", "text": "At-most-once: the in-flight batch is lost because its offsets were already committed" },
-      { "id": "b", "text": "At-least-once: the batch will be re-read after restart" },
-      { "id": "c", "text": "Exactly-once, because Kafka is durable" },
-      { "id": "d", "text": "None: Kafka will reject the commit" }
+      { "id": "b", "text": "At-least-once: the batch will be re-read from Kafka after the restart" },
+      { "id": "c", "text": "Exactly-once, because Kafka replicates every message durably before the commit" },
+      { "id": "d", "text": "None: Kafka rejects offset commits for records that are not yet processed" }
     ],
     "correct": ["a"],
-    "explanation": "Committing before processing means a crash skips the batch: at-most-once, which may be acceptable for metrics. (b) would require committing after the write. (c) confuses broker durability with processing guarantees. (d) is wrong: committing early is allowed; it's just a choice of semantics.",
+    "explanation": "Committing before processing means a crash skips the batch: at-most-once, which may be acceptable for metrics. (b) would require committing after the write; here the committed offset is already past the batch. (c) confuses broker durability with processing guarantees. (d) is wrong: Kafka doesn't know whether records were processed, and committing early is allowed; it's just a choice of semantics.",
     "topicId": "at-most-once",
     "difficulty": 2
   },
@@ -52,8 +52,8 @@
     "options": [
       { "id": "a", "text": "CPU usage samples sent every 10 seconds" },
       { "id": "b", "text": "A driver's live GPS position, updated every 3 seconds" },
-      { "id": "c", "text": "Payment capture requests" },
-      { "id": "d", "text": "Order confirmation emails" }
+      { "id": "c", "text": "Payment capture requests from the checkout service" },
+      { "id": "d", "text": "Order confirmation emails sent after checkout" }
     ],
     "correct": ["a", "b"],
     "explanation": "Metrics (a) and live locations (b) are quickly superseded, so losing one is cheap. Payments (c) and confirmation emails (d) have business value; losing one is a customer-facing failure, so they need at-least-once with idempotent handling.",
@@ -68,7 +68,7 @@
       { "id": "a", "text": "The consumer crashes after doing the work but before acknowledging" },
       { "id": "b", "text": "Processing takes longer than the SQS visibility timeout" },
       { "id": "c", "text": "The broker stored a message but the producer never got the confirmation, so it resent" },
-      { "id": "d", "text": "The consumer acknowledges before processing" }
+      { "id": "d", "text": "The consumer acknowledges each message before it starts processing it" }
     ],
     "correct": ["a", "b", "c"],
     "explanation": "(a), (b) and (c) all lead to a second copy being processed. (d) is the at-most-once pattern: it can lose a message but doesn't create duplicates.",
@@ -81,13 +81,13 @@
     "prompt": "What is the most likely cause, and the best first fix?",
     "scenario": "A push-notification consumer on an SQS standard queue uses the default 30 s visibility timeout. Users occasionally get the same notification twice. Traces show those messages took 35–50 s because the push provider was slow.",
     "options": [
-      { "id": "a", "text": "Processing exceeded the visibility timeout so SQS redelivered; make the consumer idempotent by message ID and raise the timeout above worst-case processing time" },
-      { "id": "b", "text": "SQS is broken; switch brokers" },
-      { "id": "c", "text": "Delete the message before calling the provider" },
-      { "id": "d", "text": "Lower the visibility timeout to 5 s so retries happen faster" }
+      { "id": "a", "text": "Work outlasted the visibility timeout; dedupe by message ID and raise the timeout" },
+      { "id": "b", "text": "SQS standard queues randomly duplicate messages under load; switch to another broker" },
+      { "id": "c", "text": "Delete the message before calling the provider so a slow call can't cause a redelivery" },
+      { "id": "d", "text": "Lower the visibility timeout to 5 s so failed messages are retried sooner and clear faster" }
     ],
     "correct": ["a"],
-    "explanation": "Messages outlived the 30 s window and were redelivered. Idempotency handles every duplicate source, and a longer timeout removes this particular one. (b) is wrong: this is documented behaviour. (c) switches to at-most-once, losing notifications when a pod dies. (d) makes duplicates far more frequent.",
+    "explanation": "Messages outlived the 30 s window and were redelivered. Idempotency by message ID handles every duplicate source, and a timeout above worst-case processing time removes this particular one. (b) is wrong: the traces tie the duplicates to slow processing, which is documented behaviour, and any at-least-once broker would do the same. (c) switches to at-most-once, losing notifications when a pod dies. (d) makes duplicates far more frequent, since even normal sends would outlive 5 s.",
     "topicId": "at-least-once",
     "difficulty": 2
   },
@@ -96,10 +96,10 @@
     "type": "single",
     "prompt": "Why is exactly-once delivery across a network impossible in general?",
     "options": [
-      { "id": "a", "text": "A consumer can crash between doing the work and acknowledging it, and the broker cannot tell whether the work happened" },
-      { "id": "b", "text": "Networks reorder packets" },
-      { "id": "c", "text": "Brokers store messages in memory" },
-      { "id": "d", "text": "TCP has no acknowledgements" }
+      { "id": "a", "text": "A consumer can crash between doing the work and acking, so the broker can't tell if it happened" },
+      { "id": "b", "text": "Networks can reorder packets, so the broker cannot know which delivery arrived first" },
+      { "id": "c", "text": "Brokers keep messages in memory, so a broker restart can always lose or replay some" },
+      { "id": "d", "text": "TCP has no end-to-end acknowledgements, so senders never know if bytes were received" }
     ],
     "correct": ["a"],
     "explanation": "The effect and the ack are separate steps, so the broker must guess: redeliver (risk duplicate) or not (risk loss). (b) is about ordering, which TCP already handles within a connection. (c) is false for durable brokers and irrelevant to the core problem. (d) is false; TCP has ACKs, but they confirm bytes arrived, not that processing finished.",
@@ -112,10 +112,10 @@
     "prompt": "Which design makes this consumer safe against duplicates?",
     "scenario": "A consumer receives 'payment succeeded for order 991' (message ID evt-7f3a) and must mark the order PAID and add a row to the ledger table in Postgres. Messages are delivered at least once.",
     "options": [
-      { "id": "a", "text": "In one transaction: insert evt-7f3a into processed_messages (unique), update the order, insert the ledger row; then ack" },
-      { "id": "b", "text": "Check Redis for evt-7f3a; if absent, do the writes, then set the key in Redis" },
-      { "id": "c", "text": "Ack first, then do the writes" },
-      { "id": "d", "text": "Rely on SQS standard queue deduplication" }
+      { "id": "a", "text": "One transaction: insert evt-7f3a into a unique processed table, update order, add ledger row; then ack" },
+      { "id": "b", "text": "Check Redis for evt-7f3a; if absent, do both writes, then set the key in Redis and ack" },
+      { "id": "c", "text": "Ack the message first, then update the order and insert the ledger row in Postgres" },
+      { "id": "d", "text": "Rely on the SQS standard queue's built-in deduplication to drop the repeated copies" }
     ],
     "correct": ["a"],
     "explanation": "The dedup record and the effects commit atomically, so a duplicate fails the unique constraint and changes nothing. (b) has a race: two copies can both find the key absent and both write, and a crash between the writes and the Redis set causes a repeat. (c) is at-most-once and can lose the payment. (d) is wrong: standard queues have no deduplication; only FIFO queues do, and only for 5 minutes against producer resends.",
@@ -128,9 +128,9 @@
     "prompt": "What does SQS FIFO's 5-minute deduplication protect against?",
     "options": [
       { "id": "a", "text": "A producer sending the same message (same deduplication ID) twice within 5 minutes" },
-      { "id": "b", "text": "A consumer processing a message and crashing before deleting it" },
-      { "id": "c", "text": "Duplicate rows in your database" },
-      { "id": "d", "text": "Messages older than 5 minutes being delivered" }
+      { "id": "b", "text": "A consumer processing a message and then crashing before it deletes it from the queue" },
+      { "id": "c", "text": "Duplicate rows being written to your database by two consumers handling one message" },
+      { "id": "d", "text": "Messages older than 5 minutes being delivered to consumers after a long outage" }
     ],
     "correct": ["a"],
     "explanation": "FIFO deduplication drops repeated sends with the same deduplication ID in the 5-minute interval. (b) still causes redelivery; the consumer must be idempotent. (c) is the application's job. (d) is unrelated; retention is configured separately.",
@@ -143,9 +143,9 @@
     "prompt": "What does Kafka's idempotent producer prevent?",
     "options": [
       { "id": "a", "text": "Duplicate copies in a partition caused by the producer retrying a send" },
-      { "id": "b", "text": "Consumers processing a message twice after a crash" },
-      { "id": "c", "text": "Two different services publishing the same business event" },
-      { "id": "d", "text": "Duplicate emails sent by a consumer" }
+      { "id": "b", "text": "Consumers processing a message twice after crashing before committing their offset" },
+      { "id": "c", "text": "Two different services publishing the same business event to the same topic" },
+      { "id": "d", "text": "Duplicate emails sent by a consumer that retries its call to the email provider" }
     ],
     "correct": ["a"],
     "explanation": "The broker discards retried messages whose per-partition sequence number it has already written. (b) needs offset commits inside transactions or an idempotent consumer. (c) is two different sends, which the producer ID and sequence numbers can't recognise as the same. (d) is an external side effect Kafka can't control.",
@@ -158,13 +158,13 @@
     "prompt": "Is the team's reasoning correct?",
     "scenario": "A team enables Kafka transactions and exactly_once_v2 in their Kafka Streams app, which reads 'order placed' events and, for each, calls a third-party email API and writes an 'email sent' event to another topic. They remove their email deduplication logic because 'Kafka is exactly-once now'.",
     "options": [
-      { "id": "a", "text": "No: Kafka's guarantee covers reads, writes and offsets inside Kafka; an aborted and retried transaction can call the email API again, so it still needs an idempotency key" },
-      { "id": "b", "text": "Yes: exactly_once_v2 covers all side effects" },
-      { "id": "c", "text": "Yes, as long as acks=all is set" },
-      { "id": "d", "text": "No, because Kafka transactions only work with one partition" }
+      { "id": "a", "text": "No: the guarantee covers only Kafka reads, writes and offsets; a retried transaction can resend the email" },
+      { "id": "b", "text": "Yes: exactly_once_v2 makes every side effect in the processor, including HTTP calls, happen once" },
+      { "id": "c", "text": "Yes, as long as the producer also sets acks=all so every write is replicated before commit" },
+      { "id": "d", "text": "No, because Kafka transactions work only within a single partition, not across two topics" }
     ],
     "correct": ["a"],
-    "explanation": "Kafka can roll back its own writes and offsets but not an HTTP call already made, so external effects need their own idempotency. (b) overstates the guarantee. (c) is about replication durability, not processing semantics. (d) is false: transactions exist precisely to write across multiple partitions and topics atomically.",
+    "explanation": "Kafka can roll back its own writes and offsets but not an HTTP call already made, so an aborted and retried transaction can call the email API again and external effects need their own idempotency key. (b) overstates the guarantee. (c) is about replication durability, not processing semantics. (d) is false: transactions exist precisely to write across multiple partitions and topics atomically.",
     "topicId": "kafka-eos",
     "difficulty": 3
   },
@@ -175,11 +175,11 @@
     "options": [
       { "id": "a", "text": "isolation.level=read_committed" },
       { "id": "b", "text": "enable.auto.commit=false" },
-      { "id": "c", "text": "acks=all" },
+      { "id": "c", "text": "isolation.level=read_uncommitted" },
       { "id": "d", "text": "enable.idempotence=true" }
     ],
     "correct": ["a"],
-    "explanation": "read_committed hides messages from aborted or still-open transactions. (b) controls when offsets are committed, not what is visible. (c) and (d) are producer settings for durability and retry deduplication.",
+    "explanation": "read_committed hides messages from aborted or still-open transactions. (b) controls when offsets are committed, not what is visible. (c) read_uncommitted is the default and is exactly the setting that lets a consumer see aborted messages. (d) is a producer setting for retry deduplication.",
     "topicId": "kafka-eos",
     "difficulty": 3
   }

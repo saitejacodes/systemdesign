@@ -5,12 +5,12 @@
     "prompt": "How does a pull CDN get a file it has never seen before?",
     "options": [
       { "id": "a", "text": "It fetches it from the origin on the first request at that PoP, then caches it" },
-      { "id": "b", "text": "It returns 404 until you upload the file" },
-      { "id": "c", "text": "It copies it from the user's browser cache" },
-      { "id": "d", "text": "DNS returns the file directly" }
+      { "id": "b", "text": "It returns 404 to users until you upload the file to every PoP yourself" },
+      { "id": "c", "text": "It copies the file from a nearby user's browser cache over peer-to-peer" },
+      { "id": "d", "text": "DNS resolves the request straight to the origin, which serves it uncached each time" }
     ],
     "correct": ["a"],
-    "explanation": "Pull CDNs fill on demand: a miss is forwarded to the origin and the response is stored per its headers. Requiring an upload is the push model. CDNs never read browser caches. DNS only maps names to addresses; it doesn't serve content.",
+    "explanation": "Pull CDNs fill on demand: a miss is forwarded to the origin and the response is stored per its headers. Requiring an upload is the push model. CDNs never read browsers' caches. DNS only maps names to addresses; with a pull CDN the name points at the edge, which caches what it fetches.",
     "topicId": "push-pull",
     "difficulty": 1
   },
@@ -21,12 +21,12 @@
     "scenario": "A game studio ships a 40 GB patch at 18:00 on Tuesday. Millions of players will download it within the first hour, from every continent. The file never changes once released.",
     "options": [
       { "id": "a", "text": "Push: upload the patch to the CDN before release so every location has it at 18:00" },
-      { "id": "b", "text": "Pull with a 10-second TTL" },
-      { "id": "c", "text": "No CDN; scale the origin" },
-      { "id": "d", "text": "Pull with Cache-Control: no-store" }
+      { "id": "b", "text": "Pull with a 10-second TTL, so every PoP fetches the patch from origin on first demand" },
+      { "id": "c", "text": "No CDN; scale the origin horizontally to serve every download directly" },
+      { "id": "d", "text": "Pull with Cache-Control: no-store so players always get the exact released file" }
     ],
     "correct": ["a"],
-    "explanation": "A large, immutable file with a huge predictable burst is the textbook push case: pre-position it so no PoP has to pull 40 GB from the origin at the moment of peak demand. A 10-second TTL would make PoPs refetch constantly. Serving millions of 40 GB downloads from the origin is slow for distant users and extremely expensive. no-store forbids caching, so every download would hit the origin.",
+    "explanation": "A large, immutable file with a huge predictable burst is the textbook push case: pre-position it so no PoP has to pull 40 GB from the origin at the moment of peak demand. A 10-second TTL would make PoPs refetch constantly, and every first request at peak pulls from the origin. Serving millions of 40 GB downloads from the origin is slow for distant users and extremely expensive. no-store forbids caching, so every download would hit the origin; the file is immutable, so there is nothing to keep fresh.",
     "topicId": "push-pull",
     "difficulty": 2
   },
@@ -35,10 +35,10 @@
     "type": "single",
     "prompt": "What does Cache-Control: no-cache mean?",
     "options": [
-      { "id": "a", "text": "The response must never be stored" },
-      { "id": "b", "text": "The response may be stored but must be revalidated with the origin before each use" },
-      { "id": "c", "text": "Only browsers may cache it" },
-      { "id": "d", "text": "It may be cached for one hour by default" }
+      { "id": "a", "text": "The response must never be stored by the browser or by any shared cache" },
+      { "id": "b", "text": "It may be stored, but must be revalidated with the origin before each use" },
+      { "id": "c", "text": "Only the browser may store it; shared caches such as CDNs must not keep it" },
+      { "id": "d", "text": "It may be cached for a default hour, after which it is refetched from origin" }
     ],
     "correct": ["b"],
     "explanation": "no-cache means 'check before you use it', typically via an ETag and a 304. Never storing is no-store. Browser-only caching is private. There is no default one-hour lifetime attached to no-cache.",
@@ -51,12 +51,12 @@
     "prompt": "Which header set is best for /static/app.3f9a1c.js, whose filename changes whenever its content changes?",
     "options": [
       { "id": "a", "text": "Cache-Control: public, max-age=31536000, immutable" },
-      { "id": "b", "text": "Cache-Control: no-store" },
-      { "id": "c", "text": "Cache-Control: private, max-age=60" },
-      { "id": "d", "text": "Cache-Control: no-cache" }
+      { "id": "b", "text": "Cache-Control: no-store, max-age=0, must-revalidate" },
+      { "id": "c", "text": "Cache-Control: private, max-age=31536000, immutable" },
+      { "id": "d", "text": "Cache-Control: public, no-cache, max-age=31536000" }
     ],
     "correct": ["a"],
-    "explanation": "A fingerprinted file can never change under the same URL, so cache it for a year everywhere and mark it immutable. no-store throws away all caching. private stops the CDN caching a file that is identical for everyone, and 60 seconds is needlessly short. no-cache forces a revalidation round trip for something that can't have changed.",
+    "explanation": "A fingerprinted file can never change under the same URL, so cache it for a year everywhere and mark it immutable. no-store throws away all caching, whatever else is listed. private stops the CDN caching a file that is identical for everyone. no-cache forces a revalidation round trip before every use for something that can't have changed.",
     "topicId": "cache-headers",
     "difficulty": 2
   },
@@ -66,13 +66,13 @@
     "prompt": "What is the most likely cause of the low hit rate?",
     "scenario": "An image service sets Cache-Control: public, max-age=86400 on every image, yet its CDN hit rate is 15%. Responses include Vary: User-Agent because one code path once served WebP only to some browsers.",
     "options": [
-      { "id": "a", "text": "The TTL is too short" },
-      { "id": "b", "text": "Vary: User-Agent makes the CDN store a separate copy per user-agent string, so most requests miss" },
-      { "id": "c", "text": "public prevents CDN caching" },
-      { "id": "d", "text": "Images can't be cached by CDNs" }
+      { "id": "a", "text": "max-age=86400 is too short for images, so copies expire before they are reused" },
+      { "id": "b", "text": "Vary: User-Agent stores a separate copy per browser string, so most requests miss" },
+      { "id": "c", "text": "The public directive stops shared caches like the CDN from storing the images" },
+      { "id": "d", "text": "CDNs skip caching binary image responses unless they are explicitly pushed to them" }
     ],
     "correct": ["b"],
-    "explanation": "There are thousands of distinct User-Agent strings, so Vary: User-Agent fragments each image into thousands of cache entries. Normalise to a small set (or vary on Accept) instead. A day-long TTL is generous. public explicitly allows shared caching. Images are the most commonly CDN-cached content there is.",
+    "explanation": "There are thousands of distinct User-Agent strings, so Vary: User-Agent fragments each image into thousands of cache entries. Normalise to a small set (or vary on Accept) instead. A day-long TTL is generous for this. public explicitly allows shared caching. Images are the most commonly CDN-cached content there is, and pull CDNs cache them on demand.",
     "topicId": "cache-headers",
     "difficulty": 2
   },
@@ -81,13 +81,13 @@
     "type": "single",
     "prompt": "A cache revalidates with If-None-Match and the content hasn't changed. What does the origin send?",
     "options": [
-      { "id": "a", "text": "200 OK with the full body" },
+      { "id": "a", "text": "200 OK with the full body and a new ETag" },
       { "id": "b", "text": "304 Not Modified with no body" },
-      { "id": "c", "text": "204 No Content" },
-      { "id": "d", "text": "412 Precondition Failed" }
+      { "id": "c", "text": "204 No Content, since nothing changed" },
+      { "id": "d", "text": "412 Precondition Failed for the matched tag" }
     ],
     "correct": ["b"],
-    "explanation": "A matching ETag means the cached copy is still valid, so the origin sends 304 with headers only and the cache refreshes its freshness. 200 with a body is what happens when the ETag doesn't match. 204 means a successful request with no content, not 'unchanged'. 412 is for failed preconditions such as If-Match on writes.",
+    "explanation": "A matching ETag means the cached copy is still valid, so the origin sends 304 with headers only and the cache refreshes its freshness. 200 with a body is what happens when the ETag doesn't match. 204 means a successful request with no content, not 'unchanged'. 412 is for failed preconditions such as If-Match on writes; here the precondition matched.",
     "topicId": "cache-headers",
     "difficulty": 1
   },
@@ -97,13 +97,13 @@
     "prompt": "What went wrong?",
     "scenario": "A site serves English or French depending on a lang cookie. After adding a CDN, French users sometimes see English pages. The CDN uses the default cache key of host, path and query string, and responses have no Vary header.",
     "options": [
-      { "id": "a", "text": "The cache key ignores the input that changes the response, so the first language cached is served to everyone" },
-      { "id": "b", "text": "The TTL is too long" },
-      { "id": "c", "text": "The CDN is translating pages" },
-      { "id": "d", "text": "French browsers don't support caching" }
+      { "id": "a", "text": "The cache key ignores the cookie, so whichever language is cached first is served to all" },
+      { "id": "b", "text": "The TTL is too long, so pages cached before the French launch are still being served" },
+      { "id": "c", "text": "The CDN auto-translates pages into the PoP's local language before serving them" },
+      { "id": "d", "text": "French browsers send no-cache by default, so they bypass the CDN and get English" }
     ],
     "correct": ["a"],
-    "explanation": "The language changes the response but isn't in the key, so both languages share one entry. Fix it by putting the language in the URL path or adding the normalised cookie value to the cache key. A shorter TTL would only change how often the wrong language flips. CDNs don't translate content. Browser language has nothing to do with whether caching works.",
+    "explanation": "The language changes the response but isn't in the key, so both languages share one entry. Fix it by putting the language in the URL path or adding the normalised cookie value to the cache key. A shorter TTL would only change how often the wrong language flips. CDNs don't translate content. Browser language settings don't change caching directives, and bypassing the CDN would reach the origin, which serves French correctly.",
     "topicId": "cache-keys",
     "difficulty": 2
   },
@@ -128,13 +128,13 @@
     "prompt": "What is the best approach for future releases?",
     "scenario": "Each deploy, the team purges /static/* so users get the new app.js and styles.css. Right after each purge the origin's CPU spikes and pages load slowly worldwide for a few minutes.",
     "options": [
-      { "id": "a", "text": "Purge more often so the cache stays small" },
-      { "id": "b", "text": "Fingerprint filenames (app.3f9a1c.js), cache them for a year with immutable, and only keep the HTML short-lived" },
-      { "id": "c", "text": "Set no-store on static files" },
-      { "id": "d", "text": "Increase the origin's TTL" }
+      { "id": "a", "text": "Purge more often, in smaller batches, so the cache stays small and refills gradually" },
+      { "id": "b", "text": "Fingerprint file names, cache them for a year as immutable, and keep only the HTML short-lived" },
+      { "id": "c", "text": "Set no-store on static files so users always fetch the latest version from the origin" },
+      { "id": "d", "text": "Raise the static files' TTL so the cache refills less often after each deploy's purge" }
     ],
     "correct": ["b"],
-    "explanation": "Versioned URLs make new deploys use new keys, so nothing needs purging and the old files keep serving pages that still reference them. Purging more often causes more cold-cache stampedes. no-store sends every request to the origin, making the spike permanent. TTL changes don't help because the purge is what empties the cache.",
+    "explanation": "Versioned URLs make new deploys use new keys, so nothing needs purging and the old files keep serving pages that still reference them. Purging more often causes more cold-cache stampedes, however it is batched. no-store sends every request to the origin, making the spike permanent. TTL changes don't help because the purge is what empties the cache.",
     "topicId": "purging",
     "difficulty": 2
   },
@@ -143,13 +143,13 @@
     "type": "single",
     "prompt": "What does purge-by-tag (Fastly Surrogate-Key, Cloudflare Cache-Tag) let you do?",
     "options": [
-      { "id": "a", "text": "Invalidate every cached response labelled with a tag, such as all pages, JSON and images for one product, in one call" },
-      { "id": "b", "text": "Purge only objects older than a given age" },
-      { "id": "c", "text": "Push files to the CDN in advance" },
-      { "id": "d", "text": "Tag users for A/B tests" }
+      { "id": "a", "text": "Invalidate every response labelled with a tag, such as all of one product's pages and images" },
+      { "id": "b", "text": "Purge only the cached objects older than a given age, across all PoPs in one call" },
+      { "id": "c", "text": "Push tagged files into every PoP in advance, so the first request is already a hit" },
+      { "id": "d", "text": "Tag users into A/B test groups so the edge serves each group its own page variant" }
     ],
     "correct": ["a"],
-    "explanation": "The origin labels responses with tags and one purge clears every object sharing a tag, regardless of URL. Age-based expiry is what TTLs do. Pre-loading content is push, not purging. A/B assignment is an edge-compute use, unrelated to tags.",
+    "explanation": "The origin labels responses with tags and one purge clears every object sharing a tag, regardless of URL. Age-based expiry is what TTLs do. Pre-loading content is push, not purging. A/B assignment is an edge-compute use, unrelated to surrogate keys.",
     "topicId": "purging",
     "difficulty": 2
   },
@@ -159,13 +159,13 @@
     "prompt": "Which statement about the CDN is accurate?",
     "scenario": "A news homepage is the same for all anonymous users, changes every few seconds, and receives 20,000 requests a second at peak. The team says it can't use a CDN because the page is dynamic.",
     "options": [
-      { "id": "a", "text": "Microcache it at the CDN for 1–5 seconds; the origin then serves a few requests per PoP per second instead of 20,000" },
-      { "id": "b", "text": "They're right; dynamic pages can't use a CDN" },
-      { "id": "c", "text": "Cache it for a day and purge on every change" },
-      { "id": "d", "text": "Move the whole site into edge functions with their own database" }
+      { "id": "a", "text": "Microcache it for 1–5 seconds; the origin then sees a few requests per PoP per second" },
+      { "id": "b", "text": "They're right: a page that changes every few seconds cannot be cached at a CDN at all" },
+      { "id": "c", "text": "Cache it for a day and purge the homepage on every change so it is always current" },
+      { "id": "d", "text": "Move the whole site into edge functions, each with its own copy of the database" }
     ],
     "correct": ["a"],
-    "explanation": "A shared response that changes every few seconds is ideal for microcaching: a few seconds of staleness collapses thousands of identical requests. Saying dynamic pages can't use a CDN ignores microcaching. A day-long TTL with constant purges creates purge storms and cold caches. Rewriting everything as edge functions is a large redesign that still needs central data.",
+    "explanation": "A shared response that changes every few seconds is ideal for microcaching: a few seconds of staleness collapses thousands of identical requests. Saying dynamic pages can't use a CDN ignores microcaching. A day-long TTL with constant purges creates purge storms and cold caches. Rewriting everything as edge functions is a large redesign, and per-PoP database copies would be hard to keep consistent.",
     "topicId": "edge-compute",
     "difficulty": 2
   },
@@ -175,12 +175,12 @@
     "prompt": "Using the lesson's illustrative prices, why does dropping hit rate from 95% to 80% matter so much?",
     "options": [
       { "id": "a", "text": "Origin egress quadruples, because misses go from 5% to 20% of traffic" },
-      { "id": "b", "text": "The CDN charges more per GB at lower hit rates" },
-      { "id": "c", "text": "It doesn't; cost depends only on total traffic" },
-      { "id": "d", "text": "Users are charged for misses" }
+      { "id": "b", "text": "The CDN charges a higher per-GB price on all traffic when the hit rate is lower" },
+      { "id": "c", "text": "It doesn't; total cost depends only on total traffic, not on how much of it hits" },
+      { "id": "d", "text": "It matters only for latency: misses are slower, but the cost of serving is the same" }
     ],
     "correct": ["a"],
-    "explanation": "Miss traffic goes from 5% to 20%, four times the origin egress, compute and database load. CDN delivery is billed on bytes delivered to users, not on your hit rate. Total traffic is fixed, but how it splits between CDN and origin is what changes cost. Users pay nothing extra for misses.",
+    "explanation": "Miss traffic goes from 5% to 20%, four times the origin egress, compute and database load. CDN delivery is billed on bytes delivered to users, not on your hit rate. Total traffic is fixed, but how it splits between CDN and origin is what changes cost. Misses are slower, but each one also costs origin egress and compute, so cost does change.",
     "topicId": "cdn-cost",
     "difficulty": 2
   }

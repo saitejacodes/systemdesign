@@ -6,25 +6,25 @@
     "options": [
       {
         "id": "a",
-        "text": "IPs are too long"
+        "text": "IPv6 addresses are too long to use as efficient Redis counter keys"
       },
       {
         "id": "b",
-        "text": "Many users share one IP and attackers can rotate through many"
+        "text": "Many users share one IP, and attackers can rotate through many IPs"
       },
       {
         "id": "c",
-        "text": "IPs change every request"
+        "text": "A client's IP changes on almost every request, so counts never add up"
       },
       {
         "id": "d",
-        "text": "Load balancers hide all IPs"
+        "text": "Load balancers replace every client IP with their own, hiding them all"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Shared NATs and rotating attackers make IPs both too strict and too loose. (a), (c) and (d) are false or irrelevant.",
+    "explanation": "Shared NATs and corporate proxies put many users behind one IP (too strict), while attackers rotate through many IPs (too loose). Key length isn't a real problem, client IPs don't change per request, and proxies pass the original IP in headers like X-Forwarded-For.",
     "topicId": "why",
     "difficulty": 1
   },
@@ -65,7 +65,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Token bucket; use leaky bucket"
+        "text": "Token bucket letting a full burst through; switch to a leaky bucket"
       },
       {
         "id": "b",
@@ -73,17 +73,17 @@
       },
       {
         "id": "c",
-        "text": "Sliding log; use fixed window"
+        "text": "Sliding log missing old timestamps; switch to a fixed window counter"
       },
       {
         "id": "d",
-        "text": "None; this is expected"
+        "text": "Nothing is exploited; 100 per minute is exactly what each window allows"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Fixed windows reset at the boundary, allowing 2× in a short span. Sliding windows look back a full window from now.",
+    "explanation": "Per-minute counters reset at the boundary, so 100 at 12:00:59 plus 100 at 12:01:00 gets 2x the limit through in a second. Sliding windows look back a full window from now. This isn't a token bucket or sliding log, switching to fixed windows is the cause not the fix, and 200 in two seconds is not the intended rate.",
     "topicId": "algorithms",
     "difficulty": 2
   },
@@ -152,25 +152,25 @@
     "options": [
       {
         "id": "a",
-        "text": "It stores a timestamp for every request in the window"
+        "text": "It stores a timestamp for every request inside the window"
       },
       {
         "id": "b",
-        "text": "It stores the full request body"
+        "text": "It stores each full request body so requests can be replayed"
       },
       {
         "id": "c",
-        "text": "It needs one Redis server per user"
+        "text": "It needs a dedicated Redis server for every user it tracks"
       },
       {
         "id": "d",
-        "text": "It keeps logs forever"
+        "text": "It keeps every timestamp forever and never trims old entries"
       }
     ],
     "correct": [
       "a"
     ],
-    "explanation": "Memory grows with the limit × active users. (b), (c) and (d) aren't how it works.",
+    "explanation": "A sliding log keeps one timestamp per request in the window, so memory grows with limit x active users. It doesn't store bodies, doesn't need per-user servers, and trims entries older than the window.",
     "topicId": "algorithms",
     "difficulty": 2
   },
@@ -182,25 +182,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Redis is too slow"
+        "text": "Redis is too slow under load, so counter updates arrive after the check"
       },
       {
         "id": "b",
-        "text": "Two servers read the same count before either writes, so both allow; use atomic INCR or a Lua script"
+        "text": "Two servers read the same count before either writes; use atomic INCR"
       },
       {
         "id": "c",
-        "text": "The window is too short"
+        "text": "The one-minute window is too short, so counts reset before they settle"
       },
       {
         "id": "d",
-        "text": "The load balancer duplicates requests"
+        "text": "The load balancer duplicates some requests, so each one is counted twice"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "A read-then-write race. INCR is atomic; Lua makes multi-step logic atomic.",
+    "explanation": "It's a read-then-write race: two servers GET 99, both allow, both SET 100. Atomic INCR (or a Lua script for multi-step logic) fixes it. Redis speed and window length don't cause overshoot, and duplicated requests would be counted, not let through extra.",
     "topicId": "distributed",
     "difficulty": 3
   },
@@ -272,25 +272,25 @@
     "options": [
       {
         "id": "a",
-        "text": "The CDN"
+        "text": "At the CDN edge, so abusive export calls are blocked before origin"
       },
       {
         "id": "b",
-        "text": "Inside the export service, which knows what an export is"
+        "text": "Inside the export service, which knows what counts as an export"
       },
       {
         "id": "c",
-        "text": "DNS"
+        "text": "At the API gateway as a generic per-user requests-per-day limit"
       },
       {
         "id": "d",
-        "text": "The client app only"
+        "text": "In the client app, which can disable the button after ten exports"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Business-specific limits need business context. The CDN and DNS can't see it; client-only limits are trivially bypassed.",
+    "explanation": "Business-specific limits need business context, so they belong in the export service. The CDN and a generic gateway limit see requests, not exports (and would count retries or status polls), and client-only limits are trivially bypassed.",
     "topicId": "placement",
     "difficulty": 2
   },
@@ -301,25 +301,25 @@
     "options": [
       {
         "id": "a",
-        "text": "500 Internal Server Error"
+        "text": "503 Service Unavailable, since the server is refusing extra load"
       },
       {
         "id": "b",
-        "text": "429 Too Many Requests with Retry-After"
+        "text": "429 Too Many Requests with a Retry-After header"
       },
       {
         "id": "c",
-        "text": "200 with an empty body"
+        "text": "200 OK with an empty body so clients don't treat it as an error"
       },
       {
         "id": "d",
-        "text": "A dropped connection"
+        "text": "A silently dropped connection so abusers learn nothing at all"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "429 tells the client exactly what happened and Retry-After when to try again.",
+    "explanation": "429 tells the client exactly what happened and Retry-After tells it when to try again. 503 signals the whole service is down (and invites generic retries), a 200 hides the failure, and a dropped connection looks like a network fault and triggers blind retries.",
     "topicId": "response",
     "difficulty": 1
   },
@@ -330,25 +330,25 @@
     "options": [
       {
         "id": "a",
-        "text": "To make retries slower"
+        "text": "To slow every retry down so clients give up instead of retrying"
       },
       {
         "id": "b",
-        "text": "So rejected clients don't all retry at the same instant and recreate the spike"
+        "text": "So rejected clients don't all retry at once and recreate the spike"
       },
       {
         "id": "c",
-        "text": "Jitter is required by HTTP"
+        "text": "Because HTTP requires a random delay before resending a request"
       },
       {
         "id": "d",
-        "text": "To bypass the limiter"
+        "text": "To spread retries across different keys and slip past the limiter"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Synchronised retries cause repeated spikes. (a), (c) and (d) miss the point.",
+    "explanation": "Without jitter, clients rejected together back off by the same amount and retry together, recreating the spike. Jitter isn't meant to make clients give up, HTTP doesn't require it, and it doesn't change which key is counted.",
     "topicId": "response",
     "difficulty": 2
   }

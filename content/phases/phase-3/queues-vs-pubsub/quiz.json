@@ -35,10 +35,10 @@
     "type": "single",
     "prompt": "In a point-to-point queue with five competing consumers, who receives a given message?",
     "options": [
-      { "id": "a", "text": "All five consumers" },
+      { "id": "a", "text": "All five consumers, each receiving its own copy of the message" },
       { "id": "b", "text": "Exactly one of the five (barring redelivery after a failure)" },
-      { "id": "c", "text": "The first consumer that registered, always" },
-      { "id": "d", "text": "None until all five acknowledge" }
+      { "id": "c", "text": "The first consumer that registered, every time it is free" },
+      { "id": "d", "text": "None of them until all five have acknowledged the message" }
     ],
     "correct": ["b"],
     "explanation": "A queue hands each message to one consumer, spreading work across them. (a) describes pub/sub. (c) is wrong because the broker spreads messages across all available consumers, not just one. (d) mixes up acknowledgement with delivery: one consumer acknowledging is enough.",
@@ -51,10 +51,10 @@
     "prompt": "Why did the throughput stop improving?",
     "scenario": "A team scales an order-import worker pool from 10 to 40 workers reading one SQS queue. Throughput rises from 1,000 to 1,600 messages/s and then stays flat even at 60 workers. Database CPU is at 98%.",
     "options": [
-      { "id": "a", "text": "SQS can't deliver to more than 40 consumers" },
+      { "id": "a", "text": "SQS can't deliver to more than 40 consumers polling a single queue" },
       { "id": "b", "text": "The shared database is now the bottleneck; more workers only add contention" },
-      { "id": "c", "text": "Competing consumers process every message 40 times" },
-      { "id": "d", "text": "The queue should be switched to pub/sub" }
+      { "id": "c", "text": "Competing consumers process every message 40 times, once per worker" },
+      { "id": "d", "text": "The queue should be switched to pub/sub so each worker gets its own message feed" }
     ],
     "correct": ["b"],
     "explanation": "Competing consumers scale until a shared downstream saturates; 98% database CPU shows it has. (a) is false: SQS has no such consumer limit. (c) confuses queues with pub/sub; each message goes to one worker. (d) would give every worker a copy of every message, multiplying the database load.",
@@ -68,8 +68,8 @@
     "options": [
       { "id": "a", "text": "Each message is delivered to every subscriber of the topic" },
       { "id": "b", "text": "Each message is delivered to one randomly chosen subscriber" },
-      { "id": "c", "text": "Subscribers call the publisher directly over HTTP" },
-      { "id": "d", "text": "Messages are always kept forever for replay" }
+      { "id": "c", "text": "Subscribers call the publisher directly over HTTP to fetch it" },
+      { "id": "d", "text": "Messages are always kept forever so subscribers can replay them" }
     ],
     "correct": ["a"],
     "explanation": "Pub/sub fans each message out to every subscriber. (b) describes a queue. (c) is synchronous request-response, the opposite of decoupling. (d) is only true of log-based systems such as Kafka, and even Kafka uses a retention period; SNS and RabbitMQ don't retain delivered messages.",
@@ -82,13 +82,13 @@
     "prompt": "Which AWS design fits best?",
     "scenario": "When a user signs up, three services must react: welcome email, CRM sync and analytics. Each service runs several workers and must not lose messages if it is down for a deploy.",
     "options": [
-      { "id": "a", "text": "One SQS queue that all three services read from" },
-      { "id": "b", "text": "An SNS topic with one SQS queue subscribed per service; each service's workers compete on its own queue" },
-      { "id": "c", "text": "The sign-up service calls all three over HTTP" },
-      { "id": "d", "text": "An SNS topic with HTTP subscriptions straight to each worker" }
+      { "id": "a", "text": "One SQS queue that all three services' workers read from, each taking turns" },
+      { "id": "b", "text": "An SNS topic with one SQS queue per service; that service's workers compete on it" },
+      { "id": "c", "text": "The sign-up service calls all three over HTTP, retrying any that are down" },
+      { "id": "d", "text": "An SNS topic with HTTP subscriptions pointing straight at each individual worker" }
     ],
     "correct": ["b"],
-    "explanation": "SNS fans out a copy per service and each SQS queue buffers that copy while the service deploys, with competing workers inside. (a) gives each message to only one of the three services. (c) couples sign-up to all three and fails when any is down. (d) delivers to individual workers rather than the service as a whole, and has no queue to buffer messages while a service is down.",
+    "explanation": "SNS fans out a copy per service and each SQS queue buffers that copy while the service deploys, with competing workers inside. (a) gives each message to only one of the three services. (c) couples sign-up to all three, and retries fail or pile up while any is down. (d) delivers to individual workers rather than the service as a whole, and has no queue to buffer messages while a service is down.",
     "topicId": "pub-sub",
     "difficulty": 2
   },
@@ -112,10 +112,10 @@
     "type": "single",
     "prompt": "What does SQS long polling (WaitTimeSeconds up to 20) achieve?",
     "options": [
-      { "id": "a", "text": "It holds the receive request open until messages arrive, cutting empty responses and cost" },
-      { "id": "b", "text": "It makes the broker push messages to the consumer" },
-      { "id": "c", "text": "It delays every message by 20 seconds" },
-      { "id": "d", "text": "It guarantees strict ordering" }
+      { "id": "a", "text": "It holds the receive call open until messages arrive, cutting empty responses and cost" },
+      { "id": "b", "text": "It turns SQS into a push system, where the broker sends messages to the consumer" },
+      { "id": "c", "text": "It delays every message by 20 seconds so they can be received in larger batches" },
+      { "id": "d", "text": "It guarantees strict ordering, since one request waits for messages in sequence" }
     ],
     "correct": ["a"],
     "explanation": "Long polling waits server-side and returns as soon as messages are available. (b) is wrong: it's still pull; the consumer asks. (c) is wrong: messages are returned as soon as they arrive, the 20 s is only the maximum wait. (d) is unrelated; ordering depends on queue type.",
@@ -128,13 +128,13 @@
     "prompt": "What's the most direct fix?",
     "scenario": "A RabbitMQ consumer that writes to a slow API keeps running out of memory during spikes. Logs show it holds tens of thousands of unacknowledged messages that the broker has pushed to it.",
     "options": [
-      { "id": "a", "text": "Set a prefetch limit (basic.qos) so the broker pushes only N unacknowledged messages at a time" },
-      { "id": "b", "text": "Switch to auto-acknowledge so messages are removed immediately" },
-      { "id": "c", "text": "Give the consumer more memory" },
-      { "id": "d", "text": "Add a fanout exchange" }
+      { "id": "a", "text": "Set a prefetch limit (basic.qos) so only N unacked messages are pushed at once" },
+      { "id": "b", "text": "Switch to auto-acknowledge so messages leave memory as soon as they are delivered" },
+      { "id": "c", "text": "Give the consumer more memory so it can buffer the spikes until the API catches up" },
+      { "id": "d", "text": "Add a fanout exchange so the backlog is spread over several queues" }
     ],
     "correct": ["a"],
-    "explanation": "Prefetch is RabbitMQ's backpressure for push consumers: the broker stops sending until the consumer acknowledges. (b) removes the safety net, so messages are lost if the consumer crashes, and the buffer problem stays. (c) only delays the crash. (d) changes routing, not delivery rate.",
+    "explanation": "Prefetch is RabbitMQ's backpressure for push consumers: the broker stops sending until the consumer acknowledges. (b) removes the safety net, so messages are lost if the consumer crashes, and the broker pushes even faster, so the buffer problem stays. (c) only delays the crash, since spikes can always exceed the memory. (d) copies messages to more queues; it changes routing, not delivery rate.",
     "topicId": "push-pull",
     "difficulty": 3
   },
@@ -159,13 +159,13 @@
     "prompt": "Should this step use a queue?",
     "scenario": "A login endpoint must check the password and return a session token. A teammate proposes publishing a 'login attempted' message and having a worker verify the password asynchronously.",
     "options": [
-      { "id": "a", "text": "No: the user needs the result in the same request, so verification stays synchronous; a queue could still carry an audit event afterwards" },
-      { "id": "b", "text": "Yes: queues always make endpoints faster" },
-      { "id": "c", "text": "Yes, with pub/sub so every service verifies the password" },
-      { "id": "d", "text": "Yes, because it decouples login from the database" }
+      { "id": "a", "text": "No: the user needs the answer in the same request, so verification stays synchronous" },
+      { "id": "b", "text": "Yes: queues always make endpoints faster, since the slow work moves off the request" },
+      { "id": "c", "text": "Yes, using pub/sub so every service can verify the password independently" },
+      { "id": "d", "text": "Yes, because it decouples the login endpoint from the database entirely" }
     ],
     "correct": ["a"],
-    "explanation": "Async suits work the caller doesn't need to wait on. Login needs the answer now, so the queue only adds latency and complexity, though publishing an audit event after the fact is fine. (b) is false: queues speed up the producer's response only by deferring work. (c) multiplies the work for no benefit. (d) is wrong because the worker still needs the database; the user still waits.",
+    "explanation": "Async suits work the caller doesn't need to wait on. Login needs the answer now, so the queue only adds latency and complexity, though publishing an audit event after the fact is fine. (b) is false: queues speed up the producer's response only by deferring work, and here the response needs that work. (c) multiplies the work for no benefit. (d) is wrong because the worker still needs the database; the user still waits.",
     "topicId": "why-async",
     "difficulty": 2
   }

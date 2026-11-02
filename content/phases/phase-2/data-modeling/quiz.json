@@ -14,17 +14,17 @@
       },
       {
         "id": "c",
-        "text": "A post_id column on users"
+        "text": "A liked_post_id foreign key column on users"
       },
       {
         "id": "d",
-        "text": "One table per user"
+        "text": "A JSON array of user IDs stored on each post"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "A join table is the standard model. (a) breaks 1NF; (c) allows only one; (d) doesn't scale.",
+    "explanation": "A join table with one row per (user, post) pair is the standard model. (a) packs many values in one column, breaking 1NF and making 'who liked post X' a string scan. (c) allows only one liked post per user. (d) has the same 1NF problem from the other side, and the array grows without limit on popular posts.",
     "topicId": "entities",
     "difficulty": 1
   },
@@ -35,7 +35,7 @@
     "options": [
       {
         "id": "a",
-        "text": "It saves disk space"
+        "text": "It clusters rows by user, so the table takes less space"
       },
       {
         "id": "b",
@@ -43,17 +43,17 @@
       },
       {
         "id": "c",
-        "text": "It speeds up all queries"
+        "text": "It indexes post_id first, so counts per post get fast"
       },
       {
         "id": "d",
-        "text": "It's required by SQL"
+        "text": "It lets you drop the foreign keys to users and posts"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Uniqueness on the pair is enforced by the database.",
+    "explanation": "A primary key on the pair makes the database enforce uniqueness, so a user can't like the same post twice. (a) The key isn't about saving space. (c) The index leads with user_id, so it doesn't help per-post lookups; that needs a separate index. (d) Foreign keys are still needed to stop likes pointing at missing users or posts.",
     "topicId": "entities",
     "difficulty": 2
   },
@@ -64,25 +64,25 @@
     "options": [
       {
         "id": "a",
-        "text": "1NF"
+        "text": "1NF: qty and product_name repeat across rows"
       },
       {
         "id": "b",
-        "text": "2NF: product_name depends only on sku, part of the key"
+        "text": "2NF: product_name depends only on sku"
       },
       {
         "id": "c",
-        "text": "3NF only"
+        "text": "3NF: product_name depends on qty, a non-key"
       },
       {
         "id": "d",
-        "text": "None"
+        "text": "None: every column depends on the full key"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "A column depending on part of a composite key is a 2NF violation.",
+    "explanation": "product_name depends on sku alone, which is only part of the composite key (order_id, sku): a partial dependency, so a 2NF violation. (a) Every column holds one value, so 1NF is fine; repeated values aren't a 1NF problem. (c) product_name doesn't depend on qty. (d) product_name doesn't need order_id, so it doesn't depend on the full key.",
     "topicId": "normalization",
     "difficulty": 2
   },
@@ -93,25 +93,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Slow networks"
+        "text": "Slow joins between large related tables"
       },
       {
         "id": "b",
-        "text": "Update anomalies, where copies of a fact disagree"
+        "text": "Update anomalies, where copies disagree"
       },
       {
         "id": "c",
-        "text": "Disk failure"
+        "text": "Hot partitions from uneven key spread"
       },
       {
         "id": "d",
-        "text": "SQL injection"
+        "text": "Rows growing too wide for a disk page"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Storing each fact once means it can't contradict itself.",
+    "explanation": "Normalisation stores each fact once, so an update can't leave copies that contradict each other. (a) Normalisation usually adds joins, it doesn't remove their cost. (c) Hot partitions are a partition-key choice. (d) Row width is a storage concern, not what normal forms target.",
     "topicId": "normalization",
     "difficulty": 2
   },
@@ -123,25 +123,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Add a bigger database server"
+        "text": "Add a bigger database server and a read replica for the counts"
       },
       {
         "id": "b",
-        "text": "Store like_count on posts, updated on each like (batching or sharding the counter if one row gets hot)"
+        "text": "Store like_count on posts, updated on each like"
       },
       {
         "id": "c",
-        "text": "Cache the whole page for a day"
+        "text": "Add an index on likes(post_id) so COUNT(*) reads only the index"
       },
       {
         "id": "d",
-        "text": "Delete old likes"
+        "text": "Cache the rendered page for a day so the count is rarely run"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Precomputing the count makes reads one integer; the hot-row risk is handled by batching. (a) only delays it; (c) shows stale counts for a day; (d) loses data.",
+    "explanation": "Precomputing the count makes each read a single integer; if that one row gets hot under writes, batch or shard the counter. (a) only delays the problem with more hardware. (c) An index still means counting 3 million entries on every view. (d) Shows a count up to a day stale for a page that's changing fast.",
     "topicId": "denormalization",
     "difficulty": 3
   },
@@ -152,7 +152,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Reads get slower"
+        "text": "Reads of a post get slower because the row is wider"
       },
       {
         "id": "b",
@@ -160,17 +160,17 @@
       },
       {
         "id": "c",
-        "text": "Posts can't be indexed"
+        "text": "posts can no longer have an index on author_id"
       },
       {
         "id": "d",
-        "text": "It breaks foreign keys"
+        "text": "The author_id foreign key must be dropped from posts"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Copies need a sync plan. Reads get faster, not slower.",
+    "explanation": "Copies need a sync plan: when an author renames, every copy must be updated or they disagree. (a) Denormalising makes reads faster by skipping a join. (c) and (d) Adding a column doesn't stop you keeping the index or the foreign key.",
     "topicId": "denormalization",
     "difficulty": 2
   },
@@ -189,17 +189,17 @@
       },
       {
         "id": "c",
-        "text": "Pick a database vendor"
+        "text": "Normalise everything to 3NF"
       },
       {
         "id": "d",
-        "text": "Add indexes on all columns"
+        "text": "Pick the partition key first"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "The queries and their volumes decide the model.",
+    "explanation": "Query-first modelling starts by listing what the app will ask and how often; those decide the model. (a) is entity-first modelling. (c) is a good default for a source of truth, but it ignores the queries. (d) The partition key is chosen from the queries, so it can't come first.",
     "topicId": "query-first",
     "difficulty": 2
   },
@@ -211,25 +211,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Too many nodes; remove some"
+        "text": "Too few nodes; add more so the 40M rows spread over more machines"
       },
       {
         "id": "b",
-        "text": "The partition grows without bound and becomes hot; add a time bucket to the partition key"
+        "text": "An unbounded, hot partition; add a time bucket to the partition key"
       },
       {
         "id": "c",
-        "text": "Clustering order is wrong; sort ascending"
+        "text": "Wrong clustering order; sort message_id ascending to spread writes"
       },
       {
         "id": "d",
-        "text": "Nothing; Cassandra handles any partition size"
+        "text": "Too few replicas; raise the replication factor so reads fan out"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Unbounded partitions get huge and pin load to a few nodes. A bucket like (channel_id, day) caps them.",
+    "explanation": "All of a channel's messages share one partition, which grows without bound and pins its load to the same 3 replicas. A bucket like (channel_id, day) caps partition size. (a) More nodes don't split one partition. (c) Clustering order changes sort order within the partition, not where it lives. (d) More replicas copy the huge partition again; writes still hit every replica.",
     "topicId": "wide-column",
     "difficulty": 3
   },
@@ -241,25 +241,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Run it on the existing table with ALLOW FILTERING"
+        "text": "Query the existing table with ALLOW FILTERING on author"
       },
       {
         "id": "b",
-        "text": "Create a second table partitioned by author, written alongside the first"
+        "text": "Add a second table partitioned by author, written too"
       },
       {
         "id": "c",
-        "text": "Add a join"
+        "text": "Join messages_by_channel to a users table on author_id"
       },
       {
         "id": "d",
-        "text": "Switch to a graph database"
+        "text": "Add author to the clustering key of the existing table"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "One table per query. Filtering scans the whole cluster; Cassandra has no joins.",
+    "explanation": "In Cassandra you model one table per query, so write each message to a second table partitioned by author. (a) ALLOW FILTERING scans every partition across the cluster. (c) Cassandra has no joins. (d) Clustering columns sort within a partition; you'd still need the channel to find the partition.",
     "topicId": "wide-column",
     "difficulty": 2
   },
@@ -270,7 +270,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Emails are too short"
+        "text": "Long text keys can't be indexed efficiently"
       },
       {
         "id": "b",
@@ -278,17 +278,17 @@
       },
       {
         "id": "c",
-        "text": "Surrogate keys encrypt data"
+        "text": "Emails aren't unique enough to be a key"
       },
       {
         "id": "d",
-        "text": "SQL forbids text keys"
+        "text": "Surrogate keys hide personal data in URLs"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Changing a primary key ripples into every foreign key. Keep email unique, not primary.",
+    "explanation": "If a user changes email, a primary key change ripples into every foreign key. Keep email unique but not primary. (a) Text keys index fine, just a bit larger. (c) Email can be made unique with a constraint, so uniqueness isn't the problem. (d) Hiding data in URLs can be a side benefit, but it isn't the core reason.",
     "topicId": "keys",
     "difficulty": 2
   },
@@ -303,15 +303,15 @@
       },
       {
         "id": "b",
-        "text": "No single value much hotter than the rest"
+        "text": "No single hot value"
       },
       {
         "id": "c",
-        "text": "Present in every hot query"
+        "text": "Used in every hot query"
       },
       {
         "id": "d",
-        "text": "Changes often"
+        "text": "Updated often as data changes"
       }
     ],
     "correct": [
@@ -319,7 +319,7 @@
       "b",
       "c"
     ],
-    "explanation": "Spread, even load and query fit. A key that changes (d) means moving rows between partitions.",
+    "explanation": "Good partition keys spread data (a), avoid hot values (b) and fit the queries (c). A key that changes often (d) means moving rows between partitions on every change.",
     "topicId": "keys",
     "difficulty": 2
   }

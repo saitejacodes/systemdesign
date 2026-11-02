@@ -6,7 +6,7 @@
     "options": [
       {
         "id": "a",
-        "text": "Fails"
+        "text": "Fails with a missing-index error"
       },
       {
         "id": "b",
@@ -14,17 +14,17 @@
       },
       {
         "id": "c",
-        "text": "Uses a cache automatically"
+        "text": "Builds a temporary index, then uses it"
       },
       {
         "id": "d",
-        "text": "Returns nothing"
+        "text": "Binary searches the table's rows"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Without an index the database must check every row.",
+    "explanation": "Without a usable index the database must check every row with a sequential scan. (a) Queries still run, just slowly. (c) Databases don't build throwaway indexes for you. (d) Table rows aren't kept sorted by the column, so there's nothing to binary search.",
     "topicId": "basics",
     "difficulty": 1
   },
@@ -53,7 +53,7 @@
     "correct": [
       "a"
     ],
-    "explanation": "log₅₀₀(10⁸) ≈ 2.96, so about 3 levels.",
+    "explanation": "Each level multiplies reach by about 500: 500³ = 125 million ≥ 100 million, so about 3 levels (log₅₀₀ 10⁸ ≈ 2.96). (b) is closer to a binary tree's depth (log₂ 10⁸ ≈ 27). (c) and (d) confuse fan-out or row counts with depth.",
     "topicId": "b-tree",
     "difficulty": 2
   },
@@ -64,25 +64,25 @@
     "options": [
       {
         "id": "a",
-        "text": "UUIDs are longer to type"
+        "text": "UUIDs are 16 bytes, so each key takes too long to compare"
       },
       {
         "id": "b",
-        "text": "Random keys scatter inserts across all pages, causing more page splits and cache misses"
+        "text": "Random keys scatter inserts across pages, causing more splits"
       },
       {
         "id": "c",
-        "text": "B-trees can't store UUIDs"
+        "text": "B-trees need integer keys, so UUIDs are hashed before insert"
       },
       {
         "id": "d",
-        "text": "UUIDs disable indexes"
+        "text": "UUID indexes must be rebuilt in full after each new insert"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Ordered keys append near the right edge; random ones touch pages everywhere.",
+    "explanation": "Ordered keys append near the right edge of the tree; random ones touch pages everywhere, causing more page splits and cache misses. (a) Comparing 16 bytes is cheap; the problem is where inserts land. (c) B-trees store any sortable key, including UUIDs. (d) Indexes are updated incrementally, never rebuilt per insert.",
     "topicId": "b-tree",
     "difficulty": 2
   },
@@ -93,25 +93,25 @@
     "options": [
       {
         "id": "a",
-        "text": "They update pages in place"
+        "text": "They update pages in place, so each write touches one page"
       },
       {
         "id": "b",
-        "text": "Writes go to memory and are flushed as sequential, immutable files"
+        "text": "Writes go to memory, then flush as sequential immutable files"
       },
       {
         "id": "c",
-        "text": "They skip durability"
+        "text": "They acknowledge writes before logging them anywhere durable"
       },
       {
         "id": "d",
-        "text": "They have no indexes"
+        "text": "They keep one global sorted file and append to its end only"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Memtable + sequential SSTable flushes avoid random writes. (a) describes B-trees.",
+    "explanation": "Writes go to an in-memory memtable (plus a write-ahead log) and are flushed as sequential, immutable SSTables, avoiding random writes. (a) describes B-trees. (c) LSM stores still log writes for durability. (d) Appending to one sorted file breaks the order; LSMs write many files and merge them in compaction.",
     "topicId": "lsm",
     "difficulty": 2
   },
@@ -122,25 +122,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Compress values"
+        "text": "Compress SSTable values so files take less disk space"
       },
       {
         "id": "b",
-        "text": "Tell the reader a key is definitely not in a file, so it can skip it"
+        "text": "Say a key is definitely not in a file, so reads skip it"
       },
       {
         "id": "c",
-        "text": "Sort the memtable"
+        "text": "Say exactly which block of a file contains a given key"
       },
       {
         "id": "d",
-        "text": "Replicate data"
+        "text": "Say a key is definitely in a file, so reads stop there"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "They let reads skip most SSTables.",
+    "explanation": "A Bloom filter can answer 'definitely not here', so reads skip most SSTables. (a) Compression is separate. (c) The sparse index finds the block; the filter only says yes or no. (d) Bloom filters have false positives, so 'maybe' is the strongest yes they can give.",
     "topicId": "lsm",
     "difficulty": 2
   },
@@ -170,7 +170,7 @@
     "correct": [
       "c"
     ],
-    "explanation": "It skips the leftmost column, so the sorted order doesn't help.",
+    "explanation": "The index is sorted by customer_id first, so a filter on created_at alone skips the leftmost column and can't use the sorted order. (a) and (b) use the leading column. (d) uses customer_id and reads created_at in index order, so it's very efficient.",
     "topicId": "composite",
     "difficulty": 3
   },
@@ -181,25 +181,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Writing to disk"
+        "text": "Updating the index when the table's rows change"
       },
       {
         "id": "b",
-        "text": "Fetching full rows from the table, because the index has every needed column"
+        "text": "Fetching full rows; it holds every needed column"
       },
       {
         "id": "c",
-        "text": "Sorting the index"
+        "text": "Sorting results, since every index is pre-sorted"
       },
       {
         "id": "d",
-        "text": "Using memory"
+        "text": "Checking the filter, since it stores the matches"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Index Only Scans skip the table lookups.",
+    "explanation": "A covering index contains every column the query needs, so an Index Only Scan skips the table lookups. (a) Every index must still be updated on writes. (c) Sorted output comes from any B-tree index, not specifically covering ones. (d) The filter is still applied while walking the index.",
     "topicId": "covering",
     "difficulty": 2
   },
@@ -211,25 +211,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Indexes don't work on text"
+        "text": "Text columns can't use B-tree indexes, so it was never usable"
       },
       {
         "id": "b",
-        "text": "Low selectivity: 92% of rows match, so the planner scans instead; a partial index on rarer statuses would help those queries"
+        "text": "Low selectivity: 92% of rows match, so a scan is cheaper"
       },
       {
         "id": "c",
-        "text": "The index is corrupted"
+        "text": "The index is still building and only kicks in once it finishes"
       },
       {
         "id": "d",
-        "text": "Postgres needs a restart"
+        "text": "Stale statistics hide the index; run ANALYZE and it will be used"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Reading most of a table through an index is slower than scanning it.",
+    "explanation": "When most rows match, reading through an index is slower than scanning the table, so the planner chooses a scan. A partial index on the rarer statuses would help those queries. (a) B-trees index text fine. (c) CREATE INDEX finishes before it returns. (d) Here the estimate is right: 92% really do match, so fresh statistics still choose a scan.",
     "topicId": "costs",
     "difficulty": 3
   },
@@ -240,19 +240,19 @@
     "options": [
       {
         "id": "a",
-        "text": "Very write-heavy table, index serves a rare report"
+        "text": "Write-heavy table; index serves a rare report"
       },
       {
         "id": "b",
-        "text": "Index (a) when (a, b) already exists"
+        "text": "Index on (a) when (a, b) already exists"
       },
       {
         "id": "c",
-        "text": "A selective filter on a hot query"
+        "text": "A selective filter on a hot read query"
       },
       {
         "id": "d",
-        "text": "Low-selectivity column"
+        "text": "Column where most rows share one value"
       }
     ],
     "correct": [
@@ -260,7 +260,7 @@
       "b",
       "d"
     ],
-    "explanation": "Write cost without benefit, redundancy and low selectivity all hurt. (c) is exactly what indexes are for.",
+    "explanation": "Write cost without benefit (a), redundancy with an existing composite index (b) and low selectivity (d) all hurt. (c) is exactly what indexes are for.",
     "topicId": "costs",
     "difficulty": 2
   },
@@ -272,25 +272,25 @@
     "options": [
       {
         "id": "a",
-        "text": "The query is fine"
+        "text": "The planner wrongly skipped an email index; force it with a hint"
       },
       {
         "id": "b",
-        "text": "A missing index on email (or a function on it): the database scanned 5 million rows to find 1"
+        "text": "No usable index on email; 5 million rows scanned to find 1"
       },
       {
         "id": "c",
-        "text": "Statistics are perfect"
+        "text": "Stale statistics; run ANALYZE so the planner estimates better"
       },
       {
         "id": "d",
-        "text": "The table is empty"
+        "text": "The table is too big for RAM; add memory so the scan is faster"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Seq Scan plus millions of rows removed for one result means no usable index.",
+    "explanation": "Seq Scan with millions of rows removed for one result means there's no usable index on email (or the query wraps it in a function). (a) If a good index existed the planner would pick it for a 1-in-5-million match. (c) Better estimates can't create an index. (d) More RAM speeds the scan but still reads 5 million rows.",
     "topicId": "explain",
     "difficulty": 2
   },
@@ -301,25 +301,25 @@
     "options": [
       {
         "id": "a",
-        "text": "A missing index"
+        "text": "A missing index on the column"
       },
       {
         "id": "b",
-        "text": "Stale table statistics; run ANALYZE"
+        "text": "Stale statistics; run ANALYZE"
       },
       {
         "id": "c",
-        "text": "Too much RAM"
+        "text": "Too little work_mem for sorts"
       },
       {
         "id": "d",
-        "text": "Network lag"
+        "text": "A cold buffer cache after restart"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "The planner's estimates come from statistics; big gaps mean they are out of date.",
+    "explanation": "The planner's row estimates come from table statistics; a gap that large means they're out of date. (a) A missing index changes the plan, not the estimate. (c) and (d) affect speed, not how many rows the planner expects.",
     "topicId": "explain",
     "difficulty": 2
   }

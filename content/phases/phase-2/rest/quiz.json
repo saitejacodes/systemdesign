@@ -65,25 +65,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Retry the POST immediately; the server will deduplicate it"
+        "text": "Retry the same POST at once; servers deduplicate identical POST bodies"
       },
       {
         "id": "b",
-        "text": "Never retry; tell the user the payment failed"
+        "text": "Never retry; tell the user the payment failed and ask them to start over"
       },
       {
         "id": "c",
-        "text": "Retry with the same idempotency key so the server can return the original result if it already ran"
+        "text": "Retry with the same idempotency key so the server can replay the result"
       },
       {
         "id": "d",
-        "text": "Switch to GET to check, then POST again without a key"
+        "text": "Switch to a GET to check whether it ran, then POST again without a key"
       }
     ],
     "correct": [
       "c"
     ],
-    "explanation": "Retrying POST blindly can charge twice; refusing to retry loses payments that never reached the server. An idempotency key lets the server recognise the retry. (a) assumes deduplication that plain POST doesn't have. (d) has a race: the first request may still be in flight when you check.",
+    "explanation": "Retrying POST blindly can charge twice, and refusing to retry loses payments that never reached the server. An idempotency key lets the server recognise the retry and return the original result. (a) assumes deduplication that plain POST doesn't have. (b) may report a failure for a payment that went through. (d) races: the first request may still be in flight when you check.",
     "topicId": "verbs",
     "difficulty": 2
   },
@@ -123,25 +123,25 @@
     "options": [
       {
         "id": "a",
-        "text": "JSON can't contain errors"
+        "text": "JSON bodies can't represent errors, so clients fail to parse them"
       },
       {
         "id": "b",
-        "text": "Generic clients, proxies, retries and monitoring rely on the status code and will treat the failure as success"
+        "text": "Clients, proxies, retries and monitoring read the status and see success"
       },
       {
         "id": "c",
-        "text": "It makes the response larger"
+        "text": "Error bodies on 200 are much larger, which hurts mobile bandwidth"
       },
       {
         "id": "d",
-        "text": "HTTP forbids bodies on 200"
+        "text": "HTTP forbids sending a response body together with a 200 status"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Everything between client and server reads the status line: retry logic, caches, dashboards and alerts. (a), (c) and (d) are not true.",
+    "explanation": "Everything between client and server reads the status line: retry logic, caches, dashboards and alerts all treat a 200 as success, so failures get cached and go unalerted. JSON can describe errors fine, size isn't the problem, and 200 responses normally carry bodies.",
     "topicId": "status-codes",
     "difficulty": 2
   },
@@ -153,25 +153,25 @@
     "options": [
       {
         "id": "a",
-        "text": "The CDN is caching pages"
+        "text": "The CDN is caching each page, so page 2 is served from an older copy"
       },
       {
         "id": "b",
-        "text": "Offset pagination: a new post inserted at the top shifted every item down by one"
+        "text": "Offset paging: a new post at the top shifted every item down by one"
       },
       {
         "id": "c",
-        "text": "The client sorts by ID"
+        "text": "The client re-sorts by ID, so items reorder between the two requests"
       },
       {
         "id": "d",
-        "text": "The database is eventually consistent"
+        "text": "The database is eventually consistent, so replicas return pages twice"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "With OFFSET, an insert while you page shifts every row, so the last item of page 1 becomes the first of page 2. Cursor pagination anchors on the last item seen. (a) would show stale pages, not shifted ones. (c) and (d) don't produce this pattern on their own.",
+    "explanation": "With OFFSET, an insert while you page shifts every row, so the last item of page 1 becomes the first of page 2. Cursor pagination anchors on the last item seen. A cached page would be stale, not shifted by exactly one; client-side sorting and replica lag don't produce this repeat-at-the-boundary pattern on their own.",
     "topicId": "pagination",
     "difficulty": 2
   },
@@ -182,25 +182,25 @@
     "options": [
       {
         "id": "a",
-        "text": "It caches every page"
+        "text": "It caches every page server-side, so deep pages are served from memory"
       },
       {
         "id": "b",
-        "text": "With an index on the sort key, the database seeks straight to the position after the cursor instead of reading and discarding skipped rows"
+        "text": "With an index on the sort key, it seeks to the cursor; no rows skipped"
       },
       {
         "id": "c",
-        "text": "It returns fewer rows"
+        "text": "It returns fewer rows per page, so each query does less work overall"
       },
       {
         "id": "d",
-        "text": "It uses POST instead of GET"
+        "text": "It sends the cursor in a POST body, which avoids the query-string limit"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "WHERE (created_at, id) < (cursor) uses the index to start at the right place. OFFSET must walk past every skipped row. (a), (c) and (d) aren't the reason.",
+    "explanation": "WHERE (created_at, id) < (cursor) lets the index start at the right place, while OFFSET must read and discard every skipped row. Cursors don't rely on caching, page size is the same either way, and it works fine with GET.",
     "topicId": "pagination",
     "difficulty": 2
   },
@@ -242,25 +242,25 @@
     "options": [
       {
         "id": "a",
-        "text": "To reduce JSON size"
+        "text": "To shrink JSON responses by leaving the unused fields out"
       },
       {
         "id": "b",
-        "text": "Each filter or sort usually needs a supporting index; arbitrary ones invite slow full-table scans"
+        "text": "Each filter or sort needs an index; arbitrary ones cause scans"
       },
       {
         "id": "c",
-        "text": "Because HTTP limits query strings to 3 parameters"
+        "text": "Because HTTP caps query strings at three parameters per URL"
       },
       {
         "id": "d",
-        "text": "To support HATEOAS"
+        "text": "Because HATEOAS links can only point at whitelisted fields"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Unindexed sorts and filters turn into scans that can take a database down. (a) is unrelated. (c) is false. (d) is unrelated.",
+    "explanation": "Unindexed sorts and filters turn into full-table scans that can take a database down, so you only expose the ones you've indexed. Whitelisting doesn't change response size, HTTP has no three-parameter limit, and HATEOAS is unrelated.",
     "topicId": "filtering",
     "difficulty": 2
   },
@@ -272,25 +272,25 @@
     "options": [
       {
         "id": "a",
-        "text": "Rename the field to full_name"
+        "text": "Rename name to full_name, since old clients already read that value"
       },
       {
         "id": "b",
-        "text": "Add a new optional field full_name alongside name and document that clients should ignore unknown fields"
+        "text": "Add an optional full_name field next to name; clients ignore unknowns"
       },
       {
         "id": "c",
-        "text": "Change name from a string to an object"
+        "text": "Change name from a string to an object with first and legal parts"
       },
       {
         "id": "d",
-        "text": "Make a previously optional field required"
+        "text": "Make a previously optional field required so names are always set"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Additive, optional changes don't break clients that ignore unknown fields. Renaming (a), changing a type (c) and adding a requirement (d) all break existing clients.",
+    "explanation": "Additive, optional changes don't break clients that ignore unknown fields. Renaming a field, changing its type and adding a new requirement all break existing clients that can't update.",
     "topicId": "versioning",
     "difficulty": 2
   },
@@ -301,25 +301,25 @@
     "options": [
       {
         "id": "a",
-        "text": "A version number"
+        "text": "An API version number in each body so clients detect changes"
       },
       {
         "id": "b",
-        "text": "Links to the related resources and actions available next"
+        "text": "Links to related resources and the actions available next"
       },
       {
         "id": "c",
-        "text": "A cache expiry"
+        "text": "A cache expiry for each resource so clients know when to refetch"
       },
       {
         "id": "d",
-        "text": "An error code"
+        "text": "A machine-readable error code alongside the HTTP status"
       }
     ],
     "correct": [
       "b"
     ],
-    "explanation": "Hypermedia controls let clients discover what they can do next by following links. Most practical JSON APIs skip this and document URIs instead.",
+    "explanation": "HATEOAS (hypermedia as the engine of application state) adds links so clients discover what they can do next by following them. Versioning, cache headers and error codes are separate concerns. Most practical JSON APIs skip hypermedia and document URIs instead.",
     "topicId": "hateoas",
     "difficulty": 3
   }
