@@ -198,6 +198,14 @@ Say "EXPLAIN ANALYZE first", then read the plan out loud: seq scan, rows removed
 2. A table has 8 indexes and 20,000 inserts a second. Estimate the index writes per second and suggest which indexes to question first.
 3. Read this plan line and diagnose it: `Seq Scan on users (rows=1) (actual rows=1) Rows Removed by Filter: 4,000,000`.
 
+## Try it
+
+Insert 1,000 random keys into both trees and compare write amplification, then switch on Bloom filters and watch LSM read cost fall. In the SQL sandbox, add the index that turns a sequential scan into an index scan.
+
+<Simulator id="index-visualizer" />
+
+<Simulator id="sql-sandbox" />
+
 <CheckpointList />
 
 <QuizPlayer />

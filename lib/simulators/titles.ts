@@ -6,4 +6,9 @@ export const SIM_TITLES: Record<string, string> = {
   "load-balancer": "Load balancer",
   "consistent-hashing": "Consistent hashing",
   "rate-limiter": "Rate limiter",
+  "sql-sandbox": "SQL sandbox",
+  "isolation-lab": "Isolation lab",
+  "index-visualizer": "Index visualizer",
+  replication: "Replication",
+  sharding: "Sharding",
 };

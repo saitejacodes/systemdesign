@@ -77,3 +77,13 @@
 - Vendor-specific behaviour is stated with the vendor named (Postgres defaults to Read Committed, InnoDB to Repeatable Read; S3 limits and consistency as AWS documents them). Where only an illustrative number exists (timeout rates, per-server capacity) the lesson says it's an assumption.
 - Where practitioners disagree (how far to denormalise in relational stores, HTAP vs a separate analytics path), the lesson gives both sides.
 - The plan e2e test now checks week 7 for "Coming soon": weeks 3–6 are fully live.
+
+## Prompt 09
+- The isolation lab runs a TypeScript MVCC model, not PGlite: PGlite has one connection per database, so two truly concurrent sessions are impossible. Each preset is unit-tested against the behaviour the Postgres docs describe; the simplifies drawer says it is a model with no deletes, table-wide predicate tracking and no deadlock detection.
+- Isolation-lab choices (scenario, technique, levels) live in state and change through actions, because `setConfig` doesn't re-initialise state; finished runs are kept so challenges can add up runs across scenarios.
+- SQL sandbox exercise checkers probe the same connection with BEGIN/ROLLBACK. Shortcut: if the learner leaves a transaction open, a check can interfere with it; Reset database recovers.
+- Index visualizer draws nodes with 2–4 keys, but costs use 4 KB pages and 100-byte entries; at toy page sizes a B-tree would look cheaper to write than an LSM, which is the opposite of real systems.
+- Sharding: a celebrity is a fixed 1,500 req/s rather than 100× an average user, because 100× is about 1% of total traffic and never overloads a shard. "Add shard" rehashes for hash, splits the hottest range for range strategies and splits the hottest shard for a directory.
+- Replication uses 100 users so read-your-writes still sends most reads to followers; the lost-writes challenge's p99 limit is 200 ms (semi-sync passes, sync with a 4× remote follower does not).
+- S8 and S9 were built in parallel by two subagents, each confined to its own folder; registry entries, lesson embeds and verification were done here.
+- The single-server-queue statistics test got a 20 s timeout: it simulates ~100k requests and passed 5 s only when not sharing the CPU with the PGlite tests.

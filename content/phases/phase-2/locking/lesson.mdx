@@ -154,6 +154,12 @@ Show you know the cheap options first: an atomic conditional UPDATE or a constra
 2. A row lock is held for 8 ms. What's the maximum purchase rate on that row? How many buckets do you need for 15,000 purchases a second?
 3. Three transactions lock accounts in orders (A, B), (B, C) and (C, A). Can they deadlock? Fix it.
 
+## Try it
+
+Run the lost update with each technique: atomic UPDATE, SELECT … FOR UPDATE and a version column. Watch where T2 waits and where it gets 0 rows instead.
+
+<Simulator id="isolation-lab" />
+
 <CheckpointList />
 
 <QuizPlayer />

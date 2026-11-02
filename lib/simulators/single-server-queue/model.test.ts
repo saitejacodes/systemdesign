@@ -12,7 +12,7 @@ describe("single-server queue (M/M/1)", () => {
     expect(Math.abs(mean - expected) / expected).toBeLessThan(0.15);
     expect(sim.latest.utilization).toBeGreaterThan(0.3);
     expect(sim.latest.utilization).toBeLessThan(0.7);
-  });
+  }, 20_000); // ~100k simulated requests; slow when the suite runs PGlite alongside
 
   it("is deterministic for a seed", () => {
     const run = (seed: number) => { const s = new Simulation(queueModel, { lambda: 80, mu: 100 }, seed); s.runFor(20_000); return s.metrics.counters.get("served"); };

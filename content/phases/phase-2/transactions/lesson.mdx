@@ -188,6 +188,14 @@ Name the anomaly precisely ("this is a lost update", "this is write skew"), then
 2. Under Postgres Repeatable Read, what happens in the lost-update example? Under Read Committed?
 3. A transaction has been open for 6 hours on a busy table. What happens to the table, and why?
 
+## Try it
+
+Replay each anomaly at all three isolation levels. Watch the row versions: what each session sees is decided by its snapshot. Then prove a transfer is atomic in the SQL sandbox.
+
+<Simulator id="isolation-lab" />
+
+<Simulator id="sql-sandbox" />
+
 <CheckpointList />
 
 <QuizPlayer />

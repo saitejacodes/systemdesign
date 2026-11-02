@@ -293,7 +293,7 @@ export function SimulatorShell({ entry, def, compact = false }: { entry: SimEntr
       {!compact && <SetHud live={`Sim · ${entry.title}${playing ? " · running" : " · paused"}`} items={[{ k: "T", v: fmtTime(sim.clock.t) }, ...def.hud(m)]} right={`Seed ${sim.seed} · ${sim.clock.speed}×`} />}
       {header}
       {transport}
-      {faults}
+      {def.model.faults.length > 0 && faults}
       {compact ? (
         <div className="grid gap-4">
           {canvas}

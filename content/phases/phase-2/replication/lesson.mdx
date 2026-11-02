@@ -159,6 +159,12 @@ Draw a leader with followers early, then say how reads are routed and what lag m
 2. Design read routing for a social app so users always see their own posts and timelines never go backwards.
 3. With N = 5, list every (W, R) pair that satisfies W + R > N. Which would you pick for a read-heavy workload?
 
+## Try it
+
+Crash the leader under async replication and count the lost writes, then switch to semi-sync. Turn on read-your-writes and watch the writing user's stale reads drop to zero.
+
+<Simulator id="replication" />
+
 <CheckpointList />
 
 <QuizPlayer />
