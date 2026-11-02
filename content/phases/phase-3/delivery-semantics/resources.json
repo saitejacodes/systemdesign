@@ -1,0 +1,32 @@
+[
+  {
+    "id": "sqs-visibility",
+    "title": "Amazon SQS visibility timeout",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html",
+    "why": "The authoritative description of how SQS hides, redelivers and extends messages, with guidance on choosing a timeout.",
+    "topicIds": ["acks", "at-least-once"],
+    "free": true
+  },
+  {
+    "id": "rabbitmq-confirms",
+    "title": "Consumer Acknowledgements and Publisher Confirms",
+    "author": "RabbitMQ",
+    "kind": "docs",
+    "url": "https://www.rabbitmq.com/docs/confirms",
+    "why": "Manual vs automatic acks, prefetch, redelivery and publisher confirms, explained in terms of delivery guarantees.",
+    "topicIds": ["acks", "at-most-once", "at-least-once"],
+    "free": true
+  },
+  {
+    "id": "confluent-eos",
+    "title": "Exactly-once Semantics Are Possible: Here's How Kafka Does It",
+    "author": "Neha Narkhede (Confluent)",
+    "kind": "blog",
+    "url": "https://www.confluent.io/blog/exactly-once-semantics-are-possible-heres-how-apache-kafka-does-it/",
+    "why": "The announcement-era explanation of the idempotent producer and transactions, including what they do and don't cover.",
+    "topicIds": ["effectively-once", "kafka-eos"],
+    "free": true
+  }
+]

@@ -1,0 +1,8 @@
+[
+  { "id": "cache-layers-c1", "text": "I can compute average latency and database load from a hit ratio, hit cost and miss cost.", "topicId": "hit-ratio" },
+  { "id": "cache-layers-c2", "text": "I can list the cache layers from browser to buffer pool with a rough latency for each.", "topicId": "latency-ladder" },
+  { "id": "cache-layers-c3", "text": "I can explain which Cache-Control headers make a response cacheable by browsers and CDNs, and why versioned asset URLs exist.", "topicId": "edge-caches" },
+  { "id": "cache-layers-c4", "text": "I can compare an in-process cache with a distributed cache on duplication, consistency and cost per lookup.", "topicId": "app-caches" },
+  { "id": "cache-layers-c5", "text": "I can explain why a buffer pool hit is still slower than an application cache hit.", "topicId": "buffer-pool" },
+  { "id": "cache-layers-c6", "text": "I can decide whether a given piece of data should be cached, and what its cache key must include.", "topicId": "what-to-cache" }
+]

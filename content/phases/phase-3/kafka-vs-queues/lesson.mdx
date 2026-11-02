@@ -1,0 +1,187 @@
+## Why it matters
+
+"Should we use Kafka or RabbitMQ?" is asked in design reviews and interviews constantly, and it is usually asked as if they were two brands of the same product. They aren't. Apache Kafka, originally built at LinkedIn to move activity and log data, is a distributed **log**: messages are written to disk in order and kept for days whether anyone has read them or not. RabbitMQ is a **message broker**: it routes each message to queues and deletes it once a consumer has acknowledged it. Amazon SQS is a fully managed **queue** you never operate at all. Pick the wrong one and you either fight the tool (trying to replay last Tuesday's data from RabbitMQ) or run far more infrastructure than you need (a Kafka cluster to send password-reset emails). This section explains each model well enough that the choice becomes obvious from your requirements.
+
+<Callout type="analogy" title="The ship's logbook, the sorting office and the coat check">
+**Kafka is a ship's logbook.** Every event is written on the next line in ink and never torn out. Each reader keeps their own bookmark: the navigator is on page 40, the auditor is re-reading from page 1, and a new officer can start wherever they like. Pages are only thrown away when the book is a week old. **RabbitMQ is a busy sorting office.** Letters arrive with an address label, clerks consult a routing board ("anything for `eu.*` goes in bins 3 and 7"), and once a letter has been handed over and signed for, it is gone. **SQS is a coat check run by someone else.** You hand over a coat, get no say in how the cloakroom works, and the attendant hands it to the next person who asks. You never have to hire the attendant.
+</Callout>
+
+## Kafka's log model
+
+<DepthStamp depth="deep" />
+
+Kafka organises messages into **topics**, and each topic is split into **partitions**. Each partition is a <Term slug="commit-log">commit log</Term>: an append-only, ordered sequence of records stored on disk. Every record gets a position number in its partition, its **offset**, which only ever increases.
+
+```text
+topic: orders, partition 0
+offset:   0      1      2      3      4      5      6      7
+        [o-101][o-104][o-109][o-110][o-115][o-116][o-120][o-123]   ← producers append here
+                         ▲                          ▲
+          analytics group at offset 2     shipping group at offset 6
+```
+
+Three properties follow from "it's a log", and they are what make Kafka different from a queue.
+
+**1. Reading doesn't delete.** A consumer reads records and moves its position forward. The records stay. Any number of independent **consumer groups** (each group is one logical application, possibly many instances) read the same topic, each at its own position. The shipping service and the analytics pipeline both read every order without the producer knowing either exists.
+
+**2. Consumers track their own position.** A <Term slug="consumer-offset">consumer offset</Term> is the next offset a group will read in a partition. The group commits it periodically to Kafka (into an internal topic named `__consumer_offsets`). After a crash, a consumer resumes from the last committed offset. If it processed records 100 to 149 but committed only up to 120, it reprocesses 120 to 149 after restart, which is why Kafka consumers are at-least-once by default and should be idempotent.
+
+**3. Data is kept for a configured time, not until it's read.** <Term slug="log-retention">Log retention</Term> deletes old log segments by age (Kafka's broker default is 7 days, `log.retention.hours=168`) or by size per partition. A consumer that is offline for three days simply catches up when it returns. A consumer offline longer than retention loses data, because the records it hadn't read are gone.
+
+### Replay
+
+Because records stay, a consumer group can move its offset backwards and **replay** history: reset the group to the earliest offset, or to a timestamp, with the `kafka-consumer-groups` tool or the consumer API's `seek`. Uses:
+
+- A bug corrupted a downstream database for two hours; fix the bug and replay those two hours.
+- A brand-new service needs the last week of orders to build its initial state; it starts from the earliest offset.
+- Testing a new version of a consumer against yesterday's real traffic.
+
+Queues can't do this: once a message is acked, it is gone.
+
+### Log compaction
+
+Some topics represent the **latest state per key** rather than a history: the current address of each customer, the current price of each product. <Term slug="log-compaction">Log compaction</Term> (`cleanup.policy=compact`) keeps at least the most recent record for every key and removes older records with the same key in the background. A new consumer reading a compacted topic from the beginning gets a full snapshot of current state without reading every change ever made. Kafka itself stores consumer offsets in a compacted topic.
+
+### Partitions, parallelism and ordering
+
+Ordering is guaranteed only **within a partition**. Producers choose the partition by hashing the record key, so all events for order 991 land in the same partition and stay in order. Within a consumer group, each partition is assigned to exactly one consumer instance, so the number of partitions caps the group's parallelism. (The partitioning-and-ordering section covers this in depth.)
+
+### Worked example: sizing a Kafka topic
+
+A clickstream topic receives 50,000 events a second, each about 1 KB. One consumer instance can process 2,000 events a second.
+
+- **Partitions:** 50,000 ÷ 2,000 = 25 consumers needed, so at least 25 partitions. Choosing 48 leaves room to nearly double traffic without repartitioning (adding partitions later changes which partition each key hashes to, which breaks per-key ordering for existing keys).
+- **Ingest:** 50,000 × 1 KB = about 50 MB/s.
+- **Storage for 7 days of retention:** 50 MB/s × 604,800 s ≈ **30 TB** per copy. With a replication factor of 3, that's about **91 TB** across the cluster. Retention is a storage bill: 3 days instead of 7 cuts it by more than half.
+
+## RabbitMQ exchanges and routing
+
+<DepthStamp depth="deep" />
+
+RabbitMQ (speaking the AMQP 0-9-1 protocol) separates **where producers send** from **where messages are stored**. Producers never publish straight to a queue. They publish to an <Term slug="exchange">exchange</Term>, with a <Term slug="routing-key">routing key</Term> (a string such as `order.eu.created`). Queues are attached to exchanges by <Term slug="binding">bindings</Term>, each with a pattern. The exchange's **type** decides how the routing key is matched against the bindings.
+
+<Figure caption="FIG. 13.1 · A TOPIC EXCHANGE ROUTING BY PATTERN">
+<Diagram label="A producer publishes order.eu.created to a topic exchange; the eu-orders queue and the all-created queue both match, the audit queue matches everything" chart={`flowchart LR
+  P["Producer<br/>key: order.eu.created"] --> X["Topic exchange: orders"]
+  X -->|"order.eu.*"| Q1["queue: eu-orders"]
+  X -->|"order.*.created"| Q2["queue: all-created"]
+  X -->|"order.us.*"| Q3["queue: us-orders (not matched)"]
+  X -->|"wildcard: all keys"| Q4["queue: audit"]`} />
+</Figure>
+
+The four exchange types:
+
+| Type | Matches when | Example use |
+|---|---|---|
+| **Direct** | Routing key equals the binding key exactly | Route `pdf` jobs to the PDF workers' queue and `video` jobs to the video workers' queue |
+| **Topic** | Routing key matches a dot-separated pattern: `*` = exactly one word, `#` = zero or more words | `order.eu.*` for EU orders, `order.#` for everything about orders, `#` for an audit queue |
+| **Fanout** | Always: every bound queue gets a copy; the routing key is ignored | Broadcast a cache-invalidation message to every app server's queue |
+| **Headers** | Message header values match the binding's headers (`x-match` set to `all` or `any`) | Route on several attributes, e.g. `format=pdf` and `priority=high` |
+
+There is also a nameless **default exchange**, a direct exchange to which every queue is bound by its own name, so publishing with routing key `emails` lands in the queue called `emails`. That's why simple tutorials appear to "publish to a queue".
+
+How consumption works: each queue delivers each message to **one** of its consumers (competing consumers), and deletes it once that consumer acks. Pub/sub happens at the exchange level, by binding one queue per subscribing service. RabbitMQ pushes messages to consumers, limited by prefetch (see the failure-handling section). Durability comes from **quorum queues**, replicated across nodes with the Raft consensus algorithm, the recommended type for data you can't lose.
+
+What RabbitMQ is good at: flexible per-message routing, per-message acks and redelivery, dead-letter exchanges, message TTLs and priorities, and low latency for task queues. What it isn't designed for: keeping messages after they're consumed, replaying history, or very long backlogs. RabbitMQ has added **streams** (an append-only, replayable log type) since version 3.9, which narrows the gap with Kafka for some use cases, but classic and quorum queues are still delete-on-ack.
+
+## Amazon SQS: standard vs FIFO
+
+<DepthStamp depth="deep" />
+
+SQS is a managed queue: no servers, no partitions, no exchanges. You create a queue, producers call `SendMessage`, consumers call `ReceiveMessage`, process, then `DeleteMessage`. A received message is hidden for its visibility timeout; if it isn't deleted in time, it becomes visible again for another consumer. Consumers should use **long polling** (`WaitTimeSeconds` up to 20 seconds) so an empty queue doesn't cost a request every few milliseconds. Messages are kept for 4 days by default and at most 14. There is no replay: once deleted, a message is gone.
+
+SQS has two queue types, and the choice matters:
+
+| | Standard queue | FIFO queue |
+|---|---|---|
+| Delivery | At-least-once: a message can occasionally arrive more than once | Exactly-once processing within a 5-minute deduplication window |
+| Ordering | Best-effort: messages can arrive out of order | Strict order within each message group |
+| Throughput | Nearly unlimited | Limited per queue (300 API calls a second per action without batching by default; batching and high-throughput mode raise it substantially) |
+| Name | Any | Must end in `.fifo` |
+| Use when | You can tolerate duplicates and reordering (most background jobs) | Order matters per entity, e.g. ledger updates per account |
+
+Two FIFO details people miss:
+
+- **Ordering is per <Term slug="message-group-id">message group ID</Term>**, not per queue. Set it to the entity id (`account-881`). Messages in the same group are delivered strictly in order and one at a time; different groups are processed in parallel. Putting every message in one group makes the whole queue single-threaded.
+- **Deduplication** uses a `MessageDeduplicationId` (or a hash of the body, with content-based deduplication). A message sent again with the same id within 5 minutes is accepted but not delivered twice. That protects against producer retries, not against a consumer that processes a message and fails to delete it before the visibility timeout. Consumers still benefit from being idempotent.
+
+For pub/sub, AWS's standard pairing is **SNS + SQS**: publish to an SNS topic, subscribe one SQS queue per consuming service. That gives fan-out with each service's own durable queue.
+
+## Choosing: a decision table
+
+<DepthStamp depth="tradeoffs" />
+
+| Requirement | Kafka | RabbitMQ | SQS |
+|---|---|---|---|
+| Replay history / new consumers read the past | Yes, the core feature | Only with streams | No |
+| Many independent consumers of the same data | Natural (consumer groups) | One queue per consumer, bound to an exchange | One queue per consumer via SNS |
+| Complex routing by key pattern or headers | No (route by topic, filter in consumer) | Yes, its strength | Limited (SNS subscription filter policies) |
+| Per-message ack, retry and dead-lettering | Offset-based; DLQ in client code | Built in | Built in (redrive policy) |
+| Ordering | Per partition | Per queue with a single consumer | FIFO: per message group |
+| Very high sustained throughput | Designed for it | Good, lower ceiling per queue | Standard: effectively unlimited, managed |
+| Operations burden | High if self-managed (managed services exist) | Medium | None |
+| Stream processing (joins, windows) | Kafka Streams, Flink | No | No |
+
+Rules of thumb:
+
+- **Choose Kafka** when the data is a stream of facts many teams will consume, now and later: activity tracking, event-driven integration between many services, CDC pipelines, feeding analytics. The log and replay are the reason.
+- **Choose RabbitMQ** when you have work to distribute with rich routing, priorities and per-message retry: task queues, RPC-style request routing, workflows where messages go to different workers by type.
+- **Choose SQS** (with SNS for fan-out) when you're on AWS and want a reliable queue with zero operations: background jobs, decoupling services, buffering spikes. FIFO when per-entity order matters and throughput fits.
+
+### Worked example: the notification system
+
+A notification service receives 5,000 "notify user" requests a second at peak and sends via email, SMS and push providers.
+
+- Each request is a **job** to do once, with retries and dead-lettering when a provider fails. There's no need to replay last week's notifications. That points to a queue, not a log.
+- On AWS: one SQS standard queue per channel (email, SMS, push). Duplicates are tolerable if the sender dedupes on a notification id; ordering doesn't matter. Each queue gets a DLQ with a redrive policy.
+- Kafka still has a place upstream: the `user-activity` events that *trigger* notifications may live in Kafka, where analytics also consumes them. A common shape is Kafka for the event stream and a work queue for the jobs it spawns.
+
+<TradeoffBox title="Broker tradeoffs" items={[
+  { gain: "Kafka: replay, many consumers, very high throughput", cost: "Partition planning, operational complexity, ordering only per partition, no per-message retry" },
+  { gain: "RabbitMQ: flexible routing, per-message acks, priorities, low latency", cost: "Messages gone after ack, long backlogs hurt, you run the cluster" },
+  { gain: "SQS standard: zero operations and near-unlimited scale", cost: "Duplicates and reordering, no replay, AWS only" },
+  { gain: "SQS FIFO: per-group ordering and deduplication", cost: "Lower throughput limits, a hot message group serialises its work" }
+]} />
+
+<NotWhenBox title="When not to reach for Kafka" items={[
+  "A handful of background jobs a minute: a managed queue or even a database table is far simpler.",
+  "You need per-message delays, priorities or complex routing: RabbitMQ or SQS fit better.",
+  "No one on the team can operate it and no managed offering is available.",
+  "You need strict global ordering across everything at high throughput: Kafka only orders within a partition."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Kafka deletes a message once it has been consumed." right="Kafka keeps records until retention (time or size) or compaction removes them. Consumers only move their offsets." />
+
+<Misconception wrong="Kafka guarantees the order of all messages in a topic." right="Order is guaranteed only within a partition. Events that must stay ordered need the same key so they land in the same partition." />
+
+<Misconception wrong="An SQS FIFO queue processes the whole queue in order and makes duplicates impossible." right="Ordering is per message group, and deduplication covers a 5-minute window for repeated sends. A consumer that doesn't delete in time can still see a message again." />
+
+<Misconception wrong="RabbitMQ producers publish to queues." right="They publish to exchanges, which route by routing key and bindings. The default exchange just makes it look like publishing to a queue by name." />
+
+## Interview angle
+
+<InterviewAngle title="Kafka vs queues" questions={[
+  "Why would you pick Kafka over RabbitMQ for this design, or the other way round?",
+  "How does a Kafka consumer recover after a crash, and can it see duplicates?",
+  "How would you rebuild a read model that got corrupted yesterday?",
+  "How do you get ordering per user in SQS?",
+  "How many partitions would you create, and what happens if you need more later?"
+]}>
+Avoid brand loyalty. Start from requirements: do consumers need history (log) or just work to do (queue)? How many independent consumers? Is ordering per entity needed? Who operates it? Then name the mechanism that answers each: offsets and retention for replay, exchanges and bindings for routing, message group ids for SQS FIFO ordering. A strong answer sizes partitions from throughput and per-consumer capacity, and mentions that adding partitions later reshuffles keys.
+</InterviewAngle>
+
+## Practice
+
+1. Design the RabbitMQ exchanges, routing keys and bindings for an e-commerce system where the warehouse wants all EU orders, finance wants every payment event, and an audit service wants everything.
+2. A Kafka topic receives 20,000 events a second of 2 KB each with 3 days of retention and a replication factor of 3. How much disk does it need? If a consumer handles 1,500 events a second, how many partitions?
+3. For each of these, pick Kafka, RabbitMQ or SQS and justify it in one sentence: image thumbnailing jobs; a shared stream of all user activity for five teams; per-account ledger updates on AWS.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

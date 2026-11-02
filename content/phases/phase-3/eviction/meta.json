@@ -1,0 +1,20 @@
+{
+  "id": "p3-eviction",
+  "phase": 3,
+  "slug": "eviction",
+  "title": "Eviction policies",
+  "order": 3,
+  "week": 7,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "why-evict", "title": "Why caches evict", "depth": "deep" },
+    { "id": "lru", "title": "LRU", "depth": "deep" },
+    { "id": "lru-implementation", "title": "Implementing LRU", "depth": "deep" },
+    { "id": "lfu", "title": "LFU", "depth": "deep" },
+    { "id": "other-policies", "title": "FIFO, random and TTL", "depth": "tradeoffs" },
+    { "id": "redis-eviction", "title": "Approximate LRU in Redis", "depth": "awareness" }
+  ],
+  "simulatorIds": ["cache"],
+  "practiceCaseStudyIds": ["news-feed"],
+  "prerequisites": ["p3-cache-layers"]
+}

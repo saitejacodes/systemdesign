@@ -1,0 +1,41 @@
+{
+  "id": "p3-queues-vs-pubsub",
+  "phase": 3,
+  "slug": "queues-vs-pubsub",
+  "title": "Queues vs pub/sub",
+  "order": 8,
+  "week": 8,
+  "estimatedMinutes": 55,
+  "topics": [
+    {
+      "id": "why-async",
+      "title": "Why go asynchronous",
+      "depth": "deep"
+    },
+    {
+      "id": "point-to-point",
+      "title": "Point-to-point queues",
+      "depth": "deep"
+    },
+    {
+      "id": "pub-sub",
+      "title": "Publish/subscribe fan-out",
+      "depth": "deep"
+    },
+    {
+      "id": "push-pull",
+      "title": "Push vs pull consumers",
+      "depth": "deep"
+    }
+  ],
+  "simulatorIds": [
+    "message-queue"
+  ],
+  "practiceCaseStudyIds": [
+    "notification-system"
+  ],
+  "prerequisites": [
+    "p1-monolith-vs-microservices",
+    "p2-idempotency"
+  ]
+}

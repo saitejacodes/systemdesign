@@ -1,0 +1,228 @@
+## Why it matters
+
+A bank account receives three events in quick succession: "deposit 100", "withdraw 80", "withdraw 30". Processed in that order, the second withdrawal is rejected for insufficient funds. Processed out of order, the account goes overdrawn, or a valid withdrawal is wrongly refused. At the same time, the bank needs to process millions of such events per second, which means many consumers working in parallel, and parallelism is exactly what destroys order. Log-based brokers such as Apache Kafka, Amazon Kinesis and Azure Event Hubs all resolve this tension the same way: split the stream into **partitions**, guarantee order only *inside* each partition, and route related events to the same partition with a key. Understanding that one compromise explains most of how these systems scale, why "Kafka guarantees ordering" is only half true, and why a consumer group can suddenly stop processing for several seconds.
+
+<Callout type="analogy" title="The supermarket checkout lanes">
+A supermarket with one till serves customers in perfect order but has a queue out the door. Open ten tills and throughput goes up tenfold, but there's no longer any order *between* lanes: the person who joined lane 7 after you may finish first. Order still holds *within* a lane. Now imagine a family that must be served in sequence (Mum pays for the food, then Dad uses the voucher that depends on it). They stand in the **same lane**, chosen by surname: that's a partition key. Staff going on break and lanes being reassigned to other cashiers is a rebalance. The number of people still waiting in each lane is consumer lag.
+</Callout>
+
+## Partitions
+
+<DepthStamp depth="deep" />
+
+In Kafka, a **topic** is a named stream of messages ("payments"). A topic is split into one or more <Term slug="topic-partition">partitions</Term>: independent, append-only logs. Each message written to a partition gets the next **offset** in that partition (0, 1, 2, …). Offsets are per partition, so partition 0 and partition 1 both have a message at offset 42, and they are unrelated.
+
+Partitions are the unit of everything that matters for scale:
+
+- **Storage and I/O:** each partition lives on one broker (with replicas on others), so a topic with 12 partitions spreads its writes across the cluster instead of one machine.
+- **Parallelism:** within a consumer group, each partition is read by exactly one consumer at a time. Twelve partitions allow up to twelve consumers in a group to work in parallel; a thirteenth sits idle.
+- **Ordering:** the broker preserves the order messages were appended *within* a partition. There is no order across partitions.
+
+This is the same idea as <Term slug="sharding">sharding</Term> a database: split one big thing into many smaller ones so the work spreads across machines. Kinesis calls its partitions **shards**; SQS FIFO queues get a similar effect from **message group IDs**, where order is kept within a group and different groups are processed in parallel.
+
+<Figure caption="FIG. 10.1 · A TOPIC WITH THREE PARTITIONS AND TWO CONSUMER GROUPS">
+<Diagram label="Producer writes keyed messages to three partitions; group A has two consumers splitting the partitions; group B has one consumer reading all three" chart={`flowchart LR
+  P["Producer"] -->|"key=acct-17"| P0[("Partition 0")]
+  P -->|"key=acct-42"| P1[("Partition 1")]
+  P -->|"key=acct-99"| P2[("Partition 2")]
+  P0 --> A1["Group A: consumer 1"]
+  P1 --> A1
+  P2 --> A2["Group A: consumer 2"]
+  P0 --> B1["Group B: consumer 1"]
+  P1 --> B1
+  P2 --> B1`} />
+</Figure>
+
+How many partitions? Enough for the **peak parallelism you'll need**, with room to grow, because increasing the count later has a cost (next section) and Kafka never lets you reduce it. Too many has costs too: more open files and replication work on brokers, more partitions to move during rebalances and failovers, and longer recovery when a broker fails. A common starting rule is to estimate the throughput one consumer can handle and divide.
+
+### Worked example: sizing a topic
+
+A payments topic must handle **40,000 messages per second** at peak. Load tests show one consumer instance processes **2,500 messages per second** (each message needs a database write).
+
+- Consumers needed at peak: 40,000 ÷ 2,500 = **16**.
+- Partitions must be at least 16, since a partition can't be split between consumers in a group.
+- Traffic is expected to double within two years, so 32 consumers may be needed: choose **32 partitions** now (or a bit more, such as 36 or 48, to leave room for uneven keys). Starting with 32 partitions and only 16 consumers is fine: each consumer reads two partitions.
+- On the broker side, if average messages are 1 KB, peak ingest is about 40 MB/s, comfortably spread across a handful of brokers.
+
+## Partition keys
+
+<DepthStamp depth="deep" />
+
+How does the producer pick a partition? With a <Term slug="partition-key">partition key</Term>: a value attached to each message, such as an account ID, order ID or user ID. Kafka's default partitioner hashes the key and takes it modulo the partition count, so **every message with the same key lands in the same partition**. Messages with no key are spread across partitions (recent Kafka versions fill a batch for one partition, then move to another, which is efficient but gives no per-key order).
+
+Choosing the key is the most important partitioning decision, and it's a direct trade between ordering and balance:
+
+- **Key = the entity whose events must stay in order.** For a bank, `account_id`. For order processing, `order_id`. For a chat app, `conversation_id`.
+- **The key must have many distinct, evenly-active values.** Keying by `country` gives a handful of partitions doing all the work. Keying by `user_id` across millions of users spreads well.
+
+The failure mode is a <Term slug="hot-shard">hot partition</Term>: one key (a celebrity account, a huge merchant, a viral post) produces a large share of traffic, and because every message for that key must go to one partition, one consumer must handle it all. If one merchant generates 30% of payment events, then **30% of traffic hits one partition regardless of whether the topic has 12 or 1,200 partitions**. Adding partitions doesn't help a hot key.
+
+Fixes, each with a cost:
+
+- **A finer key:** key by `payment_id` instead of `merchant_id` if you only need order per payment.
+- **Salting:** append a suffix, such as `merchant-77#0` to `merchant-77#9`, to spread one key across 10 partitions. You lose order across the suffixes, so it only works if the consumer can tolerate that or re-sequence.
+- **Separate topic** for the giant keys, with its own capacity.
+
+**Changing the partition count changes the mapping.** With 12 partitions, `hash("acct-42") mod 12` might be 5; with 16 partitions, `mod 16` might be 9. Kafka doesn't move old messages, so after the change, new events for `acct-42` go to partition 9 while older, possibly unprocessed ones sit in partition 5. For a short window, a consumer could process a newer event before an older one. This is why you size partitions generously up front, and why some teams create a new topic and migrate instead of expanding a topic with strict ordering needs.
+
+## Ordering is per partition only
+
+<DepthStamp depth="deep" />
+
+The guarantee, stated precisely: **Kafka delivers messages to a consumer in the order they were written to each partition.** Nothing more. Two messages with different keys can land in different partitions and be processed in any order relative to each other.
+
+| Time | Partition 0 (key acct-17) | Partition 1 (key acct-42) | What consumers see |
+|---|---|---|---|
+| 1 | deposit 100 (offset 0) | | |
+| 2 | | refund 20 (offset 0) | |
+| 3 | withdraw 80 (offset 1) | | |
+| 4 | | | Consumer of P1 handles "refund 20" first; consumer of P0 is still on offset 0 |
+| 5 | | | P0: deposit 100, then withdraw 80, always in this order |
+
+Order within `acct-17` is guaranteed. Order between `acct-17` and `acct-42` is not, and usually doesn't need to be. If your design needs a **total order across everything**, the only way is a single partition, which means a single consumer and a hard throughput ceiling. Interviewers like to ask this; the right answer is almost always "we need order per entity, not globally, so key by the entity".
+
+Ordering can still break *inside* a partition through your own choices:
+
+- **Producer retries:** if a producer has several batches in flight and an earlier one fails and is retried, it could land after a later one. Kafka's idempotent producer (on by default since Kafka 3.0) uses sequence numbers to keep order intact with up to five in-flight requests per connection.
+- **Parallel processing inside a consumer:** reading a partition in order and then handing messages to a thread pool throws the order away. If you parallelise inside a consumer, do it **per key** (all messages for a key to the same worker thread).
+- **Retrying a failed message later:** moving message 7 to a retry queue while you carry on with message 8 means 8 is processed before 7. For strictly ordered streams you must either block the partition until 7 succeeds or accept the reordering. The failure-handling section covers this trade-off.
+
+## Consumer groups
+
+<DepthStamp depth="deep" />
+
+A <Term slug="consumer-group">consumer group</Term> is a set of consumers that share a group ID and split a topic's partitions between them, so each partition is read by exactly one member. This single concept gives Kafka both messaging shapes from the queues-vs-pub/sub section:
+
+- **Within a group: queue behaviour.** Members share the work. Each message is processed by one member of the group.
+- **Across groups: pub/sub behaviour.** Each group tracks its own offsets and receives every message. The fraud service's group and the email service's group read the same topic independently, at their own speeds.
+
+| Consumers in group | Partitions | Result |
+|---|---|---|
+| 1 | 6 | One consumer reads all 6 partitions |
+| 3 | 6 | Each reads 2 partitions |
+| 6 | 6 | Each reads 1 partition: maximum parallelism |
+| 8 | 6 | 6 consumers read 1 partition each; **2 sit idle** |
+
+The last row is a classic mistake: scaling consumers past the partition count adds cost but no throughput. The partition count is the ceiling on a group's parallelism.
+
+Each group stores its committed offsets in Kafka itself (an internal topic named `__consumer_offsets`). A **group coordinator**, one of the brokers, tracks the members of each group and their partition assignments.
+
+## Rebalancing
+
+<DepthStamp depth="tradeoffs" />
+
+When a group's membership changes, partitions must be reassigned. That process is a <Term slug="consumer-rebalance">rebalance</Term>. It is triggered when:
+
+- a consumer **joins** (you scaled up or deployed a new instance),
+- a consumer **leaves** cleanly (scale down, shutdown),
+- a consumer is **presumed dead**: it stopped sending heartbeats within the session timeout, or it didn't call `poll()` within `max.poll.interval.ms` (5 minutes by default) because processing a batch took too long,
+- the topic's **partition count** or the group's subscription changes.
+
+In Kafka's original **eager** protocol, a rebalance is stop-the-world: every consumer gives up all its partitions, the group agrees on a new assignment, and only then does work resume. In a big group this can pause consumption for seconds or more, and any consumer that processed messages without committing will see them redelivered to the new owner. Rebalances are a major source of the duplicates covered in the delivery semantics section.
+
+Ways to reduce the pain:
+
+- **Cooperative (incremental) rebalancing**, available since Kafka 2.4 via the `CooperativeStickyAssignor`: only the partitions that actually need to move are revoked; everyone else keeps working.
+- **Sticky assignment:** keep partitions on the same consumer where possible, so local caches stay warm.
+- <Term slug="static-membership">Static membership</Term> (`group.instance.id`): a consumer that restarts quickly with the same ID gets its partitions back without triggering a rebalance, which makes rolling deploys much calmer.
+- **Commit offsets when partitions are revoked** (a rebalance listener), so the next owner starts exactly where you stopped.
+- **Keep batches short enough** to finish well inside `max.poll.interval.ms`, or reduce `max.poll.records`. A consumer that is slow on one batch otherwise gets kicked out, triggers a rebalance, and the same slow batch can trigger the next one: a rebalance storm.
+
+Kafka 4.0 made a newer, broker-driven consumer group protocol generally available, designed to make rebalances more incremental and less disruptive. The trade-offs above still apply: any partition move costs some pause and some reprocessing.
+
+<Figure caption="FIG. 10.2 · A REBALANCE WHEN A THIRD CONSUMER JOINS">
+<Diagram label="Consumer 3 joins a group; the coordinator reassigns partitions so consumer 2 gives up partition 3 to consumer 3" chart={`sequenceDiagram
+    participant C1 as Consumer 1
+    participant C2 as Consumer 2
+    participant G as Group coordinator
+    participant C3 as Consumer 3 (new)
+    Note over C1,C2: before, C1 owns P0 and P1, C2 owns P2 and P3
+    C3->>G: JoinGroup
+    G->>C1: rebalance in progress
+    G->>C2: rebalance in progress
+    C2->>G: commit offsets, revoke P3 (cooperative)
+    G-->>C3: assigned P3
+    Note over C1,C3: C1 keeps P0 and P1 throughout, C2 keeps P2`} />
+</Figure>
+
+## Consumer lag
+
+<DepthStamp depth="deep" />
+
+<Term slug="consumer-lag">Consumer lag</Term> is how far a consumer group is behind the newest data, measured per partition as:
+
+**lag = log-end offset (newest message) − committed offset (next message the group will read)**
+
+Kafka's own `kafka-consumer-groups.sh --describe` tool shows current offset, log-end offset and lag for every partition in a group. On SQS the equivalents are the CloudWatch metrics `ApproximateNumberOfMessagesVisible` (backlog size) and `ApproximateAgeOfOldestMessage` (how stale the oldest message is).
+
+Lag is the single most useful health signal for a consumer:
+
+- **Steady and near zero:** consumers keep up.
+- **Growing steadily:** consumers are slower than producers; the gap will never close on its own.
+- **One partition far behind the rest:** a hot key or a stuck consumer.
+- **Saw-tooth spikes at deploy time:** rebalances pausing consumption.
+
+Lag in **messages** is hard to interpret on its own; 50,000 messages is nothing on a topic doing 100,000 per second and a disaster on one doing 10 per second. Alert on **time lag** (how old the oldest unprocessed message is), which maps directly to a user-facing promise such as "notifications arrive within 30 seconds".
+
+### Worked example: will we catch up?
+
+A notification consumer group falls behind after a downstream outage. When the outage ends:
+
+- Lag across the topic is **1.2 million messages**.
+- Producers are writing **15,000 messages per second**.
+- The group, at full speed, processes **20,000 messages per second**.
+
+The group gains on the backlog at 20,000 − 15,000 = **5,000 messages per second**, so catching up takes 1,200,000 ÷ 5,000 = **240 seconds, 4 minutes**. During that time, the time lag shrinks from about 1,200,000 ÷ 15,000 = **80 seconds** of traffic to zero.
+
+If the group could only process 14,000 per second, lag would **grow** by 1,000 per second forever. Adding consumers helps only if the topic has more partitions than the group currently has members; with 12 partitions and 12 consumers, you'd need to increase partitions (with the key-mapping caveat above) or make each consumer faster, for example by batching database writes.
+
+<TradeoffBox title="Partitioning tradeoffs" items={[
+  { gain: "More partitions: more parallel consumers and broker throughput", cost: "More broker overhead, longer rebalances and failovers; can't reduce later" },
+  { gain: "Keying by entity: order guaranteed per entity", cost: "Hot keys overload one partition and one consumer" },
+  { gain: "Salting a hot key spreads its load", cost: "Order across the salted sub-keys is lost" },
+  { gain: "A single partition: total order", cost: "One consumer; throughput capped at what it can do" },
+  { gain: "Cooperative rebalancing and static membership: shorter pauses", cost: "More configuration to understand and tune" }
+]} />
+
+<NotWhenBox title="Leaning on partitioned ordering" items={[
+  "You need a global order across all events at high volume: redesign so order is needed only per entity.",
+  "The key's traffic is very skewed and order per key isn't truly required: don't key at all, or key more finely.",
+  "Consumers process messages concurrently with no per-key routing: ordering is already gone.",
+  "You'll need to grow partitions often on a strictly ordered topic: plan the count up front or migrate to a new topic."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Kafka guarantees message ordering." right="Kafka guarantees order within a partition only. Order across partitions, and across keys that hash to different partitions, is not preserved." />
+
+<Misconception wrong="If consumers fall behind, just add more consumers." right="A group can't use more consumers than the topic has partitions. Beyond that, extra consumers sit idle." />
+
+<Misconception wrong="Adding partitions is a free way to scale later." right="It changes which partition each key maps to, which can reorder a key's events briefly, and partitions can never be removed." />
+
+<Misconception wrong="Consumer lag in messages tells you whether users are affected." right="Time lag (age of the oldest unprocessed message) is what maps to user experience; message counts depend on throughput." />
+
+## Interview angle
+
+<InterviewAngle title="Partitioning and ordering" questions={[
+  "Events for the same account must be processed in order. How do you guarantee that while scaling to many consumers?",
+  "What partition key would you choose here, and what happens if one key is extremely hot?",
+  "How many partitions would you create for this topic, and why?",
+  "Your consumers are falling behind. How do you know, and what can you do about it?",
+  "What triggers a consumer group rebalance, and why might it cause duplicate processing?"
+]}>
+The expected move is to say "order per entity, not globally", choose the entity as the partition key, and size partitions from peak throughput divided by per-consumer throughput, with headroom. Strong answers volunteer the hot-key problem and a fix, note that consumers beyond the partition count are idle, and mention monitoring time lag. Rebalancing is a common follow-up: name the triggers (including slow processing past max.poll.interval.ms) and the mitigations (cooperative rebalancing, static membership, committing on revoke).
+</InterviewAngle>
+
+## Practice
+
+1. A ride-sharing app streams driver location updates at 200,000 per second, and each consumer can handle 8,000 per second. Choose a partition key and a partition count, and explain what ordering you get.
+2. One merchant produces 25% of all payment events on a 24-partition topic keyed by `merchant_id`. Calculate that partition's share of the load compared with an average partition, then propose two fixes and what each costs.
+3. A group of 10 consumers on a 10-partition topic has lag growing by 2,000 messages per second. List three things you would check and two ways to increase throughput.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

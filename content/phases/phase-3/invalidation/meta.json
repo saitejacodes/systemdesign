@@ -1,0 +1,19 @@
+{
+  "id": "p3-invalidation",
+  "phase": 3,
+  "slug": "invalidation",
+  "title": "Cache invalidation",
+  "order": 4,
+  "week": 7,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "ttl-expiry", "title": "TTL-based expiry", "depth": "deep" },
+    { "id": "explicit-delete", "title": "Explicit delete on write", "depth": "deep" },
+    { "id": "versioned-keys", "title": "Versioned keys", "depth": "deep" },
+    { "id": "race", "title": "The delete-then-update race", "depth": "deep" },
+    { "id": "delete-vs-update", "title": "Why delete beats update on write", "depth": "deep" }
+  ],
+  "simulatorIds": ["cache"],
+  "practiceCaseStudyIds": ["news-feed"],
+  "prerequisites": ["p3-cache-strategies"]
+}

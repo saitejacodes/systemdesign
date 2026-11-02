@@ -1,0 +1,195 @@
+## Why it matters
+
+The moment you cache something, you have two copies, and the database copy will change. <Term slug="cache-invalidation">Cache invalidation</Term> is the job of making sure the cached copy is removed or replaced when that happens, and it is famously hard: Martin Fowler's site records Phil Karlton's line that "there are only two hard things in Computer Science: cache invalidation and naming things." The difficulty isn't the delete call; it's that reads and writes run concurrently on different machines, so a perfectly reasonable sequence of steps can put an old value back into the cache after you deleted it. Facebook's 2013 memcache paper devotes a whole mechanism, leases, to exactly this problem. This lesson walks through the three ways to invalidate, then the race that catches almost everyone, and why "delete on write" is the industry default.
+
+<Callout type="analogy" title="The office rumour mill">
+The facts live in the manager's office (the database). Gossip at the coffee machine (the cache) is quicker to get. **TTL** is everyone agreeing to forget any rumour older than an hour. **Explicit delete** is the manager walking to the coffee machine after each decision and saying "forget what you heard about the reorg". **Versioned keys** is naming the rumour "reorg plan v7", so when v8 is announced nobody repeats v7 any more. And the race: Dave asks the manager about the reorg, gets distracted on the way back, and arrives at the coffee machine with the old story just *after* the manager has made a new decision and told everyone to forget the previous one. Dave's stale rumour now lives on, freshly told, until the hour runs out.
+</Callout>
+
+## TTL-based expiry
+
+<DepthStamp depth="deep" />
+
+The simplest form of invalidation is to not invalidate at all: give every entry a <Term slug="ttl">TTL</Term> and accept that it may be stale for up to that long. A <Term slug="stale-read">stale read</Term> is a read that returns a value older than the latest committed write in the <Term slug="source-of-truth">source of truth</Term>.
+
+- **Pro:** no coordination between writers and the cache. Works even when the data changes somewhere you don't control (a third-party API, another team's database).
+- **Pro:** self-healing. Whatever goes wrong, the entry disappears within one TTL.
+- **Con:** staleness is guaranteed, not just possible: after a change, readers see the old value for up to the full TTL.
+- **Con:** a short TTL lowers the hit ratio and raises database load.
+
+### Worked example: choosing a TTL
+
+A shop has **50,000 products**, gets **10,000 product-page reads a second**, and prices change a few times a day. With cache-aside and **no** explicit invalidation:
+
+| TTL | Worst-case staleness | Upper bound on DB reads from expiry |
+|---|---|---|
+| 5 s | 5 s | 50,000 ÷ 5 = 10,000/s, i.e. every read can miss |
+| 60 s | 1 min | 50,000 ÷ 60 ≈ 833/s |
+| 10 min | 10 min | 50,000 ÷ 600 ≈ 83/s |
+
+The bound assumes every product is read at least once per TTL; in reality, cold products don't get reloaded, so the true load is lower. The table makes the tradeoff explicit: each step down in staleness costs roughly ten times the database load. The usual answer is to combine both: **a long-ish TTL as a safety net, plus explicit invalidation for freshness.**
+
+## Explicit delete on write
+
+<DepthStamp depth="deep" />
+
+With explicit invalidation, the code that writes the database also removes the cached copy: update the row, then `DEL` the key. The next read misses and reloads the new value. Staleness drops from "up to one TTL" to "the moment between the commit and the delete", plus the race below.
+
+The hard part is **finding every key**. One row change can affect many cached objects:
+
+- `user:42` (the profile),
+- `user:42:card` (a rendered fragment that includes the name),
+- `team:7:members` (a list that includes user 42),
+- every feed entry that embeds the user's display name.
+
+Miss one and it stays stale until its TTL. Teams handle this by keeping a mapping from entity to dependent keys, by caching smaller pieces and assembling pages from them, or by moving invalidation out of application code: a process reads the database's change stream using <Term slug="change-data-capture">change data capture</Term> (for example, Debezium reading MySQL's binlog or PostgreSQL's logical replication) and deletes affected keys for every committed change. That guarantees no write path forgets, at the cost of a small delay and another moving part.
+
+## Versioned keys
+
+<DepthStamp depth="deep" />
+
+<Term slug="versioned-key">Versioned keys</Term> avoid deleting anything. The cache key includes a version, and a write simply bumps the version so readers start using a new key:
+
+```
+product:42:v17      ← readers used this until the update
+product:42:v18      ← after the update; v17 is never read again
+```
+
+The old entry isn't removed; it becomes unreachable and is eventually evicted or expires. There are two common designs:
+
+- **Version stored with the entity.** The `products` row has a `version` column. Readers who already have the row (or a cheap index lookup) use it to build the key. This is ideal for expensive **derived** data: `product:42:v18:rendered-html` is safe to cache forever, because any change produces a new key.
+- **Namespace version.** A single small counter such as `catalog:version = 8` is part of every key (`catalog:v8:product:42`). Incrementing the counter invalidates the **whole namespace** at once, which is otherwise impossible in Redis or Memcached without scanning keys.
+
+You've already met versioned keys: fingerprinted asset URLs like `app.3f9a1c.js` are exactly this idea applied to browser and CDN caches.
+
+**Costs:** you need the current version before you can look anything up (an extra read, unless you already have it), and old versions occupy memory until they're evicted. **Benefit:** a slow reader that writes old data writes it under the **old** key, which nobody reads any more, so the race in the next section can't poison what readers see.
+
+## The delete-then-update race
+
+<DepthStamp depth="deep" />
+
+Here is the bug. A writer's natural instinct is "clear the cache, then change the data". With cache-aside reads running concurrently, that order lets a reader put the old value back.
+
+### Delete first, then update the database
+
+| Time | Writer W | Reader R | Cache `user:42` | Database |
+|---|---|---|---|---|
+| 1 | `DEL user:42` | | empty | v1 |
+| 2 | | `GET user:42` → miss | empty | v1 |
+| 3 | | `SELECT` → **v1** | empty | v1 |
+| 4 | `UPDATE` → v2, commit | | empty | **v2** |
+| 5 | | `SET user:42 = v1` | **v1 (stale)** | v2 |
+| 6 | | every later reader: hit → v1 | v1 | v2 |
+
+The cache now holds v1 and the database v2. Nothing will fix it until the TTL expires, and with no TTL, it is wrong **forever**. The window is wide: any read that misses between the delete and the commit (which might include a slow transaction) can cause it, and on a hot key that's almost guaranteed.
+
+<Figure caption="FIG. 4.1 · DELETE-THEN-UPDATE · A READER WRITES THE OLD VALUE BACK AFTER THE DELETE">
+<Diagram label="Writer deletes the cache key. Reader misses and reads v1 from the database. Writer updates the database to v2. Reader then stores v1 in the cache, leaving a stale value that later readers hit." chart={`sequenceDiagram
+  participant W as Writer
+  participant C as Cache
+  participant R as Reader
+  participant DB as Database
+  W->>C: DEL user:42
+  R->>C: GET user:42
+  C-->>R: miss
+  R->>DB: SELECT user 42
+  DB-->>R: v1
+  W->>DB: UPDATE user 42 to v2, commit
+  R->>C: SET user:42 = v1
+  Note over C,DB: cache says v1, database says v2, until the TTL expires`} />
+</Figure>
+
+### The fix: update the database first, then delete
+
+Reversing the order closes most of the window: after the commit, any reader that misses reads **v2**. But one interleaving remains:
+
+| Time | Writer W | Reader R | Cache `user:42` | Database |
+|---|---|---|---|---|
+| 1 | | `GET user:42` → miss (key had expired) | empty | v1 |
+| 2 | | `SELECT` → **v1** | empty | v1 |
+| 3 | `UPDATE` → v2, commit | | empty | v2 |
+| 4 | `DEL user:42` (nothing to delete) | | empty | v2 |
+| 5 | | `SET user:42 = v1` | **v1 (stale)** | v2 |
+
+For this to happen, the reader must read the database **before** the write commits and write the cache **after** the delete, so the reader has to be slower than the entire write. A cache set normally takes well under a millisecond, so this needs something like a garbage-collection pause or a network stall on the reader at exactly the wrong moment. It's rare, but at millions of requests a second, rare happens daily. Always pair delete-on-write with a TTL so this case heals itself.
+
+### Closing the remaining gap
+
+- **Leases.** In Facebook's memcache design, a miss returns a <Term slug="cache-lease">lease</Term> token along with the miss. The reader must present the token when it sets the value. A delete in between invalidates the token, so the late `SET v1` is **rejected**. Leases also limit how many readers refill the same hot key at once. Redis has no built-in leases, but you can build the same check with a small Lua script.
+- **Delayed double delete.** Delete after the update, then delete **again** after a short delay (longer than a typical read takes, say a few hundred milliseconds). The second delete removes anything a slow reader wrote back. It's crude and the delay is a guess, but it's cheap and widely used. This is the <Term slug="delayed-double-delete">delayed double delete</Term> pattern.
+- **Versioned keys or versioned values.** Write the value together with its version and only accept a `SET` whose version is newer than what's cached (a compare-and-set, again a short Lua script in Redis). A stale reader's write loses.
+- **Change data capture.** Deleting from the change stream, after commit and in commit order, removes the "forgot to delete" class of bugs, but not the slow-reader race on its own.
+- **Short TTLs on hot, frequently written keys** bound the damage when everything else fails.
+
+## Why delete beats update on write
+
+<DepthStamp depth="deep" />
+
+The alternative to deleting is to **write the new value into the cache** after updating the database. It looks better (the next read is a hit), but it has a worse race. Two writers update the same key concurrently:
+
+| Time | Writer W1 | Writer W2 | Cache | Database |
+|---|---|---|---|---|
+| 1 | `UPDATE` → price 10, commit | | 8 | 10 |
+| 2 | | `UPDATE` → price 12, commit | 8 | **12** |
+| 3 | | `SET price = 12` | 12 | 12 |
+| 4 | `SET price = 10` (delayed) | | **10 (stale)** | 12 |
+
+The database applied the writes in one order and the cache in the other. The cache now holds a value that is wrong, and **every** read hits it until the TTL expires. With delete, the same interleaving ends with two deletes, the order doesn't matter (delete is <Term slug="idempotency">idempotent</Term>), and the next reader loads 12.
+
+Delete-on-write also wins because:
+
+- **You don't need to compute the cached value in the write path.** Many cached objects are derived from several rows (a rendered profile card, a feed page). Rebuilding them on every write is wasted work, especially for entries nobody will read before the next change.
+- **The write path doesn't need to know the cached format.** Only the reader knows how to build it.
+- **Less code to get wrong.** One `DEL` per affected key, no serialisation logic duplicated in writers.
+
+The cost is one extra miss after each write. For a very hot key, that miss can trigger many simultaneous reloads, a cache stampede, which the cache-failures lesson covers along with fixes like request coalescing and leases. The Facebook memcache paper chose delete for the same reasons, citing that deletes are idempotent.
+
+<TradeoffBox title="Invalidation tradeoffs" items={[
+  { gain: "TTL only: no coordination, self-healing, works for data you don't own", cost: "Guaranteed staleness up to the TTL; shorter TTLs multiply database load" },
+  { gain: "Delete on write: near-immediate freshness, idempotent, cheap", cost: "Must find every dependent key; a rare slow-reader race remains; one miss per write" },
+  { gain: "Versioned keys: no deletes, whole-namespace invalidation, immune to stale write-backs", cost: "An extra lookup for the current version; old versions occupy memory until evicted" },
+  { gain: "Update on write: next read is a hit", cost: "Concurrent writers can leave the cache permanently wrong; the write path must build the cached value" }
+]} />
+
+<NotWhenBox title="Updating the cache on write instead of deleting" items={[
+  "More than one writer can change the same key concurrently.",
+  "The cached value is derived from several rows or is expensive to build.",
+  "The value is rarely read between writes, so the work is wasted.",
+  "You have no compare-and-set or version check to reject out-of-order updates."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Deleting the cache key before updating the database is the safe order." right="It opens a wide window for a concurrent reader to write the old value back. Update the database first, then delete, and keep a TTL as a safety net." />
+
+<Misconception wrong="Updating the cache with the new value is better than deleting because the next read is a hit." right="Concurrent writers can apply cache updates in a different order from the database, leaving a stale value for the whole TTL. Delete is idempotent and order-independent." />
+
+<Misconception wrong="With explicit invalidation you don't need TTLs." right="Missed keys, failed deletes and the slow-reader race all leave stale entries. A TTL is the only thing that guarantees they eventually disappear." />
+
+<Misconception wrong="Update-then-delete is completely race-free." right="A reader that read before the commit and writes after the delete can still store the old value. It's rare; leases, version checks or a delayed second delete close it." />
+
+## Interview angle
+
+<InterviewAngle title="Cache invalidation" questions={[
+  "When a user updates their profile, how does the cache find out?",
+  "Should you delete the cache key before or after updating the database? Why?",
+  "Draw the race where a stale value ends up in the cache.",
+  "Why delete the key instead of writing the new value into the cache?",
+  "How would you invalidate every cached product page when the tax rules change?"
+]}>
+Strong answers say "update the database, then delete the key, with a TTL as a safety net" and then volunteer the remaining race, drawn as a two-column timeline, before being asked. Explain why delete beats update with the two-writer interleaving. For bulk invalidation, reach for a namespace version rather than scanning keys. Mention leases or version checks as the way large systems close the last gap, and change data capture when many services write the same data.
+</InterviewAngle>
+
+## Practice
+
+1. Draw the timeline for the delete-first race on a hot key read 5,000 times a second, with a database update that takes 20 ms. Roughly how many reads miss during the window, and what is the chance one of them writes back the old value?
+2. In the news-feed case study, a user changes their display name. List every cached key that must change, and choose between explicit deletes, versioned keys and TTL for each.
+3. Write the Redis Lua logic for a "set only if this version is newer" operation, storing the value and its version together.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

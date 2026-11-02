@@ -1,0 +1,7 @@
+[
+  { "id": "ds-c1", "text": "I can explain how SQS visibility timeouts, RabbitMQ acks and Kafka offset commits each decide when a message is redelivered.", "topicId": "acks" },
+  { "id": "ds-c2", "text": "I can say where to place the acknowledgement to get at-most-once or at-least-once, and draw the crash timeline for each.", "topicId": "at-least-once" },
+  { "id": "ds-c3", "text": "I can name a workload where at-most-once is the right choice and justify it.", "topicId": "at-most-once" },
+  { "id": "ds-c4", "text": "I can explain why exactly-once delivery is impossible and build an effectively-once consumer with a dedup table in the same transaction as the effect.", "topicId": "effectively-once" },
+  { "id": "ds-c5", "text": "I can describe what Kafka's idempotent producer and transactions guarantee, and what they don't.", "topicId": "kafka-eos" }
+]

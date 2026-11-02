@@ -185,7 +185,7 @@ export function maxAvg(s: ShState) {
   return avg ? Math.max(...s.load) / avg : 0;
 }
 
-export const STRATEGY_LABEL: Record<Strategy, string> = { "range-id": "Range by user id", "range-name": "Range by name", hash: "Hash (id mod N)", directory: "Directory (lookup table)" };
+export const STRATEGY_LABEL: Record<Strategy, string> = { "range-id": "Range by user id", "range-name": "Range by name", hash: "Hash (hash(id) mod N)", directory: "Directory (lookup table)" };
 
 export function friendsOf(rng: Rng) {
   const f = new Int32Array(USERS * FRIENDS);

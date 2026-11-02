@@ -1,0 +1,248 @@
+## Why it matters
+
+A cache is useful because it is small and fast, and because it is small, it fills up. From then on, every new entry means throwing an old one out, and the rule that picks the victim decides your hit ratio. Pick well and a cache holding 5% of your data answers 95% of requests; pick badly and a single nightly batch job can wipe out every hot entry and send the morning's traffic straight to the database. Redis ships with several eviction policies and, out of the box, evicts **nothing**: its default `maxmemory-policy` is `noeviction`, which makes writes fail once memory is full. Teams that run Redis as a cache without changing that setting discover it at the worst possible moment.
+
+<Callout type="analogy" title="The tiny apartment fridge">
+You live in a studio with a fridge that holds ten things. Every time you bring groceries home, something has to go. **LRU** throws out whatever you haven't touched for longest: the jar of capers from March. **LFU** throws out what you use least often, so the milk you open every morning is safe even if you skipped it yesterday. **FIFO** throws out whatever went in first, even if it's the butter you use daily. **Random** closes its eyes and grabs. **TTL** is the use-by date: the yoghurt goes in the bin on Thursday whether the fridge is full or not. And Redis's approximate LRU is a flatmate who, instead of auditing the whole fridge, grabs five items at random and bins the one that's been sitting longest.
+</Callout>
+
+## Why caches evict
+
+<DepthStamp depth="deep" />
+
+Two different mechanisms remove entries from a cache, and they answer different questions:
+
+- **Expiration** answers "is this entry still trustworthy?" Each entry gets a <Term slug="ttl">TTL</Term> (time to live) when it's written, and after that it is treated as gone. Expiration is about **freshness**.
+- **Eviction** answers "the cache is full: what do we drop to make room?" The rule that chooses is the <Term slug="eviction-policy">eviction policy</Term>. Eviction is about **capacity**.
+
+A good policy keeps the entries most likely to be requested again. It has to guess the future from the past, and different workloads leave different clues:
+
+- **Recency:** something used a moment ago is likely to be used again soon (a user browsing their own profile).
+- **Frequency:** something used thousands of times today is likely to be used again (the home page, a celebrity's profile).
+
+The enemy of both is <Term slug="cache-pollution">cache pollution</Term>: entries that are used once and never again (a crawler walking every page, a batch export reading every row) push useful entries out. How a policy behaves under pollution is often the deciding factor.
+
+## LRU
+
+<DepthStamp depth="deep" />
+
+<Term slug="lru">LRU</Term> (least recently used) evicts the entry whose last access is oldest. Every hit moves an entry to the "most recent" end; the victim is always taken from the "least recent" end.
+
+LRU is the default choice because recency is a strong signal for most interactive workloads, it adapts instantly when popularity shifts, and it can be implemented in constant time per operation.
+
+### Worked example: LRU versus FIFO, step by step
+
+A cache holds **3 entries** and sees the requests `A B C A D A B E`. Lists are written oldest first, so the left-most entry is the next victim.
+
+| Step | Request | LRU contents after | LRU result | FIFO contents after | FIFO result |
+|---|---|---|---|---|---|
+| 1 | A | A | miss | A | miss |
+| 2 | B | A B | miss | A B | miss |
+| 3 | C | A B C | miss | A B C | miss |
+| 4 | A | B C **A** | **hit** (A moves to newest) | A B C | **hit** (order unchanged) |
+| 5 | D | C A D (evicts B) | miss | B C D (evicts A) | miss |
+| 6 | A | C D **A** | **hit** | C D A (evicts B) | miss |
+| 7 | B | D A B (evicts C) | miss | D A B (evicts C) | miss |
+| 8 | E | A B E (evicts D) | miss | A B E (evicts D) | miss |
+
+LRU scores 2 hits; FIFO scores 1. The difference is step 5: FIFO evicts A, the busiest key, purely because it arrived first.
+
+### LRU's weakness: scans
+
+Suppose 1,000 hot product IDs live happily in a 10,000-entry LRU cache. A nightly job reads 1 million products once each through the same cache. Each read is the "most recent", so after 10,000 of them, **every hot entry has been evicted** and replaced by products nobody will ask for again. The morning traffic finds a cold cache. This is why databases and serious caches use scan-resistant variants: PostgreSQL's buffer manager uses a clock-sweep algorithm with usage counts, MySQL's InnoDB inserts newly read pages into the middle of its LRU list rather than the head, and Memcached has moved from a plain LRU to a segmented hot/warm/cold design. The application-level fix is simpler: don't send one-off bulk reads through the shared cache.
+
+## Implementing LRU
+
+<DepthStamp depth="deep" />
+
+An LRU cache must support three operations in **O(1)**: find an entry by key, move it to the most-recent end, and remove the least-recent entry. No single data structure does all three, so LRU combines two:
+
+- A **hash map** from key to node: O(1) lookup.
+- A **doubly linked list** of nodes in recency order: O(1) unlink and re-insert, because each node knows both of its neighbours. A singly linked list would need an O(n) walk to find the previous node.
+
+Two <Term slug="sentinel-node">sentinel nodes</Term> (a dummy head and tail that are never removed) remove all the "is the list empty?" edge cases.
+
+<Figure caption="FIG. 3.1 · LRU = HASH MAP + DOUBLY LINKED LIST · THE MAP FINDS, THE LIST ORDERS">
+<Diagram label="A hash map points each key to a node in a doubly linked list. The list runs from a head sentinel through the most recently used node to the least recently used node and a tail sentinel. Eviction removes the node next to the tail." chart={`flowchart LR
+  subgraph Map["hash map"]
+    k1["key A"]
+    k2["key C"]
+    k3["key B"]
+  end
+  H["head (sentinel)"] <--> A["A (most recent)"]
+  A <--> C["C"]
+  C <--> B["B (least recent)"]
+  B <--> T["tail (sentinel)"]
+  k1 -.-> A
+  k2 -.-> C
+  k3 -.-> B`} />
+</Figure>
+
+```ts
+class Node<K, V> {
+  prev: Node<K, V> | null = null;
+  next: Node<K, V> | null = null;
+  constructor(public key: K, public value: V) {}
+}
+
+export class LRUCache<K, V> {
+  private map = new Map<K, Node<K, V>>();
+  private head = new Node<K, V>(null as K, null as V); // most recent side
+  private tail = new Node<K, V>(null as K, null as V); // least recent side
+
+  constructor(private capacity: number) {
+    this.head.next = this.tail;
+    this.tail.prev = this.head;
+  }
+
+  get(key: K): V | undefined {
+    const node = this.map.get(key);
+    if (!node) return undefined;          // miss
+    this.unlink(node);                    // hit: move to the front
+    this.pushFront(node);
+    return node.value;
+  }
+
+  set(key: K, value: V): void {
+    const existing = this.map.get(key);
+    if (existing) {
+      existing.value = value;
+      this.unlink(existing);
+      this.pushFront(existing);
+      return;
+    }
+    if (this.map.size === this.capacity) {
+      const lru = this.tail.prev!;        // victim: just before the tail
+      this.unlink(lru);
+      this.map.delete(lru.key);
+    }
+    const node = new Node(key, value);
+    this.pushFront(node);
+    this.map.set(key, node);
+  }
+
+  private unlink(n: Node<K, V>) {
+    n.prev!.next = n.next;
+    n.next!.prev = n.prev;
+  }
+
+  private pushFront(n: Node<K, V>) {
+    n.next = this.head.next;
+    n.prev = this.head;
+    this.head.next!.prev = n;
+    this.head.next = n;
+  }
+}
+```
+
+Every operation touches a constant number of pointers and one map entry, so `get` and `set` are O(1). The memory overhead is two pointers per entry plus the map's own bookkeeping.
+
+Two practical notes:
+
+- **Concurrency:** even a read (`get`) mutates the list, so a shared LRU needs a lock on every access, and that lock becomes a bottleneck on many-core machines. Production libraries shard the cache into segments with their own locks, or record accesses in buffers and apply them in batches.
+- **Language shortcuts:** JavaScript's `Map` and Python's `OrderedDict` keep insertion order, so you can delete and re-insert a key to make it "newest" and evict from the start. That's fine in practice; interviewers asking you to "implement LRU" usually want the explicit list.
+
+## LFU
+
+<DepthStamp depth="deep" />
+
+<Term slug="lfu">LFU</Term> (least frequently used) evicts the entry with the **lowest access count**. Frequency survives scans: a key hit 50,000 times today won't be evicted by a million keys hit once.
+
+Pure LFU has two problems:
+
+- **It never forgets.** Yesterday's viral video, with 10 million hits, sits in the cache forever while today's trending content, with a few thousand hits each, is evicted. Real LFU implementations **decay** counts over time so old popularity fades.
+- **New entries are fragile.** A key just inserted has a count of 1, the lowest possible, so it's the first victim even if it's about to become hot. Implementations give new entries a starting count above the minimum, or use a small admission window.
+
+O(1) LFU is possible (a map from key to node plus a list of frequency buckets), but it's more involved than LRU. Modern caches often blend both signals: the Caffeine library for Java uses a policy called Window TinyLFU, which estimates frequency with a compact probabilistic sketch and uses it to decide whether a new entry deserves to displace an existing one.
+
+## FIFO, random and TTL
+
+<DepthStamp depth="tradeoffs" />
+
+| Policy | Evicts | Cost per access | Strengths | Weaknesses |
+|---|---|---|---|---|
+| **FIFO** | The oldest inserted entry | Nothing on a hit | Simple, no bookkeeping on reads, no lock contention on hits | Evicts hot entries just because they're old |
+| **Random** | Any entry, chosen at random | Nothing on a hit | Trivial, no metadata, surprisingly decent when access is fairly uniform | Will sometimes evict the hottest key |
+| **TTL-based** | Entries closest to (or past) expiry | A timestamp per entry | Matches freshness requirements | Says nothing about popularity; a hot key with a short TTL goes first |
+| **LRU** | Least recently used | Pointer updates on every hit | Strong default for interactive workloads | Polluted by scans |
+| **LFU** | Least frequently used | Counter updates on every hit | Scan-resistant, keeps steady favourites | Needs decay; slow to adapt to new hot keys |
+
+**TTL is not really an eviction policy**; it's an expiry rule that runs whether or not the cache is full. In practice you use both: a TTL on every entry for freshness, and an eviction policy for the moment memory runs out. Some systems, Redis included, can be told to evict the keys with the **shortest remaining TTL** first when memory is full, which is useful when TTLs reflect how valuable entries are.
+
+FIFO and random get more respect than they used to. Both avoid updating anything on a hit, which removes the lock or list-shuffle that makes LRU expensive under heavy concurrency, and research on large production cache traces (including the recent work behind the S3-FIFO algorithm) has found that FIFO-based designs with a small probationary queue can match or beat LRU's hit ratio. Treat that as an open, active area rather than settled practice; LRU remains the sensible default answer.
+
+## Approximate LRU in Redis
+
+<DepthStamp depth="awareness" />
+
+Redis is configured as a cache with two settings: `maxmemory` (how much RAM to use for data) and <Term slug="maxmemory-policy">`maxmemory-policy`</Term> (what to do when it's reached). The main policies are:
+
+| Policy | Candidates | Rule |
+|---|---|---|
+| `noeviction` (the default) | none | Reject writes that need more memory with an error |
+| `allkeys-lru` | all keys | Approximate LRU |
+| `allkeys-lfu` | all keys | Approximate LFU (Redis 4.0 and later) |
+| `allkeys-random` | all keys | Random |
+| `volatile-lru` / `volatile-lfu` / `volatile-random` | only keys with a TTL set | As above |
+| `volatile-ttl` | only keys with a TTL set | Shortest remaining TTL first |
+
+The `volatile-*` policies let one instance hold both cache entries (with TTLs, evictable) and data you don't want evicted (without TTLs). If no key has a TTL, they behave like `noeviction`. For a pure cache, `allkeys-lru` or `allkeys-lfu` is the usual choice.
+
+Redis doesn't keep a linked list across all keys; that would cost memory on every key and pointer-chasing on every access. Instead:
+
+- Each key stores a small **access-time stamp** (24 bits from a coarse clock) in its object header.
+- When memory must be freed, Redis **samples** a handful of keys (`maxmemory-samples`, default **5**), and evicts the one that was idle longest. Since Redis 3.0, it also keeps a small pool of good candidates between rounds, which improves the approximation.
+- Raising `maxmemory-samples` to 10 gets very close to true LRU at the cost of more CPU per eviction.
+
+Redis's LFU mode reuses the same 24 bits to store a **logarithmic access counter** that grows more slowly the higher it gets, plus a timestamp used to **decay** it. Two settings, `lfu-log-factor` and `lfu-decay-time`, tune how fast counts grow and fade.
+
+### Worked example: sizing `maxmemory`
+
+A Redis server has 16 GB of RAM. You want it as a pure cache with room for the operating system, replication buffers and fork-based snapshots (which can need extra memory while pages are copied). A reasonable starting point is `maxmemory 10gb` with `maxmemory-policy allkeys-lfu`. If your average entry is 2 KB plus around 100 bytes of overhead, that holds roughly 10 GB ÷ 2.1 KB ≈ **5 million entries**. Watch Redis's `evicted_keys` counter and your hit ratio: a high eviction rate with a falling hit ratio means the working set no longer fits.
+
+<TradeoffBox title="Eviction policy tradeoffs" items={[
+  { gain: "LRU: adapts instantly to what's hot now; O(1) with a map and a list", cost: "One-off scans flush the hot set; every hit updates shared state" },
+  { gain: "LFU: survives scans and keeps steady favourites", cost: "Needs decay to forget old hits; slow to warm up new hot keys" },
+  { gain: "FIFO and random: no work on hits, easy to make concurrent", cost: "Can evict the hottest keys" },
+  { gain: "Sampled LRU (Redis): almost no memory per key", cost: "Approximate: sometimes evicts a key a true LRU would keep" }
+]} />
+
+<NotWhenBox title="Plain LRU" items={[
+  "Large sequential scans or batch jobs share the cache with interactive traffic.",
+  "A small set of keys is popular all day but has quiet gaps between bursts (LFU keeps them better).",
+  "Very high concurrency on a single in-process cache, where updating the list on every hit becomes the bottleneck."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Setting a TTL on every key means you don't need an eviction policy." right="TTLs handle freshness. If the data written within one TTL period is bigger than memory, the cache still fills, and then the eviction policy (or Redis's noeviction errors) decides what happens." />
+
+<Misconception wrong="Redis evicts old keys automatically when it's full." right="Redis's default maxmemory-policy is noeviction: writes fail with an out-of-memory error. You must choose an eviction policy for a cache." />
+
+<Misconception wrong="LFU is strictly better than LRU." right="LFU wins on scans and steady favourites but needs decay and is slow to admit newly popular keys. Which wins depends on the workload, and blends like TinyLFU exist because neither is always best." />
+
+## Interview angle
+
+<InterviewAngle title="Eviction" questions={[
+  "Implement an LRU cache with O(1) get and put.",
+  "Why a doubly linked list rather than a singly linked one?",
+  "What happens to an LRU cache when a batch job scans every key?",
+  "How does Redis implement LRU without a linked list?",
+  "LRU or LFU for a news feed cache?"
+]}>
+LRU is one of the most common coding questions in backend interviews: write the map plus doubly linked list with sentinels and explain why each operation is O(1). In design rounds, name the eviction policy you'd configure (allkeys-lru or allkeys-lfu for a Redis cache), separate expiry from eviction, and mention scan pollution and how you'd avoid it. Knowing that Redis samples keys rather than keeping an exact list is a strong signal.
+</InterviewAngle>
+
+## Practice
+
+1. Trace the request sequence `A B C D A B E A B C D E` through a 3-entry cache under LRU, FIFO and LFU (break LFU ties by recency). Count the hits for each.
+2. Extend the LRU class above with a per-entry TTL, so `get` treats expired entries as misses and removes them.
+3. A Redis instance used both for sessions (must not be evicted) and for page fragments (can be evicted) is running out of memory. Choose a `maxmemory-policy` and say how keys must be written for it to work.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

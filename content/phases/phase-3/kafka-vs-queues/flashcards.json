@@ -1,0 +1,20 @@
+[
+  { "id": "kafka-vs-queues-f1", "front": "Kafka partition?", "back": "An append-only, ordered commit log on disk; each record has an increasing offset.", "topicId": "kafka-log" },
+  { "id": "kafka-vs-queues-f2", "front": "Does consuming a Kafka record delete it?", "back": "No. Consumers move their offset; records stay until retention or compaction removes them.", "topicId": "kafka-log" },
+  { "id": "kafka-vs-queues-f3", "front": "Consumer offset?", "back": "The next offset a consumer group will read in a partition, committed to the __consumer_offsets topic.", "topicId": "kafka-log" },
+  { "id": "kafka-vs-queues-f4", "front": "Kafka's default retention?", "back": "7 days (log.retention.hours=168), configurable by time or size.", "topicId": "kafka-log" },
+  { "id": "kafka-vs-queues-f5", "front": "How do you replay in Kafka?", "back": "Reset the consumer group's offsets to the earliest offset or a timestamp, or seek in the consumer.", "topicId": "kafka-log" },
+  { "id": "kafka-vs-queues-f6", "front": "Log compaction?", "back": "Keeps at least the latest record per key and removes older ones with the same key: a topic of current state.", "topicId": "kafka-log" },
+  { "id": "kafka-vs-queues-f7", "front": "What caps a Kafka consumer group's parallelism?", "back": "The partition count: each partition goes to one consumer in the group.", "topicId": "kafka-log" },
+  { "id": "kafka-vs-queues-f8", "front": "RabbitMQ: where do producers publish?", "back": "To an exchange, with a routing key. Bindings route it to queues.", "topicId": "rabbitmq-routing" },
+  { "id": "kafka-vs-queues-f9", "front": "Direct exchange?", "back": "Routes to queues whose binding key equals the routing key exactly.", "topicId": "rabbitmq-routing" },
+  { "id": "kafka-vs-queues-f10", "front": "Topic exchange wildcards?", "back": "* matches exactly one dot-separated word; # matches zero or more words.", "topicId": "rabbitmq-routing" },
+  { "id": "kafka-vs-queues-f11", "front": "Fanout exchange?", "back": "Copies every message to all bound queues, ignoring the routing key.", "topicId": "rabbitmq-routing" },
+  { "id": "kafka-vs-queues-f12", "front": "Headers exchange?", "back": "Routes by matching message headers against the binding's headers, with x-match all or any.", "topicId": "rabbitmq-routing" },
+  { "id": "kafka-vs-queues-f13", "front": "SQS standard queue guarantees?", "back": "At-least-once delivery, best-effort ordering, nearly unlimited throughput.", "topicId": "sqs" },
+  { "id": "kafka-vs-queues-f14", "front": "SQS FIFO ordering scope?", "back": "Per message group ID. Different groups are processed in parallel.", "topicId": "sqs" },
+  { "id": "kafka-vs-queues-f15", "front": "SQS FIFO deduplication window?", "back": "5 minutes, keyed by MessageDeduplicationId or a hash of the body.", "topicId": "sqs" },
+  { "id": "kafka-vs-queues-f16", "front": "SQS long polling?", "back": "ReceiveMessage waits up to 20 s (WaitTimeSeconds) for messages instead of returning empty immediately.", "topicId": "sqs" },
+  { "id": "kafka-vs-queues-f17", "front": "Log or queue: new service needs last week's events?", "back": "A log (Kafka). Queues delete messages after ack, so there's nothing to replay.", "topicId": "choosing-broker" },
+  { "id": "kafka-vs-queues-f18", "front": "Pub/sub on AWS without Kafka?", "back": "SNS topic fanning out to one SQS queue per consuming service.", "topicId": "choosing-broker" }
+]

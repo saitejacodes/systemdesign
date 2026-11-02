@@ -1,0 +1,269 @@
+## Why it matters
+
+When a customer places an order, a dozen things should happen: charge the card, reserve stock, send a confirmation email, update the recommendations model, notify the warehouse. In a monolith that is one function calling eleven others. In an event-driven system the order service announces "an order was placed" and every interested service reacts on its own schedule. That decoupling is why event-driven architecture is everywhere, but it hides a trap that catches almost every team the first time: saving the order and announcing it are two separate writes to two separate systems, and one of them can fail. The fix, the transactional outbox, is a standard pattern documented in Chris Richardson's microservices.io catalogue and supported directly by tools like Debezium. This section covers how events differ from commands, the main event-driven styles, and how to publish events without losing or inventing any.
+
+<Callout type="analogy" title="The town crier and the notary">
+A medieval town crier walks the square shouting "Hear ye! The baker's shop has been sold!" He doesn't tell anyone what to do about it; the baker's suppliers, the tax collector and the gossiping neighbours each decide for themselves. That is an **event**. A letter sealed and handed to one courier reading "Deliver 40 sacks of flour to the baker" is a **command**: one recipient, a specific job, and it can be refused. Now the trap: the notary records the sale in the town ledger, and separately pays the crier to announce it. If the notary falls ill between the two, the ledger says the shop was sold and nobody in town knows. If the crier shouts first and then the sale falls through, the whole town believes something false. The outbox pattern is the notary writing "announcement due" in the same ledger entry as the sale, and the crier reading the ledger every morning.
+</Callout>
+
+## Events vs commands
+
+<DepthStamp depth="deep" />
+
+Both are messages, but they mean different things, and mixing them up produces confusing systems.
+
+| | <Term slug="command-message">Command</Term> | <Term slug="domain-event">Event</Term> |
+|---|---|---|
+| Meaning | "Please do X" (an intent) | "X happened" (a fact) |
+| Naming | Imperative: `ReserveStock`, `SendEmail` | Past tense: `OrderPlaced`, `PaymentFailed` |
+| Recipients | Exactly one handler that owns the action | Zero, one or many subscribers |
+| Can it be rejected? | Yes: "out of stock" | No: it already happened; consumers can only react |
+| Coupling | Sender knows who does the work | Publisher doesn't know who listens |
+| Typical transport | A point-to-point queue | A topic or exchange with fan-out |
+
+The difference is about **who owns the decision**. With a command, the sender decides what should happen next and depends on the receiver to do it. With an event, the publisher only states what happened, and each subscriber decides what that means for it. Adding a new reaction (say, a loyalty-points service) means subscribing to `OrderPlaced`; the order service doesn't change.
+
+A useful smell test: if a message named as an event has exactly one consumer and the publisher would break if that consumer ignored it, it is really a command in disguise (`OrderPlacedPleaseChargeCard`). Be honest about which one you need. Commands are fine; many workflows need them.
+
+## Event notification vs event-carried state transfer
+
+<DepthStamp depth="tradeoffs" />
+
+Martin Fowler's article "What do you mean by Event-Driven?" separates several styles that all get called "event-driven". Two matter most for design.
+
+**Event notification.** The event says *that* something changed, with little data:
+
+```json
+{ "type": "CustomerAddressChanged", "customerId": "c-881", "occurredAt": "2026-11-02T10:15:00Z" }
+```
+
+A consumer that needs the new address calls the customer service's API. Events stay small and the customer service stays the single source of truth. The cost: every event triggers a callback, so the publisher gets read traffic proportional to subscribers × events, and if it's down, consumers can't finish their work. The coupling you removed at publish time comes back at read time.
+
+**<Term slug="event-carried-state-transfer">Event-carried state transfer</Term>.** The event carries the data the consumers need:
+
+```json
+{ "type": "CustomerAddressChanged", "customerId": "c-881",
+  "address": { "line1": "12 High St", "city": "Leeds", "postcode": "LS1 4AP" },
+  "version": 17 }
+```
+
+Consumers keep their own local copy of the fields they care about, and never call back. They keep working if the customer service is down, and the customer service gets no extra read load. The costs: bigger events, data duplicated across services, the local copies are only eventually consistent, and the event's schema becomes a contract many teams depend on. Changing it needs the same care as changing a public API.
+
+In practice most systems mix them: carry the fields consumers commonly need, and let rare consumers call back for the rest. Include a version or sequence number so a consumer can ignore an out-of-date update that arrives after a newer one.
+
+## Event sourcing
+
+<DepthStamp depth="tradeoffs" />
+
+Normally a database stores **current state**: the account balance is 70. <Term slug="event-sourcing">Event sourcing</Term> stores the **sequence of events** instead, and derives the state by replaying them:
+
+| Seq | Event | Balance after |
+|---|---|---|
+| 1 | `AccountOpened` | 0 |
+| 2 | `Deposited 100` | 100 |
+| 3 | `Withdrew 50` | 50 |
+| 4 | `Deposited 20` | 70 |
+
+The event log is the source of truth; the balance of 70 is just a cached answer you can always recompute. That buys some powerful things:
+
+- **A complete audit trail by construction.** You know not just that the balance is 70 but exactly how it got there. Accounting ledgers have always worked this way.
+- **Time travel.** "What was the balance on 1 March?" Replay up to that date.
+- **New views from old data.** A new report can be built by replaying all history into a new projection, even for questions nobody thought of when the events were written.
+
+The costs are real, which is why event sourcing is a tradeoff and not a default:
+
+- **Replaying gets slow.** An account with 100,000 events can't be replayed on every read. Systems keep **snapshots** (state as of event N) and replay only the events after it.
+- **Events are forever.** You can't fix a wrong event by editing it; you append a correcting event. Schema changes need versioned events and code (often called upcasters) that understands every old version.
+- **Deleting personal data is hard** in an immutable log. A common answer is crypto-shredding: encrypt each person's data with their own key and delete the key.
+- **Querying across entities is awkward.** "All accounts with a balance over 1,000" isn't a query you can run against a log. You need read models, which leads to CQRS.
+
+## CQRS
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="cqrs">CQRS</Term> (Command Query Responsibility Segregation) means using **different models for writes and reads**. The write side validates commands and enforces rules on a model shaped for correctness. The read side serves queries from one or more models shaped for exactly those queries: a denormalised table for the order history page, a search index for product search, a precomputed counter for the dashboard. Each read model is a <Term slug="projection">projection</Term>, kept up to date by consuming the events the write side emits.
+
+<Figure caption="FIG. 12.1 · CQRS: ONE WRITE MODEL, SEVERAL READ MODELS FED BY EVENTS">
+<Diagram label="Commands go to a write model, which emits events consumed by projections that update separate read models used by queries" chart={`flowchart LR
+  C["Commands"] --> W["Write model<br/>validates and stores"]
+  W -->|"events"| B["Event stream"]
+  B --> P1["Projection: order history table"]
+  B --> P2["Projection: search index"]
+  B --> P3["Projection: sales dashboard"]
+  Q["Queries"] --> P1
+  Q --> P2
+  Q --> P3`} />
+</Figure>
+
+The benefit is that each side can be optimised and scaled independently: a write model in Postgres with strict constraints, read models in Elasticsearch and Redis. The cost is that read models lag behind writes, so a user who just placed an order may not see it on the history page for a few hundred milliseconds. You handle that with techniques from the replication section, like reading your own writes from the write side for a short time.
+
+CQRS and event sourcing are often mentioned together, but they are independent. You can do CQRS with an ordinary database (the write side updates tables and publishes events), and you can event-source without separate read models (though it is rare). Greg Young, who popularised the term, and Martin Fowler both warn that CQRS adds significant complexity and suits only parts of a system with genuinely different read and write needs.
+
+## The outbox pattern
+
+<DepthStamp depth="deep" />
+
+### The dual-write bug
+
+Here is the code almost everyone writes first:
+
+```python
+def place_order(order):
+    db.insert(order)            # write 1: the database
+    db.commit()
+    broker.publish("OrderPlaced", order)   # write 2: the message broker
+```
+
+This is a <Term slug="dual-write">dual write</Term>: two separate systems updated without a shared transaction. There is no way to make both writes atomic, because the database and the broker can't commit together. Any crash, timeout or deploy between them leaves them disagreeing.
+
+**Failure 1: the database commits, the publish fails.**
+
+| Time | Order service | Database | Broker |
+|---|---|---|---|
+| 1 | `INSERT order 991`, `COMMIT` | Order 991 saved | |
+| 2 | Calls `publish("OrderPlaced", 991)` | | Broker unreachable (or the pod is killed by a deploy) |
+| 3 | Returns success to the customer | | Nothing published |
+
+Order 991 exists, the customer was told it succeeded, and no other service ever hears about it. No email, no stock reserved, no shipment. Nothing errors downstream, because downstream doesn't know there is anything to process. This is the worst kind of bug: silent.
+
+**Failure 2: publish first, then the database fails.** Swapping the order doesn't help:
+
+| Time | Order service | Broker | Database |
+|---|---|---|---|
+| 1 | `publish("OrderPlaced", 992)` | Event published; email service sends "Thanks for your order!" | |
+| 2 | `INSERT order 992`, `COMMIT` | | Fails: unique constraint, or the DB is in failover |
+| 3 | Returns an error to the customer | | No order 992 |
+
+Now the rest of the system believes in an order that doesn't exist. Publishing *inside* an open transaction just before `COMMIT` has the same problem: the commit can still fail after the event is out.
+
+<Figure caption="FIG. 12.2 · THE DUAL WRITE: DATABASE COMMIT SUCCEEDS, PUBLISH FAILS">
+<Diagram label="The order service commits to the database, then its publish to the broker fails, so downstream services never learn about the order" chart={`sequenceDiagram
+    participant S as Order service
+    participant DB as Database
+    participant B as Broker
+    participant E as Email service
+    S->>DB: INSERT order 991, COMMIT
+    DB-->>S: committed
+    S-xB: publish OrderPlaced 991
+    Note over S,B: broker timeout or pod killed
+    S-->>S: return 201 to customer
+    Note over E: never hears about order 991`} />
+</Figure>
+
+### The fix: write the event to the database too
+
+The <Term slug="transactional-outbox">transactional outbox</Term> turns two writes into one. In the **same database transaction** as the business change, insert the event into an `outbox` table. A separate process, the **relay**, reads unpublished rows from the outbox and publishes them to the broker.
+
+```sql
+BEGIN;
+INSERT INTO orders (id, customer_id, total) VALUES (991, 'c-881', 59.00);
+INSERT INTO outbox (id, aggregate_id, type, payload, created_at)
+  VALUES ('evt-5f2a', '991', 'OrderPlaced', '...json...', now());
+COMMIT;   -- both rows or neither
+```
+
+Atomicity from the transactions section now does the work: either the order and its event both exist, or neither does. The relay then does:
+
+```sql
+SELECT id, type, payload FROM outbox
+WHERE published_at IS NULL
+ORDER BY created_at
+LIMIT 100
+FOR UPDATE SKIP LOCKED;
+-- publish each row to the broker, wait for the broker's ack
+UPDATE outbox SET published_at = now() WHERE id IN (...);
+```
+
+<Figure caption="FIG. 12.3 · THE OUTBOX: ONE TRANSACTION, THEN A RELAY PUBLISHES">
+<Diagram label="The service writes the order and the outbox row in one transaction; a relay later reads the outbox, publishes to the broker, and marks the row published" chart={`sequenceDiagram
+    participant S as Order service
+    participant DB as Database
+    participant R as Relay
+    participant B as Broker
+    S->>DB: BEGIN, INSERT order, INSERT outbox row, COMMIT
+    DB-->>S: committed (both rows)
+    R->>DB: SELECT unpublished outbox rows
+    R->>B: publish OrderPlaced 991
+    B-->>R: ack
+    R->>DB: mark row published
+    Note over R,B: crash before marking means the row is published again`} />
+</Figure>
+
+Notice the last note. If the relay crashes after the broker acks but before marking the row, it publishes the event again after restart. The outbox gives **at-least-once** publishing, never exactly-once. So every event needs a unique id (here `evt-5f2a`) and consumers must deduplicate on it, as in the idempotency section.
+
+Two more details matter in production:
+
+- **Ordering.** Publish events for the same entity in order, and use the entity id (`aggregate_id`) as the partition or message-group key, so consumers see `OrderPlaced` before `OrderCancelled` for order 991.
+- **Cleanup.** The outbox grows with every event. Delete or archive published rows on a schedule, or partition the table by day and drop old partitions.
+
+### Worked example: sizing a polling relay
+
+An order service emits 2,000 events a second at peak.
+
+- **A naive relay** polls every 500 ms and takes 100 rows per poll: 200 events a second. It falls behind by 1,800 a second, which is 6.48 million events an hour. The fix is to loop immediately while each batch comes back full and only sleep when it's empty, and to raise the batch to 500 to 1,000.
+- **Latency.** With a 500 ms sleep when idle, an event waits 250 ms on average (up to 500 ms) before publishing. That's fine for emails, not for a trading screen, which is one reason to use change data capture.
+- **Table growth.** 2,000 × 86,400 seconds = **172.8 million rows a day**. At about 1 KB a row, that's roughly 170 GB a day if nothing is cleaned up. Daily partitions dropped after 2 days keep it bounded.
+
+## Change data capture
+
+<DepthStamp depth="awareness" />
+
+Polling the outbox works, but it adds load and latency. <Term slug="change-data-capture">Change data capture</Term> (CDC) reads changes straight from the database's own replication log instead. Every committed change in Postgres is already written to the write-ahead log (WAL), and MySQL writes the binlog; these exist for replication. A CDC tool connects as if it were a replica and streams each committed insert, update and delete as an event.
+
+**Debezium** is the best-known open-source CDC platform, usually run on Kafka Connect. For Postgres it uses logical decoding of the WAL; for MySQL it reads the binlog. Two ways to use it:
+
+- **CDC on the outbox table.** Debezium watches only the `outbox` table and publishes each new row; its Outbox Event Router transformation routes rows to topics by type. You keep events designed on purpose, with no polling query and latency typically in the low hundreds of milliseconds or less.
+- **CDC on business tables directly.** Publish every row change of `orders` as an event. No application changes at all, but the events are your internal table schema, so renaming a column becomes a breaking change for every consumer. Fine for feeding a search index or data warehouse; risky as a contract between teams.
+
+The things to be aware of: CDC needs database permissions and configuration (logical replication slots in Postgres, row-based binlog in MySQL), a Postgres replication slot that nobody consumes holds WAL on disk until the disk fills, and it is another piece of infrastructure to operate.
+
+<TradeoffBox title="Event-driven tradeoffs" items={[
+  { gain: "Events: publishers don't know their consumers, so new reactions need no publisher change", cost: "Harder to see and debug the end-to-end flow" },
+  { gain: "Event-carried state transfer: consumers work when the source is down", cost: "Bigger events, duplicated data, schema becomes a shared contract" },
+  { gain: "Event sourcing: full history, audit and replay", cost: "Snapshots, event versioning, hard deletes, awkward queries" },
+  { gain: "CQRS: read models shaped exactly for each query", cost: "Read models lag writes, more moving parts" },
+  { gain: "Outbox: no lost or phantom events", cost: "At-least-once publishing, a relay or CDC to run, a table to clean up" }
+]} />
+
+<NotWhenBox title="When not to go event-driven" items={[
+  "The caller needs the answer now to continue (checking a password, pricing a cart): use a synchronous call.",
+  "A small app with one team and one database: in-process function calls are simpler and easier to debug.",
+  "Event sourcing for plain CRUD data with no audit or history needs: you pay all the costs for none of the benefits.",
+  "CQRS across a whole system: apply it only to the parts whose reads and writes really differ."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Publish the event right after the database commit and it will be fine." right="Any crash or broker timeout between the two leaves an order with no event. Use an outbox (or CDC) so the event is written in the same transaction." />
+
+<Misconception wrong="The outbox pattern gives exactly-once delivery." right="The relay can publish an event and crash before marking it sent, so it publishes again. It is at-least-once; consumers must deduplicate by event id." />
+
+<Misconception wrong="CQRS requires event sourcing." right="They are independent. CQRS just means separate write and read models; the write side can be an ordinary relational database." />
+
+<Misconception wrong="An event is just a command sent to many services." right="A command asks one owner to do something and can be refused. An event states a fact that already happened; subscribers decide how to react." />
+
+## Interview angle
+
+<InterviewAngle title="Event-driven design" questions={[
+  "Your order service saves to Postgres and publishes to Kafka. What can go wrong?",
+  "How does the outbox pattern work, and what delivery guarantee does it give?",
+  "Would you use event notification or event-carried state transfer between orders and shipping? Why?",
+  "When is event sourcing worth it?",
+  "How do you keep a search index in sync with the primary database?"
+]}>
+The dual-write question is one of the most reliable in system design interviews. Draw the two failure timelines (commit then failed publish, publish then failed commit), then the outbox with a relay or CDC, and say plainly that it is at-least-once so consumers deduplicate by event id. For event sourcing and CQRS, the strong answer names where they help (audit-heavy domains, very different read and write shapes) and refuses to apply them everywhere.
+</InterviewAngle>
+
+## Practice
+
+1. Write the outbox table schema and relay loop for a payments service, including how you keep events for the same payment in order.
+2. A notification service needs each customer's email address and language. Design it once with event notification and once with event-carried state transfer, and list what happens to each when the customer service is down for an hour.
+3. Model a shopping cart with event sourcing: list the events, show the state after replaying them, and decide when you would take snapshots.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

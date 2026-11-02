@@ -1,0 +1,8 @@
+[
+  { "id": "po-c1", "text": "I can size a topic's partition count from peak throughput and per-consumer throughput, with headroom.", "topicId": "partitions" },
+  { "id": "po-c2", "text": "I can choose a partition key for a given ordering need and propose two fixes for a hot key, with their costs.", "topicId": "partition-keys" },
+  { "id": "po-c3", "text": "I can state exactly what ordering Kafka guarantees and name two ways a consumer can break it.", "topicId": "ordering" },
+  { "id": "po-c4", "text": "I can explain how consumer groups give queue behaviour within a group and pub/sub across groups, and why extra consumers can sit idle.", "topicId": "consumer-groups" },
+  { "id": "po-c5", "text": "I can list what triggers a rebalance and three ways to make rebalances less disruptive.", "topicId": "rebalancing" },
+  { "id": "po-c6", "text": "I can calculate how long a lagging consumer group takes to catch up and explain why I'd alert on time lag.", "topicId": "consumer-lag" }
+]

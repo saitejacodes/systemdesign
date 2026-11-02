@@ -1,0 +1,225 @@
+## Why it matters
+
+A payment service consumes "charge order 991" messages from a queue. One day a deploy makes the service slower, processing starts taking longer than the queue's timeout, and the queue decides the messages were lost and hands them out again. Some customers are charged twice. Another team, scared of duplicates, configures its consumer to mark messages done *before* processing; when a pod is killed mid-batch, a few hundred notifications silently vanish. Both teams were using reliable, well-known brokers. The difference was **delivery semantics**: the precise promise about how many times a message is processed when things crash, time out or retry. Every broker documents its promise (Amazon SQS standard queues say "at-least-once", Kafka offers an "exactly-once" mode), and every one of those promises has fine print. Getting this right is what separates a messaging design that works in a demo from one that works in production.
+
+<Callout type="analogy" title="The pizza delivery driver">
+A driver brings a pizza to a flat and nobody answers. What now? **At-most-once** driver: leaves it on the step and drives off. If someone's home it's fine; if a dog eats it, you never get your pizza. **At-least-once** driver: takes it back and keeps sending another driver until someone signs for it. You always get a pizza, but if you were in the shower and then found the first one on the step, you now have two. **Effectively-once**: the at-least-once driver, plus your flatmate who checks the order number on every box and refuses any pizza for an order you already received. Nobody can make the driver magically know whether you got it; you can only make duplicates harmless.
+</Callout>
+
+## Acknowledgements and visibility timeouts
+
+<DepthStamp depth="deep" />
+
+Every delivery guarantee is built from one mechanism: the <Term slug="message-ack">message acknowledgement</Term>, a signal from the consumer to the broker saying "I've finished with this message, you can forget it". (This is a different thing from a TCP <Term slug="ack">ACK</Term>, which only confirms bytes arrived at the machine, not that your code processed them.) The broker keeps a message until it's acknowledged, and if the acknowledgement never comes, it delivers the message again. Each product implements this differently:
+
+**Amazon SQS** uses a <Term slug="visibility-timeout">visibility timeout</Term>. When a consumer receives a message, SQS doesn't delete it; it hides it from other consumers for the timeout period (30 seconds by default, configurable up to 12 hours). If the consumer calls `DeleteMessage` before the timeout ends, the message is gone. If it doesn't (it crashed, or it's still working), the message becomes visible again and another consumer receives it. A consumer that knows it needs longer can call `ChangeMessageVisibility` to extend the timeout.
+
+<Figure caption="FIG. 9.1 · SQS VISIBILITY TIMEOUT · A SLOW CONSUMER CAUSES A DUPLICATE">
+<Diagram label="Consumer A receives a message and takes longer than the 30 second visibility timeout, so consumer B receives it again and both process it" chart={`sequenceDiagram
+    participant A as Consumer A
+    participant Q as SQS queue
+    participant B as Consumer B
+    A->>Q: ReceiveMessage
+    Q-->>A: msg 991 (hidden for 30 s)
+    Note over A: processing takes 45 s
+    Note over Q: 30 s pass, no DeleteMessage, msg 991 visible again
+    B->>Q: ReceiveMessage
+    Q-->>B: msg 991 (second delivery)
+    A->>Q: DeleteMessage (too late, B already has it)
+    Note over A,B: msg 991 processed twice`} />
+</Figure>
+
+**RabbitMQ** uses explicit acknowledgements per channel. A consumer in manual-ack mode calls `basic.ack` when done; if its channel or connection closes with messages still unacknowledged, RabbitMQ requeues them for another consumer. In auto-ack mode the broker treats a message as acknowledged the moment it's sent, which is fast and unsafe.
+
+**Kafka** doesn't acknowledge individual messages at all. Each partition is an ordered log, and each consumer group records how far it has got: its <Term slug="consumer-offset">consumer offset</Term>, the position of the next message to read. "Acknowledging" means **committing** an offset. If a consumer crashes, its replacement resumes from the last committed offset, so everything after that point is read again.
+
+The broker also acknowledges the **producer**. A producer that doesn't get a confirmation (the network dropped the reply) must decide whether to resend; resending is the producer-side source of duplicates. Kafka's producer setting `acks` controls when the broker confirms: `acks=0` (don't wait at all), `acks=1` (the partition leader has written it), or `acks=all` (all in-sync replicas have it, the default since Kafka 3.0).
+
+Where you place the acknowledgement relative to the work decides your guarantee. That's the whole section in one sentence; the rest is details.
+
+## At-most-once
+
+<DepthStamp depth="deep" />
+
+<Term slug="at-most-once">At-most-once</Term> delivery means each message is processed zero or one times: never duplicated, but possibly lost. You get it by **acknowledging before processing**:
+
+1. Receive the message.
+2. Acknowledge it (delete it, commit the offset, or use auto-ack).
+3. Process it.
+
+If the consumer crashes between steps 2 and 3, the broker has already forgotten the message, so it's never processed. On the producer side, the matching behaviour is "send once and don't retry" (Kafka's `acks=0` is the extreme version).
+
+At-most-once is the right choice more often than people expect, when **losing an occasional message is cheaper than handling a duplicate** and the data is quickly superseded:
+
+- Metrics and telemetry samples: one missing CPU reading out of thousands doesn't matter.
+- Live location updates, where the next update arrives in a few seconds anyway.
+- "User is typing…" indicators and similar presence signals.
+
+It's the wrong choice for anything with business value: orders, payments, emails a user is waiting for.
+
+| Time | Consumer | Broker |
+|---|---|---|
+| 1 | Receives msg 7 | msg 7 delivered |
+| 2 | Commits offset past msg 7 | msg 7 marked done |
+| 3 | Crashes while processing msg 7 | |
+| 4 | Restarts, resumes after msg 7 | msg 7 is **never processed** |
+
+## At-least-once
+
+<DepthStamp depth="deep" />
+
+<Term slug="at-least-once">At-least-once</Term> delivery means each message is processed one or more times: never lost, but possibly duplicated. You get it by **processing before acknowledging**, and by producers **retrying** until the broker confirms:
+
+1. Receive the message.
+2. Process it (write to the database, send the email).
+3. Acknowledge it.
+
+If the consumer crashes between steps 2 and 3, the work is done but the broker never heard about it, so it redelivers and the work happens again.
+
+| Time | Consumer | Broker |
+|---|---|---|
+| 1 | Receives msg 7 | msg 7 delivered |
+| 2 | Charges the card for order 991 | |
+| 3 | Crashes before committing | msg 7 still pending |
+| 4 | Restarts, receives msg 7 again | msg 7 redelivered |
+| 5 | **Charges the card again** | |
+
+Duplicates come from more places than crashes:
+
+- **Slow processing** past the visibility timeout (Figure 9.1).
+- **Lost acknowledgements:** the consumer acked, but the network dropped it.
+- **Producer retries:** the broker stored the message but its confirmation was lost, so the producer sends it again. Now the broker holds two copies.
+- **Rebalancing** in Kafka: a partition moves to another consumer before the old one committed its latest offset (covered in the partitioning section).
+- **Broker behaviour itself:** SQS standard queues document that a message may occasionally be delivered more than once even when nothing failed, because copies are stored on several servers.
+
+At-least-once is the **default** for nearly every serious system, because losing data is usually worse than handling duplicates, and duplicates can be made harmless. That's the next section.
+
+## Exactly-once, really effectively-once
+
+<DepthStamp depth="deep" />
+
+<Term slug="exactly-once">Exactly-once</Term> is the promise everyone wants: each message's effect happens once, no loss, no duplicates. The catch is that **exactly-once *delivery* across a network is impossible in general**. The consumer's action and its acknowledgement are two separate steps. A crash can always happen between them, and the broker cannot tell "crashed before processing" from "crashed after processing but before acking". It must choose to redeliver (at-least-once) or not (at-most-once).
+
+What real systems provide is <Term slug="effectively-once">effectively-once</Term> **processing**: messages may be delivered more than once, but the **effect** is applied once. There are two ways to get there, and both are about making the duplicate harmless rather than preventing it.
+
+**1. Idempotent consumers.** An <Term slug="idempotent-consumer">idempotent consumer</Term> produces the same result however many times it sees a message. Two techniques, from the idempotency section:
+
+- *Naturally idempotent operations:* "set order 991's status to SHIPPED" can run twice safely; "increment shipped count" cannot. Prefer messages that carry the new state over messages that carry a delta.
+- *Deduplicate by message ID:* in the **same database transaction** as the side effect, insert the message ID into a `processed_messages` table with a unique constraint. A duplicate violates the constraint, the transaction rolls back, and the consumer just acknowledges and moves on.
+
+```sql
+BEGIN;
+INSERT INTO processed_messages (message_id) VALUES ('evt-7f3a');  -- fails on a duplicate
+UPDATE orders SET status = 'PAID' WHERE id = 991;
+COMMIT;
+-- then acknowledge the message to the broker
+```
+
+The transaction is what makes this safe: the dedup record and the effect commit together or not at all. Checking a separate cache ("have I seen evt-7f3a?") before doing the work leaves a window where two copies both pass the check.
+
+For side effects outside your database (a payment API, an email provider), pass a stable key through: use the message ID as the downstream API's <Term slug="idempotency-key">idempotency key</Term>, so the provider deduplicates for you.
+
+**2. Transactions inside the messaging system.** If the input and output are *both* in the broker (read from one topic, write to another), the broker can commit "consumed message X" and "produced message Y" atomically. Kafka does this; see the next section.
+
+**Broker-side deduplication** helps too, within limits. SQS FIFO queues drop a message whose deduplication ID matches one sent in the previous **5 minutes**, which removes producer-retry duplicates. It does nothing about a consumer that processes a message and then crashes before deleting it.
+
+### Worked example: how often do duplicates really happen?
+
+A notification consumer reads from an SQS standard queue with the default 30-second visibility timeout. It handles **2 million messages a day**. Most take 2 seconds, but calls to a slow push provider mean **1%** take longer than 30 seconds.
+
+- Duplicates from slow processing alone: 2,000,000 × 0.01 = **20,000 messages a day** delivered a second time.
+- Each of those users gets the same push notification twice. That's annoying for notifications; for payments it would be a serious incident.
+
+Fixes, in order of preference:
+
+1. **Make the consumer idempotent**, keyed on message ID. Duplicates still arrive but have no effect. This is required whatever else you do, because duplicates also come from crashes and retries.
+2. **Set the visibility timeout above worst-case processing time.** If p99.9 processing is 50 seconds, a 120-second timeout leaves headroom. A longer timeout means a crashed consumer's messages wait longer before retry, so don't set it to hours without reason.
+3. **Extend the timeout while working**, calling `ChangeMessageVisibility` periodically for long jobs, like a <Term slug="heartbeat">heartbeat</Term>.
+
+## Kafka idempotent producer and transactions
+
+<DepthStamp depth="awareness" />
+
+Kafka added "exactly-once semantics" in version 0.11 (2017). It's built from two features, and it's worth knowing what each one covers.
+
+**The idempotent producer** removes duplicates caused by producer retries. With `enable.idempotence=true` (the default since Kafka 3.0), each producer gets a producer ID and stamps every message with a per-partition sequence number. If a retry delivers a message the broker has already written, the broker sees the repeated sequence number and discards it. This is an <Term slug="idempotent-producer">idempotent producer</Term>: retries can't create duplicates in the log. The guarantee holds for one producer session writing to each partition; it doesn't deduplicate two different application-level sends of the same business event.
+
+**Transactions** extend this to read-process-write pipelines. A producer configured with a `transactional.id` can:
+
+- write messages to **several partitions and topics atomically** (all become visible or none do), and
+- include the consumer's **offset commit** in the same transaction (`sendOffsetsToTransaction`).
+
+So "consumed input message X, produced output message Y" either happens completely or not at all. Downstream consumers set `isolation.level=read_committed` so they never see messages from aborted transactions. Kafka Streams wraps all of this behind one setting, `processing.guarantee=exactly_once_v2`.
+
+<Figure caption="FIG. 9.2 · KAFKA TRANSACTION · OUTPUT AND OFFSET COMMIT TOGETHER">
+<Diagram label="A Kafka application reads from an input topic, writes to an output topic and commits its input offset in one transaction" chart={`sequenceDiagram
+    participant App as Stream app
+    participant In as Topic: payments
+    participant Out as Topic: ledger
+    participant C as Transaction coordinator
+    App->>In: poll() gets msg at offset 41
+    App->>C: beginTransaction
+    App->>Out: send ledger entry
+    App->>C: sendOffsetsToTransaction (offset 42)
+    App->>C: commitTransaction
+    Note over Out,C: ledger entry and offset 42 become visible together`} />
+</Figure>
+
+The fine print: Kafka's guarantee covers **effects inside Kafka**. If your consumer also sends an email or calls a payment API, Kafka can't roll that back when a transaction aborts. Those external effects still need an idempotent consumer. This is why "Kafka has exactly-once, so we don't need idempotency" is a common and costly mistake.
+
+| Guarantee | How it's built | Loses messages? | Duplicates? | Typical use |
+|---|---|---|---|---|
+| At-most-once | Ack before processing, no retries | Yes, on crash | No | Metrics, presence, live location |
+| At-least-once | Process, then ack; producers retry | No | Yes | Default for most business events |
+| Effectively-once | At-least-once plus idempotent consumer or broker transactions | No | Effects not duplicated | Payments, ledgers, inventory |
+
+<TradeoffBox title="Delivery guarantees" items={[
+  { gain: "At-most-once: simplest, no duplicate handling", cost: "Messages are silently lost on crashes" },
+  { gain: "At-least-once: nothing lost", cost: "Every consumer must tolerate duplicates" },
+  { gain: "Idempotent consumers: duplicates become harmless", cost: "A dedup table or natural idempotency in every consumer, plus cleanup of old IDs" },
+  { gain: "Kafka transactions: atomic read-process-write inside Kafka", cost: "Extra latency and coordination; no help for external side effects" },
+  { gain: "Long visibility timeouts: fewer accidental redeliveries", cost: "Slower retry after a real crash" }
+]} />
+
+<NotWhenBox title="Paying for exactly-once machinery" items={[
+  "The data is naturally superseded (metrics, locations): at-most-once is fine.",
+  "The operation is already idempotent (overwrite a value, upsert by key): plain at-least-once is enough.",
+  "The side effect leaves Kafka (email, payment API): Kafka transactions won't cover it; use idempotency keys instead.",
+  "Throughput and latency matter more than rare duplicates in a non-critical pipeline."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Our broker guarantees exactly-once delivery, so consumers don't need to handle duplicates." right="Exactly-once delivery isn't possible across a crash between processing and acknowledging. What's offered is effectively-once processing, and external side effects still need idempotent consumers." />
+
+<Misconception wrong="At-least-once means duplicates happen only when something crashes." right="Slow processing past a visibility timeout, lost acks, producer retries, rebalances and normal SQS standard queue behaviour all cause duplicates." />
+
+<Misconception wrong="Checking a cache for the message ID before processing makes the consumer idempotent." right="Two copies can both pass the check. The dedup record must be written atomically with the effect, for example in the same database transaction under a unique constraint." />
+
+<Misconception wrong="A longer visibility timeout is always safer." right="It reduces duplicates from slow work, but a message whose consumer crashed now waits the full timeout before anyone retries it." />
+
+## Interview angle
+
+<InterviewAngle title="Delivery semantics" questions={[
+  "What delivery guarantee does your design need, and what happens on a consumer crash?",
+  "Can you build exactly-once delivery? Why not, and what do you do instead?",
+  "Your consumer sometimes takes longer than the SQS visibility timeout. What happens and how do you fix it?",
+  "How does Kafka's idempotent producer work, and what doesn't it protect against?",
+  "How would you make a payment consumer safe against duplicate messages?"
+]}>
+Say the guarantee out loud for every queue in your design: "at-least-once, so the consumer deduplicates by message ID in the same transaction as the write". If the interviewer pushes on exactly-once, explain the crash-between-effect-and-ack problem, then show effectively-once: idempotent consumers for external effects, broker transactions (Kafka) for topic-to-topic pipelines. Mentioning visibility timeouts and Kafka offset commits by name shows you've run these systems, not just read about them.
+</InterviewAngle>
+
+## Practice
+
+1. Write the timeline for a Kafka consumer with auto-commit every 5 seconds that crashes 3 seconds after its last commit, having processed 600 messages. Which guarantee did it actually give, and how many messages are affected?
+2. Design the `processed_messages` table for a consumer handling 5 million messages a day. How long must you keep IDs, and how do you clean them up?
+3. A notification consumer averages 2 seconds per message but calls a provider whose timeout is 60 seconds. Choose an SQS visibility timeout and justify it.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

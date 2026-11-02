@@ -1,0 +1,7 @@
+[
+  { "id": "kafka-vs-queues-c1", "text": "I can explain offsets, consumer groups and retention, and how a Kafka consumer replays from a timestamp.", "topicId": "kafka-log" },
+  { "id": "kafka-vs-queues-c2", "text": "I can size a Kafka topic's partitions and retention storage from throughput, record size and replication factor.", "topicId": "kafka-log" },
+  { "id": "kafka-vs-queues-c3", "text": "I can choose between direct, topic, fanout and headers exchanges and write topic-exchange binding patterns with * and #.", "topicId": "rabbitmq-routing" },
+  { "id": "kafka-vs-queues-c4", "text": "I can choose between SQS standard and FIFO and set a message group id that keeps per-entity order without serialising the queue.", "topicId": "sqs" },
+  { "id": "kafka-vs-queues-c5", "text": "I can justify Kafka, RabbitMQ or SQS for a design from its needs for replay, routing, ordering and operations.", "topicId": "choosing-broker" }
+]

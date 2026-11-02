@@ -1,0 +1,317 @@
+## Why it matters
+
+Redis is the default answer to "where do we put the fast stuff?" It shows up in almost every system design: as a cache in front of a database, a session store, a rate limiter, a leaderboard, a lightweight queue, a distributed lock. Stack Overflow, for example, has written publicly about using Redis as its shared cache layer across its web servers. The reason is not just speed (it keeps everything in memory) but that Redis gives you **data structures**, not just keys and blobs, plus commands that change them atomically on the server. Knowing which structure fits, what happens to your data when the process restarts, how Redis spreads data across machines, and why one slow command can stall everything is what turns "add Redis" from a hand-wave into a design.
+
+<Callout type="analogy" title="The world's fastest librarian, who works alone">
+Picture a librarian with a perfect memory standing at a single desk. She doesn't just hand out books: she keeps ranked lists, tallies, queues of requests and guest books, and she can update any of them in one motion. Because she serves **one person at a time**, nobody ever sees a list half-updated, and you never need to lock anything. She works so fast the queue barely forms. But if someone asks her to read out the entire catalogue, everyone behind them waits. At night she either photographs every shelf (a snapshot) or keeps a diary of every change (an append-only log), so a fire doesn't wipe her memory. When one library isn't enough, the city opens more branches and splits the catalogue into 16,384 numbered drawers, each owned by one branch.
+</Callout>
+
+## Data structures and their use cases
+
+<DepthStamp depth="deep" />
+
+Redis is a <Term slug="key-value-store">key-value store</Term> where the **value has a type**, and each type has its own commands. Pick the structure that matches the operation you need, and the work happens on the server in one round trip.
+
+### Strings
+
+The simplest type: a binary-safe value up to 512 MB. Strings also act as integers and counters.
+
+```
+SET session:9f2c '{"userId":42}' EX 1800   # value with a 30-minute TTL
+GET session:9f2c
+INCR page:home:views                       # atomic counter, returns the new value
+SET lock:invoice:77 a1b2c3 NX PX 10000     # set only if absent: a simple lock
+```
+
+Uses: cached objects (serialised JSON), sessions, counters, rate-limit buckets, feature flags, simple locks.
+
+### Hashes
+
+A map of fields to values under one key, good for objects whose fields you read or update individually.
+
+```
+HSET user:42 name "Ada" plan "pro" logins 17
+HINCRBY user:42 logins 1
+HGET user:42 plan
+HGETALL user:42
+```
+
+Uses: user profiles, shopping carts (field = product ID, value = quantity), per-entity counters. Updating one field doesn't require rewriting a whole JSON blob.
+
+### Lists
+
+Ordered sequences with fast push and pop at both ends.
+
+```
+LPUSH feed:42 post:9001          # newest first
+LTRIM feed:42 0 799              # keep only the latest 800 items
+LRANGE feed:42 0 19              # first page of 20
+BRPOP jobs 5                     # block up to 5 s waiting for a job
+```
+
+Uses: recent-activity feeds capped with `LTRIM`, simple work queues (`LPUSH` plus `BRPOP`). Reading by index from the middle of a long list is slow (it walks the list), so use lists for ends and short ranges.
+
+### Sets
+
+Unordered collections of unique strings, with set algebra.
+
+```
+SADD post:9001:likes user:42
+SISMEMBER post:9001:likes user:42   # has this user liked it?
+SCARD post:9001:likes               # how many likes
+SINTER user:42:follows user:7:follows   # mutual follows
+```
+
+Uses: "has X done Y" membership, tags, deduplication, mutual friends.
+
+### Sorted sets
+
+A <Term slug="sorted-set">sorted set</Term> (ZSET) is a set where each member has a numeric score, kept ordered by score. Insert, update and rank lookups are O(log N).
+
+```
+ZADD leaderboard 1500 alice 1320 bob
+ZINCRBY leaderboard 40 bob
+ZRANGE leaderboard 0 9 REV WITHSCORES   # top 10 (REV needs Redis 6.2+)
+ZREVRANK leaderboard alice              # alice's rank, 0 = first
+ZRANGEBYSCORE events 1730000000 1730003600   # items in a time window
+```
+
+Uses: leaderboards, priority queues, "trending" rankings, time-ordered indexes (score = timestamp), sliding-window rate limiters (one member per request, trimmed by timestamp with `ZREMRANGEBYSCORE`).
+
+### Streams
+
+A <Term slug="redis-stream">Redis stream</Term> is an append-only log of entries with auto-generated, time-based IDs, with consumer groups that share the work and track acknowledgements.
+
+```
+XADD orders * orderId 77 total 49.90           # * = auto-generate ID
+XGROUP CREATE orders billing $ MKSTREAM
+XREADGROUP GROUP billing worker-1 COUNT 10 BLOCK 5000 STREAMS orders >
+XACK orders billing 1730000000000-0
+```
+
+Uses: event logs and job queues that need acknowledgement and replay, unlike a list where a popped item is simply gone. It's a lightweight relative of Kafka, covered properly in week 8.
+
+### HyperLogLog
+
+A <Term slug="hyperloglog">HyperLogLog</Term> estimates the number of **distinct** items in a stream using at most 12 KB per key, with a standard error of 0.81%.
+
+```
+PFADD visitors:2026-11-02 user:42 user:7 user:42
+PFCOUNT visitors:2026-11-02        # ≈ 2
+PFMERGE visitors:week visitors:2026-11-01 visitors:2026-11-02
+```
+
+Worked example: counting 10 million daily unique visitors exactly with a set means storing 10 million member strings, which costs hundreds of megabytes once Redis's per-entry overhead is included. A HyperLogLog does it in 12 KB, at the price of being off by about 0.81% (roughly ±81,000) and not being able to list who visited.
+
+| Need | Structure |
+|---|---|
+| Cache an object, count, lock | String |
+| Object with updatable fields | Hash |
+| Latest N items, simple queue | List |
+| Uniqueness and membership | Set |
+| Ranking, scores, time windows | Sorted set |
+| Durable event log with consumer groups | Stream |
+| Approximate distinct count | HyperLogLog |
+
+## TTLs and expiry
+
+<DepthStamp depth="deep" />
+
+Any key can have a <Term slug="ttl">TTL</Term>, after which Redis deletes it.
+
+```
+EXPIRE cart:42 3600     # expire in an hour
+TTL cart:42             # seconds left; -1 = no expiry, -2 = key doesn't exist
+PERSIST cart:42         # remove the TTL
+SET k v EX 60           # set value and TTL in one atomic command
+```
+
+Rules that bite people:
+
+- **A plain `SET` removes the TTL.** Overwriting a key with `SET` without `EX` leaves it with no expiry. Use `SET ... KEEPTTL` (Redis 6+) to keep it.
+- **TTLs belong to the whole key.** You can't expire one member of a set or hash in classic Redis; Redis 7.4 added per-field expiry for hashes (`HEXPIRE`), but most designs put each expiring item in its own key or use a sorted set scored by timestamp.
+- **Expiry is lazy plus sampled.** Redis deletes an expired key when someone touches it, and a background cycle regularly samples keys with TTLs and deletes expired ones. Expired keys may sit in memory briefly, but a read never returns them.
+- **Expiry is not eviction.** Expiry removes keys whose time is up; eviction (`maxmemory-policy`) removes keys when memory is full, covered in the eviction section. Without a `maxmemory` limit, a cache with missing TTLs simply grows until the machine runs out of memory.
+
+## Persistence: RDB and AOF
+
+<DepthStamp depth="tradeoffs" />
+
+Redis keeps the dataset in RAM, so a restart loses everything unless you persist it. It offers two mechanisms, usable separately or together.
+
+### RDB snapshots
+
+An <Term slug="rdb-snapshot">RDB snapshot</Term> is a compact point-in-time file of the entire dataset. `BGSAVE` (or a `save` rule such as "every 300 seconds if at least 100 keys changed") makes Redis `fork()` a child process that writes the file while the parent keeps serving. Thanks to <Term slug="copy-on-write">copy-on-write</Term>, the child shares the parent's memory pages, and only pages the parent modifies during the save are duplicated.
+
+- **Pros:** small files, fast restarts, perfect for backups and copying to another region.
+- **Cons:** you lose everything written since the last snapshot. Forking a large instance can pause the parent briefly, and under heavy writes copy-on-write can need substantial extra memory (in the worst case approaching double).
+
+### AOF (append-only file)
+
+The <Term slug="append-only-file">append-only file</Term> logs every write command. On restart Redis replays it. The `appendfsync` setting decides how often the file is flushed to disk:
+
+| appendfsync | Durability | Cost |
+|---|---|---|
+| `always` | Lose at most the in-flight command | fsync on every write: much slower |
+| `everysec` (default) | Lose about one second of writes | Good balance; the common choice |
+| `no` | Whenever the OS flushes (often tens of seconds) | Fastest, least safe |
+
+The AOF grows forever, so Redis periodically rewrites it into the minimal set of commands for the current data. Since Redis 4.0 the rewrite can start with an RDB preamble followed by recent commands, combining fast loading with fine-grained durability.
+
+### Worked example: what a crash costs
+
+A Redis instance takes **5,000 writes a second**.
+
+- RDB every 5 minutes only: a crash just before the next snapshot loses up to 300 × 5,000 = **1.5 million writes**.
+- AOF with `everysec`: loses roughly **5,000 writes** (one second).
+- Neither (pure cache): loses everything, which is fine **if** the database is the source of truth and you've planned for a cold cache.
+
+The design question is always "what is the source of truth?" For a cache, persistence is mostly about restart speed. For sessions or rate-limit counters, losing a second may be fine. For anything you can't lose, Redis is the wrong primary store unless you understand exactly what it guarantees.
+
+## Replication and Redis Cluster
+
+<DepthStamp depth="tradeoffs" />
+
+### Replication
+
+A Redis primary streams its writes to one or more replicas, **asynchronously** by default. Replicas serve reads and stand ready for failover. Redis Sentinel (or a managed service) watches primaries and promotes a replica if one fails. Because replication is asynchronous, writes the primary acknowledged but hadn't yet sent are lost on failover, exactly the async-failover trade-off from the replication section. The `WAIT numreplicas timeout` command blocks until that many replicas have the write, which narrows the window but doesn't make Redis strongly consistent.
+
+### Redis Cluster
+
+One Redis process is limited by one machine's memory and one core's command throughput. Redis Cluster shards data across several primaries (each with its own replicas) using <Term slug="hash-slot">hash slots</Term>:
+
+- The key space is divided into **16,384 slots**. A key's slot is `CRC16(key) mod 16384`.
+- Each primary owns a range of slots, for example three primaries with about 5,461 each.
+- Resharding moves whole slots between nodes, so adding a node means migrating some slots to it, not rehashing every key.
+
+Clients cache the slot-to-node map. If a client asks the wrong node, it gets a redirect. In the example below, `CLUSTER KEYSLOT user:42` returns 15880, which falls in node C's range.
+
+<Figure caption="FIG. 7.1 · CLUSTER REDIRECTS · THE CLIENT LEARNS WHERE A SLOT LIVES">
+  <Diagram label="The client sends a command for a key in slot 15880 to node A. Node A replies MOVED with node C's address. The client updates its slot map and retries on node C, which answers." chart={`sequenceDiagram
+    participant C as Client
+    participant A as Node A (slots 0-5460)
+    participant B as Node C (slots 10923-16383)
+    C->>A: GET user:42 (stale slot map)
+    A-->>C: MOVED 15880 10.0.0.3:6379
+    Note over C: update slot map: slot 15880 is on node C
+    C->>B: GET user:42
+    B-->>C: value`} />
+</Figure>
+
+*A MOVED redirect permanently updates the client's slot map. During a live slot migration, an ASK redirect sends one request to the new node without updating the map.*
+
+Multi-key commands (`MGET`, `SINTER`, transactions, Lua scripts touching several keys) only work when **all keys are in the same slot**, otherwise Redis returns a `CROSSSLOT` error. **Hash tags** force related keys together: only the part inside braces is hashed, so `{user:42}:cart` and `{user:42}:profile` land in the same slot. Overuse them and one slot (one node) becomes a hot shard.
+
+Like replication, Redis Cluster favours availability and speed: its own specification states it does not guarantee strong consistency, and acknowledged writes can be lost during failover.
+
+## The single-threaded execution model
+
+<DepthStamp depth="deep" />
+
+Redis executes commands on **one main thread** using an <Term slug="event-loop">event loop</Term>: it waits for sockets to become ready (with epoll on Linux), reads a command, executes it to completion, queues the reply, and moves on. There is no locking inside Redis, because no two commands ever run at the same time.
+
+Why this is fast enough: commands work on in-memory data and most take microseconds, so the bottleneck is usually the network and system calls, not the CPU. As a rough planning figure, a single instance commonly handles on the order of 100,000 simple operations a second; measure your own with `redis-benchmark`, since pipelining, value sizes and hardware change the result a lot.
+
+The consequences:
+
+- **Every command is atomic** with respect to every other command. `INCR` from a thousand clients never loses an update.
+- **One slow command blocks everyone.** `KEYS *` on 50 million keys, `HGETALL` on a hash with millions of fields, `SMEMBERS` on a huge set, or a long Lua script stalls every other client for its whole duration. Use `SCAN`, `HSCAN` and `SSCAN` to iterate in small batches, and check `SLOWLOG GET` for offenders.
+- **One instance uses about one core for commands.** Scale throughput with more instances (cluster or replicas for reads), not bigger CPUs.
+
+Awareness: "single-threaded" now describes command execution, not the whole process. Redis already used background threads for work such as closing files and freeing large values (`UNLINK` deletes a key asynchronously, unlike `DEL`). Redis 6 added optional **I/O threads** (the `io-threads` setting) that read requests from and write replies to sockets in parallel, while commands still execute one at a time on the main thread. Separately, after Redis changed its licence in 2024, former maintainers and the community forked it as **Valkey** under the Linux Foundation, which many cloud providers now offer (Redis 8 later added the open-source AGPL as a licence option); the concepts in this section apply to both.
+
+## Atomic operations, MULTI and Lua
+
+<DepthStamp depth="deep" />
+
+Single commands are atomic, but real logic often needs several steps. "Read a value, decide, write" from the application is a race: another client can change the value between your read and your write, the same lost-update problem from the transactions section.
+
+### Prefer one atomic command
+
+Many races disappear with the right command: `INCR` instead of GET-then-SET, `SET ... NX` for "create if absent", `HINCRBY`, `ZINCRBY`, `LMOVE` to move a job between lists atomically, `GETDEL`, `SET ... GET`.
+
+### MULTI / EXEC
+
+`MULTI` starts queuing commands; `EXEC` runs them all back-to-back with nothing interleaved.
+
+```
+MULTI
+INCR rate:user:42
+EXPIRE rate:user:42 60
+EXEC
+```
+
+Two important limits: commands inside `MULTI` can't see each other's results to make decisions (they're queued, not executed), and there is **no rollback**: if one command fails at runtime (say, `INCR` on a non-number), the others still run. For conditional logic, `WATCH key` before `MULTI` gives optimistic locking: if any watched key changes before `EXEC`, the transaction is aborted and returns nil, and you retry.
+
+### Lua scripts
+
+`EVAL` runs a Lua script on the server, atomically, with full logic. The classic example is releasing a lock only if you still own it:
+
+```
+EVAL "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end" 1 lock:invoice:77 a1b2c3
+```
+
+Doing that as a separate `GET` then `DEL` from the client would let your lock expire, another client take it, and your `DEL` delete **their** lock. Scripts also save round trips: a sliding-window rate limiter (trim old entries, count, add, set expiry) becomes one call. Load scripts once with `SCRIPT LOAD` and call them by hash with `EVALSHA`; Redis 7 added **Functions** (`FUNCTION LOAD`, `FCALL`) as a managed, persistent form of the same idea.
+
+The catch is the single thread: a script blocks the whole server while it runs, so keep scripts short and never loop over unbounded data.
+
+### Worked example: a fixed-window rate limiter
+
+Limit each user to 100 requests a minute.
+
+1. Naive: `INCR rate:42`, and if the result is 1, `EXPIRE rate:42 60`. If the client crashes between the two commands, the key **never expires** and the user is blocked forever once they reach 100.
+2. Better: wrap both in `MULTI`/`EXEC`, or use a Lua script that does `INCR`, sets the expiry when the count is 1, and returns the count, all atomically.
+
+At 20,000 requests a second across all users, that is 20,000 script calls a second, each taking microseconds: well within one instance's budget, and the counters never drift.
+
+<TradeoffBox title="Redis design tradeoffs" items={[
+  { gain: "In-memory, single-threaded: microsecond commands, atomic without locks", cost: "Dataset limited by RAM; one slow command stalls every client" },
+  { gain: "RDB: compact snapshots, fast restarts", cost: "Loses everything since the last snapshot; fork can pause and use extra memory" },
+  { gain: "AOF everysec: lose about one second at most", cost: "Bigger files, slower restarts, periodic rewrites" },
+  { gain: "Async replication: fast writes, read scaling, failover", cost: "Acknowledged writes can be lost on failover" },
+  { gain: "Cluster: scales memory and throughput across nodes", cost: "Multi-key operations need same-slot keys; more operational complexity" },
+  { gain: "Lua and MULTI: multi-step logic without races", cost: "Scripts block the server; MULTI has no rollback" }
+]} />
+
+<NotWhenBox title="When Redis is the wrong tool" items={[
+  "As the only copy of data you can't afford to lose (payments, orders) without accepting its durability limits.",
+  "Datasets far larger than memory budget allows: use a disk-based store.",
+  "Ad hoc queries, joins or secondary indexes over many fields: use a database or search engine.",
+  "Strongly consistent distributed locks for correctness-critical work: use a consensus system with fencing tokens."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Redis is single-threaded, so it can't be fast on modern hardware." right="Command execution is single-threaded, but in-memory commands take microseconds and Redis 6+ can use I/O threads for networking. Scale out with more instances when one core isn't enough." />
+
+<Misconception wrong="MULTI/EXEC is a transaction that rolls back on error." right="It guarantees the commands run without interleaving, but a command that fails at runtime doesn't undo the others. Use WATCH for optimistic checks and Lua for conditional logic." />
+
+<Misconception wrong="Turning on persistence makes Redis as durable as a relational database." right="AOF everysec can still lose about a second, and async replication can lose acknowledged writes on failover." />
+
+<Misconception wrong="Redis Cluster uses consistent hashing on a ring." right="It uses 16,384 fixed hash slots (CRC16 mod 16384) assigned to nodes; resharding moves slots between nodes." />
+
+## Interview angle
+
+<InterviewAngle title="Redis" questions={[
+  "Which Redis data structure would you use for a real-time leaderboard, and what are the commands?",
+  "How would you build a rate limiter in Redis that can't leave keys without a TTL?",
+  "What happens to your data if the Redis node crashes? How would you configure persistence for sessions versus a cache?",
+  "Why might one request make every other Redis call slow?",
+  "How does Redis Cluster decide which node holds a key, and what breaks with multi-key operations?"
+]}>
+Don't just say "use Redis": name the data structure and the exact commands (sorted set with ZADD, ZINCRBY and ZRANGE ... REV for a leaderboard; INCR plus expiry in a Lua script for rate limiting; HyperLogLog for unique counts). Then address durability honestly (what you lose with RDB, AOF everysec or none), the single-threaded model (atomic commands, but avoid O(N) commands on big keys), and scaling (replicas for reads, Cluster with hash slots and hash tags for size).
+</InterviewAngle>
+
+## Practice
+
+1. Design the Redis keys and commands for a news feed that shows each user the latest 500 post IDs, the like count per post, and whether the viewer has liked it.
+2. An instance takes 3,000 writes a second. Compare data loss after a crash with RDB every 15 minutes, AOF `everysec`, and both enabled.
+3. Write (in pseudocode or Lua) an atomic sliding-window rate limiter using a sorted set, allowing 10 requests per user per 60 seconds.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

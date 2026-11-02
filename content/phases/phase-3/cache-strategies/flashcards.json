@@ -1,0 +1,17 @@
+[
+  { "id": "cache-strategies-f1", "front": "Cache-aside read path?", "back": "Check the cache. On a miss, read the database, store the result with a TTL, return it. The application does the work.", "topicId": "cache-aside" },
+  { "id": "cache-strategies-f2", "front": "Cache-aside write path?", "back": "Update the database, then delete the cache key so the next read reloads it.", "topicId": "cache-aside" },
+  { "id": "cache-strategies-f3", "front": "Biggest resilience advantage of cache-aside?", "back": "The cache is optional: if it's down, reads fall back to the database and stay correct, just slower.", "topicId": "cache-aside" },
+  { "id": "cache-strategies-f4", "front": "Cache warming?", "back": "Pre-loading hot keys into a cache before it takes traffic, to avoid a wave of cold misses hitting the database.", "topicId": "cache-aside" },
+  { "id": "cache-strategies-f5", "front": "Read-through?", "back": "The app reads only from the cache; on a miss the cache's own loader fetches from the database, stores and returns the value.", "topicId": "read-through" },
+  { "id": "cache-strategies-f6", "front": "Miss coalescing?", "back": "Concurrent misses for the same key wait on a single load, so one database query serves them all.", "topicId": "read-through" },
+  { "id": "cache-strategies-f7", "front": "Write-through?", "back": "Each write updates cache and database synchronously; the client is acknowledged only when both succeed.", "topicId": "write-through" },
+  { "id": "cache-strategies-f8", "front": "Write-through costs?", "back": "Every write pays two hops, and every written value is cached even if never read (pair it with a TTL).", "topicId": "write-through" },
+  { "id": "cache-strategies-f9", "front": "Write-behind (write-back)?", "back": "Acknowledge the write once the cache has it; flush to the database asynchronously, often batched.", "topicId": "write-behind" },
+  { "id": "cache-strategies-f10", "front": "Write-behind's main risk?", "back": "Acknowledged but unflushed writes are lost if the cache node dies, and the database lags the cache.", "topicId": "write-behind" },
+  { "id": "cache-strategies-f11", "front": "Good fit for write-behind?", "back": "View counts, likes, metrics: high-rate updates where batching helps and losing a few seconds is acceptable.", "topicId": "write-behind" },
+  { "id": "cache-strategies-f12", "front": "Write-around?", "back": "Writes go only to the database (invalidating the key if cached); the cache fills later only if the data is read.", "topicId": "write-around" },
+  { "id": "cache-strategies-f13", "front": "When does write-around beat write-through?", "back": "Write-heavy data that's rarely read back (logs, audit events, bulk imports): it avoids filling the cache with entries nobody reads.", "topicId": "write-around" },
+  { "id": "cache-strategies-f14", "front": "The industry-default pairing?", "back": "Cache-aside reads with update-database-then-delete-key writes, plus a TTL on every key.", "topicId": "choosing" },
+  { "id": "cache-strategies-f15", "front": "Why set a TTL whatever the strategy?", "back": "It bounds how long any bug, missed invalidation or race can serve stale data.", "topicId": "choosing" }
+]

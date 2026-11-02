@@ -1,0 +1,7 @@
+[
+  { "id": "invalidation-c1", "text": "I can choose a TTL by estimating worst-case staleness and the database load it creates.", "topicId": "ttl-expiry" },
+  { "id": "invalidation-c2", "text": "I can list every cached key a single row change affects and say how each gets invalidated.", "topicId": "explicit-delete" },
+  { "id": "invalidation-c3", "text": "I can use a namespace version to invalidate a whole group of keys without scanning.", "topicId": "versioned-keys" },
+  { "id": "invalidation-c4", "text": "I can draw the timeline where a concurrent reader writes a stale value back into the cache, for both delete-first and update-first orders.", "topicId": "race" },
+  { "id": "invalidation-c5", "text": "I can explain, with a two-writer timeline, why deleting the key on write is safer than updating it.", "topicId": "delete-vs-update" }
+]

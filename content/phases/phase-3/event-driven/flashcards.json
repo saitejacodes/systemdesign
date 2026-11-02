@@ -1,0 +1,20 @@
+[
+  { "id": "event-driven-f1", "front": "Command vs event?", "back": "Command: 'do X', one owner, can be rejected. Event: 'X happened', zero or many subscribers, a fact.", "topicId": "events-vs-commands" },
+  { "id": "event-driven-f2", "front": "How are events and commands named?", "back": "Events in the past tense (OrderPlaced); commands in the imperative (ReserveStock).", "topicId": "events-vs-commands" },
+  { "id": "event-driven-f3", "front": "Smell test for a command disguised as an event?", "back": "Exactly one consumer, and the publisher breaks if that consumer ignores it.", "topicId": "events-vs-commands" },
+  { "id": "event-driven-f4", "front": "Event notification?", "back": "The event says that something changed, with minimal data; consumers call back for details.", "topicId": "notification-vs-state-transfer" },
+  { "id": "event-driven-f5", "front": "Event-carried state transfer?", "back": "The event carries the changed data so consumers keep local copies and never call back.", "topicId": "notification-vs-state-transfer" },
+  { "id": "event-driven-f6", "front": "Main cost of event notification?", "back": "Callback load on the publisher, and consumers fail when the publisher is down.", "topicId": "notification-vs-state-transfer" },
+  { "id": "event-driven-f7", "front": "Event sourcing?", "back": "Store the sequence of events as the source of truth; derive current state by replaying them.", "topicId": "event-sourcing" },
+  { "id": "event-driven-f8", "front": "Why snapshots in event sourcing?", "back": "Replaying thousands of events per read is slow; a snapshot stores state at event N and only later events are replayed.", "topicId": "event-sourcing" },
+  { "id": "event-driven-f9", "front": "How do you fix a wrong event in an event store?", "back": "Append a correcting event. Stored events are never edited.", "topicId": "event-sourcing" },
+  { "id": "event-driven-f10", "front": "CQRS?", "back": "Separate models for writes (commands) and reads (queries); read models are projections updated from events.", "topicId": "cqrs" },
+  { "id": "event-driven-f11", "front": "Does CQRS require event sourcing?", "back": "No. They are independent; the write side can be an ordinary relational database.", "topicId": "cqrs" },
+  { "id": "event-driven-f12", "front": "Dual write?", "back": "Updating two systems (e.g. database and broker) with no shared transaction. A crash between them leaves them disagreeing.", "topicId": "outbox" },
+  { "id": "event-driven-f13", "front": "Commit succeeds, publish fails: result?", "back": "The row exists but no event is ever published. Downstream silently never reacts.", "topicId": "outbox" },
+  { "id": "event-driven-f14", "front": "Transactional outbox?", "back": "Insert the event into an outbox table in the same transaction as the business change; a relay publishes it later.", "topicId": "outbox" },
+  { "id": "event-driven-f15", "front": "Outbox delivery guarantee?", "back": "At-least-once: the relay can publish then crash before marking the row. Consumers dedupe by event id.", "topicId": "outbox" },
+  { "id": "event-driven-f16", "front": "How to keep outbox events ordered per entity?", "back": "Publish in creation order and use the entity id as the partition or message-group key.", "topicId": "outbox" },
+  { "id": "event-driven-f17", "front": "What does Debezium read?", "back": "The database's replication log: Postgres WAL via logical decoding, MySQL binlog.", "topicId": "cdc" },
+  { "id": "event-driven-f18", "front": "Risk of CDC on raw business tables?", "back": "Your internal table schema becomes a public contract; renaming a column breaks consumers.", "topicId": "cdc" }
+]

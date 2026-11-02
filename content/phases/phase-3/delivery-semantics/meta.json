@@ -1,0 +1,46 @@
+{
+  "id": "p3-delivery-semantics",
+  "phase": 3,
+  "slug": "delivery-semantics",
+  "title": "Delivery semantics",
+  "order": 9,
+  "week": 8,
+  "estimatedMinutes": 60,
+  "topics": [
+    {
+      "id": "acks",
+      "title": "Acknowledgements and visibility timeouts",
+      "depth": "deep"
+    },
+    {
+      "id": "at-most-once",
+      "title": "At-most-once",
+      "depth": "deep"
+    },
+    {
+      "id": "at-least-once",
+      "title": "At-least-once",
+      "depth": "deep"
+    },
+    {
+      "id": "effectively-once",
+      "title": "Exactly-once, really effectively-once",
+      "depth": "deep"
+    },
+    {
+      "id": "kafka-eos",
+      "title": "Kafka idempotent producer and transactions",
+      "depth": "awareness"
+    }
+  ],
+  "simulatorIds": [
+    "message-queue"
+  ],
+  "practiceCaseStudyIds": [
+    "notification-system"
+  ],
+  "prerequisites": [
+    "p3-queues-vs-pubsub",
+    "p2-idempotency"
+  ]
+}

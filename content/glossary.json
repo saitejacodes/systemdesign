@@ -48,10 +48,22 @@
     "sectionId": "p2-api-gateway"
   },
   {
+    "term": "Append-only file (AOF)",
+    "slug": "append-only-file",
+    "definition": "A Redis persistence log of every write command, replayed on restart. Its fsync policy sets how much data a crash can lose.",
+    "sectionId": "p3-redis"
+  },
+  {
     "term": "At-least-once delivery",
     "slug": "at-least-once",
     "definition": "A delivery guarantee where each message arrives one or more times, so duplicates are possible.",
     "sectionId": "p2-idempotency"
+  },
+  {
+    "term": "At-most-once delivery",
+    "slug": "at-most-once",
+    "definition": "A delivery guarantee where each message is processed zero or one times: never duplicated, but possibly lost.",
+    "sectionId": "p3-delivery-semantics"
   },
   {
     "term": "Authoritative nameserver",
@@ -90,10 +102,22 @@
     "sectionId": "p2-api-gateway"
   },
   {
+    "term": "Backpressure",
+    "slug": "backpressure",
+    "definition": "A signal from a slow receiver that makes the sender slow down, instead of letting unprocessed work pile up until something fails.",
+    "sectionId": "p3-queues-vs-pubsub"
+  },
+  {
     "term": "Bandwidth-delay product",
     "slug": "bandwidth-delay-product",
     "definition": "Link bandwidth × round-trip time: how much data must be in flight, unacknowledged, to keep a link fully busy.",
     "sectionId": "p1-tcp-udp"
+  },
+  {
+    "term": "Binding",
+    "slug": "binding",
+    "definition": "In RabbitMQ, a rule connecting an exchange to a queue, with a key or pattern that decides which messages the queue receives.",
+    "sectionId": "p3-kafka-vs-queues"
   },
   {
     "term": "Block storage",
@@ -112,6 +136,84 @@
     "slug": "bm25",
     "definition": "A ranking function refining TF-IDF with term-frequency saturation and document-length normalisation.",
     "sectionId": "p2-search"
+  },
+  {
+    "term": "Buffer pool",
+    "slug": "buffer-pool",
+    "definition": "The area of RAM where a database keeps recently used data pages, such as shared_buffers in PostgreSQL or the InnoDB buffer pool in MySQL.",
+    "sectionId": "p3-cache-layers"
+  },
+  {
+    "term": "Cache",
+    "slug": "cache",
+    "definition": "A smaller, faster store that keeps copies of data whose real home is slower or more expensive to reach, so repeated reads can skip the slow path.",
+    "sectionId": "p3-cache-layers"
+  },
+  {
+    "term": "Cache avalanche",
+    "slug": "cache-avalanche",
+    "definition": "A large share of the cache becoming unavailable at once, through synchronised expiry or an empty restart, so the full read load hits the database.",
+    "sectionId": "p3-cache-failures"
+  },
+  {
+    "term": "Cache hit ratio",
+    "slug": "cache-hit-ratio",
+    "definition": "The fraction of cache lookups that find the value in the cache. It sets both average latency and how much load reaches the backing store.",
+    "sectionId": "p3-cache-layers"
+  },
+  {
+    "term": "Cache invalidation",
+    "slug": "cache-invalidation",
+    "definition": "Removing or replacing a cached copy when the data in the source of truth changes.",
+    "sectionId": "p3-invalidation"
+  },
+  {
+    "term": "Cache key",
+    "slug": "cache-key",
+    "definition": "The identifier a cache stores a response under, such as host, path and query string. Requests with the same key share one cached copy.",
+    "sectionId": "p3-cdn"
+  },
+  {
+    "term": "Cache lease",
+    "slug": "cache-lease",
+    "definition": "A token a cache hands out on a miss and requires on the following set. A delete in between invalidates it, so stale values can't be written back.",
+    "sectionId": "p3-invalidation"
+  },
+  {
+    "term": "Cache penetration",
+    "slug": "cache-penetration",
+    "definition": "A stream of requests for keys that exist in neither the cache nor the database, so every request misses and reaches the database.",
+    "sectionId": "p3-cache-failures"
+  },
+  {
+    "term": "Cache pollution",
+    "slug": "cache-pollution",
+    "definition": "Entries that are used once and never again, such as those from scans or batch jobs, pushing reusable entries out of a cache.",
+    "sectionId": "p3-eviction"
+  },
+  {
+    "term": "Cache purge",
+    "slug": "cache-purge",
+    "definition": "Removing or invalidating cached content before its TTL ends, for example by URL, prefix or tag.",
+    "sectionId": "p3-cdn"
+  },
+  {
+    "term": "Cache stampede",
+    "slug": "cache-stampede",
+    "definition": "When a popular cached value expires or is evicted and many concurrent requests miss at once, all rebuilding it from the database. Also called a dog-pile or thundering herd.",
+    "sectionId": "p3-cache-failures"
+  },
+  {
+    "term": "Cache warming",
+    "slug": "cache-warming",
+    "definition": "Pre-loading frequently used keys into a cache before it serves traffic, so a cold cache doesn't send a burst of misses to the database.",
+    "sectionId": "p3-cache-strategies"
+  },
+  {
+    "term": "Cache-aside",
+    "slug": "cache-aside",
+    "definition": "A caching strategy where the application checks the cache, loads from the database on a miss and stores the result, and deletes the cached key when it writes. Also called lazy loading or look-aside.",
+    "sectionId": "p3-cache-strategies"
   },
   {
     "term": "Cache-Control",
@@ -174,6 +276,24 @@
     "sectionId": "p2-olap-vs-oltp"
   },
   {
+    "term": "Command (message)",
+    "slug": "command-message",
+    "definition": "A message asking one specific handler to do something, named in the imperative (ReserveStock); the handler may reject it.",
+    "sectionId": "p3-event-driven"
+  },
+  {
+    "term": "Commit log",
+    "slug": "commit-log",
+    "definition": "An append-only, ordered sequence of records on disk where each record has a position number; a Kafka partition is a commit log.",
+    "sectionId": "p3-kafka-vs-queues"
+  },
+  {
+    "term": "Competing consumers",
+    "slug": "competing-consumers",
+    "definition": "A pattern where several identical workers read from one queue and each message is handled by just one of them, spreading the work.",
+    "sectionId": "p3-queues-vs-pubsub"
+  },
+  {
     "term": "Composite index",
     "slug": "composite-index",
     "definition": "An index on several columns, sorted by the first, then the second, and so on.",
@@ -210,16 +330,46 @@
     "sectionId": "p1-load-balancers"
   },
   {
+    "term": "Consumer group",
+    "slug": "consumer-group",
+    "definition": "A set of consumers sharing a group ID that split a topic's partitions so each partition is read by exactly one member; separate groups each read every message.",
+    "sectionId": "p3-partitioning-ordering"
+  },
+  {
+    "term": "Consumer lag",
+    "slug": "consumer-lag",
+    "definition": "How far a consumer group is behind the newest data: log-end offset minus committed offset per partition, or the age of the oldest unprocessed message.",
+    "sectionId": "p3-partitioning-ordering"
+  },
+  {
+    "term": "Consumer offset",
+    "slug": "consumer-offset",
+    "definition": "In a log-based broker such as Kafka, the position of the next message a consumer group will read in a partition. Committing it records progress.",
+    "sectionId": "p3-delivery-semantics"
+  },
+  {
     "term": "Conway's law",
     "slug": "conways-law",
     "definition": "The observation that systems tend to mirror the communication structure of the organisation that builds them.",
     "sectionId": "p1-monolith-vs-microservices"
   },
   {
+    "term": "Copy-on-write",
+    "slug": "copy-on-write",
+    "definition": "An operating-system technique where a forked process shares memory pages with its parent and a page is copied only when one side modifies it.",
+    "sectionId": "p3-redis"
+  },
+  {
     "term": "Covering index",
     "slug": "covering-index",
     "definition": "An index that contains every column a query needs, so the table itself is not read.",
     "sectionId": "p2-indexing"
+  },
+  {
+    "term": "CQRS",
+    "slug": "cqrs",
+    "definition": "Command Query Responsibility Segregation: using separate models for writes and for reads, with read models updated from the write side, usually asynchronously.",
+    "sectionId": "p3-event-driven"
   },
   {
     "term": "Data lake",
@@ -252,6 +402,12 @@
     "sectionId": "p1-estimation"
   },
   {
+    "term": "Dead-letter queue",
+    "slug": "dead-letter-queue",
+    "definition": "A separate queue that receives messages after they have failed too many times, so the main queue keeps flowing and the failures can be inspected.",
+    "sectionId": "p3-failure-handling"
+  },
+  {
     "term": "Deadline",
     "slug": "deadline",
     "definition": "An absolute time by which a caller gives up on a call; propagated to downstream calls in gRPC.",
@@ -264,6 +420,12 @@
     "sectionId": "p2-locking"
   },
   {
+    "term": "Delayed double delete",
+    "slug": "delayed-double-delete",
+    "definition": "Deleting a cache key after a database update and again after a short delay, to remove any stale value a slow concurrent reader wrote back.",
+    "sectionId": "p3-invalidation"
+  },
+  {
     "term": "Denormalisation",
     "slug": "denormalization",
     "definition": "Deliberately storing data in more than one place to make reads cheaper.",
@@ -274,6 +436,12 @@
     "slug": "diffie-hellman",
     "definition": "A method for two parties to agree on a shared secret over a public channel without an eavesdropper being able to compute it.",
     "sectionId": "p1-tls"
+  },
+  {
+    "term": "Distributed cache",
+    "slug": "distributed-cache",
+    "definition": "A separate cluster of in-memory key-value servers, such as Redis or Memcached, shared by all application servers over the network.",
+    "sectionId": "p3-cache-layers"
   },
   {
     "term": "Distributed monolith",
@@ -292,6 +460,18 @@
     "slug": "document-store",
     "definition": "A database that stores self-contained, nested JSON-like documents.",
     "sectionId": "p2-sql-vs-nosql"
+  },
+  {
+    "term": "Dual write",
+    "slug": "dual-write",
+    "definition": "Updating two separate systems, such as a database and a message broker, without a shared transaction, so a failure between the writes leaves them inconsistent.",
+    "sectionId": "p3-event-driven"
+  },
+  {
+    "term": "Effectively-once processing",
+    "slug": "effectively-once",
+    "definition": "At-least-once delivery combined with idempotent consumers or broker transactions, so duplicates may arrive but each message's effect is applied once.",
+    "sectionId": "p3-delivery-semantics"
   },
   {
     "term": "Egress",
@@ -316,6 +496,54 @@
     "slug": "etag",
     "definition": "A version tag a server attaches to a response so a client can later ask 'has this changed?' cheaply.",
     "sectionId": "p1-http"
+  },
+  {
+    "term": "Event (domain event)",
+    "slug": "domain-event",
+    "definition": "A message stating that something has already happened, named in the past tense (OrderPlaced), published for any number of subscribers to react to.",
+    "sectionId": "p3-event-driven"
+  },
+  {
+    "term": "Event loop",
+    "slug": "event-loop",
+    "definition": "A single thread that waits for ready I/O events and handles them one at a time, as Redis does for command execution.",
+    "sectionId": "p3-redis"
+  },
+  {
+    "term": "Event sourcing",
+    "slug": "event-sourcing",
+    "definition": "Storing the full sequence of events as the source of truth and deriving current state by replaying them, instead of storing only current state.",
+    "sectionId": "p3-event-driven"
+  },
+  {
+    "term": "Event-carried state transfer",
+    "slug": "event-carried-state-transfer",
+    "definition": "An event style where the event includes the changed data, so consumers can keep their own copy instead of calling the source service back.",
+    "sectionId": "p3-event-driven"
+  },
+  {
+    "term": "Eviction policy",
+    "slug": "eviction-policy",
+    "definition": "The rule a full cache uses to choose which entry to remove to make room for a new one, such as LRU or LFU.",
+    "sectionId": "p3-eviction"
+  },
+  {
+    "term": "Exactly-once",
+    "slug": "exactly-once",
+    "definition": "The promise that each message's effect happens exactly once. True exactly-once delivery is impossible across crashes; real systems offer effectively-once processing.",
+    "sectionId": "p3-delivery-semantics"
+  },
+  {
+    "term": "Exchange",
+    "slug": "exchange",
+    "definition": "In RabbitMQ, the component producers publish to; it routes each message to queues according to its type (direct, topic, fanout or headers) and its bindings.",
+    "sectionId": "p3-kafka-vs-queues"
+  },
+  {
+    "term": "Exponential backoff",
+    "slug": "exponential-backoff",
+    "definition": "A retry strategy that multiplies the wait after each failure (usually doubling it) up to a cap, so a struggling service gets progressively more time to recover.",
+    "sectionId": "p3-failure-handling"
   },
   {
     "term": "Fan-out",
@@ -390,6 +618,12 @@
     "sectionId": "p1-realtime"
   },
   {
+    "term": "Hash slot",
+    "slug": "hash-slot",
+    "definition": "One of the 16,384 buckets Redis Cluster divides keys into, computed as CRC16(key) mod 16384. Each primary node owns a range of slots.",
+    "sectionId": "p3-redis"
+  },
+  {
     "term": "HATEOAS",
     "slug": "hateoas",
     "definition": "Hypermedia As The Engine Of Application State: API responses include links to the actions available next.",
@@ -420,6 +654,12 @@
     "sectionId": "p1-client-server"
   },
   {
+    "term": "Hot key",
+    "slug": "hot-key",
+    "definition": "A single cache key receiving so much traffic that it overloads the one node that stores it.",
+    "sectionId": "p3-cache-failures"
+  },
+  {
     "term": "Hot shard",
     "slug": "hot-shard",
     "definition": "A shard receiving far more traffic than the others, often because of one very popular key.",
@@ -436,6 +676,12 @@
     "slug": "http2",
     "definition": "The 2015 revision of HTTP with binary framing, header compression and many concurrent streams over one connection.",
     "sectionId": "p2-grpc"
+  },
+  {
+    "term": "HyperLogLog",
+    "slug": "hyperloglog",
+    "definition": "A probabilistic structure that estimates the number of distinct items using very little memory. In Redis it uses at most 12 KB with about 0.81% standard error.",
+    "sectionId": "p3-redis"
   },
   {
     "term": "Idempotency",
@@ -462,6 +708,18 @@
     "sectionId": "p1-http"
   },
   {
+    "term": "Idempotent producer",
+    "slug": "idempotent-producer",
+    "definition": "A producer whose retries can't create duplicates; in Kafka the broker uses a producer ID and per-partition sequence numbers to discard repeated sends.",
+    "sectionId": "p3-delivery-semantics"
+  },
+  {
+    "term": "In-process cache",
+    "slug": "in-process-cache",
+    "definition": "A cache that lives in the application's own memory, giving nanosecond lookups but a separate, independently expiring copy on every server.",
+    "sectionId": "p3-cache-layers"
+  },
+  {
     "term": "Index",
     "slug": "index",
     "definition": "A separate data structure that stores some columns in sorted or hashed order with pointers to rows, so queries can find them without scanning.",
@@ -478,6 +736,12 @@
     "slug": "isolation-level",
     "definition": "A setting that decides which concurrency anomalies a transaction can see.",
     "sectionId": "p2-transactions"
+  },
+  {
+    "term": "Jitter",
+    "slug": "jitter",
+    "definition": "Randomness added to retry delays so clients that failed at the same moment don't all retry at the same moment.",
+    "sectionId": "p3-failure-handling"
   },
   {
     "term": "JSON Web Token (JWT)",
@@ -540,6 +804,12 @@
     "sectionId": "p1-load-balancers"
   },
   {
+    "term": "LFU (least frequently used)",
+    "slug": "lfu",
+    "definition": "An eviction policy that removes the entry with the lowest access count, usually with counts that decay over time.",
+    "sectionId": "p3-eviction"
+  },
+  {
     "term": "Little's Law",
     "slug": "littles-law",
     "definition": "L = λW: the average number of items in a stable system equals the arrival rate times the average time each spends inside.",
@@ -552,10 +822,28 @@
     "sectionId": "p1-client-server"
   },
   {
+    "term": "Load leveling",
+    "slug": "load-leveling",
+    "definition": "Using a queue to absorb bursts of work so a downstream service processes at a steady rate it can handle.",
+    "sectionId": "p3-queues-vs-pubsub"
+  },
+  {
     "term": "Lock",
     "slug": "lock",
     "definition": "A marker a transaction holds on data to stop other transactions from changing (or locking) it until it finishes.",
     "sectionId": "p2-locking"
+  },
+  {
+    "term": "Log compaction",
+    "slug": "log-compaction",
+    "definition": "A Kafka cleanup policy that keeps at least the latest record for each key and removes older records with the same key.",
+    "sectionId": "p3-kafka-vs-queues"
+  },
+  {
+    "term": "Log retention",
+    "slug": "log-retention",
+    "definition": "The policy that deletes old records from a log by age or total size, regardless of whether consumers have read them; Kafka's default is 7 days.",
+    "sectionId": "p3-kafka-vs-queues"
   },
   {
     "term": "Long polling",
@@ -564,10 +852,46 @@
     "sectionId": "p1-realtime"
   },
   {
+    "term": "LRU (least recently used)",
+    "slug": "lru",
+    "definition": "An eviction policy that removes the entry whose last access is oldest.",
+    "sectionId": "p3-eviction"
+  },
+  {
     "term": "LSM tree",
     "slug": "lsm-tree",
     "definition": "A write-optimised storage structure that buffers writes in memory and flushes them as sorted immutable files merged by compaction.",
     "sectionId": "p2-indexing"
+  },
+  {
+    "term": "maxmemory-policy",
+    "slug": "maxmemory-policy",
+    "definition": "The Redis setting that decides what happens when the maxmemory limit is reached: reject writes (noeviction, the default) or evict keys by LRU, LFU, random or TTL.",
+    "sectionId": "p3-eviction"
+  },
+  {
+    "term": "Message acknowledgement",
+    "slug": "message-ack",
+    "definition": "A signal from a consumer telling the broker it has finished processing a message, so the broker can stop redelivering it.",
+    "sectionId": "p3-delivery-semantics"
+  },
+  {
+    "term": "Message broker",
+    "slug": "message-broker",
+    "definition": "A server that accepts messages from producers, stores them durably and delivers them to consumers, so the two sides don't talk directly.",
+    "sectionId": "p3-queues-vs-pubsub"
+  },
+  {
+    "term": "Message group ID",
+    "slug": "message-group-id",
+    "definition": "In SQS FIFO queues, the attribute that defines an ordering group: messages with the same group ID are delivered strictly in order, different groups in parallel.",
+    "sectionId": "p3-kafka-vs-queues"
+  },
+  {
+    "term": "Message queue",
+    "slug": "message-queue",
+    "definition": "A point-to-point channel where each message is delivered to exactly one consumer and removed once it has been processed.",
+    "sectionId": "p3-queues-vs-pubsub"
   },
   {
     "term": "Microservice",
@@ -630,6 +954,12 @@
     "sectionId": "p2-graphql"
   },
   {
+    "term": "Negative caching",
+    "slug": "negative-caching",
+    "definition": "Caching a 'not found' result, usually with a short TTL, so repeated lookups of a missing item don't reach the database.",
+    "sectionId": "p3-cache-failures"
+  },
+  {
     "term": "nginx",
     "slug": "nginx",
     "definition": "A widely used event-driven web server and reverse proxy.",
@@ -672,6 +1002,30 @@
     "sectionId": "p2-locking"
   },
   {
+    "term": "Origin server",
+    "slug": "origin-server",
+    "definition": "The server that holds the authoritative copy of content, which a CDN or cache fetches from on a miss.",
+    "sectionId": "p3-cdn"
+  },
+  {
+    "term": "Origin shield",
+    "slug": "origin-shield",
+    "definition": "A regional cache layer between a CDN's edge locations and the origin, so each object is fetched from the origin about once instead of once per location.",
+    "sectionId": "p3-cdn"
+  },
+  {
+    "term": "Partition (topic partition)",
+    "slug": "topic-partition",
+    "definition": "One independent, ordered, append-only log within a topic. Partitions are the unit of storage, consumer parallelism and ordering in Kafka.",
+    "sectionId": "p3-partitioning-ordering"
+  },
+  {
+    "term": "Partition key",
+    "slug": "partition-key",
+    "definition": "A value attached to a message that is hashed to choose its partition, so all messages with the same key go to the same partition and stay in order.",
+    "sectionId": "p3-partitioning-ordering"
+  },
+  {
     "term": "Peak factor",
     "slug": "peak-factor",
     "definition": "How many times higher the busiest period's traffic is than the average, typically 2–10×.",
@@ -702,6 +1056,18 @@
     "sectionId": "p2-connection-pooling"
   },
   {
+    "term": "Point of presence (PoP)",
+    "slug": "point-of-presence",
+    "definition": "A CDN data centre located near users, from which cached content is served.",
+    "sectionId": "p3-cdn"
+  },
+  {
+    "term": "Poison message",
+    "slug": "poison-message",
+    "definition": "A message that fails every time it is processed, however often it is retried, for example because its payload is malformed.",
+    "sectionId": "p3-failure-handling"
+  },
+  {
     "term": "Power of two random choices",
     "slug": "power-of-two-choices",
     "definition": "A balancing method that picks two backends at random and sends the request to the less busy one; nearly as good as checking every backend.",
@@ -712,6 +1078,12 @@
     "slug": "preference-list",
     "definition": "The ordered nodes clockwise on a ring that store replicas of a key.",
     "sectionId": "p2-consistent-hashing"
+  },
+  {
+    "term": "Prefetch",
+    "slug": "prefetch",
+    "definition": "The maximum number of unacknowledged messages a broker will deliver to one consumer at a time; in RabbitMQ it is set with basic.qos.",
+    "sectionId": "p3-failure-handling"
   },
   {
     "term": "Presigned URL",
@@ -726,6 +1098,18 @@
     "sectionId": "p1-tls"
   },
   {
+    "term": "Probabilistic early expiration",
+    "slug": "probabilistic-early-expiration",
+    "definition": "Each reader randomly decides to refresh a cached value before it expires, with the chance rising as expiry approaches, so one reader usually refreshes it without locks. XFetch is the best-known algorithm.",
+    "sectionId": "p3-cache-failures"
+  },
+  {
+    "term": "Projection",
+    "slug": "projection",
+    "definition": "A read model built and kept up to date by consuming a stream of events, shaped for a specific query.",
+    "sectionId": "p3-event-driven"
+  },
+  {
     "term": "Protocol Buffers",
     "slug": "protobuf",
     "definition": "Google's binary, schema-based serialisation format where fields are identified by numeric tags.",
@@ -736,6 +1120,24 @@
     "slug": "public-key",
     "definition": "The half of a key pair that can be shared; it encrypts data or verifies signatures made by the private key.",
     "sectionId": "p1-tls"
+  },
+  {
+    "term": "Publish/subscribe (pub/sub)",
+    "slug": "pub-sub",
+    "definition": "A messaging pattern where a publisher writes to a topic and every subscriber to that topic receives its own copy of each message.",
+    "sectionId": "p3-queues-vs-pubsub"
+  },
+  {
+    "term": "Pull CDN",
+    "slug": "pull-cdn",
+    "definition": "A CDN that fetches content from the origin on the first request at each location and caches it according to its headers.",
+    "sectionId": "p3-cdn"
+  },
+  {
+    "term": "Push CDN",
+    "slug": "push-cdn",
+    "definition": "A CDN to which you upload content in advance, so it serves files without contacting an origin.",
+    "sectionId": "p3-cdn"
   },
   {
     "term": "QPS",
@@ -756,6 +1158,18 @@
     "sectionId": "p2-rate-limiting"
   },
   {
+    "term": "RDB snapshot",
+    "slug": "rdb-snapshot",
+    "definition": "A Redis point-in-time dump of the whole dataset to a compact file, written by a forked child process.",
+    "sectionId": "p3-redis"
+  },
+  {
+    "term": "Read-through cache",
+    "slug": "read-through",
+    "definition": "A caching strategy where the application reads only from the cache and the cache itself loads missing entries from the database.",
+    "sectionId": "p3-cache-strategies"
+  },
+  {
     "term": "Read-your-writes consistency",
     "slug": "read-your-writes",
     "definition": "A guarantee that a user always sees their own earlier writes.",
@@ -768,10 +1182,28 @@
     "sectionId": "p1-estimation"
   },
   {
+    "term": "Rebalance",
+    "slug": "consumer-rebalance",
+    "definition": "Reassigning a consumer group's partitions when members join, leave or are presumed dead, which pauses some consumption and can cause redelivery.",
+    "sectionId": "p3-partitioning-ordering"
+  },
+  {
     "term": "Recursive resolver",
     "slug": "recursive-resolver",
     "definition": "The DNS server (often your ISP's, or 8.8.8.8 or 1.1.1.1) that chases a lookup through root, TLD and authoritative servers and caches the answer.",
     "sectionId": "p1-dns"
+  },
+  {
+    "term": "Redis stream",
+    "slug": "redis-stream",
+    "definition": "A Redis append-only log of entries with time-based IDs, read by consumer groups that acknowledge entries with XACK.",
+    "sectionId": "p3-redis"
+  },
+  {
+    "term": "Redrive",
+    "slug": "redrive",
+    "definition": "Moving messages from a dead-letter queue back to their source queue to be processed again, usually after the underlying bug is fixed.",
+    "sectionId": "p3-failure-handling"
   },
   {
     "term": "Relational database",
@@ -798,6 +1230,12 @@
     "sectionId": "p2-replication"
   },
   {
+    "term": "Request coalescing",
+    "slug": "request-coalescing",
+    "definition": "Merging concurrent requests for the same key so only one fetch runs and the others share its result. Also called request collapsing.",
+    "sectionId": "p3-cache-failures"
+  },
+  {
     "term": "Request/response",
     "slug": "request-response",
     "definition": "The pattern where a client sends one request and waits for one response from the server.",
@@ -822,6 +1260,12 @@
     "sectionId": "p2-rest"
   },
   {
+    "term": "Retry storm",
+    "slug": "retry-storm",
+    "definition": "A surge of synchronised or multiplied retries that overloads a service just as it is trying to recover, often prolonging the outage.",
+    "sectionId": "p3-failure-handling"
+  },
+  {
     "term": "Reverse proxy",
     "slug": "reverse-proxy",
     "definition": "A server in front of your backends that receives client requests on their behalf and forwards them.",
@@ -840,6 +1284,12 @@
     "sectionId": "p1-load-balancers"
   },
   {
+    "term": "Routing key",
+    "slug": "routing-key",
+    "definition": "A string attached to a RabbitMQ message when it is published, such as order.eu.created, which exchanges match against bindings.",
+    "sectionId": "p3-kafka-vs-queues"
+  },
+  {
     "term": "RPC (remote procedure call)",
     "slug": "rpc",
     "definition": "Calling a function that runs on another machine as if it were a local function call.",
@@ -850,6 +1300,12 @@
     "slug": "safe-method",
     "definition": "An HTTP method that should not change server state, such as GET or HEAD.",
     "sectionId": "p1-http"
+  },
+  {
+    "term": "Sentinel node",
+    "slug": "sentinel-node",
+    "definition": "A dummy node at the start or end of a linked list that is never removed, so insert and unlink code never has to handle empty-list edge cases.",
+    "sectionId": "p3-eviction"
   },
   {
     "term": "Sequence number",
@@ -918,6 +1374,18 @@
     "sectionId": "p1-tcp-udp"
   },
   {
+    "term": "Sorted set",
+    "slug": "sorted-set",
+    "definition": "A Redis data type holding unique members each with a numeric score, kept ordered by score, with O(log N) updates and rank lookups.",
+    "sectionId": "p3-redis"
+  },
+  {
+    "term": "Source of truth",
+    "slug": "source-of-truth",
+    "definition": "The authoritative store for a piece of data, usually a database. Caches and replicas hold copies that may lag behind it.",
+    "sectionId": "p3-invalidation"
+  },
+  {
     "term": "Split brain",
     "slug": "split-brain",
     "definition": "A failure where two nodes both act as leader and accept conflicting writes.",
@@ -930,6 +1398,12 @@
     "sectionId": "p1-tls"
   },
   {
+    "term": "Stale read",
+    "slug": "stale-read",
+    "definition": "A read that returns a value older than the latest committed write in the source of truth.",
+    "sectionId": "p3-invalidation"
+  },
+  {
     "term": "Stateful server",
     "slug": "stateful-server",
     "definition": "A server that keeps data between requests in its own memory or disk, so some requests must reach that specific server.",
@@ -940,6 +1414,12 @@
     "slug": "stateless-server",
     "definition": "A server that keeps no request-to-request data in its own memory or disk, so any copy can handle any request.",
     "sectionId": "p1-client-server"
+  },
+  {
+    "term": "Static membership",
+    "slug": "static-membership",
+    "definition": "A Kafka consumer setting (group.instance.id) that lets a consumer restarting quickly reclaim its partitions without triggering a rebalance.",
+    "sectionId": "p3-partitioning-ordering"
   },
   {
     "term": "Status code",
@@ -970,6 +1450,12 @@
     "slug": "stub-resolver",
     "definition": "The small DNS client in your operating system that forwards lookups to a recursive resolver.",
     "sectionId": "p1-dns"
+  },
+  {
+    "term": "Surrogate key",
+    "slug": "surrogate-key",
+    "definition": "A tag attached to cached responses so that one purge request can invalidate every object with that tag. Fastly calls it Surrogate-Key; Cloudflare calls it Cache-Tag.",
+    "sectionId": "p3-cdn"
   },
   {
     "term": "SYN",
@@ -1062,6 +1548,12 @@
     "sectionId": "p2-transactions"
   },
   {
+    "term": "Transactional outbox",
+    "slug": "transactional-outbox",
+    "definition": "A pattern that writes an event to an outbox table in the same database transaction as the business change, then publishes it to the broker with a separate relay or CDC process.",
+    "sectionId": "p3-event-driven"
+  },
+  {
     "term": "Trie",
     "slug": "trie",
     "definition": "A tree that stores strings by their characters, so strings sharing a prefix share a path.",
@@ -1072,6 +1564,12 @@
     "slug": "ttl",
     "definition": "Time to live: how many seconds a DNS answer may be cached before it must be looked up again.",
     "sectionId": "p1-dns"
+  },
+  {
+    "term": "TTL jitter",
+    "slug": "ttl-jitter",
+    "definition": "Adding a random amount to each key's time to live so keys written together don't all expire at the same moment.",
+    "sectionId": "p3-cache-failures"
   },
   {
     "term": "Twelve-Factor App",
@@ -1104,6 +1602,18 @@
     "sectionId": "p1-latency-throughput"
   },
   {
+    "term": "Vary header",
+    "slug": "vary-header",
+    "definition": "An HTTP response header listing which request headers change the response, so caches store a separate copy for each value.",
+    "sectionId": "p3-cdn"
+  },
+  {
+    "term": "Versioned key",
+    "slug": "versioned-key",
+    "definition": "A cache key that includes a version number, so a write bumps the version and readers move to a new key while old entries age out.",
+    "sectionId": "p3-invalidation"
+  },
+  {
     "term": "Vertical scaling",
     "slug": "vertical-scaling",
     "definition": "Scaling up: giving one machine more CPU, memory, disk or network capacity.",
@@ -1120,6 +1630,12 @@
     "slug": "virtual-node",
     "definition": "One of many positions a physical node takes on a consistent hashing ring, used to even out load.",
     "sectionId": "p2-consistent-hashing"
+  },
+  {
+    "term": "Visibility timeout",
+    "slug": "visibility-timeout",
+    "definition": "In Amazon SQS, how long a received message is hidden from other consumers; if it isn't deleted before the timeout ends, it becomes visible and is delivered again.",
+    "sectionId": "p3-delivery-semantics"
   },
   {
     "term": "WebSocket",
@@ -1140,6 +1656,12 @@
     "sectionId": "p2-sql-vs-nosql"
   },
   {
+    "term": "Working set",
+    "slug": "working-set",
+    "definition": "The subset of data actively used over a period of time. A cache that holds the working set gets a high hit ratio even if the full dataset is much larger.",
+    "sectionId": "p3-cache-layers"
+  },
+  {
     "term": "Write amplification",
     "slug": "write-amplification",
     "definition": "The ratio of bytes written to storage to bytes the application asked to write.",
@@ -1150,5 +1672,23 @@
     "slug": "write-skew",
     "definition": "An anomaly where two transactions read the same data, write different rows, and together violate a rule.",
     "sectionId": "p2-transactions"
+  },
+  {
+    "term": "Write-around",
+    "slug": "write-around",
+    "definition": "A caching strategy where writes go only to the database and the cache is filled later, only if the data is read.",
+    "sectionId": "p3-cache-strategies"
+  },
+  {
+    "term": "Write-behind (write-back)",
+    "slug": "write-behind",
+    "definition": "A caching strategy where writes are acknowledged once the cache has them and flushed to the database asynchronously, risking loss of unflushed writes.",
+    "sectionId": "p3-cache-strategies"
+  },
+  {
+    "term": "Write-through",
+    "slug": "write-through",
+    "definition": "A caching strategy where each write updates the cache and the database synchronously, and is acknowledged only when both succeed.",
+    "sectionId": "p3-cache-strategies"
   }
 ]

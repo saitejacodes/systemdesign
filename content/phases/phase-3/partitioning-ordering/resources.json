@@ -1,0 +1,44 @@
+[
+  {
+    "id": "kafka-docs",
+    "title": "Apache Kafka Documentation",
+    "author": "Apache Software Foundation",
+    "kind": "docs",
+    "url": "https://kafka.apache.org/documentation/",
+    "why": "The design and consumer sections explain partitions, consumer groups, offsets and the configuration settings (max.poll.interval.ms, group.instance.id) used in this lesson.",
+    "topicIds": [
+      "partitions",
+      "consumer-groups",
+      "rebalancing",
+      "consumer-lag"
+    ],
+    "free": true
+  },
+  {
+    "title": "Apache Kafka documentation: Design",
+    "author": "Apache Software Foundation",
+    "kind": "docs",
+    "url": "https://kafka.apache.org/documentation/#design",
+    "why": "How Kafka is built around a partitioned, append-only log: persistence, consumer offsets and ordering, from the project itself.",
+    "topicIds": [
+      "partitions",
+      "ordering"
+    ],
+    "free": true,
+    "id": "kafka-design"
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 11 compares log-based and traditional brokers, partitioned logs, consumer offsets and ordering.",
+    "topicIds": [
+      "partitions",
+      "partition-keys",
+      "ordering"
+    ],
+    "free": false
+  }
+]

@@ -1,0 +1,8 @@
+[
+  { "id": "cdn-c1", "text": "I can choose push or pull for a given workload and explain what an origin shield adds.", "topicId": "push-pull" },
+  { "id": "cdn-c2", "text": "I can write correct Cache-Control headers for fingerprinted assets, shared HTML and per-user data.", "topicId": "cache-headers" },
+  { "id": "cdn-c3", "text": "I can explain ETag revalidation and why Vary: User-Agent hurts hit rate.", "topicId": "cache-headers" },
+  { "id": "cdn-c4", "text": "I can design a cache key that excludes tracking parameters but never mixes up users' or languages' content.", "topicId": "cache-keys" },
+  { "id": "cdn-c5", "text": "I can plan invalidation with versioned URLs and tag-based purges, and explain the risk of purging everything.", "topicId": "purging" },
+  { "id": "cdn-c6", "text": "I can estimate CDN versus origin cost from traffic and hit rate, stating my price assumptions.", "topicId": "cdn-cost" }
+]

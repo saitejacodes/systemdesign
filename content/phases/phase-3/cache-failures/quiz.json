@@ -1,0 +1,171 @@
+[
+  {
+    "id": "cache-failures-q1",
+    "type": "single",
+    "prompt": "What is a cache stampede?",
+    "options": [
+      { "id": "a", "text": "Many concurrent requests miss the same expired key and all rebuild it from the database at once" },
+      { "id": "b", "text": "Requests for keys that do not exist in the database" },
+      { "id": "c", "text": "One key receiving far more traffic than its cache node can serve" },
+      { "id": "d", "text": "The cache evicting keys because memory is full" }
+    ],
+    "correct": ["a"],
+    "explanation": "A stampede is the burst of duplicate rebuilds when a popular key expires or is evicted. Requests for non-existent keys are cache penetration, not a stampede. One overloaded key is a hot key: the key is present, it just has too much traffic. Eviction under memory pressure is normal cache behaviour; it can trigger a stampede but is not one itself.",
+    "topicId": "stampede",
+    "difficulty": 1
+  },
+  {
+    "id": "cache-failures-q2",
+    "type": "scenario",
+    "prompt": "Roughly how many requests miss during the rebuild, with no stampede protection?",
+    "scenario": "A leaderboard key is read 12,000 times a second. When it expires, rebuilding it takes 250 ms on the database.",
+    "options": [
+      { "id": "a", "text": "About 1" },
+      { "id": "b", "text": "About 250" },
+      { "id": "c", "text": "About 3,000" },
+      { "id": "d", "text": "About 12,000" }
+    ],
+    "correct": ["c"],
+    "explanation": "Every request in the rebuild window misses: 12,000 per second × 0.25 seconds = 3,000. One miss is what you get with perfect protection, not without it. 250 confuses milliseconds with a request count. 12,000 would be a full second of misses, which is the window only if the rebuild took a whole second.",
+    "topicId": "stampede",
+    "difficulty": 2
+  },
+  {
+    "id": "cache-failures-q3",
+    "type": "multi",
+    "prompt": "Which techniques reduce the number of database queries during a stampede on one key? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "A short-lived rebuild lock taken with SET NX PX" },
+      { "id": "b", "text": "In-process request coalescing such as Go's singleflight" },
+      { "id": "c", "text": "Probabilistic early expiration (XFetch)" },
+      { "id": "d", "text": "Doubling the number of cache nodes" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "A lock lets one caller rebuild while the others wait and re-read. Coalescing merges concurrent fetches within each process. Early expiration refreshes the key before it expires, so the miss never happens. More cache nodes does nothing: the expired key still lives on one node and every miss still goes to the database.",
+    "topicId": "stampede",
+    "difficulty": 2
+  },
+  {
+    "id": "cache-failures-q4",
+    "type": "single",
+    "prompt": "Why must a rebuild lock have an expiry (for example PX 5000)?",
+    "options": [
+      { "id": "a", "text": "So a crashed lock holder cannot block rebuilds of that key forever" },
+      { "id": "b", "text": "Because Redis rejects SET NX without an expiry" },
+      { "id": "c", "text": "To make the cached value expire at the same time" },
+      { "id": "d", "text": "To guarantee only one rebuild across all of time" }
+    ],
+    "correct": ["a"],
+    "explanation": "If the winner crashes after taking the lock, nobody would ever rebuild the key without an expiry. Redis accepts SET NX without an expiry, so that is not the reason. The lock and the value have independent TTLs. And an expiring lock allows another rebuild later, the opposite of 'one rebuild ever'.",
+    "topicId": "stampede",
+    "difficulty": 1
+  },
+  {
+    "id": "cache-failures-q5",
+    "type": "scenario",
+    "prompt": "What is the best primary defence?",
+    "scenario": "Logs show 4,000 requests a second for /users/<id> with random IDs that never repeat and never exist. Every one misses the cache and queries the database.",
+    "options": [
+      { "id": "a", "text": "Cache a NULL marker for each missing ID with a 60-second TTL" },
+      { "id": "b", "text": "A Bloom filter of valid IDs checked before the cache, plus per-client rate limiting" },
+      { "id": "c", "text": "Increase the TTL of all cached users" },
+      { "id": "d", "text": "Add a local in-process cache" }
+    ],
+    "correct": ["b"],
+    "explanation": "This is cache penetration with never-repeated IDs. A Bloom filter rejects almost all non-existent IDs without touching the cache or database, and rate limiting makes scanning expensive. NULL markers only help when the same missing ID is asked again; here each marker is used once and just wastes memory. Longer TTLs on real users do nothing for IDs that were never cached. A local cache also only stores things that exist.",
+    "topicId": "penetration",
+    "difficulty": 2
+  },
+  {
+    "id": "cache-failures-q6",
+    "type": "single",
+    "prompt": "A Bloom filter says an ID is 'possibly present'. What do you know?",
+    "options": [
+      { "id": "a", "text": "The ID definitely exists" },
+      { "id": "b", "text": "The ID probably exists, but it could be a false positive, so continue to the cache and database" },
+      { "id": "c", "text": "The ID definitely does not exist" },
+      { "id": "d", "text": "The filter needs to be rebuilt" }
+    ],
+    "correct": ["b"],
+    "explanation": "Bloom filters have false positives but no false negatives, so 'possibly present' must be checked against the real data. 'Definitely exists' ignores false positives. 'Definitely not' is the answer when the filter says absent, not present. A positive answer is normal operation and says nothing about rebuilding.",
+    "topicId": "penetration",
+    "difficulty": 1
+  },
+  {
+    "id": "cache-failures-q7",
+    "type": "scenario",
+    "prompt": "Which change fixes this most directly?",
+    "scenario": "A flash-sale product key receives 250,000 reads a second. The cache cluster has 12 nodes and one node is at 100% CPU while the other 11 are below 20%. The product data changes once an hour.",
+    "options": [
+      { "id": "a", "text": "Add 12 more cache nodes" },
+      { "id": "b", "text": "Cache the product in each application server's memory with a 2-second TTL" },
+      { "id": "c", "text": "Increase the key's TTL in the shared cache" },
+      { "id": "d", "text": "Switch the eviction policy to LRU" }
+    ],
+    "correct": ["b"],
+    "explanation": "This is a hot key: one key lives on one node, so a local cache with a short TTL absorbs the reads and the cache node sees roughly one read per app server per TTL. Since data changes hourly, 2 seconds of staleness is fine. More nodes do not split one key. A longer TTL does not reduce reads, which are already hits. The eviction policy decides what to remove when memory is full, not how reads spread.",
+    "topicId": "hot-keys",
+    "difficulty": 2
+  },
+  {
+    "id": "cache-failures-q8",
+    "type": "single",
+    "prompt": "What is the main cost of replicating a hot key as post:42#0 to post:42#7?",
+    "options": [
+      { "id": "a", "text": "Reads become slower" },
+      { "id": "b", "text": "Every write must update all eight copies, and copies can briefly disagree" },
+      { "id": "c", "text": "The key can no longer have a TTL" },
+      { "id": "d", "text": "It requires a Bloom filter" }
+    ],
+    "correct": ["b"],
+    "explanation": "Key replication spreads reads across nodes but multiplies writes and opens a window where copies differ. Reads are not slower; each read hits one copy. Each copy can have its own TTL. Bloom filters address penetration and are unrelated.",
+    "topicId": "hot-keys",
+    "difficulty": 2
+  },
+  {
+    "id": "cache-failures-q9",
+    "type": "scenario",
+    "prompt": "What is the most likely cause and fix?",
+    "scenario": "Every day at 10:00 the database spikes to full CPU for about a minute. A warm-up job loads 2 million keys into the cache at 09:00 each morning with SET ... EX 3600.",
+    "options": [
+      { "id": "a", "text": "A hot key; add a local cache" },
+      { "id": "b", "text": "Synchronised expiry (an avalanche); add random jitter to the TTL" },
+      { "id": "c", "text": "Cache penetration; add a Bloom filter" },
+      { "id": "d", "text": "The cache is too small; add memory" }
+    ],
+    "correct": ["b"],
+    "explanation": "All 2 million keys share one write time and one TTL, so they expire together an hour later and the misses land on the database: an avalanche. Jitter (for example 3,600 ± 10%) spreads expiry over minutes. A hot key is a single key, not a daily spike tied to the warm-up schedule. Penetration involves keys that never exist. Memory size would cause evictions throughout the day, not a spike precisely one TTL after warming.",
+    "topicId": "avalanche",
+    "difficulty": 2
+  },
+  {
+    "id": "cache-failures-q10",
+    "type": "multi",
+    "prompt": "A cache cluster restarts empty while serving 100,000 requests a second. Which measures limit the damage? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Warm the cache from a list of hot keys before routing traffic" },
+      { "id": "b", "text": "Rate-limit or circuit-break database reads and cap client retries" },
+      { "id": "c", "text": "Replicate the cache across availability zones" },
+      { "id": "d", "text": "Lower every TTL to 1 second" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Warming restores the hit rate before load arrives; rate limits and circuit breakers stop retries piling onto a struggling database; cross-zone replication means one failure does not empty the cache. Lowering TTLs makes the cache hold less and miss more, which increases database load.",
+    "topicId": "avalanche",
+    "difficulty": 3
+  },
+  {
+    "id": "cache-failures-q11",
+    "type": "single",
+    "prompt": "In XFetch, why does a key with a longer rebuild time (larger delta) refresh earlier?",
+    "options": [
+      { "id": "a", "text": "The early-refresh term scales with delta, so expensive keys start refreshing further ahead of expiry, leaving time to finish" },
+      { "id": "b", "text": "Longer rebuilds are given a shorter TTL" },
+      { "id": "c", "text": "delta is the number of readers" },
+      { "id": "d", "text": "It doesn't; delta only affects the lock timeout" }
+    ],
+    "correct": ["a"],
+    "explanation": "The check is now − delta × beta × ln(random()) ≥ expiry, so a larger delta pushes the effective time later and refreshes start sooner, giving slow rebuilds time to complete before expiry. XFetch does not change the TTL. delta is the measured rebuild time, not a reader count. XFetch uses no lock at all.",
+    "topicId": "stampede",
+    "difficulty": 3
+  }
+]

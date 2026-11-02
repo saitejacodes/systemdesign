@@ -1,0 +1,51 @@
+[
+  {
+    "id": "kafka-docs",
+    "title": "Apache Kafka documentation",
+    "author": "Apache Software Foundation",
+    "kind": "docs",
+    "url": "https://kafka.apache.org/documentation/",
+    "why": "The design section explains the log, offsets, consumer groups, retention and log compaction from the source.",
+    "topicIds": [
+      "kafka-log"
+    ],
+    "free": true
+  },
+  {
+    "id": "rabbitmq-exchanges",
+    "title": "Exchanges",
+    "author": "RabbitMQ",
+    "kind": "docs",
+    "url": "https://www.rabbitmq.com/docs/exchanges",
+    "why": "The reference for exchange types, bindings and the default exchange; pair it with the official tutorials for runnable examples.",
+    "topicIds": [
+      "rabbitmq-routing"
+    ],
+    "free": true
+  },
+  {
+    "id": "sqs-dev-guide",
+    "title": "Amazon SQS Developer Guide",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/welcome.html",
+    "why": "Standard vs FIFO queues, message group ids, deduplication, visibility timeout and current throughput quotas.",
+    "topicIds": [
+      "sqs"
+    ],
+    "free": true
+  },
+  {
+    "title": "Apache Kafka documentation: Design",
+    "author": "Apache Software Foundation",
+    "kind": "docs",
+    "url": "https://kafka.apache.org/documentation/#design",
+    "why": "How Kafka is built around a partitioned, append-only log: persistence, consumer offsets and ordering, from the project itself.",
+    "topicIds": [
+      "kafka-log",
+      "choosing-broker"
+    ],
+    "free": true,
+    "id": "kafka-design"
+  }
+]

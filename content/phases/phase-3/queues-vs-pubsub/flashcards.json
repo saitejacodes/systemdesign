@@ -1,0 +1,18 @@
+[
+  { "id": "qps-f1", "front": "Three core reasons to go asynchronous?", "back": "Decoupling producers from consumers, buffering traffic spikes, and centralised retries.", "topicId": "why-async" },
+  { "id": "qps-f2", "front": "Main cost of asynchronous messaging?", "back": "No immediate result for the caller, eventual consistency, and an extra critical system (the broker) to run.", "topicId": "why-async" },
+  { "id": "qps-f3", "front": "Load leveling?", "back": "A queue absorbs bursts so the consumer processes at a steady rate it can handle.", "topicId": "why-async" },
+  { "id": "qps-f4", "front": "Backlog during a spike?", "back": "(arrival rate − processing rate) × spike duration. Drain time = backlog ÷ (processing rate − normal arrival rate).", "topicId": "why-async" },
+  { "id": "qps-f5", "front": "Point-to-point queue?", "back": "Each message is delivered to exactly one consumer and removed once processed.", "topicId": "point-to-point" },
+  { "id": "qps-f6", "front": "Competing consumers?", "back": "Several identical workers read one queue; each message goes to one of them, spreading the work.", "topicId": "point-to-point" },
+  { "id": "qps-f7", "front": "Limit on scaling competing consumers?", "back": "The shared downstream (database, rate-limited API). Past its capacity, more workers add contention, not throughput.", "topicId": "point-to-point" },
+  { "id": "qps-f8", "front": "SQS standard vs FIFO ordering?", "back": "Standard: best-effort ordering. FIFO: strict order within a message group.", "topicId": "point-to-point" },
+  { "id": "qps-f9", "front": "Publish/subscribe?", "back": "Each message published to a topic is delivered to every subscriber.", "topicId": "pub-sub" },
+  { "id": "qps-f10", "front": "Queue message vs pub/sub message, in meaning?", "back": "Queue: a task (\"do this\"). Pub/sub: an event (\"this happened\").", "topicId": "pub-sub" },
+  { "id": "qps-f11", "front": "Standard AWS fan-out pattern?", "back": "SNS topic with one SQS queue subscribed per service; workers compete on each queue.", "topicId": "pub-sub" },
+  { "id": "qps-f12", "front": "Which pub/sub systems retain messages for replay?", "back": "Log-based ones such as Kafka (retention period, 7 days by default). SNS and RabbitMQ forget a message once delivered.", "topicId": "pub-sub" },
+  { "id": "qps-f13", "front": "Push consumer?", "back": "The broker sends messages as they arrive (RabbitMQ consume, Pub/Sub push). Lowest latency; needs flow control.", "topicId": "push-pull" },
+  { "id": "qps-f14", "front": "Pull consumer?", "back": "The consumer asks for batches when ready (Kafka poll, SQS ReceiveMessage). Natural backpressure.", "topicId": "push-pull" },
+  { "id": "qps-f15", "front": "RabbitMQ prefetch (basic.qos)?", "back": "Caps unacknowledged messages pushed to a consumer, so a slow consumer isn't flooded.", "topicId": "push-pull" },
+  { "id": "qps-f16", "front": "SQS long polling?", "back": "ReceiveMessage with WaitTimeSeconds (up to 20) waits server-side for messages instead of returning empty.", "topicId": "push-pull" }
+]

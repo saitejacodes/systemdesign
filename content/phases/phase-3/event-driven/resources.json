@@ -1,0 +1,42 @@
+[
+  {
+    "id": "fowler-event-driven",
+    "title": "What do you mean by \"Event-Driven\"?",
+    "author": "Martin Fowler",
+    "kind": "blog",
+    "url": "https://martinfowler.com/articles/201701-event-driven.html",
+    "why": "Separates event notification, event-carried state transfer, event sourcing and CQRS, the four ideas this section is built on.",
+    "topicIds": ["notification-vs-state-transfer", "event-sourcing", "cqrs"],
+    "free": true
+  },
+  {
+    "id": "richardson-outbox",
+    "title": "Pattern: Transactional outbox",
+    "author": "Chris Richardson, microservices.io",
+    "kind": "docs",
+    "url": "https://microservices.io/patterns/data/transactional-outbox.html",
+    "why": "The canonical write-up of the outbox, with the polling publisher and transaction log tailing variants.",
+    "topicIds": ["outbox", "cdc"],
+    "free": true
+  },
+  {
+    "id": "debezium-docs",
+    "title": "Debezium documentation",
+    "author": "Debezium project",
+    "kind": "docs",
+    "url": "https://debezium.io/documentation/",
+    "why": "How Debezium connectors read the Postgres WAL and MySQL binlog, and the Outbox Event Router transformation.",
+    "topicIds": ["cdc", "outbox"],
+    "free": true
+  },
+  {
+    "id": "fowler-cqrs",
+    "title": "CQRS",
+    "author": "Martin Fowler",
+    "kind": "blog",
+    "url": "https://martinfowler.com/bliki/CQRS.html",
+    "why": "A short definition of CQRS with a clear warning about when it adds more complexity than it removes.",
+    "topicIds": ["cqrs"],
+    "free": true
+  }
+]

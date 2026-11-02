@@ -1,0 +1,7 @@
+[
+  { "id": "eviction-c1", "text": "I can explain the difference between expiration (freshness) and eviction (capacity).", "topicId": "why-evict" },
+  { "id": "eviction-c2", "text": "I can trace a request sequence through LRU and FIFO caches and count the hits.", "topicId": "lru" },
+  { "id": "eviction-c3", "text": "I can implement an LRU cache with O(1) get and set using a hash map and a doubly linked list.", "topicId": "lru-implementation" },
+  { "id": "eviction-c4", "text": "I can explain when LFU beats LRU and why LFU needs decay.", "topicId": "lfu" },
+  { "id": "eviction-c5", "text": "I can configure maxmemory and maxmemory-policy for a Redis cache and explain how Redis samples keys to approximate LRU.", "topicId": "redis-eviction" }
+]

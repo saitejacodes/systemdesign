@@ -1,0 +1,32 @@
+[
+  {
+    "id": "fb-memcache",
+    "title": "Scaling Memcache at Facebook",
+    "author": "Rajesh Nishtala et al. (NSDI 2013)",
+    "kind": "paper",
+    "url": "https://www.usenix.org/conference/nsdi13/technical-sessions/presentation/nishtala",
+    "why": "Explains delete-on-write, the stale-set race and the lease mechanism that closes it, at very large scale.",
+    "topicIds": ["race", "delete-vs-update"],
+    "free": true
+  },
+  {
+    "id": "fowler-two-hard-things",
+    "title": "TwoHardThings",
+    "author": "Martin Fowler",
+    "kind": "blog",
+    "url": "https://martinfowler.com/bliki/TwoHardThings.html",
+    "why": "The origin and variations of the famous cache invalidation quip, in a short read.",
+    "topicIds": ["ttl-expiry"],
+    "free": true
+  },
+  {
+    "id": "azure-cache-aside",
+    "title": "Cache-Aside pattern",
+    "author": "Microsoft Azure Architecture Center",
+    "kind": "docs",
+    "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/cache-aside",
+    "why": "Covers expiration policies and keeping cached data consistent with the data store.",
+    "topicIds": ["ttl-expiry", "explicit-delete"],
+    "free": true
+  }
+]

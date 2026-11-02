@@ -1,0 +1,32 @@
+[
+  {
+    "id": "eip",
+    "title": "Enterprise Integration Patterns",
+    "author": "Gregor Hohpe and Bobby Woolf",
+    "kind": "book",
+    "url": "https://www.enterpriseintegrationpatterns.com/",
+    "why": "The classic vocabulary for messaging: point-to-point channels, publish-subscribe channels, competing consumers, polling and event-driven consumers. The website summarises each pattern for free.",
+    "topicIds": ["point-to-point", "pub-sub", "push-pull"],
+    "free": false
+  },
+  {
+    "id": "azure-load-leveling",
+    "title": "Queue-Based Load Leveling pattern",
+    "author": "Microsoft Azure Architecture Center",
+    "kind": "docs",
+    "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/queue-based-load-leveling",
+    "why": "A short, vendor-neutral write-up of using a queue to buffer spikes, with when not to use it.",
+    "topicIds": ["why-async"],
+    "free": true
+  },
+  {
+    "id": "azure-competing-consumers",
+    "title": "Competing Consumers pattern",
+    "author": "Microsoft Azure Architecture Center",
+    "kind": "docs",
+    "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/competing-consumers",
+    "why": "How multiple workers share one queue, plus the ordering and poison-message issues that come with it.",
+    "topicIds": ["point-to-point"],
+    "free": true
+  }
+]

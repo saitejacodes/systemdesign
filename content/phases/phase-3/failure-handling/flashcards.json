@@ -1,0 +1,20 @@
+[
+  { "id": "failure-handling-f1", "front": "Exponential backoff formula?", "back": "delay = min(cap, base × 2^attempt). Each failure doubles the wait, up to a cap.", "topicId": "retries-backoff" },
+  { "id": "failure-handling-f2", "front": "Full jitter?", "back": "sleep = random(0, min(cap, base × 2^attempt)). Spreads retries from clients that failed together.", "topicId": "retries-backoff" },
+  { "id": "failure-handling-f3", "front": "Why does backoff without jitter still cause spikes?", "back": "Clients that failed at the same moment follow the same schedule, so they retry in synchronised waves.", "topicId": "retries-backoff" },
+  { "id": "failure-handling-f4", "front": "Retry amplification across 3 layers of 3 attempts?", "back": "3 × 3 × 3 = 27 calls to the bottom layer for one request. Retry at one layer or use a retry budget.", "topicId": "retries-backoff" },
+  { "id": "failure-handling-f5", "front": "Which errors should not be retried?", "back": "Permanent ones: validation failures, 400s, missing entities. They fail the same way every time.", "topicId": "retries-backoff" },
+  { "id": "failure-handling-f6", "front": "Poison message?", "back": "A message that fails every time it is processed, however often it is retried.", "topicId": "poison-messages" },
+  { "id": "failure-handling-f7", "front": "Poison message in an ordered stream?", "back": "Head-of-line blocking: the partition or message group can't advance past it, so everything behind waits.", "topicId": "poison-messages" },
+  { "id": "failure-handling-f8", "front": "SQS visibility timeout?", "back": "How long a received message stays hidden from other consumers (30 s default). Not deleted in time, it reappears.", "topicId": "poison-messages" },
+  { "id": "failure-handling-f9", "front": "Dead-letter queue?", "back": "A separate queue where messages go after too many failed attempts, so the main queue keeps flowing.", "topicId": "dead-letter-queues" },
+  { "id": "failure-handling-f10", "front": "SQS redrive policy?", "back": "Names the DLQ and a maxReceiveCount; messages received more times than that are moved to the DLQ.", "topicId": "dead-letter-queues" },
+  { "id": "failure-handling-f11", "front": "RabbitMQ dead-lettering triggers?", "back": "Reject without requeue, message TTL expiry, queue length overflow, quorum-queue delivery limit exceeded.", "topicId": "dead-letter-queues" },
+  { "id": "failure-handling-f12", "front": "Redrive?", "back": "Moving messages from a DLQ back to the source queue after the fix. Do it at a throttled rate.", "topicId": "dead-letter-queues" },
+  { "id": "failure-handling-f13", "front": "Does Kafka have a broker-side DLQ?", "back": "No. Clients or frameworks (Kafka Connect, Spring Kafka) publish failed records to a dead-letter topic.", "topicId": "dead-letter-queues" },
+  { "id": "failure-handling-f14", "front": "Backpressure?", "back": "A slow downstream making the upstream slow down (block, reject, drop) instead of letting work pile up.", "topicId": "backpressure" },
+  { "id": "failure-handling-f15", "front": "Producers 1,200/s, consumers 1,000/s: backlog per hour?", "back": "200/s × 3,600 = 720,000 messages an hour.", "topicId": "backpressure" },
+  { "id": "failure-handling-f16", "front": "Best lag metric for a queue?", "back": "Age of the oldest message (or consumer lag in seconds): how far behind you really are.", "topicId": "backpressure" },
+  { "id": "failure-handling-f17", "front": "RabbitMQ prefetch?", "back": "basic.qos limit on unacknowledged messages a consumer may hold; the broker stops delivering at the limit.", "topicId": "prefetch" },
+  { "id": "failure-handling-f18", "front": "Symptoms of prefetch too high?", "back": "One consumer hoards messages while others idle, high latency, big redelivery bursts after a crash.", "topicId": "prefetch" }
+]

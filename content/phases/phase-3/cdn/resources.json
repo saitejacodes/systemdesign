@@ -1,0 +1,32 @@
+[
+  {
+    "id": "mdn-http-caching",
+    "title": "HTTP caching",
+    "author": "MDN Web Docs",
+    "kind": "docs",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching",
+    "why": "The clearest practical guide to Cache-Control, validation, Vary and cache-busting patterns.",
+    "topicIds": ["cache-headers", "cache-keys", "purging"],
+    "free": true
+  },
+  {
+    "id": "rfc-9111",
+    "title": "RFC 9111: HTTP Caching",
+    "author": "Fielding, Nottingham and Reschke (IETF)",
+    "kind": "docs",
+    "url": "https://www.rfc-editor.org/rfc/rfc9111",
+    "why": "The standard itself: exact meanings of every Cache-Control directive and how shared caches must behave.",
+    "topicIds": ["cache-headers"],
+    "free": true
+  },
+  {
+    "id": "web-dev-http-cache",
+    "title": "Prevent unnecessary network requests with the HTTP Cache",
+    "author": "web.dev (Google)",
+    "kind": "blog",
+    "url": "https://web.dev/articles/http-cache",
+    "why": "A decision flow for choosing headers for versioned assets versus HTML.",
+    "topicIds": ["cache-headers", "purging"],
+    "free": true
+  }
+]

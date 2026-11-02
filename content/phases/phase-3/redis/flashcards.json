@@ -1,0 +1,20 @@
+[
+  { "id": "redis-f1", "front": "Redis structure for a leaderboard?", "back": "Sorted set: ZADD / ZINCRBY to update, ZRANGE key 0 9 REV WITHSCORES for the top 10, ZREVRANK for a rank.", "topicId": "data-structures" },
+  { "id": "redis-f2", "front": "Hash vs string-of-JSON for an object?", "back": "A hash lets you read or update one field (HGET, HINCRBY) without rewriting the whole value.", "topicId": "data-structures" },
+  { "id": "redis-f3", "front": "Capped recent-items feed in Redis?", "back": "LPUSH the new item, then LTRIM key 0 N-1 to keep only the latest N.", "topicId": "data-structures" },
+  { "id": "redis-f4", "front": "HyperLogLog?", "back": "Approximate distinct count in at most 12 KB with ~0.81% standard error. PFADD, PFCOUNT, PFMERGE.", "topicId": "data-structures" },
+  { "id": "redis-f5", "front": "Stream vs list as a queue?", "back": "Streams keep entries after reading, have consumer groups and XACK, and support replay. A popped list item is gone.", "topicId": "data-structures" },
+  { "id": "redis-f6", "front": "TTL return values?", "back": "Seconds remaining; -1 = no expiry; -2 = key doesn't exist.", "topicId": "expiry" },
+  { "id": "redis-f7", "front": "What clears a key's TTL by accident?", "back": "Overwriting it with a plain SET. Use SET ... EX again or SET ... KEEPTTL.", "topicId": "expiry" },
+  { "id": "redis-f8", "front": "How does Redis expire keys?", "back": "Lazily when a key is accessed, plus a background cycle that samples keys with TTLs and deletes expired ones.", "topicId": "expiry" },
+  { "id": "redis-f9", "front": "RDB?", "back": "Point-in-time snapshot written by a forked child using copy-on-write. Compact and fast to load; loses writes since the last snapshot.", "topicId": "persistence" },
+  { "id": "redis-f10", "front": "AOF appendfsync options?", "back": "always (safest, slowest), everysec (default, lose ~1 s), no (OS decides, least safe).", "topicId": "persistence" },
+  { "id": "redis-f11", "front": "Redis replication default?", "back": "Asynchronous: acknowledged writes can be lost on failover. WAIT narrows but doesn't close the window.", "topicId": "replication-cluster" },
+  { "id": "redis-f12", "front": "How does Redis Cluster place keys?", "back": "16,384 hash slots; slot = CRC16(key) mod 16384; each primary owns a range of slots.", "topicId": "replication-cluster" },
+  { "id": "redis-f13", "front": "Hash tag?", "back": "Only the part in braces is hashed, so {user:42}:cart and {user:42}:profile share a slot and can be used together.", "topicId": "replication-cluster" },
+  { "id": "redis-f14", "front": "MOVED vs ASK?", "back": "MOVED: the slot lives elsewhere, update your map. ASK: during migration, send this one request to the new node.", "topicId": "replication-cluster" },
+  { "id": "redis-f15", "front": "Consequence of single-threaded execution?", "back": "Every command is atomic, but one slow O(N) command (KEYS, huge HGETALL, long Lua) blocks every client.", "topicId": "threading" },
+  { "id": "redis-f16", "front": "What do Redis 6 I/O threads do?", "back": "Read requests and write replies on sockets in parallel; commands still execute one at a time on the main thread.", "topicId": "threading" },
+  { "id": "redis-f17", "front": "MULTI/EXEC guarantees?", "back": "Queued commands run back-to-back without interleaving. No rollback on runtime errors; use WATCH for optimistic checks.", "topicId": "atomicity" },
+  { "id": "redis-f18", "front": "Why use a Lua script?", "back": "Multi-step logic (check then act) runs atomically on the server in one round trip. Keep it short: it blocks the server.", "topicId": "atomicity" }
+]

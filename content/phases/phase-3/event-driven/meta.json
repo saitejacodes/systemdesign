@@ -1,0 +1,20 @@
+{
+  "id": "p3-event-driven",
+  "phase": 3,
+  "slug": "event-driven",
+  "title": "Event-driven architecture and the outbox",
+  "order": 12,
+  "week": 8,
+  "estimatedMinutes": 75,
+  "topics": [
+    { "id": "events-vs-commands", "title": "Events vs commands", "depth": "deep" },
+    { "id": "notification-vs-state-transfer", "title": "Event notification vs event-carried state transfer", "depth": "tradeoffs" },
+    { "id": "event-sourcing", "title": "Event sourcing", "depth": "tradeoffs" },
+    { "id": "cqrs", "title": "CQRS", "depth": "tradeoffs" },
+    { "id": "outbox", "title": "The outbox pattern", "depth": "deep" },
+    { "id": "cdc", "title": "Change data capture", "depth": "awareness" }
+  ],
+  "simulatorIds": ["outbox"],
+  "practiceCaseStudyIds": ["notification-system"],
+  "prerequisites": ["p3-queues-vs-pubsub", "p3-delivery-semantics", "p2-transactions"]
+}

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "aws-backoff-jitter",
+    "title": "Exponential Backoff And Jitter",
+    "author": "Marc Brooker, AWS Architecture Blog",
+    "kind": "blog",
+    "url": "https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/",
+    "why": "The classic comparison of no jitter, full jitter, equal jitter and decorrelated jitter, with simulations of the load each produces.",
+    "topicIds": ["retries-backoff"],
+    "free": true
+  },
+  {
+    "id": "sqs-dlq-docs",
+    "title": "Using dead-letter queues in Amazon SQS",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html",
+    "why": "How redrive policies, maxReceiveCount and DLQ redrive work in SQS, and the retention caveats.",
+    "topicIds": ["dead-letter-queues", "poison-messages"],
+    "free": true
+  },
+  {
+    "id": "rabbitmq-prefetch",
+    "title": "Consumer Prefetch",
+    "author": "RabbitMQ",
+    "kind": "docs",
+    "url": "https://www.rabbitmq.com/docs/consumer-prefetch",
+    "why": "Exactly how basic.qos limits unacknowledged deliveries per consumer and channel.",
+    "topicIds": ["prefetch", "backpressure"],
+    "free": true
+  },
+  {
+    "id": "rabbitmq-dlx",
+    "title": "Dead Letter Exchanges",
+    "author": "RabbitMQ",
+    "kind": "docs",
+    "url": "https://www.rabbitmq.com/docs/dlx",
+    "why": "The events that dead-letter a message in RabbitMQ and how the dead-letter exchange routes it.",
+    "topicIds": ["dead-letter-queues"],
+    "free": true
+  }
+]

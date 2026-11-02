@@ -77,3 +77,10 @@
 - S-09 Sharding: 10,000 users on 4–16 shards by id range, name range, hash or directory, uniform or Zipf traffic; celebrities, add shard (% data moved per strategy), split hot shard, salting and a dedicated shard; load heatmap with OK/HOT/OVERLOADED labels, max/avg and shards touched by a friends' feed query.
 - Embedded in the indexing, transactions, data-modeling, locking, replication and sharding lessons. Every exercise checker and challenge is unit-tested (188 unit tests in total); each new route is in the Playwright smoke test.
 - Verify: open /simulators/isolation-lab, pick Write skew, set both sessions to SERIALIZABLE, press Run to end; open /simulators/sql-sandbox and pass the first exercise. `pnpm test`, `pnpm test:e2e`.
+
+## Prompt 10 · Phase 3 content
+- All 13 Phase 3 sections (weeks 7–8), each with lesson, quiz, flashcards, checkpoints and resources. Caching: cache layers, cache strategies, eviction, invalidation, cache failures, CDN, Redis. Messaging: queues vs pub/sub, delivery semantics, partitioning and ordering, failure handling, event-driven, Kafka vs queues.
+- About 31,000 lesson words, 148 quiz questions, 216 flashcards. Highlights: a mermaid sequence diagram for each of the five cache strategies, a TypeScript LRU (hash map + doubly linked list), both orders of the delete/update race as timelines, stampede fixes (locks, coalescing, XFetch early refresh, TTL jitter), Redis Cluster slot routing with a worked CRC16 slot, the dual-write bug before the outbox, Kafka/RabbitMQ/SQS decision table.
+- Simulator ids (cache, redis-playground, message-queue, outbox) are in meta.json and show as cards until Prompt 11 builds them.
+- 90 new glossary terms (282 total).
+- Verify: open /phase/3 and any section; `pnpm test` (content volume, topic and glossary checks), `pnpm test:e2e` (all 13 routes in the smoke test; the plan test now checks week 9 for "Coming soon").

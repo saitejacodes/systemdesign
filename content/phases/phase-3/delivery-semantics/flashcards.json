@@ -1,0 +1,18 @@
+[
+  { "id": "ds-f1", "front": "Message acknowledgement?", "back": "The consumer telling the broker it has finished with a message, so the broker can forget it. No ack means redelivery.", "topicId": "acks" },
+  { "id": "ds-f2", "front": "SQS visibility timeout?", "back": "How long a received message is hidden from other consumers (default 30 s, up to 12 h). Not deleted in time means it reappears.", "topicId": "acks" },
+  { "id": "ds-f3", "front": "How do you extend an SQS message's visibility while working?", "back": "Call ChangeMessageVisibility periodically, like a heartbeat.", "topicId": "acks" },
+  { "id": "ds-f4", "front": "How does a Kafka consumer acknowledge?", "back": "It commits its consumer group's offset for each partition; a replacement resumes from the last committed offset.", "topicId": "acks" },
+  { "id": "ds-f5", "front": "Kafka producer acks=0 / 1 / all?", "back": "Don't wait / leader has written it / all in-sync replicas have it (the default since Kafka 3.0).", "topicId": "acks" },
+  { "id": "ds-f6", "front": "At-most-once?", "back": "Processed zero or one times. Ack before processing. Can lose messages, never duplicates.", "topicId": "at-most-once" },
+  { "id": "ds-f7", "front": "Good fits for at-most-once?", "back": "Data that's quickly superseded: metrics samples, live locations, typing indicators.", "topicId": "at-most-once" },
+  { "id": "ds-f8", "front": "At-least-once?", "back": "Processed one or more times. Process, then ack; producers retry. Never lost, may duplicate.", "topicId": "at-least-once" },
+  { "id": "ds-f9", "front": "Five sources of duplicates?", "back": "Crash before ack, processing past the visibility timeout, lost acks, producer retries, rebalances (plus occasional SQS standard redelivery).", "topicId": "at-least-once" },
+  { "id": "ds-f10", "front": "Why is exactly-once delivery impossible in general?", "back": "A crash between the effect and the ack is indistinguishable from a crash before the effect, so the broker must risk loss or duplication.", "topicId": "effectively-once" },
+  { "id": "ds-f11", "front": "Effectively-once?", "back": "At-least-once delivery plus idempotent processing or broker transactions, so each message's effect happens once.", "topicId": "effectively-once" },
+  { "id": "ds-f12", "front": "Safe dedup-by-ID pattern?", "back": "Insert the message ID into a unique-constrained table in the same database transaction as the effect, then ack.", "topicId": "effectively-once" },
+  { "id": "ds-f13", "front": "SQS FIFO deduplication window?", "back": "5 minutes, by deduplication ID. Stops producer resends, not consumer reprocessing.", "topicId": "effectively-once" },
+  { "id": "ds-f14", "front": "Kafka idempotent producer?", "back": "Producer ID plus per-partition sequence numbers let the broker discard retried duplicates. Default since Kafka 3.0.", "topicId": "kafka-eos" },
+  { "id": "ds-f15", "front": "Kafka transactions?", "back": "Atomic writes across partitions plus the consumer offset commit (sendOffsetsToTransaction); readers use read_committed.", "topicId": "kafka-eos" },
+  { "id": "ds-f16", "front": "What Kafka exactly-once doesn't cover?", "back": "Side effects outside Kafka, such as emails or payment API calls. Those still need idempotency keys.", "topicId": "kafka-eos" }
+]

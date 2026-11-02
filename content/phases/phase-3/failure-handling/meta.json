@@ -1,0 +1,19 @@
+{
+  "id": "p3-failure-handling",
+  "phase": 3,
+  "slug": "failure-handling",
+  "title": "Failure handling: retries, DLQs and backpressure",
+  "order": 11,
+  "week": 8,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "retries-backoff", "title": "Retries with exponential backoff and jitter", "depth": "deep" },
+    { "id": "poison-messages", "title": "Poison messages", "depth": "deep" },
+    { "id": "dead-letter-queues", "title": "Dead-letter queues and redrive", "depth": "deep" },
+    { "id": "backpressure", "title": "Backpressure", "depth": "deep" },
+    { "id": "prefetch", "title": "Max in-flight and prefetch", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["message-queue"],
+  "practiceCaseStudyIds": ["notification-system"],
+  "prerequisites": ["p3-delivery-semantics", "p2-idempotency"]
+}

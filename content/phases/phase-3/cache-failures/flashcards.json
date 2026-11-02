@@ -1,0 +1,18 @@
+[
+  { "id": "cache-failures-f1", "front": "Cache stampede?", "back": "Many concurrent requests miss the same expired key and all rebuild it from the database at once.", "topicId": "stampede" },
+  { "id": "cache-failures-f2", "front": "How many requests miss during a rebuild?", "back": "Request rate × rebuild time. 20,000/s × 0.2 s = 4,000.", "topicId": "stampede" },
+  { "id": "cache-failures-f3", "front": "Why is a stampede a feedback loop?", "back": "Duplicate queries slow the database, which lengthens the rebuild, which lets even more requests miss.", "topicId": "stampede" },
+  { "id": "cache-failures-f4", "front": "Rebuild lock in Redis?", "back": "SET lock:key token NX PX 5000. Winner rebuilds; losers sleep and re-read. Release only if the token matches.", "topicId": "stampede" },
+  { "id": "cache-failures-f5", "front": "Request coalescing?", "back": "Concurrent requests for the same key in one process share a single in-flight fetch (e.g. Go singleflight, NGINX proxy_cache_lock).", "topicId": "stampede" },
+  { "id": "cache-failures-f6", "front": "Probabilistic early expiration (XFetch)?", "back": "Refresh when now − delta·beta·ln(rand) ≥ expiry: rare far from expiry, near-certain just before it. No locks.", "topicId": "stampede" },
+  { "id": "cache-failures-f7", "front": "Stale-while-revalidate in an app cache?", "back": "After a soft expiry, one caller rebuilds while others keep getting the old value until the hard TTL.", "topicId": "stampede" },
+  { "id": "cache-failures-f8", "front": "Cache penetration?", "back": "Requests for keys that exist in neither cache nor database, so every one hits the database.", "topicId": "penetration" },
+  { "id": "cache-failures-f9", "front": "Negative caching: strength and limit?", "back": "Caches 'not found' with a short TTL. Stops repeats of the same missing ID; useless against never-repeated random IDs.", "topicId": "penetration" },
+  { "id": "cache-failures-f10", "front": "Bloom filter guarantees?", "back": "No false negatives; tunable false positives. 'Definitely absent' can be trusted, 'possibly present' must be checked.", "topicId": "penetration" },
+  { "id": "cache-failures-f11", "front": "Bloom filter size at 1% false positives?", "back": "About 9.6 bits per item and 7 hash functions: ~120 MB for 100 million IDs.", "topicId": "penetration" },
+  { "id": "cache-failures-f12", "front": "Hot key?", "back": "One key with so much traffic it saturates the single node it lives on. More nodes don't help.", "topicId": "hot-keys" },
+  { "id": "cache-failures-f13", "front": "Two fixes for a hot key?", "back": "A short-TTL local cache in each app server, or replicate the key under several names (key#0..key#N) on different nodes.", "topicId": "hot-keys" },
+  { "id": "cache-failures-f14", "front": "Cache avalanche?", "back": "A large share of the cache disappears at once (synchronised expiry or an empty restart) and full load hits the database.", "topicId": "avalanche" },
+  { "id": "cache-failures-f15", "front": "TTL jitter?", "back": "Add randomness to TTLs (e.g. 3,600 s ± 10%) so keys written together don't expire together.", "topicId": "avalanche" },
+  { "id": "cache-failures-f16", "front": "Defences when the whole cache is cold?", "back": "Replicate across zones, warm before taking traffic, coalesce requests, and rate-limit or circuit-break database reads.", "topicId": "avalanche" }
+]

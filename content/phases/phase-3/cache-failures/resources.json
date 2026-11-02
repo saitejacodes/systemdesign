@@ -1,0 +1,32 @@
+[
+  {
+    "id": "fb-memcache",
+    "title": "Scaling Memcache at Facebook",
+    "author": "Nishtala et al. (NSDI 2013)",
+    "kind": "paper",
+    "url": "https://www.usenix.org/conference/nsdi13/technical-sessions/presentation/nishtala",
+    "why": "How Facebook used leases to stop thundering herds and stale sets, plus regional cache pools for hot data.",
+    "topicIds": ["stampede", "hot-keys"],
+    "free": true
+  },
+  {
+    "id": "xfetch-paper",
+    "title": "Optimal Probabilistic Cache Stampede Prevention",
+    "author": "Vattani, Chierichetti and Lowenstein (VLDB 2015)",
+    "kind": "paper",
+    "url": "https://www.vldb.org/pvldb/vol8/p886-vattani.pdf",
+    "why": "The XFetch algorithm for lock-free early refresh, with the proof of why the exponential rule is optimal.",
+    "topicIds": ["stampede"],
+    "free": true
+  },
+  {
+    "id": "go-singleflight",
+    "title": "singleflight package documentation",
+    "author": "The Go Authors",
+    "kind": "docs",
+    "url": "https://pkg.go.dev/golang.org/x/sync/singleflight",
+    "why": "A small, real implementation of request coalescing you can read in a few minutes.",
+    "topicIds": ["stampede", "avalanche"],
+    "free": true
+  }
+]

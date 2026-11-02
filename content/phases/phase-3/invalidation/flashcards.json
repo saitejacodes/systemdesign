@@ -1,0 +1,17 @@
+[
+  { "id": "invalidation-f1", "front": "Cache invalidation?", "back": "Removing or replacing a cached copy when the source of truth changes.", "topicId": "ttl-expiry" },
+  { "id": "invalidation-f2", "front": "Stale read?", "back": "A read that returns a value older than the latest committed write in the source of truth.", "topicId": "ttl-expiry" },
+  { "id": "invalidation-f3", "front": "TTL-only invalidation: pro and con?", "back": "Pro: no coordination and self-healing. Con: staleness up to the full TTL, and shorter TTLs multiply database load.", "topicId": "ttl-expiry" },
+  { "id": "invalidation-f4", "front": "Usual combination of invalidation methods?", "back": "Explicit delete on write for freshness, plus a TTL as a safety net for anything missed.", "topicId": "ttl-expiry" },
+  { "id": "invalidation-f5", "front": "Hardest part of explicit invalidation?", "back": "Finding every dependent key: profile, fragments, lists and feeds that embed the changed data.", "topicId": "explicit-delete" },
+  { "id": "invalidation-f6", "front": "CDC-driven invalidation?", "back": "A process reads the database's change stream (binlog, logical replication) and deletes affected keys after every commit, so no write path can forget.", "topicId": "explicit-delete" },
+  { "id": "invalidation-f7", "front": "Versioned key?", "back": "A key that includes a version, e.g. product:42:v18. A write bumps the version; old keys become unreachable and age out.", "topicId": "versioned-keys" },
+  { "id": "invalidation-f8", "front": "Namespace version?", "back": "A counter included in every key of a group (catalog:v8:...). Incrementing it invalidates the whole group at once.", "topicId": "versioned-keys" },
+  { "id": "invalidation-f9", "front": "Delete-first race?", "back": "Writer deletes, reader misses and reads old value, writer commits, reader sets old value. Cache stays stale until TTL.", "topicId": "race" },
+  { "id": "invalidation-f10", "front": "Remaining race with update-then-delete?", "back": "A reader reads the old row before the commit and sets it after the delete. Needs a very slow reader; rare but real.", "topicId": "race" },
+  { "id": "invalidation-f11", "front": "Cache lease (Facebook memcache)?", "back": "A token returned on a miss and required on the later set. A delete in between invalidates it, so stale sets are rejected.", "topicId": "race" },
+  { "id": "invalidation-f12", "front": "Delayed double delete?", "back": "Delete after the database update, then delete again after a short delay to remove anything a slow reader wrote back.", "topicId": "race" },
+  { "id": "invalidation-f13", "front": "Why is updating the cache on write risky?", "back": "Two concurrent writers can update the cache in the opposite order to the database, leaving a wrong value until the TTL.", "topicId": "delete-vs-update" },
+  { "id": "invalidation-f14", "front": "Why is delete on write safe under concurrent writers?", "back": "Delete is idempotent and order-independent: two deletes in any order leave the key empty, and the next read loads the latest value.", "topicId": "delete-vs-update" },
+  { "id": "invalidation-f15", "front": "Cost of delete on write?", "back": "One extra miss after each write; on very hot keys that can trigger a stampede of reloads.", "topicId": "delete-vs-update" }
+]

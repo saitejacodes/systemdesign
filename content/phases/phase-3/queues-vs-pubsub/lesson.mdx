@@ -1,0 +1,182 @@
+## Why it matters
+
+When you place an order on a big shopping site, the checkout page answers in well under a second, yet behind it a dozen things still have to happen: charge the card, reserve stock, send a confirmation email, notify the warehouse, update recommendations, feed analytics. If the checkout request called every one of those services directly and waited for each, one slow email provider would make checkout slow, and one crashed analytics service would make checkout fail. Almost every large system solves this the same way: the checkout service writes a message ("order 991 placed") to a messaging system and returns. Everything else happens **asynchronously**, at its own pace. Amazon SQS, Google Cloud Pub/Sub, RabbitMQ and Apache Kafka (built at LinkedIn and open-sourced in 2011) all exist for this job. The first design decision is which shape you need: a **queue**, where each message is handled by one worker, or **publish/subscribe**, where each message reaches every interested service.
+
+<Callout type="analogy" title="The restaurant ticket rail">
+A busy restaurant doesn't have the waiter stand in the kitchen until the steak is cooked. The waiter clips an order ticket onto the rail and goes back to the tables. Cooks pull tickets off the rail when they're free; during the Friday rush the rail gets long, but nobody is turned away at the door. That rail is a queue. Now imagine the restaurant also shouts every order through a loudspeaker so the bar, the dessert station and the manager's tally sheet each hear it and act independently. That loudspeaker is pub/sub.
+</Callout>
+
+## Why go asynchronous
+
+<DepthStamp depth="deep" />
+
+In a **synchronous** call (an HTTP or gRPC request), the caller waits for the answer. In an **asynchronous** design, the caller hands a message to a <Term slug="message-broker">message broker</Term>, a server whose only job is to accept messages, store them safely and hand them to consumers, and then carries on without waiting. The service that writes messages is the **producer**; the service that reads and processes them is the **consumer**.
+
+Three benefits drive almost every use of messaging:
+
+**1. Decoupling.** The producer only needs to know the broker's address and the message format. It doesn't know how many consumers exist, where they run, or whether they're up right now. You can add a fraud-check consumer next month without touching checkout. This also decouples *time*: the consumer can be down for a deploy for five minutes and simply catch up afterwards, because the messages wait in the broker.
+
+**2. Buffering spikes.** Traffic is bursty; processing capacity is usually fixed in the short term. A queue between them absorbs the difference. This pattern is called <Term slug="load-leveling">load leveling</Term>: the producer can spike to 10× normal for a few minutes, the queue grows, and consumers drain it at a steady rate they can handle. Without the queue, the spike lands directly on the slow service (a database, a payment provider, an email API with a rate limit) and something falls over.
+
+**3. Retries.** If a consumer fails halfway through a message (the email API times out), the broker still has the message and can deliver it again. The producer doesn't need retry logic for every downstream service; the broker centralises it. This is also why messaging and idempotency go together: a retried message may be processed twice, which the next section on delivery semantics covers in full.
+
+There's a fourth, quieter benefit: **independent scaling**. If image resizing is slow, you run 40 resize workers and 2 email workers, each sized for its own workload.
+
+What you give up is real:
+
+- **No immediate answer.** The producer learns that the broker accepted the message, not that the work succeeded. If the user needs the result now ("was my card charged?"), that step usually stays synchronous.
+- **Eventual consistency.** For a while, the order exists but the confirmation email hasn't been sent and the analytics dashboard doesn't show it.
+- **More moving parts.** The broker is now critical infrastructure that must be replicated, monitored and capacity-planned. Debugging a request that hops through three queues is harder than reading one stack trace.
+
+### Worked example: buffering a flash sale
+
+A ticketing site normally receives **200 orders per second**. Each order triggers a confirmation email through a provider whose API allows **500 sends per second** for this account. A flash sale opens and orders jump to **3,000 per second for 10 minutes**, then fall back to 200.
+
+- **Synchronous:** checkout calls the email API directly. At 3,000 per second the provider rejects 2,500 calls per second with rate-limit errors. Either checkout fails for most buyers, or checkout swallows the errors and those emails are lost.
+- **With a queue:** checkout enqueues an "order placed" message and returns. Email workers send at the full 500 per second.
+  - During the spike the backlog grows by 3,000 − 500 = **2,500 messages per second**. After 600 seconds the backlog is 2,500 × 600 = **1.5 million messages**.
+  - After the spike, workers still send 500 per second while only 200 arrive, so the backlog shrinks by **300 per second**. Draining 1.5 million takes 1,500,000 ÷ 300 = **5,000 seconds, about 83 minutes**.
+
+Every buyer gets their order confirmed instantly and every email is eventually sent; the worst-case email arrives roughly an hour and a half late. Whether that's acceptable is a product decision. If it isn't, you now have a precise number to argue with: you'd need a higher provider limit, not more checkout servers. Notice the broker must also *hold* 1.5 million messages; at about 1 KB each that's roughly 1.5 GB, trivial for SQS or Kafka but worth checking for an in-memory broker.
+
+## Point-to-point queues
+
+<DepthStamp depth="deep" />
+
+A <Term slug="message-queue">message queue</Term> delivers each message to **exactly one** consumer out of possibly many. This is the **point-to-point** model. You run several identical workers reading the same queue; the broker hands message 1 to worker A, message 2 to worker B, message 3 to worker C, and so on. This is the <Term slug="competing-consumers">competing consumers</Term> pattern: workers compete for messages, and adding workers increases throughput roughly linearly until something downstream (the database, the API) becomes the bottleneck.
+
+<Figure caption="FIG. 8.1 · POINT-TO-POINT · EACH MESSAGE GOES TO ONE OF THE WORKERS">
+<Diagram label="A producer writes jobs to one queue; three competing workers each take different jobs" chart={`flowchart LR
+  P["Producer: checkout"] -->|"job 1, 2, 3, 4"| Q[("Queue: resize-images")]
+  Q -->|"job 1, job 4"| W1["Worker A"]
+  Q -->|"job 2"| W2["Worker B"]
+  Q -->|"job 3"| W3["Worker C"]`} />
+</Figure>
+
+Key properties of a queue:
+
+- **A message is removed once it's processed.** The consumer acknowledges it and the broker deletes it. Queues are about *work to be done*, not a history of what happened.
+- **Work is spread across workers.** Each message is a task: resize this image, send this email, charge this card. You want it done once, by anyone.
+- **Ordering is weak by default.** With five workers processing in parallel, message 2 can finish before message 1. SQS standard queues explicitly offer only best-effort ordering; SQS FIFO queues preserve order within a "message group". Ordering is covered properly in the partitioning section.
+
+Typical uses: background jobs (video transcoding, PDF generation), smoothing writes to a slow system, and task distribution to a pool of workers. Amazon SQS, RabbitMQ queues, and job libraries such as Sidekiq (Ruby) or Celery (Python) all follow this model.
+
+## Publish/subscribe fan-out
+
+<DepthStamp depth="deep" />
+
+<Term slug="pub-sub">Publish/subscribe</Term> (pub/sub) delivers each message to **every** subscriber. The producer, now called a **publisher**, writes to a named channel called a **topic** ("orders"). Any number of services **subscribe** to the topic, and each receives its own copy of every message. This one-to-many delivery is called **fan-out**: one message in, many copies out.
+
+<Figure caption="FIG. 8.2 · PUB/SUB · EVERY SUBSCRIBER GETS ITS OWN COPY">
+<Diagram label="One publisher writes to an orders topic; email, warehouse and analytics subscribers each receive every message" chart={`flowchart LR
+  P["Publisher: checkout"] -->|"order 991 placed"| T{{"Topic: orders"}}
+  T -->|"copy"| S1["Email service"]
+  T -->|"copy"| S2["Warehouse service"]
+  T -->|"copy"| S3["Analytics service"]`} />
+</Figure>
+
+The difference from a queue is the question each answers:
+
+| | Point-to-point queue | Publish/subscribe |
+|---|---|---|
+| Who gets a message? | One consumer | Every subscriber |
+| What a message means | A task: "do this" | An event: "this happened" |
+| Adding a consumer | Shares the existing work | Gets its own copy of all messages |
+| Typical example | Resize this image | Order 991 was placed |
+| Products | SQS, RabbitMQ queue, Celery | SNS, Google Cloud Pub/Sub, Kafka topics, RabbitMQ fanout exchange |
+
+In practice the two are **combined**, and this is the shape you'll draw most often. Each subscribing *service* gets its own copy (pub/sub), and inside that service several *workers* share that copy (queue). Two common ways to build it:
+
+- **AWS:** publish to an SNS topic; subscribe one SQS queue per service. SNS copies each message into every queue; each service's worker fleet competes on its own queue. This SNS-to-SQS fan-out is a standard AWS pattern.
+- **Kafka:** consumers that share a **consumer group** name split the topic's messages between them (queue behaviour), while different groups each read every message independently (pub/sub behaviour). Consumer groups are covered in the partitioning section.
+- **RabbitMQ:** the publisher sends to an **exchange**; a `fanout` exchange copies the message to every queue bound to it, and each queue has its own competing consumers.
+
+One more distinction matters: **does the broker keep messages after delivery?** SNS and RabbitMQ deliver a message and forget it; a subscriber that wasn't connected misses it (unless a durable queue was buffering for it). Kafka keeps messages in a log for a retention period (seven days by default) whether or not anyone read them, so a new subscriber can start from the beginning and **replay** history. That replay ability is a big reason Kafka is used for event streams, and the Kafka vs queues section compares the two designs in depth.
+
+<Callout type="example" title="Notification system fan-out">
+In a notification system, "user 42 got a new follower" is published once. The push-notification service, the email-digest service and the in-app badge counter each subscribe. Each scales independently: the push service might run 30 workers on its queue while the digest service runs 2, because digests are batched hourly.
+</Callout>
+
+## Push vs pull consumers
+
+<DepthStamp depth="deep" />
+
+Once a message is in the broker, how does it reach a consumer? There are two models, and products differ here more than anywhere else.
+
+**Push:** the broker sends messages to the consumer as they arrive, either over an open connection (RabbitMQ's `basic.consume`) or by calling an HTTP endpoint you register (Google Cloud Pub/Sub push subscriptions, SNS HTTP subscriptions). Latency is low because nothing waits for the consumer to ask. The danger is overwhelming a slow consumer. RabbitMQ handles this with a **prefetch limit** (`basic.qos`): the broker will push at most N unacknowledged messages to each consumer, then stop until it acknowledges some. That limit is a form of <Term slug="backpressure">backpressure</Term>: a signal from a slow receiver that makes the sender slow down instead of piling work onto it.
+
+**Pull:** the consumer asks for messages when it's ready, in batches. Kafka consumers call `poll()`; SQS consumers call `ReceiveMessage` and get up to 10 messages per call. Backpressure is built in: a busy consumer simply doesn't ask. The cost is wasted requests when the queue is empty, which is why SQS offers **long polling**: a `ReceiveMessage` call with `WaitTimeSeconds` up to 20 waits on the server until a message arrives instead of returning empty immediately. It is the same <Term slug="long-polling">long polling</Term> idea used for browsers, applied to queues.
+
+<Figure caption="FIG. 8.3 · PULL WITH LONG POLLING · THE CONSUMER ASKS, THE BROKER WAITS">
+<Diagram label="A consumer issues a long poll; the broker holds the request until messages arrive, then returns a batch" chart={`sequenceDiagram
+    participant C as Consumer
+    participant B as Broker (SQS)
+    C->>B: ReceiveMessage (max 10, wait 20 s)
+    Note over B: queue empty, request held open
+    B-->>C: 3 messages (returned as soon as they arrive)
+    C->>C: process batch
+    C->>B: DeleteMessage x3 (acknowledge)
+    C->>B: ReceiveMessage (max 10, wait 20 s)`} />
+</Figure>
+
+| | Push | Pull |
+|---|---|---|
+| Who controls the pace? | Broker (limited by prefetch) | Consumer |
+| Latency when idle | Lowest | Low with long polling |
+| Batching | Possible, broker decides | Natural: consumer asks for N |
+| Slow consumer | Needs prefetch or flow control | Just polls less often |
+| Consumer must be reachable? | Yes, for HTTP push | No: consumer opens all connections |
+| Examples | RabbitMQ consume, Pub/Sub push, SNS to HTTP | Kafka, SQS, Pub/Sub pull |
+
+Pull is the default for high-throughput pipelines because consumers can batch (fetch 500 messages, write them to the database in one insert) and nothing upstream needs to know how fast they are. Push suits low-latency work with modest volume, and HTTP push suits serverless consumers that can't hold a long-lived connection. Many systems hide the difference: the AWS Lambda integration with SQS polls the queue for you and then invokes your function, so your code feels pushed-to while the queue underneath is pulled.
+
+<TradeoffBox title="Messaging tradeoffs" items={[
+  { gain: "Asynchronous: producers stay fast and survive slow or failed consumers", cost: "No immediate result; the system is eventually consistent" },
+  { gain: "Queues absorb spikes so slow services see a steady rate", cost: "A long backlog means long delays; you must monitor queue depth" },
+  { gain: "Pub/sub lets new consumers join without changing the producer", cost: "Harder to see who depends on an event, and changing its format affects every subscriber" },
+  { gain: "Pull consumers control their own pace and batch naturally", cost: "Idle polling cost and a little extra latency without long polling" },
+  { gain: "Push gives the lowest latency", cost: "Needs prefetch limits or the broker floods slow consumers" }
+]} />
+
+<NotWhenBox title="Putting a queue in the path" items={[
+  "The user needs the result in the same request (checking a password, showing a balance): keep it synchronous.",
+  "A simple internal call between two services with no spikes and no need for retries: a queue only adds a hop and an extra system to run.",
+  "Strict, global ordering of every message is required at high volume: plain queues reorder under parallel consumers.",
+  "You can't make consumers tolerate duplicates: nearly every broker will occasionally redeliver."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A queue makes the system faster." right="A queue makes the producer's response faster and protects consumers from spikes. Total work is the same, and end-to-end latency for the background work often gets longer." />
+
+<Misconception wrong="Pub/sub and queues are competing products; you pick one." right="They are delivery patterns, often combined: pub/sub fan-out to one queue per service, with competing consumers inside each service." />
+
+<Misconception wrong="Adding more consumers to a queue always increases throughput." right="It helps only until the shared downstream (a database, a rate-limited API) saturates. Past that, more workers just add contention." />
+
+<Misconception wrong="Push delivery is always faster than pull." right="With long polling, pull latency is close to push for most workloads, and pull handles slow consumers more gracefully." />
+
+## Interview angle
+
+<InterviewAngle title="Queues vs pub/sub" questions={[
+  "Why put a queue between these two services? What do you lose?",
+  "Three services all need to react to 'order placed'. Queue or pub/sub, and how would you build it on AWS?",
+  "Traffic spikes 15× for ten minutes. How big does the backlog get and how long does it take to drain?",
+  "Would you use push or pull consumers here, and how do you stop a slow consumer being overwhelmed?",
+  "How do you know the consumers are keeping up?"
+]}>
+Interviewers expect a queue or topic in almost every large design, and they probe whether you know *why* it's there. Name the benefit (decoupling, spike buffering, retries), state the cost (eventual consistency, an extra system), and pick the shape deliberately: a queue for tasks that should run once, pub/sub for events many services care about. Back it with a backlog calculation, and mention that you'd alert on queue depth or the age of the oldest message.
+</InterviewAngle>
+
+## Practice
+
+1. An image-sharing app receives 400 uploads per second at peak, and each resize takes 250 ms of CPU on one worker. How many workers do you need to keep up at peak, and what happens to the backlog if you run only 80?
+2. Draw the message flow for "user signed up" reaching a welcome-email service, a CRM sync and an analytics pipeline, first with SNS and SQS, then with Kafka consumer groups.
+3. A consumer calls an external API that allows 50 requests per second. Choose push or pull, and describe exactly how you would keep the consumer under that limit.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

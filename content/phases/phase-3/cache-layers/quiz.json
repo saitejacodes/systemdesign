@@ -1,0 +1,95 @@
+[
+  {
+    "id": "q1", "type": "single",
+    "prompt": "A cache hit costs 1 ms and a miss costs 21 ms. What is the average latency at a 95% hit ratio?",
+    "options": [ { "id": "a", "text": "1 ms" }, { "id": "b", "text": "2 ms" }, { "id": "c", "text": "11 ms" }, { "id": "d", "text": "20 ms" } ],
+    "correct": ["b"],
+    "explanation": "0.95 × 1 + 0.05 × 21 = 0.95 + 1.05 = 2 ms. (a) ignores the misses entirely. (c) is a simple average of hit and miss cost, which ignores the hit ratio. (d) is roughly the miss cost alone, as if nothing hit.",
+    "topicId": "hit-ratio", "difficulty": 1
+  },
+  {
+    "id": "q2", "type": "scenario",
+    "prompt": "What happens to the database?",
+    "scenario": "A service handles 40,000 reads a second with a 99% cache hit ratio, so the database sees about 400 reads a second. A deploy changes the format of every cache key, and for the next hour the hit ratio is 80%.",
+    "options": [ { "id": "a", "text": "Database reads rise about 20% because the hit ratio fell by 19 points" }, { "id": "b", "text": "Database reads rise to about 8,000 a second, twenty times the normal load" }, { "id": "c", "text": "Nothing changes, because the cache refills instantly" }, { "id": "d", "text": "Database reads fall, because the cache now holds fewer keys" } ],
+    "correct": ["b"],
+    "explanation": "Misses go from 1% to 20% of 40,000, so from 400/s to 8,000/s: a twenty-fold jump that can overwhelm a database sized for 400/s. (a) confuses the change in hit ratio with the change in miss volume. (c) is wrong because every renamed key must miss once and be refilled from the database. (d) has it backwards: fewer useful keys means more misses.",
+    "topicId": "hit-ratio", "difficulty": 2
+  },
+  {
+    "id": "q3", "type": "single",
+    "prompt": "Why does a cache of 1 GB often achieve a high hit ratio over a 20 GB dataset?",
+    "options": [ { "id": "a", "text": "Caches compress data twenty-fold" }, { "id": "b", "text": "Access is skewed, so the working set of hot keys is much smaller than the dataset" }, { "id": "c", "text": "The cache stores only the keys, not the values" }, { "id": "d", "text": "Misses are counted as hits after the first request" } ],
+    "correct": ["b"],
+    "explanation": "Real traffic concentrates on a small set of popular items; if that working set fits, most lookups hit. (a) Caches don't magically compress this much. (c) A cache must store values to answer reads. (d) A miss is a miss; it only turns into future hits for that key.",
+    "topicId": "hit-ratio", "difficulty": 1
+  },
+  {
+    "id": "q4", "type": "single",
+    "prompt": "Roughly how much slower is a lookup in a Redis cluster in the same data centre than a lookup in an in-process hash map?",
+    "options": [ { "id": "a", "text": "About the same" }, { "id": "b", "text": "About 2× slower" }, { "id": "c", "text": "Hundreds to thousands of times slower" }, { "id": "d", "text": "Millions of times slower" } ],
+    "correct": ["c"],
+    "explanation": "An in-process lookup takes around 100 ns to a few µs; a network round trip inside a data centre is roughly 0.2–1 ms, a factor of hundreds to thousands. (a) and (b) ignore the network hop and serialisation. (d) overstates it: millions would put Redis in the hundreds of milliseconds, like a cross-continent call.",
+    "topicId": "latency-ladder", "difficulty": 2
+  },
+  {
+    "id": "q5", "type": "multi",
+    "prompt": "Which of these are true about caching in the user's browser? (Choose all that apply.)",
+    "options": [ { "id": "a", "text": "You can't remove a cached response from a user's browser before it expires" }, { "id": "b", "text": "`Cache-Control: no-cache` means the response must never be stored" }, { "id": "c", "text": "Fingerprinted file names let you cache assets for a year and still ship updates" }, { "id": "d", "text": "A conditional request with an ETag can return 304 Not Modified with no body" } ],
+    "correct": ["a", "c", "d"],
+    "explanation": "(a) There is no purge for browsers; you wait for expiry or change the URL. (c) A new content hash is a new URL, so the long-cached old file is never requested. (d) Revalidation returns 304 when the ETag still matches. (b) is wrong: no-cache allows storing but requires revalidation before reuse; no-store forbids storing.",
+    "topicId": "edge-caches", "difficulty": 2
+  },
+  {
+    "id": "q6", "type": "scenario",
+    "prompt": "Where should the dashboard's data be cached?",
+    "scenario": "Your app's dashboard page shows each user their own unpaid invoices. Someone proposes caching the full page response at the CDN for 60 seconds to cut origin load.",
+    "options": [ { "id": "a", "text": "At the CDN as proposed, keyed by URL" }, { "id": "b", "text": "Not at the CDN: mark it Cache-Control private, and cache the per-user invoice data in a distributed cache keyed by user ID" }, { "id": "c", "text": "In the CDN, but with a 1-second TTL" }, { "id": "d", "text": "Nowhere; personalised data can never be cached" } ],
+    "correct": ["b"],
+    "explanation": "A shared cache keyed only by URL would serve one user's invoices to others. Personalised data belongs in the browser (private) or in an application cache whose key includes the user. (a) is the data leak. (c) still leaks, just for a shorter time. (d) is too strong: per-user caching keyed correctly is common and safe.",
+    "topicId": "edge-caches", "difficulty": 2
+  },
+  {
+    "id": "q7", "type": "scenario",
+    "prompt": "What best explains what users see?",
+    "scenario": "A product's price is cached for 5 minutes in an in-process cache on each of 20 app servers behind a round-robin load balancer. After a price change, a customer refreshing the page sees the new price, then the old one, then the new one again.",
+    "options": [ { "id": "a", "text": "The database is returning random versions" }, { "id": "b", "text": "Each server's copy expires on its own schedule, so requests landing on different servers see different values" }, { "id": "c", "text": "The browser is caching every other request" }, { "id": "d", "text": "Round-robin load balancing corrupts responses" } ],
+    "correct": ["b"],
+    "explanation": "In-process caches are per server and diverge until each one expires. Bouncing between servers shows the alternation. A shared distributed cache, or a much shorter TTL, removes it. (a) The database has one committed value. (c) A browser cache wouldn't produce alternating values tied to server choice. (d) The load balancer only chooses servers; it doesn't alter responses.",
+    "topicId": "app-caches", "difficulty": 2
+  },
+  {
+    "id": "q8", "type": "single",
+    "prompt": "A page makes 40 sequential Redis GETs at 0.5 ms each. What is the cheapest fix?",
+    "options": [ { "id": "a", "text": "Fetch the keys in one batched call such as MGET" }, { "id": "b", "text": "Add more Redis nodes" }, { "id": "c", "text": "Lower every key's TTL" }, { "id": "d", "text": "Move the data to the database" } ],
+    "correct": ["a"],
+    "explanation": "The 20 ms is round-trip time, not Redis work; one batched call pays roughly one round trip. (b) More nodes don't reduce the number of sequential round trips. (c) TTL affects freshness, not latency per call. (d) The database would be slower per lookup.",
+    "topicId": "app-caches", "difficulty": 2
+  },
+  {
+    "id": "q9", "type": "single",
+    "prompt": "Why can caching a query's result in Redis still help when the database's working set fits entirely in its buffer pool?",
+    "options": [ { "id": "a", "text": "It can't; an in-memory database is as fast as any cache" }, { "id": "b", "text": "The database still parses, plans and executes the query and uses a connection, which the application cache skips" }, { "id": "c", "text": "Redis stores data on faster disks" }, { "id": "d", "text": "The buffer pool is cleared after every query" } ],
+    "correct": ["b"],
+    "explanation": "A buffer pool removes disk reads, not query work. For an expensive join or aggregation, the CPU and connection cost remain, and a cached result skips them. (a) ignores that work. (c) Redis serves from RAM, not disk. (d) The buffer pool persists across queries; that's its point.",
+    "topicId": "buffer-pool", "difficulty": 2
+  },
+  {
+    "id": "q10", "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "A Postgres database that served queries in 2 ms for a year now takes 20–30 ms for the same queries. Query plans are unchanged. The main table has grown from 20 GB to 90 GB on a server with 64 GB of RAM.",
+    "options": [ { "id": "a", "text": "The hot pages no longer fit in memory, so many queries now read from disk" }, { "id": "b", "text": "Postgres slows down linearly with table size regardless of memory" }, { "id": "c", "text": "The application cache has a bug" }, { "id": "d", "text": "The network between app and database got slower" } ],
+    "correct": ["a"],
+    "explanation": "When the working set outgrows the buffer pool and OS page cache, page reads go to disk and latency jumps by an order of magnitude with unchanged plans. (b) Indexed lookups grow roughly logarithmically, not linearly, and the jump is too sudden. (c) The symptom is in database query time, not the app cache. (d) Nothing in the scenario points at the network, and table growth explains it.",
+    "topicId": "buffer-pool", "difficulty": 3
+  },
+  {
+    "id": "q11", "type": "scenario",
+    "prompt": "Which item is the worst candidate for a 5-minute cache?",
+    "scenario": "An online shop is deciding what to put in Redis with a 5-minute TTL: product descriptions, the top-sellers list, category trees, and the remaining stock count that checkout uses to decide whether an order can be accepted.",
+    "options": [ { "id": "a", "text": "Product descriptions" }, { "id": "b", "text": "The top-sellers list" }, { "id": "c", "text": "Category trees" }, { "id": "d", "text": "The stock count checkout uses to accept orders" } ],
+    "correct": ["d"],
+    "explanation": "A decision that must be correct right now (can we sell this?) shouldn't use a value up to 5 minutes old; it causes oversells. Read it from the source of truth. (a), (b) and (c) are read-heavy, expensive to assemble or rarely changed, and a few minutes of staleness is harmless.",
+    "topicId": "what-to-cache", "difficulty": 2
+  }
+]

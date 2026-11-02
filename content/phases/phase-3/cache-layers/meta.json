@@ -1,0 +1,20 @@
+{
+  "id": "p3-cache-layers",
+  "phase": 3,
+  "slug": "cache-layers",
+  "title": "Cache layers",
+  "order": 1,
+  "week": 7,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "hit-ratio", "title": "Hits, misses and the hit ratio", "depth": "deep" },
+    { "id": "latency-ladder", "title": "The latency ladder", "depth": "deep" },
+    { "id": "edge-caches", "title": "Browser, CDN and reverse proxy caches", "depth": "deep" },
+    { "id": "app-caches", "title": "In-process and distributed caches", "depth": "deep" },
+    { "id": "buffer-pool", "title": "The database buffer pool", "depth": "awareness" },
+    { "id": "what-to-cache", "title": "What to cache (and what not to)", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["cache"],
+  "practiceCaseStudyIds": ["news-feed"],
+  "prerequisites": ["p1-http", "p1-reverse-proxy"]
+}

@@ -11,4 +11,8 @@ export const SIM_TITLES: Record<string, string> = {
   "index-visualizer": "Index visualizer",
   replication: "Replication",
   sharding: "Sharding",
+  cache: "Cache",
+  "redis-playground": "Redis playground",
+  "message-queue": "Message queue",
+  outbox: "Outbox",
 };

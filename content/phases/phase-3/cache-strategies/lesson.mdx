@@ -1,0 +1,242 @@
+## Why it matters
+
+Putting a cache next to a database creates two copies of the same data, and every system then has to answer two questions: **who fills the cache on a read**, and **what happens to the cache on a write**. The answers are called caching strategies, and they decide whether users ever see stale data, whether a crash can lose writes, and how much latency each write pays. Facebook's 2013 paper "Scaling Memcache at Facebook" describes one of the largest caches ever run, and it is built on the plainest strategy of all: the application checks memcache, falls back to the database on a miss, and deletes the cache entry when it writes. Most of what you'll design in interviews uses the same pattern, and knowing why the alternatives exist is what lets you pick one on purpose.
+
+<Callout type="analogy" title="The office whiteboard and the filing cabinet">
+The facts live in a filing cabinet in the basement (the database); a whiteboard by the desks holds copies of the ones people keep asking about (the cache). **Cache-aside:** you check the whiteboard, and if the fact isn't there, you walk downstairs yourself and write it up on your way back. **Read-through:** you only ever look at the whiteboard; an intern stationed beside it fetches anything missing. **Write-through:** every change goes on the whiteboard and into the cabinet before you sit down. **Write-behind:** you update the whiteboard and the intern files the paperwork "later", which is great until the intern goes home sick with a pocket full of unfiled changes. **Write-around:** changes go straight to the cabinet, and the whiteboard learns about them only when someone next asks.
+</Callout>
+
+## Cache-aside
+
+<DepthStamp depth="deep" />
+
+<Term slug="cache-aside">Cache-aside</Term> (also called lazy loading or look-aside) is the default. The cache is a passive store; the **application** does all the work.
+
+**On a read:**
+
+1. Look up the key in the cache.
+2. On a hit, return it.
+3. On a miss, read from the database, store the result in the cache with a <Term slug="ttl">TTL</Term>, and return it.
+
+**On a write:** update the database, then **delete** the cache key so the next read reloads it. (The invalidation lesson explains why delete beats overwriting the cached value.)
+
+<Figure caption="FIG. 2.1 · CACHE-ASIDE · THE APPLICATION FILLS THE CACHE ON A MISS">
+<Diagram label="Cache-aside sequence: the app asks the cache, gets a miss, reads the database, writes the value into the cache, and returns it. A write updates the database, then deletes the cache key." chart={`sequenceDiagram
+  participant App
+  participant Cache
+  participant DB as Database
+  App->>Cache: GET user:42
+  Cache-->>App: miss
+  App->>DB: SELECT user 42
+  DB-->>App: row
+  App->>Cache: SET user:42 (TTL 10 min)
+  Note over App,DB: Later, a write
+  App->>DB: UPDATE user 42
+  App->>Cache: DEL user:42`} />
+</Figure>
+
+```ts
+async function getUser(id: string) {
+  const cached = await redis.get(`user:${id}`);
+  if (cached) return JSON.parse(cached);              // hit
+  const user = await db.users.findById(id);           // miss: go to the source
+  await redis.set(`user:${id}`, JSON.stringify(user), "EX", 600);
+  return user;
+}
+
+async function updateUser(id: string, changes: Partial<User>) {
+  await db.users.update(id, changes);                 // source of truth first
+  await redis.del(`user:${id}`);                      // then invalidate
+}
+```
+
+**Why it's the default:**
+
+- **Only requested data is cached**, so memory goes to the working set.
+- **The cache is optional.** If Redis is down, reads fall back to the database (slower, but correct). That resilience is a big deal.
+- **Any data model works.** The application can cache a joined, computed or serialised object, not just a table row.
+
+**Costs:**
+
+- **The first read of every key is a miss**, and after a restart, every key is. A cold cache sends a wave of traffic to the database. Pre-loading the hottest keys before taking traffic is called <Term slug="cache-warming">cache warming</Term>.
+- **Caching logic is spread through the code.** Every read path must remember to check, fill and set a TTL; every write path must remember to invalidate.
+- **Staleness is possible.** A write that forgets to delete, or a race between a read and a write, leaves an old value until the TTL expires. The invalidation lesson shows the exact race.
+
+## Read-through
+
+<DepthStamp depth="deep" />
+
+A <Term slug="read-through">read-through</Term> cache looks the same as cache-aside from the database's point of view, but the **cache itself** loads missing data. The application only ever talks to the cache; on a miss, the cache calls a loader function (or a configured connector) to fetch from the database, stores the result and returns it.
+
+<Figure caption="FIG. 2.2 · READ-THROUGH · THE CACHE LOADS ITS OWN MISSES">
+<Diagram label="Read-through sequence: the app asks the cache, the cache misses and itself queries the database, stores the row and returns it to the app." chart={`sequenceDiagram
+  participant App
+  participant Cache
+  participant DB as Database
+  App->>Cache: get(user 42)
+  Note over Cache: miss
+  Cache->>DB: loader: SELECT user 42
+  DB-->>Cache: row
+  Note over Cache: store with TTL
+  Cache-->>App: user 42`} />
+</Figure>
+
+You see this in libraries such as Caffeine's `LoadingCache` in Java, and in managed products such as Amazon DynamoDB Accelerator (DAX), which sits in front of DynamoDB and serves reads through itself.
+
+- **Pro:** the caching logic lives in one place, not in every handler. A good read-through library also **coalesces** concurrent misses for the same key, so 1,000 simultaneous requests for a cold key cause one database read, not 1,000.
+- **Con:** the cache must know how to load data, which couples it to your schema or needs a library in-process. And if the cache layer is down, reads can't simply bypass it the way cache-aside can.
+
+Consistency is the same as cache-aside: reads can be stale until a write invalidates the entry or its TTL runs out.
+
+## Write-through
+
+<DepthStamp depth="deep" />
+
+With <Term slug="write-through">write-through</Term>, every write goes to the cache **and** the database **synchronously**, and the write is acknowledged only when both succeed. Usually the cache (or a library wrapping it) writes to the database on the application's behalf; some teams implement it in the application by updating the database and then setting the cache value.
+
+<Figure caption="FIG. 2.3 · WRITE-THROUGH · THE WRITE RETURNS ONLY WHEN CACHE AND DATABASE AGREE">
+<Diagram label="Write-through sequence: the app writes to the cache, the cache writes to the database synchronously, and only after the database acknowledges does the cache acknowledge the app." chart={`sequenceDiagram
+  participant App
+  participant Cache
+  participant DB as Database
+  App->>Cache: put(user 42, new value)
+  Cache->>DB: UPDATE user 42
+  DB-->>Cache: committed
+  Note over Cache: store new value
+  Cache-->>App: ok
+  App->>Cache: get(user 42)
+  Cache-->>App: new value (hit)`} />
+</Figure>
+
+- **Freshness:** data that was just written is already in the cache, so the next read is a hit and current. That's attractive for read-after-write patterns such as "save profile, show profile".
+- **Durability:** the database has the write before the client hears "ok", so a cache crash loses nothing.
+- **Write latency:** each write pays both hops, for example 0.5 ms to the cache plus 5 ms to the database.
+- **Cache pollution:** every written value is cached, even ones nobody reads again. Write-through is usually combined with a TTL so unread values age out.
+
+The consistency caveat: unless the cache and database are updated atomically (they can't be, without a distributed transaction), a failure between the two steps, or two concurrent writers whose updates reach the cache and database in different orders, can leave them disagreeing. Write-through narrows the staleness window; it doesn't close it.
+
+## Write-behind
+
+<DepthStamp depth="deep" />
+
+<Term slug="write-behind">Write-behind</Term> (also called write-back) acknowledges the write as soon as the **cache** has it, and flushes changes to the database **asynchronously** later, often in batches.
+
+<Figure caption="FIG. 2.4 · WRITE-BEHIND · FAST ACKNOWLEDGEMENT, DELAYED DURABILITY">
+<Diagram label="Write-behind sequence: the app writes to the cache and is acknowledged immediately. Later, a background flush writes a batch of changes to the database." chart={`sequenceDiagram
+  participant App
+  participant Cache
+  participant DB as Database
+  App->>Cache: incr views:post 9
+  Cache-->>App: ok (fast)
+  App->>Cache: incr views:post 9
+  Cache-->>App: ok (fast)
+  Note over Cache: queue dirty keys
+  Note over Cache,DB: every 1 s
+  Cache->>DB: UPDATE posts SET views = views + 2 WHERE id = 9
+  DB-->>Cache: committed`} />
+</Figure>
+
+- **Pro: very fast writes**, at memory speed.
+- **Pro: write coalescing.** Many updates to the same key become one database write. 10,000 likes on a viral post in one second can become a single `UPDATE … + 10000`.
+- **Con: durability.** Any change acknowledged but not yet flushed is **lost** if the cache node dies. This is exactly the asynchronous replication tradeoff, applied to a cache.
+- **Con: the database is behind.** Anything reading the database directly (reports, other services, search indexing) sees older data than the cache.
+- **Con: complexity.** You need a reliable queue of dirty entries, retries when the database rejects a write, and ordering for writes to the same key.
+
+Products such as Hazelcast support write-behind through a configurable store with a write delay. In practice, many teams implement the same idea explicitly: write to Redis for speed, and have a worker periodically persist aggregates. That's fine for counters, view counts and analytics, and wrong for orders and payments.
+
+### Worked example: what write-behind can lose
+
+A video platform counts plays: **20,000 increments a second** across all videos, flushed every **2 seconds**. If a cache node holding a quarter of the keys crashes just before a flush, up to 20,000 × 2 × ¼ = **10,000 play counts** are lost. For a view counter that's acceptable; the number is approximate anyway. The same design for "orders placed" would lose 10,000 customer orders, which is not.
+
+## Write-around
+
+<DepthStamp depth="deep" />
+
+<Term slug="write-around">Write-around</Term> sends writes **only to the database** and leaves the cache alone (or just invalidates the key). The data enters the cache later, only if someone reads it, through cache-aside or read-through.
+
+<Figure caption="FIG. 2.5 · WRITE-AROUND · WRITES SKIP THE CACHE, READS FILL IT">
+<Diagram label="Write-around sequence: the app writes directly to the database and deletes the cache key. A later read misses the cache, reads the database and fills the cache." chart={`sequenceDiagram
+  participant App
+  participant Cache
+  participant DB as Database
+  App->>DB: INSERT log entry 7
+  App->>Cache: DEL entry:7 (if present)
+  Note over App,DB: Much later, maybe never
+  App->>Cache: GET entry:7
+  Cache-->>App: miss
+  App->>DB: SELECT entry 7
+  DB-->>App: row
+  App->>Cache: SET entry:7`} />
+</Figure>
+
+- **Pro:** write-heavy data that's rarely read back (logs, audit events, bulk imports, old chat history) doesn't flood the cache and evict useful entries.
+- **Con:** a read immediately after a write is always a miss.
+
+Write-around is really the write half of cache-aside: "update the database, delete the cache key" **is** write-around. Naming it separately is useful when you contrast it with write-through for a specific workload.
+
+## Choosing a strategy
+
+<DepthStamp depth="tradeoffs" />
+
+Read strategies and write strategies combine. The common pairings are **cache-aside + write-around (delete on write)**, which is the industry default, **read-through + write-through**, which suits a cache library or managed product that owns both paths, and **read-through + write-behind**, for write-heavy data that tolerates loss.
+
+| Strategy | Who fills the cache | Write latency | Read after write | Durability risk | Good for |
+|---|---|---|---|---|---|
+| Cache-aside | App, on a miss | DB only | Miss (after delete) | None from the cache | General default, read-heavy data |
+| Read-through | Cache's loader, on a miss | n/a (a read pattern) | Depends on the write side | None from the cache | Centralised caching logic, miss coalescing |
+| Write-through | Every write | Cache + DB | Hit, current | None (DB written first or together) | Data read right after it's written |
+| Write-behind | Every write | Cache only | Hit, current in cache | Unflushed writes lost on crash | Counters, metrics, high-rate updates |
+| Write-around | Later reads only | DB only | Miss | None from the cache | Write-heavy, rarely re-read data |
+
+A few rules of thumb:
+
+- **Start with cache-aside and delete on write.** It degrades gracefully when the cache fails and is easy to reason about.
+- **Add write-through** where users immediately re-read what they wrote and the extra write latency is affordable.
+- **Use write-behind only where losing a few seconds of writes is acceptable** and you've decided that in writing. If the business owner says "we can't lose any", it's not write-behind.
+- **Always set a TTL**, whatever the strategy. It's the safety net that bounds how long any bug or race can serve stale data.
+
+<TradeoffBox title="Caching strategy tradeoffs" items={[
+  { gain: "Cache-aside: simple, survives cache outages, caches only what is read", cost: "Cold misses after restarts, and caching logic in every code path" },
+  { gain: "Read-through: one place for loading logic, can coalesce concurrent misses", cost: "Cache must know how to load data; harder to bypass when it fails" },
+  { gain: "Write-through: fresh reads straight after writes, no durability loss", cost: "Every write pays two hops, and unread values pollute the cache" },
+  { gain: "Write-behind: memory-speed writes and batching", cost: "Acknowledged writes can be lost, and the database lags the cache" }
+]} />
+
+<NotWhenBox title="Write-behind" items={[
+  "Orders, payments, bookings or anything a customer was told succeeded.",
+  "Data other services read straight from the database and expect to be current.",
+  "When you can't build retries and ordering for the flush queue."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Write-through keeps the cache and database perfectly consistent." right="The two writes aren't atomic. A crash between them, or concurrent writers landing in different orders, can still leave them different. TTLs bound the damage." />
+
+<Misconception wrong="Write-behind is just a faster write-through." right="It changes durability: the client is told 'ok' before the database has the data, so a cache crash loses acknowledged writes." />
+
+<Misconception wrong="With cache-aside, a cache outage takes the site down." right="Cache-aside reads fall back to the database. The real risk is that the database can't handle the full load without the cache, so plan for that capacity or shed load." />
+
+## Interview angle
+
+<InterviewAngle title="Caching strategies" questions={[
+  "Walk me through what happens on a read and a write in your caching design.",
+  "Why cache-aside rather than write-through here?",
+  "Could you use write-behind for the like counter? For the order table?",
+  "What happens to your reads if the cache cluster goes down?"
+]}>
+State the strategy by name for both the read and the write path ("cache-aside reads, update the database then delete the key"), then justify it from the workload's read/write ratio and its tolerance for staleness and loss. Mention the TTL as a safety net. If you propose write-behind, say exactly what is lost on a crash and why that's acceptable. Interviewers listen for whether you know where the source of truth is at every moment.
+</InterviewAngle>
+
+## Practice
+
+1. For the news-feed case study, pick a strategy for each of: user profiles, a post's like count, the feed itself, and newly created posts. Justify each in one sentence.
+2. A write-behind cache flushes every 5 seconds and takes 3,000 writes a second spread evenly over 6 nodes. One node dies. How many writes could be lost?
+3. Write the pseudocode for a read-through cache that coalesces concurrent misses for the same key, so only one database query runs.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

@@ -1,0 +1,224 @@
+## Why it matters
+
+Light in fibre covers roughly 200 km per millisecond, so a user in Sydney fetching a file from a server in Virginia pays well over 100 ms per round trip before any server does any work, and a page load needs several round trips. No amount of backend tuning fixes physics. A <Term slug="cdn">CDN</Term> (content delivery network) fixes it by keeping copies of your content in hundreds of locations close to users, and as a bonus it absorbs most of your traffic so your own servers never see it. Netflix takes this to the extreme: its Open Connect network places Netflix-owned caching appliances inside internet providers' networks and fills them with the next day's likely-popular titles during off-peak hours. For most systems you will design, static assets, images and video go through a CDN by default, and the interesting questions are what to cache, for how long, under which key, and how to take it back.
+
+<Callout type="analogy" title="The franchise and the head-office kitchen">
+Think of your origin server as the head-office kitchen of a burger chain, and each CDN location as a franchise near the customers. A **pull** franchise opens empty and phones head office the first time someone orders a new item, then keeps a stack ready for a while. A **push** franchise gets a truck of tomorrow's menu delivered overnight. The recipe card stuck to each box (Cache-Control) says how long it may sit on the shelf. The order ticket the franchise files it under (the cache key) decides whether "burger, no pickles" and "burger" share a shelf. And a product recall (a purge) has to reach every franchise in the country.
+</Callout>
+
+## How a CDN works: pull vs push
+
+<DepthStamp depth="deep" />
+
+A CDN is a fleet of caching reverse proxies spread across many <Term slug="point-of-presence">points of presence</Term> (PoPs): data centres in or near major cities and internet exchanges. Users reach the nearest healthy PoP through <Term slug="anycast">anycast</Term> routing or GeoDNS. Your own servers, where the authoritative copy lives, are the <Term slug="origin-server">origin</Term>.
+
+### Pull CDNs
+
+With a <Term slug="pull-cdn">pull CDN</Term>, the PoP fetches content from the origin **on demand**: the first request for a URL at a PoP is a miss, the PoP fetches it from the origin, stores it according to its caching headers, and serves later requests from its own copy. CloudFront, Cloudflare, Fastly and Akamai all work this way by default.
+
+<Figure caption="FIG. 6.1 · PULL CDN WITH AN ORIGIN SHIELD · ONE ORIGIN FETCH PER OBJECT">
+  <Diagram label="The first user's request misses at the edge PoP and the shield and is fetched from the origin once. A later user at another PoP misses at the edge but hits the shield, so the origin is not contacted again." chart={`sequenceDiagram
+    participant U1 as User (Paris)
+    participant E1 as Edge PoP Paris
+    participant U2 as User (Madrid)
+    participant E2 as Edge PoP Madrid
+    participant S as Shield PoP
+    participant O as Origin
+    U1->>E1: GET /img/hero.jpg
+    E1->>S: miss, forward
+    S->>O: miss, fetch
+    O-->>S: 200 + Cache-Control max-age=86400
+    S-->>E1: 200 (shield stores copy)
+    E1-->>U1: 200 (edge stores copy)
+    U2->>E2: GET /img/hero.jpg
+    E2->>S: miss, forward
+    S-->>E2: 200 from shield cache
+    E2-->>U2: 200`} />
+</Figure>
+
+*Pull with a shield: the origin is contacted once per object, not once per PoP.*
+
+Without that middle layer, each of hundreds of PoPs misses independently, so a new object can cause hundreds of origin fetches. An <Term slug="origin-shield">origin shield</Term> (CloudFront's Origin Shield, Cloudflare's Tiered Cache, a "shield POP" in Fastly) makes edge PoPs fetch from one regional cache instead of the origin, which raises the overall hit rate and protects the origin from stampedes.
+
+**Pull is right for most things:** zero upload step, the cache fills itself with whatever is actually popular, and you control freshness with headers. The cost is that the first user at each PoP waits for the origin, and the origin must stay reachable.
+
+### Push CDNs
+
+With a <Term slug="push-cdn">push CDN</Term>, you upload content to the CDN's storage **ahead of time**, and the CDN serves it without ever asking an origin. You decide what is there and when it changes.
+
+Push suits large files that change rarely and are requested in big, predictable bursts: video libraries, game patches, software downloads, a launch day's assets. Netflix's overnight pre-positioning is push in spirit. The costs: you manage uploads, versions and deletions yourself, you pay for storage of everything whether or not anyone requests it, and a forgotten file keeps being served.
+
+| | Pull | Push |
+|---|---|---|
+| How content arrives | Fetched from origin on first miss per PoP | Uploaded by you in advance |
+| First request | Slower (origin round trip) | Fast (already there) |
+| Origin load | Misses and revalidations | None for pushed content |
+| Freshness control | Cache-Control headers, purges | Your upload and delete process |
+| Best for | Websites, APIs, images, most assets | Large, stable, bursty files |
+
+In practice the line has blurred: a very common setup is a pull CDN whose origin is an object store such as S3, which feels like push (you upload files to the bucket) while the CDN still pulls on demand.
+
+## Cache-Control, ETag and Vary
+
+<DepthStamp depth="deep" />
+
+A pull CDN decides what to cache, and for how long, mostly from the HTTP response headers your origin sends. These are standardised in RFC 9111 (HTTP Caching).
+
+### Cache-Control
+
+The <Term slug="cache-control">Cache-Control</Term> header carries directives, separated by commas:
+
+| Directive | Meaning |
+|---|---|
+| `max-age=N` | Fresh for N seconds in any cache, browser or CDN |
+| `s-maxage=N` | Overrides `max-age` for **shared** caches (CDNs, proxies) only |
+| `public` | Any cache may store it, even if the request was authenticated |
+| `private` | Only the user's browser may store it; CDNs must not |
+| `no-cache` | May be stored, but must be **revalidated** with the origin before every use |
+| `no-store` | Must not be stored anywhere |
+| `immutable` | Will never change during its freshness lifetime; browsers skip revalidation on reload |
+| `stale-while-revalidate=N` | After expiry, may serve the stale copy for N more seconds while refreshing in the background |
+| `stale-if-error=N` | May serve a stale copy for N seconds if the origin is failing |
+
+Note the trap: `no-cache` does **not** mean "don't cache"; `no-store` does.
+
+Three patterns cover most of the web:
+
+```
+# Fingerprinted static assets: /app.3f9a1c.js
+Cache-Control: public, max-age=31536000, immutable
+
+# HTML or a shared API response: short at the CDN, revalidate in browsers
+Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=30
+
+# Per-user data
+Cache-Control: private, no-store
+```
+
+Many CDNs let you override headers with their own rules, and RFC 9213 defines `CDN-Cache-Control`, a header aimed only at CDNs, so you can give the CDN and the browser different instructions.
+
+### ETag and revalidation
+
+When a cached copy expires it isn't necessarily wrong, just unverified. An <Term slug="etag">ETag</Term> is a version identifier the origin attaches to a response, such as `ETag: "v42-a1b2"`. To revalidate, the cache sends a <Term slug="conditional-request">conditional request</Term> with `If-None-Match: "v42-a1b2"`. If nothing changed, the origin replies **`304 Not Modified`** with no body, and the cache marks its copy fresh again. `Last-Modified` and `If-Modified-Since` do the same with timestamps, at one-second resolution.
+
+A 304 still costs a round trip to the origin, but it saves sending the body: for a 2 MB image, that is a few hundred bytes of headers instead of 2 MB.
+
+### Vary
+
+The <Term slug="vary-header">Vary</Term> header tells caches which **request** headers change the response, so they store separate copies per value. `Vary: Accept-Encoding` is standard and harmless: a gzip copy, a Brotli copy and an uncompressed copy. `Vary: User-Agent` is a classic mistake: there are thousands of distinct user-agent strings, so the cache stores thousands of copies and the hit rate collapses. If you need device-specific responses, normalise the header into a small set (mobile, tablet, desktop) at the CDN first.
+
+## Cache keys
+
+<DepthStamp depth="deep" />
+
+The <Term slug="cache-key">cache key</Term> is the identifier the CDN files a response under. By default it is roughly the scheme, host, path and full query string, plus any headers listed in `Vary`. Two requests with the same key share one cached copy; two requests with different keys are cached separately, even if the response is identical.
+
+Getting the key wrong fails in two directions:
+
+- **Too specific, and the hit rate collapses.** `/shoes?utm_source=newsletter` and `/shoes?utm_source=twitter` are different keys for the same page. So are `?a=1&b=2` and `?b=2&a=1` on CDNs that don't sort parameters. Including a cookie in the key makes every user's copy unique.
+- **Too broad, and users see each other's content.** If a page varies by language cookie or by logged-in user but the key ignores it, the first visitor's version is served to everyone. This is a real class of data leak, not just a cosmetic bug.
+
+### Worked example: tracking parameters
+
+A popular product page is cached with a 5-minute TTL and requested from 200 PoPs. Marketing links add `utm_source`, `utm_campaign` and `fbclid` parameters; suppose that produces 50 distinct query strings for the same page. With the full query string in the key, each PoP holds 50 copies and can miss up to 50 times per TTL instead of once: up to 200 × 50 = 10,000 origin fetches every 5 minutes for one page, instead of 200. Configuring the CDN to **exclude** tracking parameters from the key (or to include only an allow-list such as `?color=` and `?size=`) restores one copy per object per PoP. CloudFront calls this a cache policy; Cloudflare and Fastly offer equivalent cache-key rules.
+
+The rule of thumb: put in the key exactly the inputs that change the response, and nothing else. Normalise the rest (lower-case the host, sort parameters, collapse device types) before the lookup.
+
+## Purging and versioning
+
+<DepthStamp depth="tradeoffs" />
+
+Sooner or later you publish a wrong price or a broken image and need it gone from every PoP **now**, not when the TTL runs out. That is a <Term slug="cache-purge">purge</Term> (also called invalidation). CDNs offer several granularities:
+
+- **By URL:** remove one object. Simple, but you must know every URL, including resized image variants.
+- **By prefix or wildcard:** remove everything under `/products/123/`.
+- **By tag:** the origin labels responses with tags, and you purge everything carrying a tag. Fastly uses the `Surrogate-Key` header and Cloudflare uses `Cache-Tag` (plan availability has changed over time, so check current docs). Tag a product page, its JSON and its thumbnails with `product-123` and one call clears them all. This is the <Term slug="surrogate-key">surrogate key</Term> pattern.
+- **Purge everything:** the emergency brake. Every PoP is cold at once, which can stampede your origin, the CDN-scale version of a cache avalanche.
+
+Purges are asynchronous and propagate to PoPs over seconds; how fast depends on the vendor. Some CDNs charge for invalidations beyond a free allowance (CloudFront counts invalidation paths), and some offer a **soft purge** that marks content stale rather than deleting it, so it can still be served under `stale-if-error` if the origin is down.
+
+### Versioned URLs beat purging
+
+For static assets the better answer is to **never purge**: put a content hash or version in the filename (`/app.3f9a1c.js`), cache it for a year with `immutable`, and have the HTML reference the new filename when it changes. New deploys get new URLs; old URLs keep working for pages that still reference them. You then only need short TTLs (or purges) on the HTML that points at the assets.
+
+## Dynamic content at the edge
+
+<DepthStamp depth="awareness" />
+
+CDNs increasingly help with content that is not a static file:
+
+- **Microcaching:** caching a dynamic but shared response, such as a news homepage or a public API listing, for 1–10 seconds. At 5,000 requests a second per PoP, a 1-second TTL turns 5,000 origin hits into about 1.
+- **Acceleration without caching:** even uncacheable requests benefit, because the user's TCP and TLS handshakes end at a nearby PoP, and the PoP keeps warm, long-lived connections to the origin over the CDN's own backbone.
+- **Edge compute:** small functions that run in the PoP: Cloudflare Workers, Fastly Compute, AWS Lambda@Edge and CloudFront Functions. Typical uses are redirects, A/B test assignment, header rewriting, auth token checks and personalising a cached page shell.
+- **Edge Side Includes (ESI):** a markup language supported by Akamai, Fastly and Varnish that assembles a page at the edge from separately cached fragments, so a mostly-shared page with a small per-user box can still be cached.
+
+Treat these as tools to know about. Edge compute has tight CPU, memory and runtime limits, and the data your functions need still lives in a central database, so a chatty edge function can be slower than a single trip to the origin.
+
+## Cost tradeoffs
+
+<DepthStamp depth="tradeoffs" />
+
+CDNs bill mainly for bytes delivered to users and for requests, with prices that vary by region, volume and contract. Two forces pull in opposite directions: the CDN bill grows with traffic, but your origin's <Term slug="egress">egress</Term>, compute and database costs shrink with the hit rate.
+
+### Worked example (illustrative prices, not quotes)
+
+Assume **500 TB a month** of image traffic, a cloud egress price of **$0.09 per GB** if you serve directly from your origin, and a negotiated CDN delivery price of **$0.03 per GB**. These are planning assumptions for the exercise; check your providers' current price sheets.
+
+| Setup | Origin egress | CDN delivery | Total |
+|---|---|---|---|
+| No CDN | 500 TB × $0.09 = $45,000 | none | $45,000 |
+| CDN, 95% hit rate | 25 TB × $0.09 = $2,250 | 500 TB × $0.03 = $15,000 | $17,250 |
+| CDN, 80% hit rate | 100 TB × $0.09 = $9,000 | 500 TB × $0.03 = $15,000 | $24,000 |
+
+Two lessons hold regardless of the exact prices. First, **hit rate is money**: dropping from 95% to 80% quadruples origin egress, which is why cache keys and TTLs matter. Second, origin traffic to your own CDN is sometimes discounted or free (for example, AWS doesn't charge data transfer out from AWS origins to CloudFront), so the provider pairing matters. For very small sites the CDN may cost more than it saves; many CDNs offer free tiers that make that moot.
+
+<TradeoffBox title="CDN design tradeoffs" items={[
+  { gain: "Pull: self-filling, nothing to upload, headers control freshness", cost: "First request per PoP is slow; origin must stay up" },
+  { gain: "Push: instant first byte, no origin load", cost: "You manage uploads and deletes and pay to store everything" },
+  { gain: "Long TTLs: high hit rate, low origin cost", cost: "Changes take effect slowly unless you version URLs or purge" },
+  { gain: "Origin shield: one origin fetch per object", cost: "An extra hop on misses and sometimes an extra charge" },
+  { gain: "Edge compute: logic near the user", cost: "Strict limits; data still lives centrally" }
+]} />
+
+<NotWhenBox title="When a CDN won't help (much)" items={[
+  "Per-user, uncacheable responses such as account pages: only connection acceleration helps.",
+  "All users in one region next to the origin, at low traffic: little latency to save.",
+  "Data that must never be stale for even a second, such as balances.",
+  "Anything sensitive without Cache-Control: private or no-store set correctly."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Cache-Control: no-cache means the response is never cached." right="It may be stored but must be revalidated before each use. no-store is the directive that forbids storing it." />
+
+<Misconception wrong="A purge is instant and free, so short TTLs are unnecessary." right="Purges propagate over seconds, can cost money, and a broad purge empties the cache and stampedes the origin. Version static URLs instead." />
+
+<Misconception wrong="A CDN is only for static files." right="It also microcaches shared dynamic responses, terminates TLS near users and runs edge logic, though truly per-user data stays at the origin." />
+
+<Misconception wrong="More data in the cache key is safer." right="Unneeded parts (tracking parameters, cookies, User-Agent) split one object into thousands of copies and wreck the hit rate. Include exactly what changes the response." />
+
+## Interview angle
+
+<InterviewAngle title="CDNs" questions={[
+  "How would you serve images for a global social app?",
+  "Push or pull CDN for a video platform's catalogue? For a news site?",
+  "Your CDN hit rate is 60%. How do you find out why and raise it?",
+  "You shipped a wrong price that is cached for an hour. What do you do now, and how do you avoid it next time?",
+  "Can you put the news feed API behind a CDN?"
+]}>
+Put a CDN in front of static and media content early in any design and say why: latency near users and offloading the origin. Then show depth: the Cache-Control headers you would set for fingerprinted assets versus HTML, how you'd design the cache key, origin shield to protect the origin, and versioned URLs instead of purges. For dynamic data, say what can be microcached (a public trending list) and what can't (a personalised feed), and mention edge compute only as an option. Quantify with hit rate × traffic.
+</InterviewAngle>
+
+## Practice
+
+1. Write the Cache-Control headers for: a fingerprinted CSS file, a product page's HTML that changes a few times an hour, and a user's order history API.
+2. Your CDN serves 1 billion requests a day at a 70% hit rate. Logs show 40% of query strings contain `utm_` parameters. Explain what you'd change and estimate the new origin request count if the hit rate rises to 92%.
+3. Design purging for an e-commerce site where one product edit must update its page, its JSON API and twelve image sizes everywhere within a minute.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

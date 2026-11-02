@@ -1,0 +1,32 @@
+[
+  {
+    "id": "azure-cache-aside",
+    "title": "Cache-Aside pattern",
+    "author": "Microsoft Azure Architecture Center",
+    "kind": "docs",
+    "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/cache-aside",
+    "why": "A clear write-up of cache-aside with its consistency and lifetime considerations.",
+    "topicIds": ["cache-aside", "choosing"],
+    "free": true
+  },
+  {
+    "id": "aws-caching-best-practices",
+    "title": "Caching Best Practices",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://aws.amazon.com/caching/best-practices/",
+    "why": "Compares lazy loading (cache-aside) with write-through and explains how TTLs complement both.",
+    "topicIds": ["cache-aside", "write-through", "choosing"],
+    "free": true
+  },
+  {
+    "id": "fb-memcache",
+    "title": "Scaling Memcache at Facebook",
+    "author": "Rajesh Nishtala et al. (NSDI 2013)",
+    "kind": "paper",
+    "url": "https://www.usenix.org/conference/nsdi13/technical-sessions/presentation/nishtala",
+    "why": "A look-aside cache at enormous scale, with the reasoning behind delete-on-write and leases.",
+    "topicIds": ["cache-aside", "read-through"],
+    "free": true
+  }
+]

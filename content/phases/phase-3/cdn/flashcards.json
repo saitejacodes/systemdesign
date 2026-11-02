@@ -1,0 +1,19 @@
+[
+  { "id": "cdn-f1", "front": "Point of presence (PoP)?", "back": "A CDN data centre near users where cached content is served from.", "topicId": "push-pull" },
+  { "id": "cdn-f2", "front": "Pull CDN?", "back": "Fetches from the origin on the first miss at each PoP, then caches per headers. The default for most content.", "topicId": "push-pull" },
+  { "id": "cdn-f3", "front": "Push CDN?", "back": "You upload content in advance; the CDN never asks an origin. Good for large, stable, bursty files.", "topicId": "push-pull" },
+  { "id": "cdn-f4", "front": "Origin shield?", "back": "A regional cache layer between edge PoPs and the origin, so each object is fetched from the origin about once.", "topicId": "push-pull" },
+  { "id": "cdn-f5", "front": "max-age vs s-maxage?", "back": "max-age applies to all caches; s-maxage overrides it for shared caches like CDNs.", "topicId": "cache-headers" },
+  { "id": "cdn-f6", "front": "no-cache vs no-store?", "back": "no-cache: store but revalidate before each use. no-store: never store.", "topicId": "cache-headers" },
+  { "id": "cdn-f7", "front": "Headers for fingerprinted assets?", "back": "Cache-Control: public, max-age=31536000, immutable.", "topicId": "cache-headers" },
+  { "id": "cdn-f8", "front": "ETag revalidation?", "back": "Cache sends If-None-Match with the ETag; unchanged content gets 304 Not Modified with no body.", "topicId": "cache-headers" },
+  { "id": "cdn-f9", "front": "stale-while-revalidate=N?", "back": "After expiry, serve the stale copy for up to N seconds while refreshing in the background.", "topicId": "cache-headers" },
+  { "id": "cdn-f10", "front": "Why is Vary: User-Agent harmful?", "back": "Thousands of distinct values mean thousands of copies per URL, so the hit rate collapses.", "topicId": "cache-headers" },
+  { "id": "cdn-f11", "front": "Cache key?", "back": "What the CDN files a response under: by default host, path and query string plus Vary headers.", "topicId": "cache-keys" },
+  { "id": "cdn-f12", "front": "Cache-key rule of thumb?", "back": "Include exactly the inputs that change the response. Too much kills hit rate; too little leaks content between users.", "topicId": "cache-keys" },
+  { "id": "cdn-f13", "front": "Surrogate key / cache tag?", "back": "A label on responses so one purge clears every object with that tag (Fastly Surrogate-Key, Cloudflare Cache-Tag).", "topicId": "purging" },
+  { "id": "cdn-f14", "front": "Why prefer versioned URLs to purging?", "back": "New content gets a new key, so nothing needs purging, caches stay warm, and old pages keep working.", "topicId": "purging" },
+  { "id": "cdn-f15", "front": "Microcaching?", "back": "Caching a shared dynamic response for 1–10 seconds to collapse thousands of identical origin requests.", "topicId": "edge-compute" },
+  { "id": "cdn-f16", "front": "Edge compute examples?", "back": "Cloudflare Workers, Fastly Compute, Lambda@Edge, CloudFront Functions: redirects, auth checks, A/B tests, header rewrites.", "topicId": "edge-compute" },
+  { "id": "cdn-f17", "front": "What drives CDN cost savings?", "back": "Hit rate: every miss becomes origin egress, compute and database load.", "topicId": "cdn-cost" }
+]

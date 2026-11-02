@@ -1,0 +1,7 @@
+[
+  { "id": "qps-c1", "text": "I can name three reasons to make a step asynchronous and one case where it must stay synchronous.", "topicId": "why-async" },
+  { "id": "qps-c2", "text": "I can calculate the backlog a traffic spike creates and how long it takes to drain.", "topicId": "why-async" },
+  { "id": "qps-c3", "text": "I can explain competing consumers and say what limits how far adding workers helps.", "topicId": "point-to-point" },
+  { "id": "qps-c4", "text": "I can draw a fan-out design that gives each service its own copy of an event and spreads work across workers inside each service.", "topicId": "pub-sub" },
+  { "id": "qps-c5", "text": "I can choose push or pull for a consumer and explain how backpressure works in each.", "topicId": "push-pull" }
+]

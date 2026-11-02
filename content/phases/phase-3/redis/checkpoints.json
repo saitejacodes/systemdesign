@@ -1,0 +1,8 @@
+[
+  { "id": "redis-c1", "text": "I can pick the right Redis data structure for a feature and write the commands for it.", "topicId": "data-structures" },
+  { "id": "redis-c2", "text": "I can set TTLs correctly and explain how SET, KEEPTTL and lazy expiry behave.", "topicId": "expiry" },
+  { "id": "redis-c3", "text": "I can compare RDB and AOF and estimate how many writes a crash loses under each.", "topicId": "persistence" },
+  { "id": "redis-c4", "text": "I can explain hash slots, MOVED redirects and hash tags in Redis Cluster, and what async replication can lose.", "topicId": "replication-cluster" },
+  { "id": "redis-c5", "text": "I can explain why Redis commands are atomic and why KEYS or a long script stalls every client.", "topicId": "threading" },
+  { "id": "redis-c6", "text": "I can make multi-step logic safe with a single command, MULTI/EXEC with WATCH, or a Lua script.", "topicId": "atomicity" }
+]

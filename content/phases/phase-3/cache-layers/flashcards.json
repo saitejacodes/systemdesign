@@ -1,0 +1,17 @@
+[
+  { "id": "cache-layers-f1", "front": "Cache hit ratio?", "back": "The fraction of lookups answered by the cache. Average latency = hit ratio × hit cost + (1 − hit ratio) × miss cost.", "topicId": "hit-ratio" },
+  { "id": "cache-layers-f2", "front": "Going from 90% to 99% hit ratio does what to database load?", "back": "Cuts it ten-fold: misses drop from 10% to 1% of reads.", "topicId": "hit-ratio" },
+  { "id": "cache-layers-f3", "front": "Working set?", "back": "The data actively used over a period. If it fits in the cache, the hit ratio is high even when the full dataset is huge.", "topicId": "hit-ratio" },
+  { "id": "cache-layers-f4", "front": "Rough cost: in-process lookup vs distributed cache lookup?", "back": "About 100 ns to a few µs in process; about 0.2–1 ms for one in-data-centre round trip to Redis or Memcached.", "topicId": "latency-ladder" },
+  { "id": "cache-layers-f5", "front": "The two biggest jumps on the latency ladder?", "back": "In-process to any network hop (about 1,000×), and in-region to cross-continent (100× or more).", "topicId": "latency-ladder" },
+  { "id": "cache-layers-f6", "front": "Cache-Control: max-age=31536000, immutable?", "back": "Keep this response for a year and don't revalidate. Used for fingerprinted static assets whose URL changes when content changes.", "topicId": "edge-caches" },
+  { "id": "cache-layers-f7", "front": "Why do static assets get a content hash in the file name?", "back": "You can't delete a response from users' browsers. A new version gets a new URL, so the old cached copy is simply never requested.", "topicId": "edge-caches" },
+  { "id": "cache-layers-f8", "front": "Cache-Control: private?", "back": "Only the user's browser may cache the response; shared caches like CDNs and proxies must not.", "topicId": "edge-caches" },
+  { "id": "cache-layers-f9", "front": "Three problems with in-process caches on many servers?", "back": "Duplicated memory per server, values that diverge between servers, and an empty cache after every deploy.", "topicId": "app-caches" },
+  { "id": "cache-layers-f10", "front": "Two-tier (near) cache?", "back": "A small in-process cache with a short TTL in front of a distributed cache. Absorbs the hottest keys and protects hot Redis nodes.", "topicId": "app-caches" },
+  { "id": "cache-layers-f11", "front": "Fix for many sequential cache calls per page?", "back": "Batch them: MGET in Redis or multi-get in Memcached, so one round trip fetches many keys.", "topicId": "app-caches" },
+  { "id": "cache-layers-f12", "front": "Buffer pool?", "back": "The database's in-RAM cache of data pages: shared_buffers in PostgreSQL, innodb_buffer_pool_size in MySQL InnoDB.", "topicId": "buffer-pool" },
+  { "id": "cache-layers-f13", "front": "Why is a buffer pool hit slower than an app cache hit?", "back": "The database still parses, plans, locks and executes the query; only the disk read is skipped.", "topicId": "buffer-pool" },
+  { "id": "cache-layers-f14", "front": "Three properties of good cache candidates?", "back": "Read far more than written, expensive to produce, tolerant of slight staleness.", "topicId": "what-to-cache" },
+  { "id": "cache-layers-f15", "front": "What must a cache key include?", "back": "Everything that changes the response: user ID for personal data, locale, permissions, API version. Missing a field can leak one user's data to another.", "topicId": "what-to-cache" }
+]

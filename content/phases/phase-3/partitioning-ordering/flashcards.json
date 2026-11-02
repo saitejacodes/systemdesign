@@ -1,0 +1,20 @@
+[
+  { "id": "po-f1", "front": "Kafka partition?", "back": "An independent, ordered, append-only log within a topic. The unit of storage, parallelism and ordering.", "topicId": "partitions" },
+  { "id": "po-f2", "front": "Are offsets global or per partition?", "back": "Per partition. Offset 42 in partition 0 and in partition 1 are unrelated messages.", "topicId": "partitions" },
+  { "id": "po-f3", "front": "Rule of thumb for partition count?", "back": "Peak throughput ÷ per-consumer throughput, plus headroom for growth. You can't reduce it later.", "topicId": "partitions" },
+  { "id": "po-f4", "front": "Kinesis and SQS FIFO equivalents of partitions?", "back": "Kinesis: shards. SQS FIFO: message group IDs (order within a group, groups in parallel).", "topicId": "partitions" },
+  { "id": "po-f5", "front": "Partition key?", "back": "A value hashed (mod partition count) to choose the partition, so all messages with that key share one partition.", "topicId": "partition-keys" },
+  { "id": "po-f6", "front": "How to choose a partition key?", "back": "The entity whose events must stay in order, with many evenly-active values (account_id, order_id).", "topicId": "partition-keys" },
+  { "id": "po-f7", "front": "Hot partition fixes?", "back": "A finer key, salting the key (losing order across salts), or a separate topic for giant keys.", "topicId": "partition-keys" },
+  { "id": "po-f8", "front": "Risk of adding partitions?", "back": "hash(key) mod N changes, so a key's newer events can land in a different partition from its older ones.", "topicId": "partition-keys" },
+  { "id": "po-f9", "front": "Kafka's ordering guarantee?", "back": "Write order within a partition. No order across partitions.", "topicId": "ordering" },
+  { "id": "po-f10", "front": "How do you get a total order over all events?", "back": "A single partition, and therefore a single consumer and a throughput ceiling. Usually you only need order per entity.", "topicId": "ordering" },
+  { "id": "po-f11", "front": "Two ways a consumer breaks ordering itself?", "back": "Processing a partition's messages in an unkeyed thread pool, and deferring a failed message to a retry queue while continuing.", "topicId": "ordering" },
+  { "id": "po-f12", "front": "Consumer group?", "back": "Consumers sharing a group ID that split a topic's partitions; each partition is read by one member. Queue within a group, pub/sub across groups.", "topicId": "consumer-groups" },
+  { "id": "po-f13", "front": "More consumers than partitions?", "back": "The extras sit idle. Partition count caps a group's parallelism.", "topicId": "consumer-groups" },
+  { "id": "po-f14", "front": "Rebalance triggers?", "back": "A consumer joins or leaves, misses heartbeats, exceeds max.poll.interval.ms (5 min default), or the partition count changes.", "topicId": "rebalancing" },
+  { "id": "po-f15", "front": "Static membership?", "back": "group.instance.id lets a quickly restarted consumer reclaim its partitions without a rebalance.", "topicId": "rebalancing" },
+  { "id": "po-f16", "front": "Eager vs cooperative rebalancing?", "back": "Eager: everyone revokes everything, stop-the-world. Cooperative: only partitions that must move are revoked.", "topicId": "rebalancing" },
+  { "id": "po-f17", "front": "Consumer lag?", "back": "Log-end offset − committed offset, per partition. Alert on time lag (age of oldest unprocessed message).", "topicId": "consumer-lag" },
+  { "id": "po-f18", "front": "Catch-up time after a backlog?", "back": "Lag ÷ (processing rate − arrival rate). If processing is slower than arrivals, it never catches up.", "topicId": "consumer-lag" }
+]

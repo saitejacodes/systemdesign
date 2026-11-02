@@ -1,0 +1,199 @@
+## Why it matters
+
+A cache makes a system fast, and then the system quietly starts to depend on it. Your database is sized for the 5% of reads that miss, not the 100% that would arrive without the cache. So the dangerous moments are not when the cache is slow but when it suddenly stops absorbing load: a popular key expires and thousands of requests rebuild it at once, an attacker asks for keys that can never exist, one celebrity's profile melts a single cache node, or a whole fleet of keys expires in the same second. Each of these turns a cache from a shield into a trigger. Facebook's 2013 paper *Scaling Memcache at Facebook* describes adding "leases" to memcached specifically to stop thundering herds and stale writes at their scale. This section covers the four classic cache failure modes, how to recognise each one, and the standard defences.
+
+<Callout type="analogy" title="The bakery with one tray of croissants">
+A bakery keeps a tray of croissants by the till (the cache) and bakes more in the back (the database). When the tray empties at 8:00, a well-run bakery sends one baker to the oven while everyone else waits a minute. A badly run one lets every customer walk into the kitchen and start baking their own croissant: the kitchen jams and nobody gets served (a stampede). A prankster keeps ordering "a dragonfruit eclair", which the bakery never makes, so a baker checks the kitchen every time (penetration). Everyone wants the one famous cinnamon roll, so one counter has a queue round the block while the others are idle (a hot key). And if every tray was stocked at 6:00 with a two-hour shelf life, every tray empties at 8:00 together (an avalanche).
+</Callout>
+
+## Thundering herd and cache stampede
+
+<DepthStamp depth="deep" />
+
+A <Term slug="cache-stampede">cache stampede</Term> (also called a dog-pile, and a kind of thundering herd) happens when a popular cached value expires or is evicted, and many concurrent requests all miss at the same moment. Each one goes to the database to rebuild the same value, and each one writes it back to the cache. The database sees a burst of identical, often expensive, queries exactly when it is least prepared for it.
+
+### Worked example: one key, one bad second
+
+A product page's "top deals" block is cached under one key. It is read **20,000 times a second** and the query that builds it takes **200 ms** on the database.
+
+- The key expires at 12:00:00.000.
+- Every request that arrives before the first rebuild finishes also misses: 20,000 × 0.2 s = **4,000 requests** in that window.
+- Each runs the same 200 ms query. If the database can comfortably run, say, 300 such queries concurrently, it is now queueing over ten times that. Queries slow down, so the rebuild window stretches, so even more requests miss. The feedback loop is what makes stampedes dangerous: a slow rebuild makes the stampede bigger.
+
+The defences all aim at one idea: **only one caller rebuilds a given key; everyone else waits briefly or gets the old value.**
+
+### Defence 1: a rebuild lock (mutex)
+
+On a miss, try to take a short-lived lock for that key, for example in Redis with `SET lock:top-deals <token> NX PX 5000` (set only if absent, expire after 5 seconds). The winner queries the database, writes the cache and releases the lock. The losers sleep briefly (say 50 ms) and re-read the cache.
+
+<Figure caption="FIG. 5.1 · LOCK-BASED REBUILD · ONE QUERY INSTEAD OF THOUSANDS">
+  <Diagram label="Two clients miss the same key. Client A wins the lock and rebuilds; client B retries the cache and gets A's value without touching the database." chart={`sequenceDiagram
+    participant A as Client A
+    participant B as Client B
+    participant C as Cache
+    participant D as Database
+    A->>C: GET top-deals
+    C-->>A: miss
+    B->>C: GET top-deals
+    C-->>B: miss
+    A->>C: SET lock NX PX 5000
+    C-->>A: OK (lock won)
+    B->>C: SET lock NX PX 5000
+    C-->>B: nil (lock taken)
+    A->>D: run expensive query
+    Note over B: sleep 50 ms, then retry
+    D-->>A: result
+    A->>C: SET top-deals value EX 300
+    A->>C: DEL lock (only if token matches)
+    B->>C: GET top-deals
+    C-->>B: hit`} />
+</Figure>
+
+*Lock-based rebuild: the lock turns thousands of identical database queries into one.*
+
+The lock needs an expiry so a crashed winner can't block the key forever, and the release should check the token so a slow winner doesn't delete someone else's lock. The cost: losers add latency while they wait, and you must decide what happens if the rebuild fails (losers should eventually fall through to the database or return an error, not spin forever).
+
+### Defence 2: request coalescing
+
+<Term slug="request-coalescing">Request coalescing</Term> (also called request collapsing) merges concurrent requests for the same key **inside one process**: the first caller starts the fetch, later callers attach to the same in-flight result. Go's `golang.org/x/sync/singleflight` package does exactly this, and proxies offer the same idea at the HTTP layer (NGINX's `proxy_cache_lock`, Varnish's request coalescing). With 50 application servers each coalescing locally, the 4,000 misses above become at most **50** database queries, with no distributed lock at all. Combine it with a lock if even 50 is too many.
+
+### Defence 3: refresh before expiry
+
+Instead of letting the key expire under load, refresh it early:
+
+- **Background refresh:** a worker rebuilds hot keys on a schedule, so readers never see a miss.
+- **Stale-while-revalidate:** store a soft expiry inside the value alongside a longer hard TTL. After the soft expiry, one caller (guarded by a lock) rebuilds while everyone else keeps getting the slightly stale value.
+- <Term slug="probabilistic-early-expiration">Probabilistic early expiration</Term>: each reader, on a hit, rolls a dice that becomes more likely to say "refresh now" as expiry approaches. The XFetch algorithm (Vattani, Chierichetti and Lowenstein, VLDB 2015) recomputes when:
+
+```
+now - delta * beta * ln(random()) >= expiry
+```
+
+Here `delta` is how long the last rebuild took, `beta` is a tuning knob (1.0 by default; higher refreshes earlier), and `random()` is uniform in (0, 1], so `-ln(random())` is a positive random number that is usually small. Far from expiry almost nobody refreshes; just before expiry one lucky reader almost certainly does. No lock, no coordination, and slow-to-build keys refresh earlier because `delta` is bigger.
+
+### Defence 4: jittered TTL
+
+If many keys were written at the same moment with the same TTL, they also expire together. Adding random <Term slug="ttl-jitter">jitter</Term> to the TTL (for example 300 seconds plus a random 0–60) spreads their expiry out. This matters most for the avalanche case below, but it also softens stampedes across related keys.
+
+## Cache penetration
+
+<DepthStamp depth="deep" />
+
+<Term slug="cache-penetration">Cache penetration</Term> is a steady stream of requests for keys that **do not exist in the database either**. The cache only stores things it found, so every such request misses, goes to the database, finds nothing, and caches nothing. The cache gives zero protection. The cause can be innocent (a client bug requesting `user:undefined`, a deleted item still linked from old pages) or deliberate (a scraper or attacker iterating random IDs).
+
+### Defence 1: cache the "not found"
+
+<Term slug="negative-caching">Negative caching</Term> stores a marker meaning "this key does not exist", for example `SET user:98765 "__NULL__" EX 60`. The next request for that ID gets the marker from the cache and returns 404 without touching the database.
+
+- Use a **short TTL** (seconds to a few minutes), because the item may be created later; or delete the marker when the item is created.
+- It does **not** help against an attacker who never repeats an ID: a million random IDs means a million markers, each used once, and they push useful keys out of memory.
+
+### Defence 2: a Bloom filter in front
+
+A <Term slug="bloom-filter">Bloom filter</Term> is a compact bit array that answers "is this ID possibly in the set?" with **no false negatives** and a tunable rate of false positives. Load every valid ID into it (and add new IDs as they are created). On each request, check the filter first: "definitely not present" returns 404 immediately; "possibly present" continues to the cache and database as normal.
+
+Worked sizing, using the standard formulas *m = −n·ln(p) / (ln 2)²* bits and *k = (m/n)·ln 2* hash functions:
+
+| Valid IDs (n) | False-positive rate (p) | Bits per ID | Total size | Hash functions (k) |
+|---|---|---|---|---|
+| 100 million | 1% | ≈ 9.6 | ≈ 120 MB | 7 |
+| 100 million | 0.1% | ≈ 14.4 | ≈ 180 MB | 10 |
+
+At 1%, 99 of every 100 bogus IDs are stopped before they reach the cache or database. The catch: a standard Bloom filter **cannot delete** an entry, so deleted items stay "possibly present" (harmless, they just fall through) until you rebuild the filter. Counting Bloom filters or cuckoo filters support deletes at the cost of more memory. Redis Stack and Redis 8 include a Bloom filter type (`BF.ADD`, `BF.EXISTS`) if you want it server-side.
+
+Also validate input at the edge: an ID that fails a format check (wrong length, negative, not a UUID) should never reach the cache at all, and per-client rate limits make ID-scanning expensive.
+
+## Hot keys
+
+<DepthStamp depth="tradeoffs" />
+
+A <Term slug="hot-key">hot key</Term> is a single cache key that receives a disproportionate share of traffic: a celebrity's profile, a flash-sale product, the global config blob. Distributed caches shard keys across nodes (usually with consistent hashing), so **one key always lives on one node**. Adding nodes does not help, because the hot key does not split. That node's CPU or network saturates while the others sit idle.
+
+### Worked example: the celebrity post
+
+Assume (as a rough planning figure, not a benchmark) that one cache node comfortably serves about **100,000 small reads a second**. A viral post's key receives **300,000 reads a second**. No amount of resharding fixes this: the key needs three times the capacity of the node it lives on.
+
+### Defence 1: a local (in-process) cache
+
+Keep a tiny cache inside each application server for known-hot keys, with a very short TTL such as 1–5 seconds. With **200 application servers** and a 1-second local TTL, the cache node sees at most about **200 reads a second** for that key instead of 300,000. The price is staleness (up to the local TTL), extra memory per server, and the need to decide *which* keys are hot. Some teams promote a key to the local cache automatically when its request rate crosses a threshold. Redis 6 added client-side caching with server-assisted invalidation (the `CLIENT TRACKING` command), which shrinks the staleness problem.
+
+### Defence 2: replicate the key
+
+Store N copies under different names, `post:42#0` to `post:42#7`, which hash to different nodes. Readers pick a random suffix, so load spreads across up to eight nodes. Writers must update every copy, so this suits keys that are read far more than written. Reading from cache replicas (followers) achieves a similar effect where the cache supports it.
+
+### Finding hot keys
+
+You can't fix what you can't see. Sample per-key request counts in the client library, or use the cache's own tooling: `redis-cli --hotkeys` works when Redis uses an LFU eviction policy, and per-node CPU or network imbalance across a cluster is a strong hint.
+
+## Cache avalanche
+
+<DepthStamp depth="tradeoffs" />
+
+A <Term slug="cache-avalanche">cache avalanche</Term> is a stampede across **many keys at once**: a large fraction of the cache becomes unavailable together and the full read load lands on the database. The name is common in Chinese-language engineering writing and less standard elsewhere, where people simply say "mass expiry" or "cold cache", but the failure is universal. It has two usual causes.
+
+**Synchronised expiry.** A job warms one million keys at 09:00 with a TTL of exactly one hour. At 10:00 they all expire within seconds. Fix it with jitter: a TTL of 3,600 seconds ± 10% spreads expiry over a 12-minute window, roughly 1,400 keys a second instead of a million in one burst.
+
+**The cache itself goes down.** A cache node or cluster restarts, and it comes back empty. The hit rate drops from, say, 95% to 0%, so database reads jump twentyfold (from 5% of traffic to 100%).
+
+| Time | Event | Hit rate | DB reads/s (100k req/s total) |
+|---|---|---|---|
+| 09:59 | Normal operation | 95% | 5,000 |
+| 10:00 | Cache cluster restarts, empty | 0% | 100,000 |
+| 10:01 | DB saturates; timeouts make clients retry | 0% | rising past capacity |
+| 10:05 | Cache slowly refills as the few successful reads write back | 40% | 60,000 |
+
+Defences:
+
+- **Replicate the cache** across availability zones so losing one node or zone does not empty it.
+- **Warm the cache** before taking traffic after a restart or deploy, from a list of hot keys or a snapshot (Redis can reload from its persistence files).
+- **Protect the database:** rate-limit or queue database reads, use a circuit breaker that fails fast or serves a degraded page rather than piling on, and cap client retries.
+- **Coalesce** requests so a cold cache does not multiply identical queries.
+
+<TradeoffBox title="Cache failure defences" items={[
+  { gain: "Rebuild lock: exactly one database query per expired key", cost: "Waiting callers add latency; lock expiry and failure handling must be right" },
+  { gain: "Request coalescing: no shared state, very cheap", cost: "Only deduplicates within one process; N servers still send N queries" },
+  { gain: "Probabilistic early refresh: no locks, no misses for hot keys", cost: "Some extra rebuilds; needs the rebuild time stored with the value" },
+  { gain: "Negative caching: trivial to add", cost: "Useless against never-repeated IDs; can crowd out real keys" },
+  { gain: "Bloom filter: blocks almost all bogus IDs in a few bits each", cost: "Must be kept in sync with creates; cannot delete without rebuilding" },
+  { gain: "Local cache for hot keys: absorbs huge read rates", cost: "Per-server staleness and memory; must identify hot keys" }
+]} />
+
+<NotWhenBox title="When not to bother" items={[
+  "Low-traffic keys: a stampede of three requests is not worth a distributed lock.",
+  "Cheap rebuilds: if the query takes 2 ms, a few duplicate queries are fine.",
+  "Strictly fresh data: stale-while-revalidate and local caches serve old values by design.",
+  "Bloom filters for tiny ID spaces: if the set fits in a hash set in memory, use that."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Adding more cache nodes fixes a hot key." right="A key lives on one node. More nodes spread different keys, not one key. Use a local cache or replicate the key under several names." />
+
+<Misconception wrong="Caching null results stops all penetration." right="It stops repeated lookups of the same missing ID. Random, never-repeated IDs need a Bloom filter, input validation or rate limiting." />
+
+<Misconception wrong="A stampede is just a brief spike that resolves itself." right="Slower rebuilds widen the miss window, which adds more misses: it is a feedback loop that can take the database down." />
+
+## Interview angle
+
+<InterviewAngle title="Cache failures" questions={[
+  "Your homepage cache key expires and the database CPU spikes to 100%. What happened and how do you prevent it?",
+  "Someone is requesting millions of random user IDs. How do you protect the database?",
+  "One product gets ten times more traffic than your biggest cache node can serve. What do you do?",
+  "The cache cluster restarted and came back empty. Walk me through the next five minutes and how you'd make it safer."
+]}>
+Interviewers bring these up as follow-ups once you've added a cache: "what happens when it expires?" Name the failure precisely (stampede, penetration, hot key, avalanche), then give a layered answer: coalesce plus lock or early refresh for stampedes; negative caching plus a Bloom filter for penetration; local caching or key replication for hot keys; TTL jitter, replication and warming for avalanches. Quantify with the miss window (request rate × rebuild time), and finish by protecting the database itself with rate limits and circuit breakers.
+</InterviewAngle>
+
+## Practice
+
+1. A key gets 8,000 requests a second and rebuilding it takes 350 ms. How many requests miss during one rebuild with no protection? How many database queries reach the database with per-process coalescing on 40 servers?
+2. Size a Bloom filter for 20 million valid order IDs at a 0.5% false-positive rate. How many bits, megabytes and hash functions?
+3. Design read handling for a feed where one celebrity post receives 500,000 reads a second and is edited a few times a day. State the staleness users may see.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

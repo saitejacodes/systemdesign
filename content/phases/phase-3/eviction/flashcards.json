@@ -1,0 +1,18 @@
+[
+  { "id": "eviction-f1", "front": "Expiration vs eviction?", "back": "Expiration removes entries past their TTL (freshness). Eviction removes entries because the cache is full (capacity).", "topicId": "why-evict" },
+  { "id": "eviction-f2", "front": "Cache pollution?", "back": "One-off entries (scans, crawlers, batch jobs) pushing out entries that would have been reused.", "topicId": "why-evict" },
+  { "id": "eviction-f3", "front": "LRU?", "back": "Least recently used: evict the entry whose last access is oldest. Each hit moves an entry to the most-recent end.", "topicId": "lru" },
+  { "id": "eviction-f4", "front": "LRU's classic weakness?", "back": "Scans: reading many keys once makes them all 'recent' and flushes the hot set.", "topicId": "lru" },
+  { "id": "eviction-f5", "front": "How do databases make LRU scan-resistant?", "back": "InnoDB inserts new pages at the middle of its LRU list; PostgreSQL uses clock-sweep with usage counts.", "topicId": "lru" },
+  { "id": "eviction-f6", "front": "Two structures in an O(1) LRU cache?", "back": "A hash map from key to node, and a doubly linked list of nodes in recency order.", "topicId": "lru-implementation" },
+  { "id": "eviction-f7", "front": "Why doubly linked, not singly?", "back": "To unlink a node in O(1) you need its previous neighbour; a singly linked list needs an O(n) walk to find it.", "topicId": "lru-implementation" },
+  { "id": "eviction-f8", "front": "Why sentinel head and tail nodes?", "back": "They're never removed, so insert and unlink never have to handle an empty list or null neighbours.", "topicId": "lru-implementation" },
+  { "id": "eviction-f9", "front": "Why is a shared LRU hard under high concurrency?", "back": "Every get mutates the list, so every access needs a lock. Libraries shard the cache or buffer access updates.", "topicId": "lru-implementation" },
+  { "id": "eviction-f10", "front": "LFU?", "back": "Least frequently used: evict the entry with the lowest access count. Resists scans.", "topicId": "lfu" },
+  { "id": "eviction-f11", "front": "Two problems with pure LFU?", "back": "It never forgets old popularity (needs decay), and new entries start with the lowest count so they're evicted first.", "topicId": "lfu" },
+  { "id": "eviction-f12", "front": "Window TinyLFU?", "back": "Caffeine's policy: a small recency window plus a compact frequency sketch that decides whether a new entry may displace an old one.", "topicId": "lfu" },
+  { "id": "eviction-f13", "front": "Advantage of FIFO and random over LRU?", "back": "Nothing to update on a hit, so no lock or list shuffle per read; cheap and easy to make concurrent.", "topicId": "other-policies" },
+  { "id": "eviction-f14", "front": "Redis default maxmemory-policy?", "back": "noeviction: once maxmemory is reached, writes that need memory fail with an error.", "topicId": "redis-eviction" },
+  { "id": "eviction-f15", "front": "allkeys-lru vs volatile-lru?", "back": "allkeys-lru can evict any key; volatile-lru only evicts keys that have a TTL set.", "topicId": "redis-eviction" },
+  { "id": "eviction-f16", "front": "How does Redis approximate LRU?", "back": "It samples maxmemory-samples keys (default 5), evicts the one idle longest, and keeps a small pool of candidates between rounds.", "topicId": "redis-eviction" }
+]

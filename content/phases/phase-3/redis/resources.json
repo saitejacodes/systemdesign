@@ -1,0 +1,42 @@
+[
+  {
+    "id": "redis-data-types",
+    "title": "Understand Redis data types",
+    "author": "Redis",
+    "kind": "docs",
+    "url": "https://redis.io/docs/latest/develop/data-types/",
+    "why": "Official reference for every data structure, with commands and typical use cases.",
+    "topicIds": ["data-structures", "expiry"],
+    "free": true
+  },
+  {
+    "id": "redis-persistence",
+    "title": "Redis persistence",
+    "author": "Redis",
+    "kind": "docs",
+    "url": "https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/",
+    "why": "RDB versus AOF, fsync policies and the honest trade-offs, straight from the source.",
+    "topicIds": ["persistence"],
+    "free": true
+  },
+  {
+    "id": "redis-cluster-spec",
+    "title": "Redis cluster specification",
+    "author": "Redis",
+    "kind": "docs",
+    "url": "https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/",
+    "why": "Hash slots, MOVED and ASK redirects, hash tags and the cluster's consistency guarantees.",
+    "topicIds": ["replication-cluster"],
+    "free": true
+  },
+  {
+    "id": "redis-transactions",
+    "title": "Transactions",
+    "author": "Redis",
+    "kind": "docs",
+    "url": "https://redis.io/docs/latest/develop/interact/transactions/",
+    "why": "MULTI, EXEC, WATCH and why Redis transactions don't roll back.",
+    "topicIds": ["atomicity", "threading"],
+    "free": true
+  }
+]

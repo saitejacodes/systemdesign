@@ -1,0 +1,52 @@
+{
+  "id": "p3-redis",
+  "phase": 3,
+  "slug": "redis",
+  "title": "Redis in Depth",
+  "order": 7,
+  "week": 7,
+  "estimatedMinutes": 75,
+  "topics": [
+    {
+      "id": "data-structures",
+      "title": "Data structures and their use cases",
+      "depth": "deep"
+    },
+    {
+      "id": "expiry",
+      "title": "TTLs and expiry",
+      "depth": "deep"
+    },
+    {
+      "id": "persistence",
+      "title": "Persistence: RDB and AOF",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "replication-cluster",
+      "title": "Replication and Redis Cluster",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "threading",
+      "title": "The single-threaded execution model",
+      "depth": "deep"
+    },
+    {
+      "id": "atomicity",
+      "title": "Atomic operations, MULTI and Lua",
+      "depth": "deep"
+    }
+  ],
+  "simulatorIds": [
+    "redis-playground"
+  ],
+  "practiceCaseStudyIds": [
+    "news-feed"
+  ],
+  "prerequisites": [
+    "p3-cache-strategies",
+    "p2-replication",
+    "p2-consistent-hashing"
+  ]
+}

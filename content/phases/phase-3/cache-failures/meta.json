@@ -1,0 +1,40 @@
+{
+  "id": "p3-cache-failures",
+  "phase": 3,
+  "slug": "cache-failures",
+  "title": "Cache Failure Modes",
+  "order": 5,
+  "week": 7,
+  "estimatedMinutes": 60,
+  "topics": [
+    {
+      "id": "stampede",
+      "title": "Thundering herd and cache stampede",
+      "depth": "deep"
+    },
+    {
+      "id": "penetration",
+      "title": "Cache penetration",
+      "depth": "deep"
+    },
+    {
+      "id": "hot-keys",
+      "title": "Hot keys",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "avalanche",
+      "title": "Cache avalanche",
+      "depth": "tradeoffs"
+    }
+  ],
+  "simulatorIds": [
+    "cache"
+  ],
+  "practiceCaseStudyIds": [
+    "news-feed"
+  ],
+  "prerequisites": [
+    "p3-cache-strategies"
+  ]
+}

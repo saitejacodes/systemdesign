@@ -1,0 +1,32 @@
+[
+  {
+    "id": "mdn-http-caching",
+    "title": "HTTP caching",
+    "author": "MDN Web Docs",
+    "kind": "docs",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching",
+    "why": "The clearest reference for how browsers and shared caches use Cache-Control, ETags and revalidation.",
+    "topicIds": ["edge-caches"],
+    "free": true
+  },
+  {
+    "id": "aws-caching-best-practices",
+    "title": "Caching Best Practices",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://aws.amazon.com/caching/best-practices/",
+    "why": "A short practical guide to what to cache, TTLs and the main caching patterns.",
+    "topicIds": ["what-to-cache", "app-caches"],
+    "free": true
+  },
+  {
+    "id": "pg-resource-config",
+    "title": "PostgreSQL: Resource Consumption (shared_buffers)",
+    "author": "PostgreSQL Global Development Group",
+    "kind": "docs",
+    "url": "https://www.postgresql.org/docs/current/runtime-config-resource.html",
+    "why": "Explains shared_buffers and the 25%-of-RAM starting point, straight from the source.",
+    "topicIds": ["buffer-pool"],
+    "free": true
+  }
+]

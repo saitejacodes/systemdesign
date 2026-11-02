@@ -1,0 +1,187 @@
+[
+  {
+    "id": "redis-q1",
+    "type": "scenario",
+    "prompt": "Which Redis structure and commands fit best?",
+    "scenario": "A game needs a global leaderboard of 5 million players: update a player's score many times a minute, show the top 10, and show any player's rank.",
+    "options": [
+      { "id": "a", "text": "A sorted set: ZINCRBY to update, ZRANGE ... REV WITHSCORES for the top 10, ZREVRANK for a rank" },
+      { "id": "b", "text": "A list: LPUSH scores and sort in the application" },
+      { "id": "c", "text": "A hash: HSET player score, then HGETALL and sort" },
+      { "id": "d", "text": "A HyperLogLog of players" }
+    ],
+    "correct": ["a"],
+    "explanation": "Sorted sets keep members ordered by score with O(log N) updates and rank lookups, exactly a leaderboard. A list has no ordering by score, so you'd sort 5 million entries per request. A hash stores scores but HGETALL plus an app-side sort is O(N) per read and blocks the server on a huge key. A HyperLogLog only estimates how many distinct players exist; it can't store scores or ranks.",
+    "topicId": "data-structures",
+    "difficulty": 1
+  },
+  {
+    "id": "redis-q2",
+    "type": "single",
+    "prompt": "You need the approximate number of unique daily visitors (about 10 million) using as little memory as possible. Which structure?",
+    "options": [
+      { "id": "a", "text": "HyperLogLog (PFADD / PFCOUNT)" },
+      { "id": "b", "text": "Set (SADD / SCARD)" },
+      { "id": "c", "text": "String counter (INCR)" },
+      { "id": "d", "text": "Stream (XADD)" }
+    ],
+    "correct": ["a"],
+    "explanation": "HyperLogLog estimates distinct counts in at most 12 KB with about 0.81% error. A set is exact but stores every member, costing hundreds of megabytes. INCR counts visits, not unique visitors, because repeat visits increment it again. A stream stores every event, using even more memory than a set.",
+    "topicId": "data-structures",
+    "difficulty": 1
+  },
+  {
+    "id": "redis-q3",
+    "type": "multi",
+    "prompt": "Which statements about Redis streams versus lists as queues are true? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Stream consumer groups track which entries each consumer has acknowledged with XACK" },
+      { "id": "b", "text": "Entries in a stream remain after being read, so they can be replayed" },
+      { "id": "c", "text": "A popped list item stays in the list until acknowledged" },
+      { "id": "d", "text": "Streams give each entry a time-based ID" }
+    ],
+    "correct": ["a", "b", "d"],
+    "explanation": "Streams are append-only logs: reading doesn't remove entries, consumer groups track pending and acknowledged entries, and IDs are time-based (milliseconds-sequence). A popped list item is removed immediately; if the worker crashes, it's lost unless you use a pattern like LMOVE into a processing list.",
+    "topicId": "data-structures",
+    "difficulty": 2
+  },
+  {
+    "id": "redis-q4",
+    "type": "scenario",
+    "prompt": "Why are the sessions no longer expiring?",
+    "scenario": "Sessions are created with SET session:abc <json> EX 1800. A new feature updates the session on every request with SET session:abc <newjson>. Memory starts growing steadily and old sessions never disappear.",
+    "options": [
+      { "id": "a", "text": "A SET without EX (or KEEPTTL) removes the key's TTL, so updated sessions now live forever" },
+      { "id": "b", "text": "Redis only expires keys when memory is full" },
+      { "id": "c", "text": "TTLs only work on hashes" },
+      { "id": "d", "text": "The EX value must be in milliseconds" }
+    ],
+    "correct": ["a"],
+    "explanation": "Overwriting a key with a plain SET clears its TTL. Use SET ... EX 1800 again or SET ... KEEPTTL. Expiry happens on access and via a background sampling cycle, regardless of memory; evicting when full is a separate mechanism. TTLs apply to keys of any type. EX takes seconds; PX takes milliseconds.",
+    "topicId": "expiry",
+    "difficulty": 2
+  },
+  {
+    "id": "redis-q5",
+    "type": "single",
+    "prompt": "What does TTL return for a key that exists but has no expiry?",
+    "options": [
+      { "id": "a", "text": "-1" },
+      { "id": "b", "text": "-2" },
+      { "id": "c", "text": "0" },
+      { "id": "d", "text": "nil" }
+    ],
+    "correct": ["a"],
+    "explanation": "-1 means the key exists with no TTL. -2 means the key doesn't exist. 0 would mean it is about to expire, not that it has no expiry. TTL returns an integer, never nil.",
+    "topicId": "expiry",
+    "difficulty": 1
+  },
+  {
+    "id": "redis-q6",
+    "type": "scenario",
+    "prompt": "Roughly how many writes could a crash lose with each configuration?",
+    "scenario": "A Redis instance takes 2,000 writes a second. Config A: RDB snapshot every 10 minutes, no AOF. Config B: AOF with appendfsync everysec.",
+    "options": [
+      { "id": "a", "text": "A: up to about 1.2 million; B: about 2,000" },
+      { "id": "b", "text": "A: about 2,000; B: up to about 1.2 million" },
+      { "id": "c", "text": "Both lose nothing" },
+      { "id": "d", "text": "A: up to about 20,000; B: zero" }
+    ],
+    "correct": ["a"],
+    "explanation": "RDB loses everything since the last snapshot: up to 600 s × 2,000 = 1.2 million writes. AOF everysec fsyncs once a second, so about one second, roughly 2,000 writes. Swapping them reverses the mechanisms. Neither is lossless. 20,000 corresponds to 10 seconds, not 10 minutes, and everysec is not zero loss; only appendfsync always comes close.",
+    "topicId": "persistence",
+    "difficulty": 2
+  },
+  {
+    "id": "redis-q7",
+    "type": "single",
+    "prompt": "How does BGSAVE write a snapshot without stopping Redis from serving requests?",
+    "options": [
+      { "id": "a", "text": "It forks a child process that writes the file while sharing memory pages with the parent via copy-on-write" },
+      { "id": "b", "text": "It locks every key while copying" },
+      { "id": "c", "text": "It asks a replica to write the file" },
+      { "id": "d", "text": "It replays the AOF into a new file" }
+    ],
+    "correct": ["a"],
+    "explanation": "fork() plus copy-on-write lets the child see a frozen view while the parent keeps serving; only pages modified during the save are duplicated. Redis doesn't lock keys for snapshots. BGSAVE runs on the instance it's called on, not a replica. Replaying the AOF is not how RDB works; an AOF rewrite is a different operation.",
+    "topicId": "persistence",
+    "difficulty": 2
+  },
+  {
+    "id": "redis-q8",
+    "type": "scenario",
+    "prompt": "Why does this fail, and what is the fix?",
+    "scenario": "In Redis Cluster, a script runs MGET cart:42 profile:42 and gets a CROSSSLOT error.",
+    "options": [
+      { "id": "a", "text": "The keys hash to different slots; rename them with a hash tag such as {user:42}:cart and {user:42}:profile" },
+      { "id": "b", "text": "MGET is not supported in Redis Cluster at all" },
+      { "id": "c", "text": "The cluster has fewer than 16,384 nodes" },
+      { "id": "d", "text": "The keys have different TTLs" }
+    ],
+    "correct": ["a"],
+    "explanation": "Multi-key commands require all keys in one slot. With a hash tag, only the part in braces is hashed, so both keys land together. MGET works in Cluster when keys share a slot. 16,384 is the number of slots, not nodes. TTLs have nothing to do with slot placement.",
+    "topicId": "replication-cluster",
+    "difficulty": 2
+  },
+  {
+    "id": "redis-q9",
+    "type": "single",
+    "prompt": "A Redis primary acknowledges a write and crashes before sending it to its replica. Sentinel promotes the replica. What happens to the write?",
+    "options": [
+      { "id": "a", "text": "It is lost, because replication is asynchronous by default" },
+      { "id": "b", "text": "The replica fetches it from the dead primary's memory" },
+      { "id": "c", "text": "Sentinel replays it from its own log" },
+      { "id": "d", "text": "The client is told to retry automatically" }
+    ],
+    "correct": ["a"],
+    "explanation": "Async replication means acknowledged writes can be lost on failover; WAIT narrows the window but doesn't eliminate it. A crashed process's memory is gone. Sentinel monitors and coordinates failover; it doesn't store data. The client already got a success reply, so nothing tells it to retry.",
+    "topicId": "replication-cluster",
+    "difficulty": 2
+  },
+  {
+    "id": "redis-q10",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "Every few minutes, all Redis calls from every service spike from under 1 ms to 2 seconds at the same moment. SLOWLOG shows KEYS user:* taking about 1,900 ms. The instance holds 40 million keys.",
+    "options": [
+      { "id": "a", "text": "KEYS scans all 40 million keys on the single command thread, blocking every other client until it finishes; use SCAN instead" },
+      { "id": "b", "text": "The network is dropping packets" },
+      { "id": "c", "text": "Too many I/O threads are configured" },
+      { "id": "d", "text": "Persistence is disabled" }
+    ],
+    "correct": ["a"],
+    "explanation": "Commands execute one at a time, so an O(N) command over 40 million keys stalls everything for its duration. SCAN iterates in small batches between other clients' commands. Packet loss wouldn't line up exactly with a slow-log entry. I/O threads handle socket reads and writes, not command execution. Disabling persistence doesn't make commands slow.",
+    "topicId": "threading",
+    "difficulty": 2
+  },
+  {
+    "id": "redis-q11",
+    "type": "single",
+    "prompt": "One command in a MULTI/EXEC block fails at runtime (INCR on a non-numeric value). What happens to the other commands?",
+    "options": [
+      { "id": "a", "text": "They still execute; Redis transactions don't roll back" },
+      { "id": "b", "text": "All are rolled back" },
+      { "id": "c", "text": "The server restarts the transaction" },
+      { "id": "d", "text": "Only commands before the failing one run" }
+    ],
+    "correct": ["a"],
+    "explanation": "MULTI/EXEC guarantees the queued commands run without interleaving, but a runtime error in one doesn't undo or skip the others. There is no rollback. Redis never automatically retries a transaction. Commands after the failure still run too.",
+    "topicId": "atomicity",
+    "difficulty": 2
+  },
+  {
+    "id": "redis-q12",
+    "type": "multi",
+    "prompt": "Releasing a lock with GET (check the token) then DEL from the client is unsafe. Which approaches are safe? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "A Lua script that compares the token and deletes in one atomic step" },
+      { "id": "b", "text": "WATCH the lock key, check the token, then MULTI / DEL / EXEC and retry if aborted" },
+      { "id": "c", "text": "DEL the key without checking" },
+      { "id": "d", "text": "GET then DEL, but faster" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "A Lua script runs atomically, so nobody can take the lock between the check and the delete. WATCH aborts the transaction if the key changes after your check, giving the same safety optimistically. Deleting without checking can remove a lock someone else now holds. Making two separate commands faster narrows the race but never closes it.",
+    "topicId": "atomicity",
+    "difficulty": 3
+  }
+]

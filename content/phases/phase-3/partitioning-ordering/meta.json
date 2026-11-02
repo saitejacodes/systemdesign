@@ -1,0 +1,51 @@
+{
+  "id": "p3-partitioning-ordering",
+  "phase": 3,
+  "slug": "partitioning-ordering",
+  "title": "Partitioning and ordering",
+  "order": 10,
+  "week": 8,
+  "estimatedMinutes": 60,
+  "topics": [
+    {
+      "id": "partitions",
+      "title": "Partitions",
+      "depth": "deep"
+    },
+    {
+      "id": "partition-keys",
+      "title": "Partition keys",
+      "depth": "deep"
+    },
+    {
+      "id": "ordering",
+      "title": "Ordering is per partition only",
+      "depth": "deep"
+    },
+    {
+      "id": "consumer-groups",
+      "title": "Consumer groups",
+      "depth": "deep"
+    },
+    {
+      "id": "rebalancing",
+      "title": "Rebalancing",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "consumer-lag",
+      "title": "Consumer lag",
+      "depth": "deep"
+    }
+  ],
+  "simulatorIds": [
+    "message-queue"
+  ],
+  "practiceCaseStudyIds": [
+    "notification-system"
+  ],
+  "prerequisites": [
+    "p3-delivery-semantics",
+    "p2-sharding"
+  ]
+}

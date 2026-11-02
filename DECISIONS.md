@@ -87,3 +87,10 @@
 - Replication uses 100 users so read-your-writes still sends most reads to followers; the lost-writes challenge's p99 limit is 200 ms (semi-sync passes, sync with a 4× remote follower does not).
 - S8 and S9 were built in parallel by two subagents, each confined to its own folder; registry entries, lesson embeds and verification were done here.
 - The single-server-queue statistics test got a 20 s timeout: it simulates ~100k requests and passed 5 s only when not sharing the CPU with the PGlite tests.
+
+## Prompt 10
+- The 13 sections were written by four parallel subagents (caching 1–4, caching 5–7, messaging 8–10, messaging 11–13) from one shared brief; each wrote only its own section folders and put new glossary terms in a separate file, merged here with duplicates dropped. Shared files (glossary, e2e routes, plan test, simulator titles) were changed only here.
+- Vendor facts the agents flagged as from memory were checked here (SQS limits and timeouts, Kafka defaults and KIP-848, Redis versions and eviction sampling); illustrative prices (CDN egress) are labelled as assumptions in the lessons.
+- As in Prompt 08, lessons don't embed `<Simulator>` for simulators that don't exist yet; meta.json lists them.
+- Review of agent work: all 35 Phase 3 resource URLs were fetched; the one dead link (Jay Kreps's "The Log" on engineering.linkedin.com, now 404) was replaced with the Kafka design docs. The Valkey sentence was corrected (forked by former maintainers under the Linux Foundation; Redis 8 added AGPL). S9's hash label now says hash(id) mod N.
+- Known content debt across Phases 1–3: in 58–71% of single-answer quiz questions the correct option is noticeably longer than every distractor, a test-taking giveaway (options are shuffled, so position is not). Left for a dedicated pass over all quizzes.

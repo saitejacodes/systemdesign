@@ -1,0 +1,8 @@
+[
+  { "id": "cache-strategies-c1", "text": "I can write cache-aside read and write code from memory, including the TTL and the delete on write.", "topicId": "cache-aside" },
+  { "id": "cache-strategies-c2", "text": "I can explain how read-through differs from cache-aside and how it can coalesce concurrent misses.", "topicId": "read-through" },
+  { "id": "cache-strategies-c3", "text": "I can explain the write latency and consistency limits of write-through.", "topicId": "write-through" },
+  { "id": "cache-strategies-c4", "text": "I can calculate how many writes a write-behind cache could lose on a crash, given the write rate and flush interval.", "topicId": "write-behind" },
+  { "id": "cache-strategies-c5", "text": "I can name a workload where write-around beats write-through and say why.", "topicId": "write-around" },
+  { "id": "cache-strategies-c6", "text": "I can pick and justify a read and write strategy for each kind of data in a design.", "topicId": "choosing" }
+]

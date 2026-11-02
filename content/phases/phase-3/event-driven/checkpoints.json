@@ -1,0 +1,8 @@
+[
+  { "id": "event-driven-c1", "text": "I can classify a message as a command or an event from its name, recipients and whether it can be rejected.", "topicId": "events-vs-commands" },
+  { "id": "event-driven-c2", "text": "I can choose between event notification and event-carried state transfer and state what each costs.", "topicId": "notification-vs-state-transfer" },
+  { "id": "event-driven-c3", "text": "I can explain event sourcing, snapshots, and why CQRS read models usually come with it but don't require it.", "topicId": "event-sourcing" },
+  { "id": "event-driven-c4", "text": "I can draw both dual-write failure timelines (commit then failed publish, publish then failed commit).", "topicId": "outbox" },
+  { "id": "event-driven-c5", "text": "I can implement a transactional outbox with a relay and explain why consumers must still deduplicate.", "topicId": "outbox" },
+  { "id": "event-driven-c6", "text": "I can explain how a CDC tool like Debezium reads the Postgres WAL or MySQL binlog, and when CDC beats a polling relay.", "topicId": "cdc" }
+]

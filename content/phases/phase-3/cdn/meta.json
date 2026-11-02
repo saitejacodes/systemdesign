@@ -1,0 +1,52 @@
+{
+  "id": "p3-cdn",
+  "phase": 3,
+  "slug": "cdn",
+  "title": "Content Delivery Networks",
+  "order": 6,
+  "week": 7,
+  "estimatedMinutes": 60,
+  "topics": [
+    {
+      "id": "push-pull",
+      "title": "How a CDN works: pull vs push",
+      "depth": "deep"
+    },
+    {
+      "id": "cache-headers",
+      "title": "Cache-Control, ETag and Vary",
+      "depth": "deep"
+    },
+    {
+      "id": "cache-keys",
+      "title": "Cache keys",
+      "depth": "deep"
+    },
+    {
+      "id": "purging",
+      "title": "Purging and versioning",
+      "depth": "tradeoffs"
+    },
+    {
+      "id": "edge-compute",
+      "title": "Dynamic content at the edge",
+      "depth": "awareness"
+    },
+    {
+      "id": "cdn-cost",
+      "title": "Cost tradeoffs",
+      "depth": "tradeoffs"
+    }
+  ],
+  "simulatorIds": [
+    "cache"
+  ],
+  "practiceCaseStudyIds": [
+    "news-feed"
+  ],
+  "prerequisites": [
+    "p1-http",
+    "p1-dns",
+    "p3-cache-strategies"
+  ]
+}

@@ -1,0 +1,95 @@
+[
+  {
+    "id": "q1", "type": "single",
+    "prompt": "With TTL-only invalidation and a 60-second TTL, how stale can a read be after a change?",
+    "options": [ { "id": "a", "text": "Never stale" }, { "id": "b", "text": "Up to about 60 seconds" }, { "id": "c", "text": "Up to 120 seconds" }, { "id": "d", "text": "Indefinitely" } ],
+    "correct": ["b"],
+    "explanation": "An entry cached just before the change survives for up to one TTL. (a) TTL-only means nobody removes the old value on write. (c) The entry is reloaded at expiry, so two TTLs don't stack. (d) The TTL guarantees it ends.",
+    "topicId": "ttl-expiry", "difficulty": 1
+  },
+  {
+    "id": "q2", "type": "scenario",
+    "prompt": "What is the upper bound on database reads caused by expiry at this TTL?",
+    "scenario": "A catalogue of 120,000 products is cached with cache-aside and a 2-minute TTL, with no explicit invalidation. Every product is read at least once every 2 minutes.",
+    "options": [ { "id": "a", "text": "About 100 reads a second" }, { "id": "b", "text": "About 1,000 reads a second" }, { "id": "c", "text": "About 60,000 reads a second" }, { "id": "d", "text": "About 120,000 reads a second" } ],
+    "correct": ["b"],
+    "explanation": "Each key reloads at most once per TTL: 120,000 ÷ 120 s = 1,000 reads a second. (a) divides by too large a number. (c) and (d) would mean every key reloads every one or two seconds, ignoring the TTL.",
+    "topicId": "ttl-expiry", "difficulty": 2
+  },
+  {
+    "id": "q3", "type": "scenario",
+    "prompt": "Why do some users still see the old name?",
+    "scenario": "When a user renames themselves, the code updates the users table and deletes `user:{id}`. Users still see the old name on team pages and in feed items for up to an hour.",
+    "options": [ { "id": "a", "text": "Other cached objects such as team member lists and feed entries embed the name and weren't invalidated" }, { "id": "b", "text": "The DEL command is asynchronous in Redis and takes an hour" }, { "id": "c", "text": "The database update didn't commit" }, { "id": "d", "text": "Browsers cache the user record for an hour" } ],
+    "correct": ["a"],
+    "explanation": "Explicit invalidation must cover every dependent key; the profile key was deleted but derived objects survived until their TTL. (b) DEL is immediate. (c) The profile itself shows the new name, so the commit happened. (d) Team pages and feeds are server-side cached objects here, and the symptom matches exactly the keys that weren't deleted.",
+    "topicId": "explicit-delete", "difficulty": 2
+  },
+  {
+    "id": "q4", "type": "single",
+    "prompt": "What does change-data-capture-driven invalidation guarantee that application deletes don't?",
+    "options": [ { "id": "a", "text": "Every committed change triggers invalidation, even from write paths that forgot to delete" }, { "id": "b", "text": "Zero staleness at all times" }, { "id": "c", "text": "No need for TTLs or eviction" }, { "id": "d", "text": "That the cache never misses" } ],
+    "correct": ["a"],
+    "explanation": "The change stream sees every commit, regardless of which code made it. (b) There's still a small delay between commit and delete, and the slow-reader race remains. (c) TTLs are still a useful safety net and eviction is about capacity. (d) Deletes cause misses by design.",
+    "topicId": "explicit-delete", "difficulty": 2
+  },
+  {
+    "id": "q5", "type": "scenario",
+    "prompt": "What is the cleanest way to invalidate them all?",
+    "scenario": "A tax rule change means every one of 2 million cached product-page fragments in Redis must be considered stale. Keys look like `page:product:{id}`.",
+    "options": [ { "id": "a", "text": "Run KEYS page:product:* and delete the results" }, { "id": "b", "text": "Include a namespace version in the keys (page:v8:product:{id}) and increment it" }, { "id": "c", "text": "Restart Redis" }, { "id": "d", "text": "Wait for all TTLs to expire" } ],
+    "correct": ["b"],
+    "explanation": "Bumping one namespace counter makes every old key unreachable instantly; they age out on their own. (a) KEYS blocks Redis while it scans every key, which is dangerous in production. (c) Wipes unrelated data and causes a cold-cache stampede. (d) Leaves wrong tax amounts visible for a full TTL.",
+    "topicId": "versioned-keys", "difficulty": 2
+  },
+  {
+    "id": "q6", "type": "single",
+    "prompt": "Why can't a slow reader poison the cache when keys are versioned?",
+    "options": [ { "id": "a", "text": "Its stale value is written under the old version's key, which readers no longer use" }, { "id": "b", "text": "Versioned keys are read-only" }, { "id": "c", "text": "Redis rejects writes to versioned keys" }, { "id": "d", "text": "Versioned keys have no TTL" } ],
+    "correct": ["a"],
+    "explanation": "Readers build keys from the current version, so data under v17 is invisible after the bump to v18. (b) and (c) are false: versioned keys are ordinary keys. (d) is irrelevant and also not required.",
+    "topicId": "versioned-keys", "difficulty": 2
+  },
+  {
+    "id": "q7", "type": "scenario",
+    "prompt": "What will the cache hold after these steps?",
+    "scenario": "The cached price is 8 and the database price is 8. Writer W runs `DEL price:9`. Reader R runs `GET price:9` (miss), then `SELECT` (reads 8). W runs `UPDATE` to 11 and commits. R runs `SET price:9 = 8`. The key has a 10-minute TTL.",
+    "options": [ { "id": "a", "text": "11, the latest price" }, { "id": "b", "text": "8, a stale price, until the TTL expires" }, { "id": "c", "text": "Nothing, because the delete removed it" }, { "id": "d", "text": "An error, because two clients wrote the same key" } ],
+    "correct": ["b"],
+    "explanation": "This is the delete-first race: the reader fetched the old value between the delete and the commit, then wrote it back. It stays until the TTL. (a) Nobody wrote 11 into the cache. (c) The reader's SET came after the delete. (d) Caches accept concurrent writes; the last one wins.",
+    "topicId": "race", "difficulty": 2
+  },
+  {
+    "id": "q8", "type": "multi",
+    "prompt": "Which techniques prevent or limit a slow reader writing a stale value into the cache after a delete? (Choose all that apply.)",
+    "options": [ { "id": "a", "text": "Leases: the set must present a token that a delete invalidates" }, { "id": "b", "text": "A delayed second delete after the update" }, { "id": "c", "text": "A TTL on every key" }, { "id": "d", "text": "Deleting the key before updating the database" } ],
+    "correct": ["a", "b", "c"],
+    "explanation": "(a) rejects the stale set. (b) removes it shortly after. (c) bounds how long it can survive. (d) is the delete-first order, which widens the race rather than closing it.",
+    "topicId": "race", "difficulty": 3
+  },
+  {
+    "id": "q9", "type": "single",
+    "prompt": "Under update-then-delete, what has to happen for a stale value to land in the cache?",
+    "options": [ { "id": "a", "text": "A reader reads the database before the commit and sets the cache after the writer's delete" }, { "id": "b", "text": "Any read after the commit" }, { "id": "c", "text": "Two deletes in a row" }, { "id": "d", "text": "Nothing; this order is race-free" } ],
+    "correct": ["a"],
+    "explanation": "The reader must straddle the whole write, which needs an unusually slow reader. (b) A read after the commit sees the new value. (c) Repeated deletes are harmless. (d) is the misconception: the window is small but real.",
+    "topicId": "race", "difficulty": 3
+  },
+  {
+    "id": "q10", "type": "scenario",
+    "prompt": "What's the best fix?",
+    "scenario": "Two admins change the same product's price within milliseconds. The code updates the database, then writes the new price into the cache. The database ends at 12, but the cache shows 10 for the next 10 minutes.",
+    "options": [ { "id": "a", "text": "Delete the cache key after the database update instead of writing the new value" }, { "id": "b", "text": "Write to the cache first, then the database" }, { "id": "c", "text": "Remove the TTL" }, { "id": "d", "text": "Retry the cache write three times" } ],
+    "correct": ["a"],
+    "explanation": "The cache writes landed in the opposite order to the database writes. Deletes are idempotent, so their order doesn't matter, and the next read loads 12. (b) has the same ordering problem plus the risk of caching a value whose database write fails. (c) would make the wrong value permanent. (d) Retrying doesn't fix ordering.",
+    "topicId": "delete-vs-update", "difficulty": 2
+  },
+  {
+    "id": "q11", "type": "single",
+    "prompt": "Which is NOT a reason to prefer delete over update on write?",
+    "options": [ { "id": "a", "text": "Deletes are idempotent and order-independent" }, { "id": "b", "text": "The writer doesn't need to build derived cached values" }, { "id": "c", "text": "Work isn't wasted on values nobody reads before the next change" }, { "id": "d", "text": "The next read after a write is always a cache hit" } ],
+    "correct": ["d"],
+    "explanation": "After a delete, the next read is a miss; that's the cost of the approach, not a benefit. (a), (b) and (c) are the real reasons delete on write is the default.",
+    "topicId": "delete-vs-update", "difficulty": 1
+  }
+]

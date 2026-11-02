@@ -1,0 +1,200 @@
+## Why it matters
+
+A queue is a promise that work will eventually get done. The interesting part is the word "eventually": consumers crash, downstream APIs time out, and some messages are simply broken. A notification system that retries a failing email provider 50 times a second can turn a five-minute outage into an hour-long one. A single malformed message at the head of an ordered queue can stop every message behind it. And a producer that writes faster than consumers can read will quietly fill a broker's disk until it falls over. None of these are rare; they are what happens on an ordinary Tuesday at scale. AWS's own builders' guidance on timeouts and retries is built around exponential backoff with jitter, and every major broker (Amazon SQS, RabbitMQ, Azure Service Bus) ships a dead-letter mechanism because the designers knew some messages will never succeed. This section is the toolkit for when things go wrong.
+
+<Callout type="analogy" title="The post office's undeliverable-mail room">
+A postal worker who can't deliver a parcel doesn't stand at the door ringing the bell every second. They leave a card and try again tomorrow, then in three days, then in a week (exponential backoff). Every postal worker in town doesn't come back at exactly 9:00 sharp either, or the street would jam (jitter). After a few failed attempts the parcel goes to the undeliverable-mail room, where a human opens it, reads the label, and decides whether to fix the address and send it back out (the dead-letter queue and redrive). And when the sorting office is already full to the ceiling, it tells the vans to stop bringing more (backpressure). A good messaging system is a well-run post office.
+</Callout>
+
+## Retries with exponential backoff and jitter
+
+<DepthStamp depth="deep" />
+
+Most failures in distributed systems are **transient**: a timeout, a dropped connection, a `503` from a service that is restarting, a database failover that takes 20 seconds. The right reaction is to try again. The wrong reaction is to try again *immediately and forever*. With <Term slug="at-least-once">at-least-once</Term> delivery, a retry also means the same message may be processed twice, so retries are only safe when the consumer is an <Term slug="idempotent-consumer">idempotent consumer</Term>.
+
+**Fixed-interval retries** (every 1 second) are simple but treat a 1-second blip and a 10-minute outage the same way: during the outage you hammer a struggling service with a steady stream of requests it cannot serve. **<Term slug="exponential-backoff">Exponential backoff</Term>** doubles the wait after each failure, up to a cap:
+
+```text
+delay(attempt) = min(cap, base × 2^attempt)
+
+base = 100 ms, cap = 10 s
+attempt:  0     1     2     3     4      5      6      7
+delay:  100ms 200ms 400ms 800ms 1.6s   3.2s   6.4s   10s (capped)
+```
+
+Backoff alone has a nasty flaw. If 10,000 clients all failed at the same instant (because the service they call went down at the same instant), they all wait 100 ms, all retry together, all fail, all wait 200 ms, and all retry together again. The load arrives in synchronised spikes. Adding **<Term slug="jitter">jitter</Term>**, a random component in the delay, spreads them out. The variant Marc Brooker described on the AWS Architecture Blog as "full jitter" picks uniformly between zero and the backoff value:
+
+```text
+sleep = random_between(0, min(cap, base × 2^attempt))
+```
+
+### Worked example: 10,000 clients, one outage
+
+A payment gateway goes down for 2 seconds. 10,000 workers each have one request in flight.
+
+| Strategy | What the gateway sees when it comes back |
+|---|---|
+| Immediate retry, no limit | Tens of thousands of requests a second during the outage; it may never recover |
+| Backoff, no jitter | Silence, then 10,000 requests in the same millisecond at t = 3.1 s (100 + 200 + 400 + 800 + 1,600 ms) |
+| Backoff with full jitter | The 10,000 retries of attempt 4 spread evenly over a 1.6-second window: roughly 6,000 a second instead of a single spike |
+
+Without jitter you have built a <Term slug="retry-storm">retry storm</Term>: retries that arrive together and overload the service that was trying to recover.
+
+### Retry rules that keep you out of trouble
+
+- **Only retry what can succeed.** A timeout or `503` is retryable. A `400 Bad Request`, a validation failure or a "customer not found" is not; it will fail identically on every attempt.
+- **Cap attempts, not just delay.** Five to ten attempts is common for a message consumer. After that the message is not transient, it is a problem, and it belongs in a dead-letter queue.
+- **Retry at one layer.** If the API gateway retries 3 times, the service behind it retries 3 times, and its database client retries 3 times, one user click can become 3 × 3 × 3 = **27** calls to the database. Pick the layer closest to the failure, or use a **retry budget** (for example, retries may be at most 10% of total requests) so retries can't multiply load during an incident.
+- **Respect the server.** If a response carries `Retry-After` or a rate-limit header, use it instead of your own schedule.
+
+## Poison messages
+
+<DepthStamp depth="deep" />
+
+A <Term slug="poison-message">poison message</Term> is one that fails every time it is processed, no matter how often you retry. Typical causes:
+
+- Malformed payload: invalid JSON, a missing required field, a schema version the consumer doesn't understand.
+- It references something that no longer exists (an order that was deleted).
+- It triggers a bug: a null pointer on one unusual input, a string too long for a column.
+- It crashes the consumer process outright, so it is never even acknowledged as failed.
+
+Why are they so dangerous? With a broker that redelivers unacknowledged messages, the poison message comes back again and again. In SQS, a message that isn't deleted reappears after its **visibility timeout** (the period during which a received message is hidden from other consumers; 30 seconds by default). In RabbitMQ, a message that is rejected with requeue, or whose consumer dies before its <Term slug="ack">ack</Term>, goes back to the queue. Two outcomes follow:
+
+1. **Wasted capacity.** In an unordered queue, the message keeps cycling and burns consumer time on every pass. A few hundred poison messages can eat a meaningful share of a small consumer fleet.
+2. **Head-of-line blocking.** In an ordered stream (a Kafka partition, an SQS FIFO message group), the consumer cannot move past the failing message without breaking order. Everything behind it waits. One bad record stops a whole partition.
+
+The defence has three parts: **count deliveries** (SQS tracks `ApproximateReceiveCount`; RabbitMQ quorum queues track a delivery count and support a delivery limit), **classify errors** so permanent ones skip the retry loop entirely, and **move the message aside** after a limit. That last step is the dead-letter queue.
+
+## Dead-letter queues and redrive
+
+<DepthStamp depth="deep" />
+
+A <Term slug="dead-letter-queue">dead-letter queue</Term> (DLQ) is a separate queue where messages go after they have failed too many times. Moving the message aside keeps the main queue flowing and preserves the message for a human (or a tool) to inspect.
+
+<Figure caption="FIG. 11.1 · A MESSAGE FAILS FIVE TIMES AND IS DEAD-LETTERED">
+<Diagram label="A message is received five times, fails each time, and the broker moves it to the dead-letter queue" chart={`sequenceDiagram
+    participant Q as Main queue
+    participant C as Consumer
+    participant D as Dead-letter queue
+    Q->>C: deliver (receive count 1)
+    C--xQ: processing fails, no ack
+    Note over Q: wait, then redeliver with backoff
+    Q->>C: deliver (receive count 2 to 5)
+    C--xQ: fails every time
+    Q->>D: receive count above limit, move message
+    Note over D: alarm fires, a human inspects`} />
+</Figure>
+
+How the major brokers do it:
+
+- **Amazon SQS:** a **redrive policy** on the source queue names the DLQ and a `maxReceiveCount`. When a message has been received more than that many times without being deleted, SQS moves it to the DLQ.
+- **RabbitMQ:** a queue can name a **dead-letter exchange**. Messages that are rejected without requeue, expire (TTL), overflow a length limit, or exceed a quorum queue's delivery limit are republished to that exchange, which routes them to a DLQ.
+- **Apache Kafka:** the broker has no built-in DLQ, because consumers just move an offset forward. The pattern is implemented in clients and frameworks instead: Kafka Connect can route bad records to a dead-letter topic, and Spring for Apache Kafka provides a recoverer that publishes failed records to one. The consumer writes the bad record to a `orders.DLT`-style topic and commits past it.
+
+### Running a DLQ well
+
+A DLQ that nobody looks at is just a slower way of losing data.
+
+- **Alarm on it.** Any message arriving in a DLQ should page someone or at least open a ticket. SQS users usually alarm on `ApproximateNumberOfMessagesVisible` for the DLQ being above zero.
+- **Keep context.** Store the error, stack trace, attempt count and original queue alongside the message (as message attributes or headers), so the person debugging doesn't have to reproduce the failure.
+- **Retention longer than your response time.** SQS keeps messages for at most 14 days. If your DLQ has the default retention and nobody looks for a week, messages start disappearing. Set the DLQ's retention to the maximum.
+- **Redrive after the fix.** <Term slug="redrive">Redrive</Term> means moving messages from the DLQ back to the source queue to be processed again, once the bug is fixed or the dependency is healthy. SQS supports this natively (from the console or the `StartMessageMoveTask` API). For RabbitMQ and Kafka it is usually a small script or tool. Redrive slowly: replaying 2 million dead letters at full speed is itself a load spike.
+
+### Worked example: sizing a DLQ alarm
+
+An order service consumes 500 messages a second. Normally 0 messages are dead-lettered. A deploy introduces a bug that fails 2% of orders with a `NullPointerException`.
+
+- Failing messages: 500 × 0.02 = **10 per second**.
+- With `maxReceiveCount = 5` and a 30-second visibility timeout, each takes about 5 × 30 s = **2.5 minutes** to reach the DLQ.
+- The first dead letters arrive about 2.5 minutes after the deploy; an alarm on "DLQ depth above 0" fires then. Within an hour, 36,000 orders are parked, not lost.
+- After the rollback, a redrive at 100 messages a second clears them in 6 minutes without competing heavily with live traffic.
+
+## Backpressure
+
+<DepthStamp depth="deep" />
+
+A queue absorbs bursts: if producers send 2,000 messages a second for one minute and consumers handle 1,000 a second, the queue grows by 60,000 and then drains once the burst ends. That is the point of a queue. But if producers are *permanently* faster than consumers, the queue grows without bound. <Term slug="backpressure">Backpressure</Term> is any mechanism by which a slow downstream component makes the upstream one slow down, instead of letting work pile up until something breaks.
+
+The arithmetic is unforgiving. Producers at 1,200 messages a second, consumers at 1,000:
+
+- Backlog growth: 200 messages a second = **720,000 an hour**.
+- At 2 KB a message, that is about 1.4 GB of extra broker storage per hour.
+- After 8 hours: 5.76 million messages. Even if producers stop, draining at the 1,000/s capacity takes 96 minutes, and every message in the queue is now hours old. By <Term slug="littles-law">Little's law</Term>, time in queue = backlog ÷ throughput, so the age of the oldest message is the honest measure of how far behind you are.
+
+Ways to apply backpressure, from gentlest to bluntest:
+
+| Mechanism | How it works | Example |
+|---|---|---|
+| Bounded queue, producer blocks | Writes wait when the buffer is full | A bounded in-memory channel; RabbitMQ blocking publishing connections under a memory or disk alarm |
+| Reject at the edge | Return `429` or `503` so clients back off | An API that checks queue depth before accepting work |
+| Drop or sample | Discard low-value work under load | Metrics or analytics events, never payments |
+| Scale consumers | Add capacity when lag grows | Autoscaling on SQS queue depth or Kafka consumer lag |
+| Pull-based consumption | Consumers ask for what they can handle | Kafka consumers polling at their own pace |
+
+Pull-based systems like Kafka have a kind of built-in backpressure for the consumer: it only fetches what it can handle. But the *producer* is not slowed down; the log just grows until retention deletes data the consumer hasn't read yet. Retention is a safety valve, not a plan. What you should alert on is consumer lag (messages or seconds behind).
+
+The key design decision is **what happens when the system is full**. "Nothing, we'll scale" is a choice, but a deliberate one: decide which work you will reject, delay or drop, so the system degrades on purpose instead of by accident.
+
+## Max in-flight and prefetch
+
+<DepthStamp depth="tradeoffs" />
+
+**In-flight** messages are ones that have been delivered to a consumer but not yet acknowledged. Limiting how many each consumer may hold is backpressure at the smallest scale. In RabbitMQ this is the <Term slug="prefetch">prefetch</Term> count, set with `basic.qos`: with a prefetch of 50, the broker stops sending to a consumer once it has 50 unacked messages. SQS has the same idea expressed differently: each `ReceiveMessage` call returns at most 10 messages, and a queue has a limit on in-flight messages (around 120,000 for a standard queue). Kafka consumers bound it with settings such as `max.poll.records`.
+
+Choosing the number is a real tradeoff:
+
+- **Too low (prefetch 1):** the consumer finishes a message, acks, and then waits a network round trip for the next. If the round trip is 2 ms and processing is 1 ms, the consumer spends two thirds of its time idle.
+- **Too high (prefetch 10,000 or unlimited):** one consumer grabs a huge batch while others sit idle, so load is unbalanced. If it crashes, all 10,000 are redelivered at once, and every message waits behind the batch, which raises latency. With visibility timeouts, a big batch may not be finished before the timeout expires, so messages are redelivered while still being processed.
+
+A reasonable starting point: prefetch ≈ the consumer's concurrency × a small multiple. A worker that processes 10 messages in parallel, each taking 50 ms, handles 200 messages a second. If the round trip to the broker is 5 ms, a prefetch of 20 to 30 keeps it busy without hoarding. Then measure: if consumers are idle while the queue is full, raise it; if one consumer has a big unacked count while others are idle, lower it.
+
+<TradeoffBox title="Failure-handling tradeoffs" items={[
+  { gain: "More retry attempts: more transient failures recover on their own", cost: "Slower to surface real bugs, and more load during outages" },
+  { gain: "Jitter: smooth load on the recovering service", cost: "Retry timing is less predictable, which complicates tests" },
+  { gain: "Dead-letter queue: main queue keeps flowing, bad messages are kept", cost: "Someone must monitor, triage and redrive it; ordering is broken for the dead-lettered message" },
+  { gain: "Backpressure: the system degrades on purpose", cost: "Some clients get errors or delays instead of a silent backlog" },
+  { gain: "High prefetch: high throughput per consumer", cost: "Uneven load, more redelivery on crash, higher per-message latency" }
+]} />
+
+<NotWhenBox title="When not to retry automatically" items={[
+  "Permanent errors (validation failures, 400s, missing entities): retrying wastes capacity and delays dead-lettering.",
+  "Non-idempotent side effects with no idempotency key: a retry may charge a card or send an email twice.",
+  "Strictly ordered streams where a retry loop blocks the whole partition: dead-letter quickly or park the message in a retry topic.",
+  "Every layer of a deep call chain at once: retries multiply."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Exponential backoff alone prevents retry storms." right="Clients that failed together still retry together on the same schedule. Jitter is what spreads them out." />
+
+<Misconception wrong="A dead-letter queue means failed messages are handled." right="A DLQ only parks them. Without an alarm, someone triaging, and a redrive plan, it is slow data loss once retention expires." />
+
+<Misconception wrong="A queue protects you from a slow consumer forever." right="A queue absorbs temporary bursts. If producers are persistently faster than consumers, the backlog grows without limit and needs backpressure or more capacity." />
+
+<Misconception wrong="A higher prefetch is always faster." right="It raises throughput up to a point, then causes uneven load across consumers, higher latency and large redelivery bursts on a crash." />
+
+## Interview angle
+
+<InterviewAngle title="Failure handling in messaging" questions={[
+  "Your email provider goes down for 10 minutes. What happens to your notification queue, and what happens when it comes back?",
+  "How do you stop one bad message from blocking a Kafka partition?",
+  "What would you alert on for a queue-based system?",
+  "Producers suddenly send three times the usual traffic. Walk me through what happens and what you'd do.",
+  "Why add jitter to backoff?"
+]}>
+Interviewers want a complete failure story, not just "we use a queue". Say: transient errors are retried with capped exponential backoff and jitter at one layer; consumers are idempotent because retries cause duplicates; permanent errors and messages over a receive-count limit go to a DLQ that is alarmed and redriven after the fix; and consumer lag (or age of the oldest message) is the metric that triggers scaling or backpressure. Mentioning retry amplification across layers and the head-of-line blocking risk in ordered streams marks a strong answer.
+</InterviewAngle>
+
+## Practice
+
+1. Write the retry schedule (with full jitter ranges) for base 200 ms, cap 30 s, 8 attempts. What is the worst-case total time before a message is dead-lettered?
+2. A FIFO queue of payment events has one malformed message at the head of a message group. Describe what happens with no DLQ, and design the fix.
+3. Producers send 3,000 messages a second for 20 minutes during a flash sale; consumers handle 2,000 a second. How big does the backlog get, and how long after the sale ends is the queue empty?
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

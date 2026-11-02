@@ -1,0 +1,20 @@
+{
+  "id": "p3-cache-strategies",
+  "phase": 3,
+  "slug": "cache-strategies",
+  "title": "Caching strategies",
+  "order": 2,
+  "week": 7,
+  "estimatedMinutes": 65,
+  "topics": [
+    { "id": "cache-aside", "title": "Cache-aside", "depth": "deep" },
+    { "id": "read-through", "title": "Read-through", "depth": "deep" },
+    { "id": "write-through", "title": "Write-through", "depth": "deep" },
+    { "id": "write-behind", "title": "Write-behind", "depth": "deep" },
+    { "id": "write-around", "title": "Write-around", "depth": "deep" },
+    { "id": "choosing", "title": "Choosing a strategy", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["cache"],
+  "practiceCaseStudyIds": ["news-feed"],
+  "prerequisites": ["p3-cache-layers"]
+}

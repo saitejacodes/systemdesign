@@ -1,0 +1,203 @@
+## Why it matters
+
+Most of the speed you feel on a fast website is not fast code; it is work that never happened because the answer was already sitting somewhere closer. Before a request for your profile page reaches a database, it may be answered by your browser, by a CDN server in your city, by a reverse proxy in front of the app, by a copy in the application's own memory, or by a shared cache cluster. Even when it does reach the database, the database usually answers from pages it already holds in RAM. Facebook's 2013 paper "Scaling Memcache at Facebook" describes a cache tier sitting in front of its databases that handles over a billion requests per second; without it, the databases behind it could not survive the read load. Knowing which layer to cache at, and what each layer costs you in freshness and complexity, is the first decision in almost every scaling discussion.
+
+<Callout type="analogy" title="The chef's mise en place">
+A chef doesn't walk to the walk-in freezer every time a dish needs an onion. Chopped onions sit in a small tray at arm's reach (the in-process cache). Bulk prep sits on a shared shelf every cook on the line can reach in two steps (the distributed cache). The walk-in freezer holds everything, but a round trip takes a minute (the database). The waiter even keeps bread and water at the front so guests never trouble the kitchen at all (the browser and CDN). Every layer trades space and freshness for speed: the tray is tiny and gets restocked often, and nobody wants yesterday's chopped onions.
+</Callout>
+
+## Hits, misses and the hit ratio
+
+<DepthStamp depth="deep" />
+
+A <Term slug="cache">cache</Term> is a smaller, faster store that keeps copies of data whose real home (the **source of truth**, often called the origin or backing store) is slower or more expensive to reach. Every lookup ends one of two ways:
+
+- **Hit:** the cache has the value, and you skip the slow path.
+- **Miss:** the cache doesn't have it, so you go to the source of truth, and usually store the result for next time.
+
+The fraction of lookups that hit is the <Term slug="cache-hit-ratio">cache hit ratio</Term>. It is the single most important number for any cache, because the average cost of a lookup is a weighted blend:
+
+```
+average latency = hit_ratio × hit_latency + (1 − hit_ratio) × miss_latency
+```
+
+Caches work because real access patterns are skewed. A small fraction of keys (today's trending posts, the home page, popular products) receives most of the traffic. The set of data that is actively being used over a period is the <Term slug="working-set">working set</Term>; if the working set fits in the cache, the hit ratio is high even when the full dataset is thousands of times bigger.
+
+### Worked example: why 99% is not "a bit better" than 90%
+
+A product page service gets **20,000 reads a second**. A cache hit (Redis in the same data centre) costs about **0.5 ms**; a miss goes to the database and costs about **10 ms**.
+
+| Hit ratio | Average latency | Reads reaching the database |
+|---|---|---|
+| 0% | 10 ms | 20,000/s |
+| 90% | 0.9 × 0.5 + 0.1 × 10 = **1.45 ms** | 2,000/s |
+| 99% | 0.99 × 0.5 + 0.01 × 10 = **0.6 ms** | 200/s |
+
+Moving from 90% to 99% looks like a 9-point improvement, but it cuts the database load **ten-fold**. That is why teams obsess over the last few percent, and why a cache that suddenly drops from 99% to 90% (after a restart, a deploy that changes key names, or a node failure) can take down a database that was sized for 200 reads a second.
+
+The other lesson in that table: the miss path still matters. The slowest 1% of requests all pay the miss cost, so your <Term slug="tail-latency">tail latency</Term> is set by the database, not the cache.
+
+## The latency ladder
+
+<DepthStamp depth="deep" />
+
+Each layer of caching sits on a different rung of a latency ladder. The figures below are rough orders of magnitude, consistent with the widely shared "latency numbers every programmer should know" list; the exact values depend on hardware and distance, but the ratios between rungs are what matter.
+
+| Where the answer comes from | Rough cost | What you skipped |
+|---|---|---|
+| Browser memory or disk cache | effectively zero network time | The whole network round trip |
+| CDN edge near the user | one short round trip, often tens of ms | The long trip to your origin, and your servers entirely |
+| Reverse proxy cache at your data centre | about 1 ms inside the DC, plus the user's round trip | Your application code and database |
+| In-process cache (app memory) | around 100 ns to a few µs | Any network hop |
+| Distributed cache (Redis, Memcached) | about 0.2–1 ms (one in-DC round trip) | The database query |
+| Database buffer pool hit | well under 1 ms of page access, plus query planning | A disk read |
+| Database with a disk read | about 0.1 ms per random SSD read, ~10 ms on spinning disk | Nothing: this is the bottom |
+| Cross-continent origin request | about 100–150 ms per round trip | Nothing |
+
+Two jumps dominate. Going from **in-process** (nanoseconds) to **any network hop** (hundreds of microseconds) is a factor of roughly a thousand. Going from **in-region** to **cross-continent** is another factor of a hundred or more. Caching close to the user beats caching close to the database whenever the data allows it.
+
+<Figure caption="FIG. 1.1 · THE CACHE LAYERS A READ PASSES THROUGH · EACH HIT STOPS THE JOURNEY">
+<Diagram label="A request flows from the browser cache to a CDN edge, then a reverse proxy, then the app with its in-process cache, then a distributed cache, then the database and its buffer pool. Each layer can answer and stop the request." chart={`flowchart LR
+  B["Browser cache"] -->|miss| C["CDN edge"]
+  C -->|miss| R["Reverse proxy cache"]
+  R -->|miss| A["App + in-process cache"]
+  A -->|miss| D["Distributed cache<br/>Redis / Memcached"]
+  D -->|miss| DB[("Database<br/>buffer pool, then disk")]`} />
+</Figure>
+
+## Browser, CDN and reverse proxy caches
+
+<DepthStamp depth="deep" />
+
+These three layers cache **whole HTTP responses**, and they are all controlled by the same mechanism: HTTP caching headers set by your server.
+
+### The browser cache
+
+The browser stores responses according to the <Term slug="cache-control">Cache-Control</Term> header. `Cache-Control: max-age=31536000, immutable` on a fingerprinted file such as `app.3f9a1c.js` means "keep this for a year and don't even ask". `Cache-Control: no-cache` means "you may store it, but check with me before reusing it", which the browser does with a <Term slug="conditional-request">conditional request</Term> carrying the <Term slug="etag">ETag</Term>; if nothing changed, the server replies `304 Not Modified` with no body.
+
+The catch: once a response is in someone's browser, **you cannot delete it**. You can only wait for it to expire. That is why static assets get a content hash in their file name: a new version is a new URL, so the old cached copy is simply never asked for again.
+
+### The CDN edge
+
+A <Term slug="cdn">CDN</Term> runs servers in many cities and caches responses close to users. It's ideal for images, video, scripts, stylesheets and any public page that is the same for everyone. It also absorbs traffic spikes: a million requests for the same file can become a handful of requests to your origin. Unlike browsers, CDNs usually offer a **purge** API, so you can remove content early. The CDN section later this week covers edge behaviour, purging and cache keys in depth.
+
+### The reverse proxy cache
+
+A <Term slug="reverse-proxy">reverse proxy</Term> such as Nginx or Varnish, sitting in front of your application servers, can cache responses too. It protects your application from repeated identical requests (an expensive search results page, an API listing the top 100 products) and works even for content you don't want on a public CDN. It is shared across all your app servers, so one miss warms the cache for everyone.
+
+The big constraint on all three: they key on the request (URL, plus selected headers). **Personalised responses** (your inbox, your cart) can't be shared, so they are marked `Cache-Control: private` (browser only) or `no-store`, and personalised data is cached further down the stack instead.
+
+## In-process and distributed caches
+
+<DepthStamp depth="deep" />
+
+Below HTTP, the application caches **data**, not responses: a user record, a rendered fragment, the result of an expensive query.
+
+### In-process caches
+
+An <Term slug="in-process-cache">in-process cache</Term> lives inside the application's own memory: a hash map with a size limit, or a library such as Caffeine (Java) or `lru-cache` (Node.js). Lookups cost nanoseconds and need no network or serialisation.
+
+The problems appear when you run more than one server:
+
+- **Duplication:** 50 app servers each hold their own copy. A 2 GB cache per server is 100 GB of RAM holding the same data 50 times.
+- **Inconsistency:** when a value changes, each server's copy expires on its own schedule. A user refreshing the page can bounce between servers and see the old and new values alternate.
+- **Cold starts:** every deploy or restart empties the cache, so a rolling deploy repeatedly sends a burst of misses to the database.
+
+In-process caches shine for data that is small, read constantly, and fine to be slightly stale: feature flags, configuration, currency lists, the compiled permission rules.
+
+### Distributed caches
+
+A <Term slug="distributed-cache">distributed cache</Term> is a separate cluster, such as Redis or Memcached, that every app server talks to over the network. It is a <Term slug="key-value-store">key-value store</Term> kept in RAM.
+
+- **One copy, shared:** a value cached by server 1 is a hit for server 50.
+- **Survives app deploys:** restarting the app doesn't empty it.
+- **Scales out:** keys are spread across nodes, usually with <Term slug="consistent-hashing">consistent hashing</Term>, so adding nodes adds capacity.
+- **Costs a network hop** on every lookup, plus serialisation. That's still 10–50 times faster than most database queries, but it isn't free: a page that makes 40 sequential cache calls at 0.5 ms each spends 20 ms on the cache alone. Batch lookups (`MGET` in Redis, multi-get in Memcached) fix this.
+
+Many large systems use **both**: a tiny in-process cache (seconds of TTL) in front of a distributed cache (minutes of TTL), which is called a two-tier or near cache. The in-process tier soaks up the very hottest keys, which also protects a single Redis node from a hot key hammering it.
+
+### Worked example: sizing a distributed cache
+
+A news site has 5 million articles, averaging 4 KB each as cached JSON, so the full dataset is about 20 GB. Analytics shows that about 200,000 articles get roughly 95% of reads in any given day. Caching only those needs 200,000 × 4 KB = **0.8 GB**, plus per-key overhead. Redis adds tens of bytes of bookkeeping per key, so budget about 1 GB and leave headroom. A single modest cache node holds the working set; caching all 20 GB would buy only a few more percent of hit ratio.
+
+## The database buffer pool
+
+<DepthStamp depth="awareness" />
+
+The database caches too. It reads and writes data in fixed-size **pages** (8 KB in PostgreSQL, 16 KB by default in MySQL's InnoDB) and keeps recently used pages in RAM in a <Term slug="buffer-pool">buffer pool</Term>. PostgreSQL calls it `shared_buffers` and its documentation suggests about 25% of system memory as a starting point on a dedicated server, relying on the operating system's page cache for the rest. InnoDB's equivalent is `innodb_buffer_pool_size`, commonly set to a large share of RAM on a dedicated database host.
+
+This matters for system design in two ways:
+
+- **A "slow database" is often a database whose working set no longer fits in RAM.** When hot pages are evicted and every query hits disk, latency jumps by an order of magnitude even though the query plans haven't changed.
+- **A buffer pool hit is not a cache hit.** Even with every page in memory, the database still parses, plans, locks and runs the query. An application cache in front of it skips all of that work, which is why caching a query's result can still pay off on a database that is "all in memory".
+
+## What to cache (and what not to)
+
+<DepthStamp depth="tradeoffs" />
+
+Good candidates share three properties: they are **read far more often than written**, **expensive to produce**, and **tolerant of being a little stale**.
+
+| Cache it | Why |
+|---|---|
+| Static assets (JS, CSS, images, video) | Never change at a given URL; cache at browser and CDN for a long time |
+| Public pages and API responses that are the same for everyone | Reverse proxy or CDN, short TTL |
+| Results of expensive queries or aggregations (top 10 lists, counts) | Distributed cache; recomputing is the costly part |
+| Hot objects by ID (user profile, product, article) | Distributed cache; huge read/write ratio |
+| Sessions and rate-limit counters | Distributed cache as the primary store, accepting what a crash would lose |
+| Configuration, feature flags | In-process with a short TTL |
+
+| Think twice | Why |
+|---|---|
+| Account balances, stock levels used to make decisions | A stale value causes oversells or wrong decisions; read from the source |
+| Data written as often as it is read | Low hit ratio, constant invalidation |
+| Long-tail data read once | It evicts useful entries and never hits |
+| Anything with access control | One mistake in the cache key serves user A's data to user B |
+
+The last row deserves emphasis. A cache key must include **everything that changes the response**: user ID for personal data, locale, permissions version, API version. Several real security incidents across the industry have been caused by a shared cache serving a personalised page to the wrong user because the key was missing a field.
+
+<TradeoffBox title="Choosing a cache layer" items={[
+  { gain: "Browser cache: zero network cost, free to you", cost: "You can't delete it early; only safe for content with versioned URLs or short lifetimes" },
+  { gain: "CDN: absorbs global traffic close to users", cost: "Only for shareable responses; purges take time to propagate" },
+  { gain: "In-process: nanosecond lookups, no network", cost: "Duplicated per server, inconsistent between servers, empty after every deploy" },
+  { gain: "Distributed cache: one shared copy, survives deploys, scales out", cost: "A network hop per lookup and another cluster to run and monitor" }
+]} />
+
+<NotWhenBox title="Adding a cache" items={[
+  "The database isn't the bottleneck yet: an index or a query fix is cheaper and has no staleness.",
+  "Reads and writes are roughly equal: the hit ratio will be poor and invalidation constant.",
+  "Every read must be perfectly current (balances, inventory checks before a sale).",
+  "The working set is far larger than any cache you can afford: you'll mostly pay for misses."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A cache makes every request faster." right="Only hits are faster. Misses pay the cache lookup plus the full slow path, so the tail latency is still set by the source of truth." />
+
+<Misconception wrong="If the database has a big buffer pool, an application cache adds nothing." right="A buffer pool hit still parses, plans and runs the query. An application cache skips that work entirely and offloads the database's CPU and connections." />
+
+<Misconception wrong="An in-process cache is just a faster distributed cache." right="Each server holds its own copy, so values diverge between servers and empty on every deploy. It's a different consistency model, not just a faster one." />
+
+## Interview angle
+
+<InterviewAngle title="Cache layers" questions={[
+  "Where would you add caching to this design, and at which layer?",
+  "Your cache hit ratio drops from 99% to 90%. What happens to the database?",
+  "Why not just cache everything in each app server's memory?",
+  "How do you cache a page that is mostly public but has a personalised header?"
+]}>
+Walk down the layers from the user inward and say which ones apply: static assets at the CDN, public responses at the edge or proxy, per-user objects in a distributed cache. Quote the hit ratio and do the arithmetic for database load on the miss path. Name the cost of each layer (staleness, duplication, network hop) rather than presenting caching as free. For mixed pages, split them: cache the public shell at the edge and fetch the personalised part separately.
+</InterviewAngle>
+
+## Practice
+
+1. A service gets 50,000 reads a second. Cache hits cost 1 ms and misses cost 25 ms. Compute the average latency and database load at 95% and 99.5% hit ratios.
+2. For the news-feed case study, list every layer a feed request could be cached at and say what you would cache at each, including what must never be shared between users.
+3. Your app runs on 30 servers with a 1 GB in-process cache each. Estimate the memory spent on duplicate data and describe when moving to a 4 GB Redis cluster would be better.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

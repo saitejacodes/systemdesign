@@ -1,0 +1,22 @@
+[
+  {
+    "id": "redis-eviction-docs",
+    "title": "Key eviction",
+    "author": "Redis",
+    "kind": "docs",
+    "url": "https://redis.io/docs/latest/develop/reference/eviction/",
+    "why": "The official description of maxmemory, every eviction policy, and how approximate LRU and LFU work.",
+    "topicIds": ["redis-eviction", "other-policies"],
+    "free": true
+  },
+  {
+    "id": "caffeine",
+    "title": "Caffeine",
+    "author": "Ben Manes",
+    "kind": "repo",
+    "url": "https://github.com/ben-manes/caffeine",
+    "why": "A production Java cache whose wiki explains Window TinyLFU and the concurrency tricks behind a fast in-process cache.",
+    "topicIds": ["lfu", "lru-implementation"],
+    "free": true
+  }
+]

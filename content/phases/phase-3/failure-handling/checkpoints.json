@@ -1,0 +1,8 @@
+[
+  { "id": "failure-handling-c1", "text": "I can write a capped exponential backoff schedule with full jitter and explain why jitter prevents synchronised retry spikes.", "topicId": "retries-backoff" },
+  { "id": "failure-handling-c2", "text": "I can tell a retryable error from a permanent one and explain why retrying at every layer multiplies load.", "topicId": "retries-backoff" },
+  { "id": "failure-handling-c3", "text": "I can explain how a poison message wastes capacity in a plain queue and blocks an ordered partition.", "topicId": "poison-messages" },
+  { "id": "failure-handling-c4", "text": "I can configure a dead-letter queue (SQS redrive policy or RabbitMQ dead-letter exchange), alarm on it, and plan a safe redrive.", "topicId": "dead-letter-queues" },
+  { "id": "failure-handling-c5", "text": "I can calculate backlog growth when producers outpace consumers and name three ways to apply backpressure.", "topicId": "backpressure" },
+  { "id": "failure-handling-c6", "text": "I can pick a starting prefetch value from a consumer's concurrency and round-trip time, and say what symptoms mean it is too high or too low.", "topicId": "prefetch" }
+]

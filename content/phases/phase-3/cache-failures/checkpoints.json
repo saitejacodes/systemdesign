@@ -1,0 +1,7 @@
+[
+  { "id": "cache-failures-c1", "text": "I can calculate the miss window of a stampede (request rate × rebuild time) and explain why it feeds on itself.", "topicId": "stampede" },
+  { "id": "cache-failures-c2", "text": "I can compare a rebuild lock, request coalescing and probabilistic early refresh and pick one for a given key.", "topicId": "stampede" },
+  { "id": "cache-failures-c3", "text": "I can defend a database against cache penetration with negative caching and a correctly sized Bloom filter.", "topicId": "penetration" },
+  { "id": "cache-failures-c4", "text": "I can explain why adding cache nodes doesn't fix a hot key and apply local caching or key replication instead.", "topicId": "hot-keys" },
+  { "id": "cache-failures-c5", "text": "I can prevent an avalanche with TTL jitter and plan for a cold cache with replication, warming and database protection.", "topicId": "avalanche" }
+]

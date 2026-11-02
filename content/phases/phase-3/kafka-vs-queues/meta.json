@@ -1,0 +1,18 @@
+{
+  "id": "p3-kafka-vs-queues",
+  "phase": 3,
+  "slug": "kafka-vs-queues",
+  "title": "Kafka vs RabbitMQ vs SQS",
+  "order": 13,
+  "week": 8,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "kafka-log", "title": "Kafka's log model", "depth": "deep" },
+    { "id": "rabbitmq-routing", "title": "RabbitMQ exchanges and routing", "depth": "deep" },
+    { "id": "sqs", "title": "Amazon SQS: standard vs FIFO", "depth": "deep" },
+    { "id": "choosing-broker", "title": "Choosing: a decision table", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["message-queue"],
+  "practiceCaseStudyIds": ["notification-system"],
+  "prerequisites": ["p3-queues-vs-pubsub", "p3-partitioning-ordering", "p3-delivery-semantics"]
+}
