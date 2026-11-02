@@ -178,6 +178,12 @@ Avoid brand loyalty. Start from requirements: do consumers need history (log) or
 2. A Kafka topic receives 20,000 events a second of 2 KB each with 3 days of retention and a replication factor of 3. How much disk does it need? If a consumer handles 1,500 events a second, how many partitions?
 3. For each of these, pick Kafka, RabbitMQ or SQS and justify it in one sentence: image thumbnailing jobs; a shared stream of all user activity for five teams; per-account ledger updates on AWS.
 
+## Try it
+
+Switch between log mode and queue mode with the same traffic. Replay a consumer group from the earliest offset in log mode, then try the same in queue mode, where acknowledged messages are gone.
+
+<Simulator id="message-queue" />
+
 <CheckpointList />
 
 <QuizPlayer />

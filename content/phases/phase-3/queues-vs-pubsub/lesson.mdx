@@ -173,6 +173,12 @@ Interviewers expect a queue or topic in almost every large design, and they prob
 2. Draw the message flow for "user signed up" reaching a welcome-email service, a CRM sync and an analytics pipeline, first with SNS and SQS, then with Kafka consumer groups.
 3. A consumer calls an external API that allows 50 requests per second. Choose push or pull, and describe exactly how you would keep the consumer under that limit.
 
+## Try it
+
+Turn on the second consumer group in log mode: both groups read every message independently, at their own pace. That is publish-subscribe on top of a log.
+
+<Simulator id="message-queue" />
+
 <CheckpointList />
 
 <QuizPlayer />

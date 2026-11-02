@@ -191,6 +191,12 @@ Interviewers want a complete failure story, not just "we use a queue". Say: tran
 2. A FIFO queue of payment events has one malformed message at the head of a message group. Describe what happens with no DLQ, and design the fix.
 3. Producers send 3,000 messages a second for 20 minutes during a flash sale; consumers handle 2,000 a second. How big does the backlog get, and how long after the sale ends is the queue empty?
 
+## Try it
+
+Inject a poison message. With unlimited retries it blocks its partition forever; set a maximum attempt count and watch it move to the dead-letter queue while the rest flows again.
+
+<Simulator id="message-queue" />
+
 <CheckpointList />
 
 <QuizPlayer />

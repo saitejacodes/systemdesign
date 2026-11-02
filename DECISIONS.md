@@ -94,3 +94,13 @@
 - As in Prompt 08, lessons don't embed `<Simulator>` for simulators that don't exist yet; meta.json lists them.
 - Review of agent work: all 35 Phase 3 resource URLs were fetched; the one dead link (Jay Kreps's "The Log" on engineering.linkedin.com, now 404) was replaced with the Kafka design docs. The Valkey sentence was corrected (forked by former maintainers under the Linux Foundation; Redis 8 added AGPL). S9's hash label now says hash(id) mod N.
 - Known content debt across Phases 1–3: in 58–71% of single-answer quiz questions the correct option is noticeably longer than every distractor, a test-taking giveaway (options are shuffled, so position is not). Left for a dedicated pass over all quizzes.
+
+## Prompt 11
+- S11–S13 were built by three parallel subagents (one folder each) from a shared brief; S10 was built here. Registry entries, lesson embeds, e2e routes and verification were done here. All four quiz-rebalance and simulator agents were interrupted by a usage limit once and resumed from their saved transcripts.
+- S10's challenges were tuned with a parameter sweep so each needs its intended fix, and each was checked over six seeds:
+  - **Flush:** no protection peaks at 94–101% DB load, per-server coalescing at about 93%, and the global lock at about 46% (the limit is 70%). With four app servers, per-server coalescing still sends up to four queries per key.
+  - **Mass expiry:** none peaks at 86–94%, jitter at 40–52%. Coalescing would also pass, so the challenge rejects it ("fix the cause, not the symptom").
+  - **Hit rate:** cache-aside with LFU and a long TTL tops out near 77% because every write deletes a hot key; write-through reaches 83–86%. The target is 82%, and the challenge rejects a bigger cache or the local cache.
+- The mass-expiry and flush challenges use a read-only workload. With writes, delete-on-write keeps re-filling the hot keys at random times, which hides the synchronised expiry the challenge is about.
+- Missing-id lookups draw from 1,000 fixed absent ids, not unbounded random ones, so caching "not found" has repeats to catch. Truly random ids need a Bloom filter, which the lesson covers and the sim does not.
+- Agents' choices kept as reported: Redis HyperLogLog uses 1,024 registers; message-queue commit-after is periodic (1 s) like Kafka auto-commit; the outbox's 1,000-order run uses a `maxOrders` config key that stays set after the challenge (same as `crashAt` in replication).

@@ -216,6 +216,12 @@ Say the guarantee out loud for every queue in your design: "at-least-once, so th
 2. Design the `processed_messages` table for a consumer handling 5 million messages a day. How long must you keep IDs, and how do you clean them up?
 3. A notification consumer averages 2 seconds per message but calls a provider whose timeout is 60 seconds. Choose an SQS visibility timeout and justify it.
 
+## Try it
+
+Crash a consumer with commit-before and count the lost messages, then switch to commit-after and count the duplicates instead. Turn on the idempotent consumer and the duplicates become harmless.
+
+<Simulator id="message-queue" />
+
 <CheckpointList />
 
 <QuizPlayer />

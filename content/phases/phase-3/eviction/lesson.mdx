@@ -239,6 +239,12 @@ LRU is one of the most common coding questions in backend interviews: write the 
 2. Extend the LRU class above with a per-entry TTL, so `get` treats expired entries as misses and removes them.
 3. A Redis instance used both for sessions (must not be evicted) and for page fragments (can be evicted) is running out of memory. Choose a `maxmemory-policy` and say how keys must be written for it to work.
 
+## Try it
+
+Shrink the cache to 5% of the keys and switch between LRU, LFU, FIFO and random. Then raise and lower the popularity skew to see when the eviction policy matters and when it barely does.
+
+<Simulator id="cache" />
+
 <CheckpointList />
 
 <QuizPlayer />

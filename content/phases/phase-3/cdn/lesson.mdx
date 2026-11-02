@@ -215,6 +215,12 @@ Put a CDN in front of static and media content early in any design and say why: 
 2. Your CDN serves 1 billion requests a day at a 70% hit rate. Logs show 40% of query strings contain `utm_` parameters. Explain what you'd change and estimate the new origin request count if the hit rate rises to 92%.
 3. Design purging for an e-commerce site where one product edit must update its page, its JSON API and twelve image sizes everywhere within a minute.
 
+## Try it
+
+A CDN edge is a cache with the same levers: TTL, size and popularity skew. Lower the TTL and watch the hit rate and the load on the origin (the database here) change together.
+
+<Simulator id="cache" />
+
 <CheckpointList />
 
 <QuizPlayer />

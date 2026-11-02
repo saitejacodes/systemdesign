@@ -11,7 +11,7 @@
 - [x] 08 Phase 2 Content
 - [x] 09 Phase 2 Simulators + SQL Sandbox
 - [x] 10 Phase 3 Content
-- [ ] 11 Phase 3 Simulators
+- [x] 11 Phase 3 Simulators
 - [ ] 12 Phase 4 Content
 - [ ] 13 Phase 4 Simulators
 - [ ] 14 Phase 5 Content + Simulators

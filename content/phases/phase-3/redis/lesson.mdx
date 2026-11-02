@@ -308,6 +308,12 @@ Don't just say "use Redis": name the data structure and the exact commands (sort
 2. An instance takes 3,000 writes a second. Compare data loss after a crash with RDB every 15 minutes, AOF `everysec`, and both enabled.
 3. Write (in pseudocode or Lua) an atomic sliding-window rate limiter using a sorted set, allowing 10 requests per user per 60 seconds.
 
+## Try it
+
+Type real commands into a simulated Redis. Build a session store with a TTL and fast-forward the clock to watch it expire, rank players with a sorted set, count unique visitors with HyperLogLog, and make a rate limiter atomic with MULTI/EXEC. Six exercises check your work as you type.
+
+<Simulator id="redis-playground" />
+
 <CheckpointList />
 
 <QuizPlayer />

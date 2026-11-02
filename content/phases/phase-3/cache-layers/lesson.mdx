@@ -194,6 +194,12 @@ Walk down the layers from the user inward and say which ones apply: static asset
 2. For the news-feed case study, list every layer a feed request could be cached at and say what you would cache at each, including what must never be shared between users.
 3. Your app runs on 30 servers with a 1 GB in-process cache each. Estimate the memory spent on duplicate data and describe when moving to a 4 GB Redis cluster would be better.
 
+## Try it
+
+Turn on the local cache for hot keys, then inject a hot key from **Break it**. One cache node takes half the traffic until each app server keeps the hottest keys in its own memory.
+
+<Simulator id="cache" />
+
 <CheckpointList />
 
 <QuizPlayer />

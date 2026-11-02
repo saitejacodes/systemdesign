@@ -233,6 +233,12 @@ State the strategy by name for both the read and the write path ("cache-aside re
 2. A write-behind cache flushes every 5 seconds and takes 3,000 writes a second spread evenly over 6 nodes. One node dies. How many writes could be lost?
 3. Write the pseudocode for a read-through cache that coalesces concurrent misses for the same key, so only one database query runs.
 
+## Try it
+
+Switch the write strategy while writes are flowing and watch the stale-read card. Under write-behind, kill a cache node from **Break it** and count the writes that never reached the database. The race demo under the canvas steps through why delete-on-write is the safer default for cache-aside.
+
+<Simulator id="cache" />
+
 <CheckpointList />
 
 <QuizPlayer />

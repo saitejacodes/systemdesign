@@ -219,6 +219,12 @@ The expected move is to say "order per entity, not globally", choose the entity 
 2. One merchant produces 25% of all payment events on a 24-partition topic keyed by `merchant_id`. Calculate that partition's share of the load compared with an average partition, then propose two fixes and what each costs.
 3. A group of 10 consumers on a 10-partition topic has lag growing by 2,000 messages per second. List three things you would check and two ways to increase throughput.
 
+## Try it
+
+Run the **Keep per-key order with 4 consumers** challenge: competing consumers on one queue reorder a key's events, a partitioned log keeps them in order. Then add consumers past the partition count and watch the extras sit idle.
+
+<Simulator id="message-queue" />
+
 <CheckpointList />
 
 <QuizPlayer />

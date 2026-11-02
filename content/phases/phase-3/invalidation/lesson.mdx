@@ -186,6 +186,12 @@ Strong answers say "update the database, then delete the key, with a TTL as a sa
 2. In the news-feed case study, a user changes their display name. List every cached key that must change, and choose between explicit deletes, versioned keys and TTL for each.
 3. Write the Redis Lua logic for a "set only if this version is newer" operation, storing the value and its version together.
 
+## Try it
+
+Raise the write share to 10% and compare cache-aside (delete on write) with write-through: the stale-reads card counts reads that returned an older version than the database. Make the DB slower and watch the delete-then-refill race get worse.
+
+<Simulator id="cache" />
+
 <CheckpointList />
 
 <QuizPlayer />

@@ -260,6 +260,12 @@ The dual-write question is one of the most reliable in system design interviews.
 2. A notification service needs each customer's email address and language. Design it once with event notification and once with event-carried state transfer, and list what happens to each when the customer service is down for an hour.
 3. Model a shopping cart with event sourcing: list the events, show the state after replaying them, and decide when you would take snapshots.
 
+## Try it
+
+Crash the service between saving the order and publishing the event in each dual-write order, and watch the database and the broker disagree. Then switch to the outbox and crash the relay mid-publish: duplicates appear, and an idempotent consumer drops them.
+
+<Simulator id="outbox" />
+
 <CheckpointList />
 
 <QuizPlayer />

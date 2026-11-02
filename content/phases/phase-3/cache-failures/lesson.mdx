@@ -190,6 +190,12 @@ Interviewers bring these up as follow-ups once you've added a cache: "what happe
 2. Size a Bloom filter for 20 million valid order IDs at a 0.5% false-positive rate. How many bits, megabytes and hash functions?
 3. Design read handling for a feed where one celebrity post receives 500,000 reads a second and is edited a few times a day. State the staleness users may see.
 
+## Try it
+
+Run the **Survive a cache flush** challenge: with no protection, every concurrent miss for a hot key goes to the database. Turn on the rebuild lock and watch the spike flatten. Then try **Spread the expiry**, and add 30% lookups for missing ids to see penetration, with and without caching "not found".
+
+<Simulator id="cache" />
+
 <CheckpointList />
 
 <QuizPlayer />
