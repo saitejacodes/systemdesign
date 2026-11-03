@@ -241,6 +241,12 @@ The follow-up is almost always "what if the orchestrator crashes?" The strong an
 2. Design a saga for booking a flight, a hotel and a car. Mark the pivot, give every compensation, and say which steps must be retriable. What does a customer see if the car step fails?
 3. A choreographed saga occasionally leaves orders PENDING forever. List three possible causes and the fix for each.
 
+## Try it
+
+Run 100 orders with random failures and lost messages: turn on retries and idempotency keys until no order ends inconsistent. Then switch to 2PC and crash the coordinator after PREPARE, and count the orders blocked behind its locks.
+
+<Simulator id="saga" />
+
 <CheckpointList />
 
 <QuizPlayer />

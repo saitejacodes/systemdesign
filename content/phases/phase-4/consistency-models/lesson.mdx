@@ -211,6 +211,12 @@ The interviewer is testing whether you can map a user-visible bug to the guarant
 2. Design read-your-writes for a profile service with one leader and four followers lagging up to 3 s, without routing all reads to the leader. What does the client store and what does the server check?
 3. Write a timeline (t = 0 ms, …) in which a comment reply is shown before its parent on an eventually consistent store, then show which metadata a causally consistent store uses to prevent it.
 
+## Try it
+
+Cut a link in AP mode and read from the far side: that stale read is exactly what eventual consistency permits and linearizability forbids. In CP mode the same read either returns the latest value or an error.
+
+<Simulator id="cap" />
+
 <CheckpointList />
 
 <QuizPlayer />

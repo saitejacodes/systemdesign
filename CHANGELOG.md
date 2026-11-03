@@ -100,3 +100,17 @@
 - Fair treatment where the field disagrees: "pick 2 of 3", Redlock (Kleppmann vs antirez).
 - Simulator ids (cap, quorum, raft, clocks, saga, snowflake, retry-storm, circuit-breaker, availability-calculator) are in meta.json and show as cards until Prompt 13 builds them.
 - Verify: open /phase/4 and any section; `pnpm test` (content checks), `pnpm test:e2e` (all 15 routes; the plan test now checks week 11 for "Coming soon").
+
+## Prompt 13 · Phase 4 simulators
+- Nine simulators (S-14 to S-22), each with a pure seeded model, SimulatorShell, a "what it models / simplifies" drawer, a guided tour, machine-checked challenges and model tests with failure cases:
+  - **CAP (S-14):** cut links between 3–5 replicas; a CP cluster refuses on the minority side while an AP cluster answers stale and meets conflicts on heal; CP's majority round trip shows even with no partition (PACELC).
+  - **Quorum (S-15):** tune N, R and W, crash or slow replicas, and see what overlap costs in availability and latency.
+  - **Raft (S-16):** five nodes with election timers, RequestVote/AppendEntries dots and logs by index with the commit bar; crash the leader, slow a node, or drag nodes across a partition.
+  - **Clocks (S-17):** local events, sends and receives on three processes; compare any two by vector clock, Lamport timestamp and skewed wall clock; NTP step fault.
+  - **Saga (S-18):** an order through Order, Payment, Inventory and Shipping as an orchestrated saga, a choreographed saga or 2PC; compensations run in reverse; a crashed 2PC coordinator leaves participants blocked holding locks.
+  - **Snowflake (S-19):** split 64 bits between timestamp, machine and sequence; a clock stepped back makes the naive generator mint duplicates, while waiting for the clock keeps IDs unique.
+  - **Retry storm (S-20):** a short fault, naive retries, and a service that stays down after the fix; backoff, jitter and a retry budget, with live amplification.
+  - **Circuit breaker (S-21):** closed/open/half-open state diagram; trip fast on a real outage, ignore noise, and let a cold B warm up.
+  - **Availability calculator (S-22):** chain and duplicate components to get total availability, downtime per year and the weakest link.
+- 13 Phase 4 lessons now embed their simulator in a "Try it" section (distributed-locks and chaos-engineering have none in the spec).
+- Verify: open /simulators/raft and press Play, then Crash leader; open any Phase 4 lesson and scroll to "Try it". `pnpm test` (354 tests), `pnpm test:e2e` (all nine simulator routes).

@@ -111,3 +111,10 @@
 - consistency-models had no diagram; a strength-ladder figure was added here.
 - Quizzes were held to the rebalance standard from the start (quizcheck passes for all 15).
 - Phase 4 has no case study yet, so practiceCaseStudyIds is empty; distributed-locks and chaos-engineering have no simulator in the spec.
+
+## Prompt 13
+- The nine simulators were built by six parallel subagents (one folder each) from a shared brief; registry entries, titles, lesson embeds, e2e routes and verification were done here.
+- Raft was reviewed against Figure 2 of the paper: the up-to-date check before granting a vote, truncating a conflicting suffix, follower commit = min(leaderCommit, index of last new entry), a leader commits only entries from its current term (with a no-op on election), and restart clears only volatile state.
+- Retry storm: with open-loop Poisson clients, the retry budget alone brings the system back; jitter does not, because arrivals are already random. Jitter matters for synchronised clients, so it is shown with the "restart all clients" fault, and the timeouts-retries lesson says so.
+- Several sims have more challenges than the minimum (up to four), kept because each tests a different idea.
+- Known limitation: in the saga sim the "Recover coordinator" button and the coordinator-crash fault toggle are independent, so the fault chip can stay on after recovery.

@@ -198,6 +198,12 @@ Expect to be asked to choose numbers and defend them. State N, R and W, then imm
 2. Two data centres each run Cassandra with RF = 3. Compare `QUORUM` and `LOCAL_QUORUM` for reads and writes: how many replicas each needs, whether the request crosses the WAN, and whether a write in one data centre is guaranteed visible to a read in the other.
 3. Write a timeline in which N = 3, W = 2, R = 2 still returns a stale value because of a sloppy quorum, then show how hinted handoff eventually fixes it.
 
+## Try it
+
+Start from (3, 2, 2) and crash one replica: reads and writes keep working and no read is stale. Switch to (3, 1, 1) and watch stale reads appear, then try the read-heavy challenge at N = 5, where the right R and W buy a lower read p99.
+
+<Simulator id="quorum" />
+
 <CheckpointList />
 
 <QuizPlayer />

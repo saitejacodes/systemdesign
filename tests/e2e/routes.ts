@@ -27,6 +27,7 @@ export const ROUTES = [
   "/simulators/redis-playground",
   "/simulators/message-queue",
   "/simulators/outbox",
+  ...["cap", "quorum", "raft", "clocks", "saga", "snowflake", "retry-storm", "circuit-breaker", "availability-calculator"].map((id) => `/simulators/${id}`),
   "/simulators/code-labs",
   "/simulators/code-labs/sample",
   "/studio",

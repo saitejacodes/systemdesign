@@ -225,6 +225,12 @@ The usual follow-up is "so how would you resolve the conflict once you detect it
 2. Processes P and Q start with vectors [0, 0]. P writes, sends to Q, then writes again. Q writes once before and once after receiving. Write every vector and say which pairs of events are concurrent.
 3. Your team uses Cassandra with last-write-wins for a shopping cart. Describe how a user could lose an item, and propose two designs that would not.
 
+## Try it
+
+Add sends and receives between three processes, then pick two events. Find two concurrent events whose Lamport timestamps still order them, then add clock skew and make the wall clock put an effect before its cause.
+
+<Simulator id="clocks" />
+
 <CheckpointList />
 
 <QuizPlayer />

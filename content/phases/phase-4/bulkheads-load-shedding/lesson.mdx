@@ -218,6 +218,12 @@ These ideas come up whenever a design has many dependencies or a traffic spike. 
 2. A server handles 2,000 requests a second and is offered 3,000, of which 40% are prefetches labelled SHEDDABLE_PLUS. Which requests should be shed, and what fraction of critical requests survives?
 3. Using client-side throttling with K = 2, what rejection probability does a client apply after sending 1,000 requests of which the backend accepted 300? What about K = 1.5?
 
+## Try it
+
+Watch offered load climb past capacity during a retry storm: timed-out work is wasted, so goodput falls while the service is busier than ever. That is the overload load shedding and retry budgets exist to stop.
+
+<Simulator id="retry-storm" />
+
 <CheckpointList />
 
 <QuizPlayer />

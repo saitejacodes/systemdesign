@@ -258,6 +258,12 @@ The usual next question is "so why not put everything in etcd?" The strong answe
 2. Leader-to-follower round trips are 1, 1, 40 and 45 ms in a 5-node cluster, and disk sync takes 3 ms. Estimate commit latency. What happens to it if the two nearby followers fail?
 3. Design leader election for a cron service with 4 instances using etcd leases. What lease length would you choose, and what happens during a 10-second garbage-collection pause on the leader?
 
+## Try it
+
+Crash the leader and watch a follower time out, win a majority and take over. Drag two nodes to the other side of a partition with the leader among them: it keeps accepting writes it can never commit. Heal the partition and watch its uncommitted entries get overwritten.
+
+<Simulator id="raft" />
+
 <CheckpointList />
 
 <QuizPlayer />

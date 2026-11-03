@@ -257,6 +257,12 @@ Expect this as a follow-up to any design with service-to-service calls: "what ha
 2. A request crosses four layers and each retries up to 2 extra times (3 attempts). How many calls reach the bottom service when it is failing every call? What changes with a 10% retry budget at each layer?
 3. Write the full-jitter sleep values (ranges and averages) for attempts 0 to 5 with base 50 ms and cap 2 s, then decide how many attempts fit inside an 800 ms remaining deadline with 150 ms per-attempt timeouts.
 
+## Try it
+
+Degrade the service and compare no retries, immediate retries, exponential backoff and backoff with full jitter: none of them recovers on its own, because backoff changes when retries go out, not how many. Add a retry budget and watch amplification fall and the service recover within a second. Then restart the service so every queued request fails at once, and watch full jitter break up the synchronized retry waves that plain backoff sends.
+
+<Simulator id="retry-storm" />
+
 <CheckpointList />
 
 <QuizPlayer />

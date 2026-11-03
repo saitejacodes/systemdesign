@@ -204,6 +204,12 @@ The follow-up that separates candidates is "what if the clock goes backwards?" A
 2. A table has 2 billion rows. Estimate the raw size of the primary key alone with a `BIGINT`, a binary UUID and a UUID stored as a 36-character string. Then explain why the real difference is larger once secondary indexes and foreign keys are counted.
 3. Your Snowflake generators run on autoscaled containers. Describe how a new container gets a machine ID, what happens when it is killed, and how you prevent two live containers from ever sharing one.
 
+## Try it
+
+Change the bit widths and watch the lifetime, machine count and IDs per millisecond move. Then step a machine's clock back and compare trusting the clock (duplicates) with refusing until it catches up.
+
+<Simulator id="snowflake" />
+
 <CheckpointList />
 
 <QuizPlayer />

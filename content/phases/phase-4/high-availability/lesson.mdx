@@ -218,6 +218,12 @@ The follow-up that separates candidates is "so should we go multi-region?" A wea
 2. A service needs 24,000 requests a second at peak and must survive the loss of one zone. Compare total provisioned capacity in 2, 3 and 4 zones.
 3. Write the timeline for an AZ failure in your own current or past system, from first error to full recovery. Mark every assumption that has never been tested.
 
+## Try it
+
+Build the checkout path, then add redundant copies until it reaches 99.99% using only 99.9% parts. Watch which stage holds the largest share of the yearly downtime.
+
+<Simulator id="availability-calculator" />
+
 <CheckpointList />
 
 <QuizPlayer />

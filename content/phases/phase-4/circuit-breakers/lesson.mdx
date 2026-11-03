@@ -184,6 +184,12 @@ Breakers come up whenever your design has a synchronous call to another service:
 2. Choose breaker settings (window type and size, minimum calls, threshold, wait, half-open trials) for a dependency called 5 times a minute, and for one called 5,000 times a second. Explain the difference.
 3. For a ride-hailing app, write the fallback for each dependency of "request a ride": maps ETA, surge pricing, payment-method check, driver matching. Mark which ones should fail fast instead.
 
+## Try it
+
+Take service B down and watch the breaker trip from closed to open, fail fast, then probe in half-open. Tune the threshold, minimum calls and open duration so A's p99 stays low without hammering B while it recovers.
+
+<Simulator id="circuit-breaker" />
+
 <CheckpointList />
 
 <QuizPlayer />

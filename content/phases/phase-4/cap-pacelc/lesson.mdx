@@ -191,6 +191,12 @@ The usual next follow-up is "so is Cassandra CP or AP?" The strong answer: neith
 2. A social app has posts, likes, follower counts and direct-message read receipts. Classify each as needing C or tolerating A during a partition, and justify each choice with what a user would see if you chose wrong.
 3. A service in Singapore reads from a leader in Oregon with a 170 ms round trip. A page makes four sequential consistent reads. Calculate the added latency per page, then propose a design that keeps strong consistency only where it is needed.
 
+## Try it
+
+Run **Make the minority refuse** in CP mode, then switch to AP and **Catch a stale read** across the same cut. Then heal a partition with last-write-wins and count the lost writes, and try again with siblings. Finally, **Price the ELSE branch**: with every link up, compare CP and AP write latency.
+
+<Simulator id="cap" />
+
 <CheckpointList />
 
 <QuizPlayer />
