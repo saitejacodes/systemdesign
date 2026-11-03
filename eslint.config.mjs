@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Learner starters/solutions in five languages; checked by lib/labs/labs.test.ts instead.
+    "content/labs/**",
   ]),
 ]);
 

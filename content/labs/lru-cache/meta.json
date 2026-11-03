@@ -1,0 +1,17 @@
+{
+  "id": "lru-cache",
+  "order": 1,
+  "title": "LRU cache",
+  "summary": "Build a least-recently-used cache with O(1) get and put from a hash map and a doubly linked list.",
+  "sectionIds": ["p3-eviction"],
+  "complexity": [
+    { "op": "get(key)", "time": "O(1)", "space": "" },
+    { "op": "put(key, value)", "time": "O(1)", "space": "" },
+    { "op": "whole cache", "time": "", "space": "O(capacity)" }
+  ],
+  "hints": [
+    "A hash map gives O(1) lookup but no order; a list gives order but O(n) lookup. Use both: the map points at list nodes.",
+    "Keep the list ordered from most to least recently used. Sentinel head and tail nodes remove every empty-list special case.",
+    "get moves the node to the front. put updates and moves an existing node, or inserts at the front and, if over capacity, unlinks the node before the tail and deletes its key from the map."
+  ]
+}

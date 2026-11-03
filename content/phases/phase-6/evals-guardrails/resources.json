@@ -6,7 +6,10 @@
     "kind": "paper",
     "url": "https://arxiv.org/abs/2306.05685",
     "why": "The paper that measured how well model judges agree with people and named position, verbosity and self-enhancement bias.",
-    "topicIds": ["llm-as-judge", "offline-evals"],
+    "topicIds": [
+      "llm-as-judge",
+      "offline-evals"
+    ],
     "free": true
   },
   {
@@ -16,7 +19,11 @@
     "kind": "blog",
     "url": "https://hamel.dev/blog/posts/evals/",
     "why": "A practitioner's case for error analysis first, unit-test-style assertions, and judges calibrated against humans.",
-    "topicIds": ["offline-evals", "prompt-regression", "llm-as-judge"],
+    "topicIds": [
+      "offline-evals",
+      "prompt-regression",
+      "llm-as-judge"
+    ],
     "free": true
   },
   {
@@ -26,7 +33,10 @@
     "kind": "docs",
     "url": "https://genai.owasp.org/",
     "why": "The standard checklist of LLM application risks, from prompt injection to sensitive information disclosure, with defences.",
-    "topicIds": ["io-filtering", "pii-handling"],
+    "topicIds": [
+      "io-filtering",
+      "pii-handling"
+    ],
     "free": true
   },
   {
@@ -36,7 +46,48 @@
     "kind": "docs",
     "url": "https://microsoft.github.io/presidio/",
     "why": "An open-source PII detection and anonymisation toolkit; useful for seeing how regex and NER recognisers combine and where they miss.",
-    "topicIds": ["pii-handling"],
+    "topicIds": [
+      "pii-handling"
+    ],
+    "free": true
+  },
+  {
+    "id": "anthropic-agent-evals",
+    "title": "Demystifying evals for AI agents",
+    "author": "Anthropic (2026)",
+    "kind": "blog",
+    "url": "https://www.anthropic.com/research/demystifying-evals-for-ai-agents",
+    "why": "How to evaluate multi-turn agents: tasks, environments, graders (code, model and human) and grading outcomes rather than transcripts.",
+    "topicIds": [
+      "offline-evals",
+      "llm-as-judge"
+    ],
+    "free": true
+  },
+  {
+    "id": "hamel-field-guide",
+    "title": "A Field Guide to Rapidly Improving AI Products",
+    "author": "Hamel Husain (2025)",
+    "kind": "blog",
+    "url": "https://hamel.dev/blog/posts/field-guide/",
+    "why": "Lessons from 30+ production teams: error analysis first, a simple data viewer, domain experts writing prompts, and keeping judges trustworthy.",
+    "topicIds": [
+      "offline-evals",
+      "production-monitoring"
+    ],
+    "free": true
+  },
+  {
+    "id": "ragas-docs",
+    "title": "Ragas documentation",
+    "author": "Ragas",
+    "kind": "docs",
+    "url": "https://docs.ragas.io/en/stable/",
+    "why": "An open-source library of RAG and agent metrics (faithfulness, context precision and recall) and test-set generation.",
+    "topicIds": [
+      "offline-evals",
+      "llm-as-judge"
+    ],
     "free": true
   }
 ]

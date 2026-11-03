@@ -38,3 +38,4 @@ export async function saveSettings(patch: Partial<Omit<Settings, "key">>) {
   const cur = (await db.get("settings", "settings")) ?? DEFAULT_SETTINGS;
   await db.put("settings", { ...DEFAULT_SETTINGS, ...cur, ...patch, key: "settings" });
 }
+

@@ -1,0 +1,17 @@
+{
+  "id": "leaky-bucket",
+  "order": 15,
+  "title": "Leaky bucket queue",
+  "summary": "Build a bounded queue that drops overflow and releases requests at a constant rate, so a burst going in comes out as an evenly spaced stream.",
+  "sectionIds": ["p2-rate-limiting"],
+  "complexity": [
+    { "op": "offer(request)", "time": "O(1) amortised", "space": "" },
+    { "op": "drain() / size()", "time": "O(k) for k departures", "space": "" },
+    { "op": "whole bucket", "time": "", "space": "O(capacity)" }
+  ],
+  "hints": [
+    "Nothing needs a timer. Every departure time can be worked out the moment a request is accepted, so whenever you are called you just read the clock and release whatever was due by now.",
+    "Keep a FIFO of (departure time, request) and remember the departure time of the last request you accepted. Departure times then only ever increase, so the due ones are always at the front of the queue.",
+    "On every call, first move front entries whose departure time is <= now to an output list. offer then drops if capacity entries are still waiting, otherwise schedules departure = max(now, last departure) + 1 / rate. drain returns the output list and clears it."
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "consistent-hash-ring",
+  "order": 5,
+  "title": "Consistent hash ring",
+  "summary": "Build a consistent hash ring with virtual nodes so that adding or removing a node moves only about 1/N of the keys.",
+  "sectionIds": ["p2-consistent-hashing"],
+  "complexity": [
+    { "op": "get_node(key)", "time": "O(log(N·V))", "space": "" },
+    { "op": "add_node(node)", "time": "O(N·V) per vnode inserted into a sorted array", "space": "O(V)" },
+    { "op": "remove_node(node)", "time": "O(N·V)", "space": "" },
+    { "op": "whole ring", "time": "", "space": "O(N·V) for N nodes, V vnodes each" }
+  ],
+  "hints": [
+    "Nodes and keys live on the same circle of 2^32 positions. A key belongs to the first node position at or after its own, going clockwise.",
+    "Keep one sorted list of (position, node) points, with V points per node from the labels node#0 … node#(V−1). Lookups are then a binary search, not a scan.",
+    "get_node: i = lower_bound(positions, hash32(key)); if i equals the length, use 0 (wraparound). add_node inserts V points in order and ignores a node it already has; remove_node filters that node's points out."
+  ]
+}

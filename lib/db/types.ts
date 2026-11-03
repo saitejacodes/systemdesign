@@ -1,3 +1,5 @@
+import type { LabLang } from "@/lib/labs/schema";
+
 // Persisted user data (CLAUDE.md §4). Ids that come from content are namespaced "<sectionId>:<localId>".
 
 export interface CheckpointState { checkpointId: string; done: boolean; updatedAt: string }
@@ -14,6 +16,8 @@ export interface InterviewAttempt { id: string; caseStudyId: string; durationSec
 export interface StudySession { id: string; date: string; minutes: number; pageIds: string[] }
 export interface TutorConversation { id: string; pageId: string; messages: { role: "user" | "assistant"; content: string }[]; updatedAt: string }
 export interface AiUsage { month: string; requests: number; inputTokens: number; outputTokens: number; estimatedCost: number }
+/** A learner's code for one lab in one language. id = `${labId}:${lang}`. */
+export interface LabCode { id: string; labId: string; lang: LabLang; code: string; failedRuns: number; hintsShown: number; solutionShown: boolean; updatedAt: string }
 export interface Settings {
   key: "settings";
   theme: "paper" | "blueprint" | "system";
@@ -41,6 +45,7 @@ export interface Tables {
   studySessions: StudySession;
   tutorConversations: TutorConversation;
   aiUsage: AiUsage;
+  labCode: LabCode;
   settings: Settings;
 }
 export type TableName = keyof Tables;

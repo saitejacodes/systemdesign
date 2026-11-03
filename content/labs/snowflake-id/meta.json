@@ -1,0 +1,16 @@
+{
+  "id": "snowflake-id",
+  "order": 8,
+  "title": "Snowflake ID generator",
+  "summary": "Pack a millisecond timestamp, a worker ID and a per-millisecond sequence into 64-bit IDs that are unique and time-ordered, surviving sequence overflow and a clock that goes backwards.",
+  "sectionIds": ["p4-id-generation"],
+  "complexity": [
+    { "op": "next_id()", "time": "O(1), except waiting out the rest of a millisecond after 4,096 IDs", "space": "O(1)" },
+    { "op": "parse(id)", "time": "O(1)", "space": "O(1)" }
+  ],
+  "hints": [
+    "The ID is three integers glued together with shifts: (ms since epoch) << 22, worker << 12, sequence in the low 12 bits. Uniqueness comes from never reusing the same (timestamp, worker, sequence) triple.",
+    "Keep two pieces of state: the last timestamp you issued and the sequence used in it. Compare each fresh clock reading against the last timestamp: behind, equal, or ahead are three different cases.",
+    "Behind: raise. Equal: sequence = (sequence + 1) & 4095, and if that wrapped to 0, keep calling now() until it returns a later millisecond. Ahead: sequence = 0. Then store the timestamp and assemble. parse reverses it with >> and & masks."
+  ]
+}

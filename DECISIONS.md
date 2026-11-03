@@ -137,3 +137,30 @@
 - **LLM inference:** chat-slo adds a 1,000-token shared system prompt so paged KV and prefix caching are both needed. The 7B model stays memory-bound at long context, so "speculation stops paying at large batch" is shown on 70B TP4. Draft acceptance falls as the draft gets cheaper (an illustrative curve), so "free draft" isn't a trivial answer.
 - **Fact fix:** the inference-optimization lesson said fp16 70B "needs 2 GPUs"; it now says 2 just for weights and 4 in practice to leave KV room, matching the simulator's memory model.
 - **Accepted limits:** RAG canvas edits are state overrides on top of the Controls panel, so the two can differ until "Use Controls-panel values" is pressed; vector-search dots are mouse-only (item number and ◀ ▶ are the keyboard path); the LLM inference ticker shows placeholder words.
+
+## Prompt 16
+- Built by four parallel subagents (three writing labs, one building the engine) from shared briefs, each confined to its own folders; the harnesses, the LRU reference lab, schema, CI test and verification were done here. All four were interrupted once by the usage limit and resumed.
+- **Five languages (user request).**
+  - Python, JavaScript and TypeScript run in the browser.
+  - Java and C++ don't. Compiling them in a tab needs a 30–60 MB toolchain (CheerpJ, clang-in-WASM) that is slow and fragile, so they are bundled into one runnable file instead. The user chose this over in-browser compilers.
+  - Only in-browser passes record a challenge result.
+- **TypeScript is transpiled, not type-checked, when it runs.** Monaco shows type errors while editing, and CI type-checks every lab .ts file under `strict`.
+- **Lab code is outside the app's tsconfig and ESLint.** Lab files are learner code in five languages, so lib/labs/labs.test.ts checks them instead.
+- **CI runs every reference solution and every starter in every language:**
+  - Python through local `python3` with the same harness the Pyodide worker uses.
+  - JavaScript and TypeScript through Node.
+  - Java with `java` single-file launch.
+  - C++ with the first compiler that actually compiles. The Xcode shim at /usr/bin/c++ can be broken while Command Line Tools work, so SDKROOT is set when needed.
+  - Java or C++ cases are skipped, not failed, on a machine without the toolchain.
+- **Cross-language determinism.**
+  - Hash-based labs (ring, Bloom filter) use FNV-1a 32-bit plus MurmurHash3's fmix32, since plain FNV-1a spread `node#i` labels too unevenly.
+  - Merkle uses FNV-1a 64 with RFC 6962 0x00/0x01 domain separation and promotes an odd node instead of duplicating it (CVE-2012-2459).
+  - Random tests use mulberry32 or assert bounds only.
+- **Behaviour the spec left open** (stated in each lab's "Your task"):
+  - The circuit breaker trips on consecutive failures and exposes `allow_request` and `record_*`, so the half-open trial limit is testable.
+  - A Snowflake clock that moves backwards raises.
+  - Leaky bucket is the queue form.
+  - The trie sorts by weight, then by code point.
+- **The sandbox is best-effort.** The JS worker hides network and storage globals so learner code can't reach out by accident. It isn't a security boundary, because the code is the learner's own.
+- **Backup import:** `lib/db/backup.ts` uses `z.partialRecord`, so exports made before the `labCode` table existed still import.
+- Geohash links only to p2-indexing until the ride-sharing case study exists (Prompt 20).

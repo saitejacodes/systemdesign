@@ -35,7 +35,7 @@ export const ROUTES = [
   ...["observability-lab", "error-budget", "deployment", "jwt-inspector"].map((id) => `/simulators/${id}`),
   ...["vector-search", "rag-pipeline", "llm-inference"].map((id) => `/simulators/${id}`),
   "/simulators/code-labs",
-  "/simulators/code-labs/sample",
+  ...["backoff-jitter","bloom-filter","circuit-breaker","consistent-hash-ring","geohash","lamport-vector-clocks","leaky-bucket","lfu-cache","lru-cache","merkle-tree","quorum-read-repair","sliding-window-counter","snowflake-id","token-bucket","trie-autocomplete"].map((id) => `/simulators/code-labs/${id}`),
   "/studio",
   "/studio/sample",
   "/interview/sample",

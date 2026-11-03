@@ -1,0 +1,18 @@
+{
+  "id": "lamport-vector-clocks",
+  "order": 11,
+  "title": "Lamport and vector clocks",
+  "summary": "Implement Lamport clocks for a causality-respecting order and vector clocks that can tell \"happened before\" from \"concurrent\".",
+  "sectionIds": ["p4-time-ordering"],
+  "complexity": [
+    { "op": "Lamport tick / send / receive", "time": "O(1)", "space": "O(1) per process" },
+    { "op": "vector increment / send", "time": "O(n) for the copy, n = processes", "space": "O(n) per process and per message" },
+    { "op": "vector receive / merge", "time": "O(n)", "space": "O(n)" },
+    { "op": "compare(a, b)", "time": "O(n)", "space": "O(1)" }
+  ],
+  "hints": [
+    "Both clocks follow one rule: every event (local, send or receive) advances your own counter, and a receive must land after the send it answers. A Lamport clock is that rule with one integer; a vector clock keeps one integer per process.",
+    "Lamport receive: max(local, received) + 1. Vector receive: take the element-wise max of the two vectors, then add 1 to your own entry only. Return copies of vectors so a message can't change after it is sent.",
+    "compare(a, b): compute whether a <= b in every position and whether b <= a in every position. Both means equal, only the first means before, only the second means after, neither means concurrent."
+  ]
+}

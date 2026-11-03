@@ -1,0 +1,17 @@
+{
+  "id": "backoff-jitter",
+  "order": 9,
+  "title": "Exponential backoff with jitter",
+  "summary": "Implement capped exponential backoff and the full, equal and decorrelated jitter variants from AWS's \"Exponential Backoff And Jitter\", then a retry helper that retries only retryable errors.",
+  "sectionIds": ["p4-timeouts-retries"],
+  "complexity": [
+    { "op": "exponential / full_jitter / equal_jitter", "time": "O(1)", "space": "O(1)" },
+    { "op": "decorrelated_jitter(prev, …)", "time": "O(1)", "space": "O(1), the caller keeps prev" },
+    { "op": "retry(fn, max_attempts, sleep)", "time": "O(max_attempts) calls and sleeps", "space": "O(1)" }
+  ],
+  "hints": [
+    "Every variant starts from the same window: min(cap, base * 2^attempt), with attempt counting from 0. Jitter only decides where inside (or around) that window the sleep lands.",
+    "rand() gives a number in [0, 1), so random_between(lo, hi) is lo + rand() * (hi - lo). Full jitter is [0, window), equal jitter is [window/2, window), decorrelated is [base, 3 * previous sleep), then capped.",
+    "retry loops attempt = 0 .. max_attempts - 1: return fn() on success; on an exception, re-raise it if it isn't retryable or this was the last attempt, otherwise call sleep(full_jitter(attempt, base, cap, rand)) and go round again."
+  ]
+}

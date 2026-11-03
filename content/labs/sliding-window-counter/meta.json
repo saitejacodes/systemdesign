@@ -1,0 +1,17 @@
+{
+  "id": "sliding-window-counter",
+  "order": 4,
+  "title": "Sliding window counter rate limiter",
+  "summary": "Approximate a true sliding window from two fixed-window counters, weighting the previous window by how much of it still overlaps.",
+  "sectionIds": ["p2-rate-limiting"],
+  "complexity": [
+    { "op": "allow(t)", "time": "O(1)", "space": "" },
+    { "op": "estimate(t)", "time": "O(1)", "space": "" },
+    { "op": "per client", "time": "", "space": "O(1): two counters and a window start" }
+  ],
+  "hints": [
+    "A sliding log is exact but stores every timestamp. You only need two numbers: how many requests the previous aligned window allowed and how many the current one has so far.",
+    "The window containing t starts at floor(t / window) × window. When t lands in the next window, the current count becomes the previous one; when it skips a whole window or more, the previous count is 0.",
+    "estimate = prev × (1 − (t − start) / window) + curr. Refuse if estimate ≥ limit without counting; otherwise curr += 1. Check t against the last timestamp before you roll anything."
+  ]
+}

@@ -21,7 +21,8 @@ const BackupSchema = z.object({
   app: z.literal("sysdesign-lab"),
   version: z.number().int().max(BACKUP_VERSION),
   exportedAt: z.string(),
-  tables: z.record(z.enum(TABLES as [TableName, ...TableName[]]), z.array(z.record(z.string(), z.unknown()))),
+  // partialRecord: exports made before a table existed (e.g. labCode, added in v2 of the schema) still import.
+  tables: z.partialRecord(z.enum(TABLES as [TableName, ...TableName[]]), z.array(z.record(z.string(), z.unknown()))),
 });
 
 /** Throws a readable error for anything that isn't a SysDesign Lab export. */

@@ -1,0 +1,18 @@
+{
+  "id": "trie-autocomplete",
+  "order": 7,
+  "title": "Trie with top-k autocomplete",
+  "summary": "Build a prefix tree that accumulates query weights and returns the k most popular completions of any prefix.",
+  "sectionIds": ["p2-search"],
+  "complexity": [
+    { "op": "insert(word, weight)", "time": "O(L), L = word length", "space": "O(L) new nodes at most" },
+    { "op": "top_k(prefix, k)", "time": "O(p + n + m log k), p = prefix length, n = nodes below it, m = words below it", "space": "O(m)" },
+    { "op": "weight(word)", "time": "O(L)", "space": "" },
+    { "op": "whole trie", "time": "", "space": "O(total characters inserted)" }
+  ],
+  "hints": [
+    "Every word that starts with a prefix lives in the subtree under the node you reach by walking the prefix one character at a time. Walk there first; if a character is missing, there are no completions.",
+    "Each node needs a map from character to child and a weight that is 0 unless a word ends there. Re-inserting a word adds to that weight instead of replacing it, so the weight counts how often the query was seen.",
+    "From the prefix node, do a depth-first walk that carries the characters spelled so far and collects (word, weight) wherever weight > 0. Then rank by weight descending and word ascending (sort, or a heap of size k) and keep the first k."
+  ]
+}

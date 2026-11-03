@@ -6,7 +6,11 @@
     "kind": "blog",
     "url": "https://www.anthropic.com/engineering/building-effective-agents",
     "why": "Defines workflows versus agents, catalogues the workflow patterns, and argues for the simplest design that works.",
-    "topicIds": ["workflows-vs-agents", "tool-calling-loop", "human-in-the-loop"],
+    "topicIds": [
+      "workflows-vs-agents",
+      "tool-calling-loop",
+      "human-in-the-loop"
+    ],
     "free": true
   },
   {
@@ -16,7 +20,10 @@
     "kind": "paper",
     "url": "https://arxiv.org/abs/2210.03629",
     "why": "The reasoning-action-observation loop that most agent frameworks still follow.",
-    "topicIds": ["tool-calling-loop", "agent-state"],
+    "topicIds": [
+      "tool-calling-loop",
+      "agent-state"
+    ],
     "free": true
   },
   {
@@ -26,7 +33,76 @@
     "kind": "docs",
     "url": "https://docs.anthropic.com/en/docs/build-with-claude/tool-use",
     "why": "A concrete reference for tool schemas, the tool_use stop reason and returning tool results and errors to the model.",
-    "topicIds": ["tool-calling-loop", "idempotent-tools", "agent-limits"],
+    "topicIds": [
+      "tool-calling-loop",
+      "idempotent-tools",
+      "agent-limits"
+    ],
+    "free": true
+  },
+  {
+    "id": "langchain-agent-harness",
+    "title": "The Anatomy of an Agent Harness",
+    "author": "LangChain (2026)",
+    "kind": "blog",
+    "url": "https://www.langchain.com/blog/the-anatomy-of-an-agent-harness",
+    "why": "Defines agent = model + harness and derives each harness part (tools, sandbox, memory, compaction, hooks) from what the model alone lacks.",
+    "topicIds": [
+      "tool-calling-loop",
+      "agent-state",
+      "agent-limits"
+    ],
+    "free": true
+  },
+  {
+    "id": "fowler-harness-engineering",
+    "title": "Harness engineering for coding agent users",
+    "author": "Birgitta Böckeler, martinfowler.com (2026)",
+    "kind": "blog",
+    "url": "https://martinfowler.com/articles/harness-engineering.html",
+    "why": "Feedforward guides and feedback sensors (computational and inferential) that let a coding agent work with less supervision.",
+    "topicIds": [
+      "agent-limits",
+      "human-in-the-loop"
+    ],
+    "free": true
+  },
+  {
+    "id": "openai-harness-engineering",
+    "title": "Harness engineering: leveraging Codex in an agent-first world",
+    "author": "Ryan Lopopolo, OpenAI (2026)",
+    "kind": "blog",
+    "url": "https://openai.com/index/harness-engineering/",
+    "why": "A team that shipped a product written entirely by agents, on making the repository legible to agents and enforcing architecture mechanically.",
+    "topicIds": [
+      "agent-limits",
+      "human-in-the-loop"
+    ],
+    "free": true
+  },
+  {
+    "id": "langgraph-essentials",
+    "title": "LangGraph Essentials (Python)",
+    "author": "LangChain Academy",
+    "kind": "docs",
+    "url": "https://academy.langchain.com/courses/langgraph-essentials-python",
+    "why": "A free hands-on course on agents as explicit state graphs: nodes, edges, checkpoints and human interrupts.",
+    "topicIds": [
+      "agent-state",
+      "human-in-the-loop"
+    ],
+    "free": true
+  },
+  {
+    "id": "langchain-essentials",
+    "title": "LangChain Essentials (Python)",
+    "author": "LangChain Academy",
+    "kind": "docs",
+    "url": "https://academy.langchain.com/courses/langchain-essentials-python",
+    "why": "A free quickstart on models, tools and the basic tool-calling agent loop in LangChain.",
+    "topicIds": [
+      "tool-calling-loop"
+    ],
     "free": true
   }
 ]

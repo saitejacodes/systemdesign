@@ -1,0 +1,17 @@
+{
+  "id": "bloom-filter",
+  "order": 6,
+  "title": "Bloom filter",
+  "summary": "Size a Bloom filter from a target item count and false-positive rate, derive k positions by double hashing, and measure the false-positive rate you actually get.",
+  "sectionIds": ["p3-cache-failures"],
+  "complexity": [
+    { "op": "add(item)", "time": "O(k)", "space": "" },
+    { "op": "might_contain(item)", "time": "O(k)", "space": "" },
+    { "op": "whole filter", "time": "", "space": "m = ⌈−n ln p / (ln 2)²⌉ bits, ≈ 9.6 bits per item at p = 1%" }
+  ],
+  "hints": [
+    "A Bloom filter is m bits and k hash positions per item. add sets all k bits; a lookup says \"maybe\" only if all k are set, and \"definitely not\" if any one is clear.",
+    "Size it first: m = ceil(−n · ln p / (ln 2)²) and k = round((m / n) · ln 2), at least 1. Store the bits packed, 8 per byte: bit i lives in byte i >> 3 under mask 1 << (i & 7).",
+    "You don't need k hash functions. Compute h1 and h2 once (the two seeded hashes in the starter), then position i is (h1 + i · h2) mod m for i = 0 … k − 1."
+  ]
+}

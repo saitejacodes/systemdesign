@@ -136,3 +136,26 @@
   - **LLM inference (S-30):** a 7B or 70B model on 1–8 GPUs: roofline step times, tensor parallelism, quantization, static vs continuous batching, paged vs reserved KV, preemption, chunked prefill, prefix caching and speculative decoding, with GPU memory, a batch-slot grid and a live roofline.
 - Seven lessons embed a simulator in "Try it".
 - Verify: /phase/6; /simulators/vector-search (tune efSearch to pass recall 0.95), /simulators/rag-pipeline (switch to heading-aware chunking and hybrid), /simulators/llm-inference (Play, then turn on speculative decoding). `pnpm test` (506 tests), `pnpm test:e2e` (610 passed: all 18 Phase 6 routes and 3 simulators; the plan test now checks week 14).
+
+## Prompt 16 · Code labs (S-29)
+- 15 code labs, each in **five languages** (the user asked for TypeScript, Java and C++ beyond the spec's Python):
+  - **The labs:** LRU, LFU, token bucket, sliding-window counter, consistent hash ring, Bloom filter, trie top-k autocomplete, Snowflake IDs, backoff with jitter, circuit breaker, Lamport and vector clocks, quorum with read repair, geohash, Merkle tree, leaky bucket.
+  - **Files per lab:** an explanation (where it is used in real systems, invariants, the exact task, going further), complexity targets, three progressive hints, and a starter and reference solution in every language.
+  - **Tests:** 10–14 per language, the same cases in every language, with injected clocks and seeded randomness.
+- **Python, JavaScript and TypeScript run in the browser** inside Web Workers, and nothing is sent to any server:
+  - **Python** uses Pyodide 0.27.7 from the CDN, loaded on the first run.
+  - **TypeScript** goes through `transpileModule` (typescript 5.9.3 from the CDN) and runs against the JS tests.
+  - **JavaScript** runs in a worker with network and storage globals removed.
+  - **Time limit:** a 5 s limit terminates the worker.
+- **Java and C++ run on your machine:** the editor works the same, and "Download runnable file" builds one file with your code, the harness and the tests (`java LabTests.java`, or any C++17 compiler).
+- **Workbench:**
+  - Monaco editor, following the site theme, with a plain-textarea fallback if Monaco doesn't load within 8 s.
+  - Run, Run tests (Ctrl/⌘+Enter), Reset to starter, progressive hints, and the reference solution beside your code (free after 3 failed runs, otherwise behind a confirm).
+  - Per-test results show input, expected, actual, stdout and the error.
+  - Code autosaves per language (Dexie v2 `labCode` table), and passing all tests records a challenge result.
+- `/simulators/code-labs` lists the labs with passed status, and each lesson links to its labs after the lesson.
+- **Phase 6 resources:** 16 links the user supplied on transformers, agents and agent harnesses, evals, RAG and LLM observability were checked live and added to five lessons, apart from two that were already listed.
+- **Verify:**
+  - Open /simulators/code-labs/lru-cache, then Show reference solution → Run tests (Python loads about 10 MB the first time). Switch to Java → Download runnable file → `java LabTests.java`.
+  - `pnpm test` (583 tests: every reference solution passes and every starter fails, in all five languages).
+  - `pnpm test:e2e` (labs.spec plus all 15 lab routes).

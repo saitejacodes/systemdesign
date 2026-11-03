@@ -6,7 +6,10 @@
     "kind": "blog",
     "url": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
     "why": "The clearest explanation of why retries at every layer multiply load, and how backoff, jitter and retry limits fix it. Applies directly to LLM gateways.",
-    "topicIds": ["llm-timeouts", "llm-retries"],
+    "topicIds": [
+      "llm-timeouts",
+      "llm-retries"
+    ],
     "free": true
   },
   {
@@ -16,7 +19,11 @@
     "kind": "free-book",
     "url": "https://sre.google/sre-book/addressing-cascading-failures/",
     "why": "Retry budgets, deadlines and graceful degradation from the people who popularised them; read it with a model provider as the overloaded backend.",
-    "topicIds": ["llm-retries", "provider-failover", "fallbacks-degradation"],
+    "topicIds": [
+      "llm-retries",
+      "provider-failover",
+      "fallbacks-degradation"
+    ],
     "free": true
   },
   {
@@ -26,7 +33,23 @@
     "kind": "paper",
     "url": "https://arxiv.org/abs/2307.09702",
     "why": "How constrained decoding turns a regex or JSON Schema into a finite-state machine over the vocabulary, the idea behind the Outlines library.",
-    "topicIds": ["structured-output"],
+    "topicIds": [
+      "structured-output"
+    ],
+    "free": true
+  },
+  {
+    "id": "langsmith-observability",
+    "title": "LangSmith Observability",
+    "author": "LangChain",
+    "kind": "docs",
+    "url": "https://docs.langchain.com/langsmith/observability",
+    "why": "Tracing every LLM and tool call with inputs, outputs, latency and cost, which is how you debug retries, fallbacks and malformed output in production.",
+    "topicIds": [
+      "llm-retries",
+      "fallbacks-degradation",
+      "structured-output"
+    ],
     "free": true
   }
 ]

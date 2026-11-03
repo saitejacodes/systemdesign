@@ -1,0 +1,17 @@
+{
+  "id": "merkle-tree",
+  "order": 14,
+  "title": "Merkle tree for anti-entropy",
+  "summary": "Build a hash tree over data blocks, prove one block belongs to it, and find the blocks two replicas disagree on by descending only into subtrees whose hashes differ.",
+  "sectionIds": ["p4-quorums"],
+  "complexity": [
+    { "op": "build from n leaves", "time": "O(n)", "space": "O(n)" },
+    { "op": "proof(i) / verify", "time": "O(log n)", "space": "O(log n)" },
+    { "op": "diff(other), d differing leaves", "time": "O(d log n)", "space": "O(log n)" }
+  ],
+  "hints": [
+    "A parent's hash depends on everything below it, so two equal hashes mean two identical subtrees: nothing under them needs to be looked at. Two different hashes say only that something below differs.",
+    "Store the tree as a list of levels, leaf hashes first and the root last. The children of node j on one level are nodes 2j and 2j + 1 on the level below, and a node's sibling is at index j XOR 1. An odd node at the end of a level has no partner and is copied up unchanged.",
+    "proof walks up from the leaf, recording the sibling's hash and whether it sits to the left or right, and skips levels where there is no sibling. verify replays that path from the leaf hash. diff is a recursion from the root: count the comparison, stop if the hashes match, record the index at level 0, otherwise recurse into each child that exists."
+  ]
+}

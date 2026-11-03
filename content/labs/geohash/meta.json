@@ -1,0 +1,17 @@
+{
+  "id": "geohash",
+  "order": 13,
+  "title": "Geohash encode, decode and neighbours",
+  "summary": "Turn latitude and longitude into a base32 geohash by interleaving bisection bits, decode it back to a cell, and find the 8 cells around it.",
+  "sectionIds": ["p2-indexing"],
+  "complexity": [
+    { "op": "encode(lat, lon, p)", "time": "O(p)", "space": "O(p)" },
+    { "op": "decode(hash)", "time": "O(p)", "space": "O(1)" },
+    { "op": "neighbors(hash)", "time": "O(p)", "space": "O(p)" }
+  ],
+  "hints": [
+    "Each bit halves one interval: 1 means the point is in the upper half, 0 the lower. Bits alternate longitude, latitude, longitude, ... starting with longitude, and every 5 bits become one character of the alphabet.",
+    "Track four numbers (the low and high ends of the latitude and longitude intervals) plus a flag saying which axis the next bit splits. Decode replays the same bits from the characters, most significant bit of each character first, and the final intervals are the cell.",
+    "For a neighbour, start at the decoded centre and move exactly one cell height (2 × lat_err) or width (2 × lon_err) in the direction; that point is the centre of the neighbouring cell. Wrap longitude by ±360 if it passes ±180, return None if latitude passes a pole, and encode at the same length."
+  ]
+}

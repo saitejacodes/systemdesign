@@ -1,0 +1,17 @@
+{
+  "id": "lfu-cache",
+  "order": 2,
+  "title": "LFU cache",
+  "summary": "Build a least-frequently-used cache with O(1) get and put from frequency buckets, breaking ties by recency.",
+  "sectionIds": ["p3-eviction"],
+  "complexity": [
+    { "op": "get(key)", "time": "O(1)", "space": "" },
+    { "op": "put(key, value)", "time": "O(1)", "space": "" },
+    { "op": "whole cache", "time": "", "space": "O(capacity)" }
+  ],
+  "hints": [
+    "A heap keyed on frequency gives O(log n), not O(1). Notice that a key's count only ever goes up by exactly one, so it only ever moves to the next bucket.",
+    "Keep three things: key → (value, freq), freq → an insertion-ordered set of keys (oldest first), and min_freq, the smallest freq that currently has a bucket.",
+    "On a hit, move the key from bucket f to bucket f + 1; if bucket f is now empty and f was min_freq, min_freq becomes f + 1. On inserting a new key into a full cache, evict the oldest key in bucket min_freq, then insert with freq 1 and set min_freq = 1."
+  ]
+}

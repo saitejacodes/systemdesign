@@ -1,0 +1,17 @@
+{
+  "id": "token-bucket",
+  "order": 3,
+  "title": "Token bucket rate limiter",
+  "summary": "Build a token bucket that allows bursts up to its capacity and a steady refill rate after that, with lazy fractional refill and an injectable clock.",
+  "sectionIds": ["p2-rate-limiting"],
+  "complexity": [
+    { "op": "allow(cost)", "time": "O(1)", "space": "" },
+    { "op": "tokens()", "time": "O(1)", "space": "" },
+    { "op": "per client", "time": "", "space": "O(1): two numbers" }
+  ],
+  "hints": [
+    "You don't need a timer that adds tokens every tick. Store how many tokens there were at the last request and when that was; the current count follows from the elapsed time.",
+    "Every call starts with a refill: tokens = min(capacity, tokens + elapsed × refill_rate), then last = now. Keep tokens as a float so half a token is real.",
+    "Guard the refill: if now <= last, add nothing and leave last alone (the clock went backwards). Then refuse if cost > capacity or tokens < cost; otherwise subtract cost and allow. A refusal never changes tokens."
+  ]
+}

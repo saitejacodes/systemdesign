@@ -6,7 +6,10 @@
     "kind": "blog",
     "url": "https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/",
     "why": "The clearest account of why temperature-0 output drifts: batch-variant reductions in matmul, attention and RMSNorm, and how batch-invariant kernels fix it.",
-    "topicIds": ["nondeterminism", "sampling"],
+    "topicIds": [
+      "nondeterminism",
+      "sampling"
+    ],
     "free": true
   },
   {
@@ -16,7 +19,10 @@
     "kind": "paper",
     "url": "https://arxiv.org/abs/2001.08361",
     "why": "Section 2.1 derives forward-pass FLOPs per token (≈ 2N plus an attention term) and the parameter count of a transformer layer by layer.",
-    "topicIds": ["flops-roofline", "forward-pass"],
+    "topicIds": [
+      "flops-roofline",
+      "forward-pass"
+    ],
     "free": true
   },
   {
@@ -26,7 +32,9 @@
     "kind": "paper",
     "url": "https://arxiv.org/abs/1904.09751",
     "why": "Introduces nucleus (top-p) sampling and shows why greedy and pure sampling both produce poor text.",
-    "topicIds": ["sampling"],
+    "topicIds": [
+      "sampling"
+    ],
     "free": true
   },
   {
@@ -36,7 +44,47 @@
     "kind": "paper",
     "url": "https://arxiv.org/abs/1706.03762",
     "why": "The original transformer: scaled dot-product attention, multi-head attention and the block structure every modern LLM still follows.",
-    "topicIds": ["forward-pass"],
+    "topicIds": [
+      "forward-pass"
+    ],
+    "free": true
+  },
+  {
+    "id": "illustrated-transformer",
+    "title": "The Illustrated Transformer",
+    "author": "Jay Alammar (2018)",
+    "kind": "blog",
+    "url": "https://jalammar.github.io/illustrated-transformer/",
+    "why": "Step-by-step diagrams of self-attention, multi-head attention and the encoder–decoder stack; the gentlest way into the paper.",
+    "topicIds": [
+      "forward-pass"
+    ],
+    "free": true
+  },
+  {
+    "id": "karpathy-intro-llms",
+    "title": "[1hr Talk] Intro to Large Language Models",
+    "author": "Andrej Karpathy (2023)",
+    "kind": "video",
+    "url": "https://youtu.be/zjkBMFhNj_g",
+    "why": "An hour-long map of what an LLM is: pretraining, fine-tuning, sampling, scaling laws and the security problems that follow.",
+    "topicIds": [
+      "forward-pass",
+      "sampling"
+    ],
+    "free": true
+  },
+  {
+    "id": "karpathy-build-gpt",
+    "title": "Let's build GPT: from scratch, in code, spelled out",
+    "author": "Andrej Karpathy (2023)",
+    "kind": "video",
+    "url": "https://youtu.be/kCc8FmEb1nY",
+    "why": "Builds a small GPT in PyTorch line by line, so tokens, attention and the decode loop stop being abstractions.",
+    "topicIds": [
+      "forward-pass",
+      "sampling"
+    ],
     "free": true
   }
 ]

@@ -1,0 +1,17 @@
+{
+  "id": "quorum-read-repair",
+  "order": 12,
+  "title": "Quorum reads, writes and read repair",
+  "summary": "Build a Dynamo-style coordinator over N versioned replicas that needs W acks per write and R answers per read, and repairs the stale replicas it reads from.",
+  "sectionIds": ["p4-quorums"],
+  "complexity": [
+    { "op": "write(key, value, version)", "time": "O(N)", "space": "" },
+    { "op": "read(key)", "time": "O(N)", "space": "O(R)" },
+    { "op": "whole store", "time": "", "space": "O(N × keys)" }
+  ],
+  "hints": [
+    "A write is a success or failure judged by counting acknowledgements, not by whether every replica got it. A read trusts the highest version among the replicas it asked, so a single up-to-date replica in the read set is enough.",
+    "Give every replica one rule for storing: keep the incoming (version, value) only if its version is higher than what it holds. Write, read repair and late old writes then all go through that one function.",
+    "write: store on every up replica, count them, raise if the count is below W (without undoing anything). read: take the first R up replicas from the order, raise if there are fewer, pick the answer with the highest version, then store it on each contacted replica whose answer was missing or older."
+  ]
+}

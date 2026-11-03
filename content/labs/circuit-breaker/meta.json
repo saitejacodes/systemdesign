@@ -1,0 +1,17 @@
+{
+  "id": "circuit-breaker",
+  "order": 10,
+  "title": "Circuit breaker",
+  "summary": "Build the closed, open and half-open state machine that stops calling a failing dependency, fails fast while it recovers, and probes it with a few trial calls before letting traffic back.",
+  "sectionIds": ["p4-circuit-breakers"],
+  "complexity": [
+    { "op": "allow_request() / call(fn)", "time": "O(1) plus the call itself", "space": "O(1)" },
+    { "op": "record_success() / record_failure()", "time": "O(1)", "space": "O(1)" },
+    { "op": "state()", "time": "O(1)", "space": "O(1)" }
+  ],
+  "hints": [
+    "The breaker is three states and a few counters: consecutive failures (closed), when it opened (open), and trials admitted and succeeded (half-open). Nothing else is needed for this model.",
+    "Don't use a timer to leave the open state. Store opened_at and, whenever state() is asked, switch to half-open if now() - opened_at >= reset_timeout. Every other method goes through state() first.",
+    "allow_request raises when open, or when half-open and the trial quota is used up; otherwise it counts the trial. A failure while half-open reopens with a fresh opened_at; enough half-open successes close and zero the failure count. call is allow_request, then fn, then record the outcome and re-raise fn's own error."
+  ]
+}

@@ -25,6 +25,7 @@ export const SCHEMA: Record<TableName, string> = {
   studySessions: "id, date",
   tutorConversations: "id, pageId",
   aiUsage: "month",
+  labCode: "id, labId",
   settings: "key",
 };
 
@@ -32,7 +33,10 @@ export class LabDb extends Dexie {
   constructor(name = "sysdesign-lab") {
     super(name);
     // Bump the version and add a new .stores() call for every schema change.
-    this.version(1).stores(SCHEMA);
+    const { labCode: _added, ...v1 } = SCHEMA;
+    void _added;
+    this.version(1).stores(v1);
+    this.version(2).stores(SCHEMA); // + labCode (Prompt 16)
   }
 }
 
