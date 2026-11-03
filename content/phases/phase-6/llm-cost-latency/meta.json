@@ -1,0 +1,20 @@
+{
+  "id": "p6-llm-cost-latency",
+  "phase": 6,
+  "slug": "llm-cost-latency",
+  "title": "LLM Cost and Latency",
+  "order": 9,
+  "week": 13,
+  "estimatedMinutes": 65,
+  "topics": [
+    { "id": "cost-model", "title": "The cost and latency model", "depth": "deep" },
+    { "id": "model-routing", "title": "Model routing", "depth": "tradeoffs" },
+    { "id": "prompt-caching", "title": "Prompt caching", "depth": "deep" },
+    { "id": "semantic-caching", "title": "Semantic caching", "depth": "tradeoffs" },
+    { "id": "token-budgets", "title": "Token budgets", "depth": "deep" },
+    { "id": "rate-limits", "title": "Rate limits and quotas", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p6-llm-serving", "p6-embeddings-vector-search", "p3-cache-strategies", "p2-rate-limiting"]
+}

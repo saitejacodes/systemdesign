@@ -1,0 +1,245 @@
+## Why it matters
+
+A language model knows what was in its training data, up to a cutoff, and nothing about your company's refund policy, last week's incident report or the contract a customer signed yesterday. Fine-tuning a model on those documents is slow, expensive, hard to update and does not reliably make it quote facts. <Term slug="rag">Retrieval-augmented generation (RAG)</Term> takes the other route: at question time, search your documents, paste the most relevant passages into the prompt, and ask the model to answer from them and cite them. Lewis et al. named the approach in "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks" (NeurIPS 2020), pairing a dense retriever over Wikipedia passages with a generator. Today it is the default architecture for support bots, internal knowledge assistants and documentation search. It is also where most "the AI made it up" incidents actually come from: not the model, but a retrieval pipeline that handed it the wrong pages, half a page, or a page that was deleted a month ago.
+
+<Callout type="analogy" title="RAG is an open-book exam">
+The model is a fluent student sitting an open-book exam. It writes beautifully and confidently, but it only knows the subject through the pages it bookmarked before walking in. Ingestion is cutting the textbook into bookmarkable pieces; retrieval is which bookmarks the student flips to; reranking is a quick skim to put the best page on top; the context budget is how many pages fit on the desk at once. If the answer was on a page the student never bookmarked, or the page was torn in half mid-sentence, or it is last year's edition, the student will still write a fluent answer, just a wrong one. Where the analogy breaks: a real student can say "this isn't in my notes". A model will only do that if you tell it to, and even then not reliably, so you must check citations rather than trust confidence.
+</Callout>
+
+The pipeline has two halves: an offline **ingestion** path that turns documents into a searchable index, and an online **query** path that runs per question.
+
+<Figure caption="FIG. 7.1 · RAG PIPELINE · INGESTION OFFLINE, QUERY ONLINE">
+  <Diagram label="Ingestion: source documents are parsed, chunked, embedded and written to a vector index and a keyword index. Query: the question is embedded and searched in both indexes, results are fused and reranked, a prompt is assembled within a token budget, and the model answers with citations." chart={`flowchart LR
+    subgraph Ingestion
+      S["Source docs"] --> P["Parse to clean text"] --> C["Chunk with overlap"] --> E["Embed chunks"]
+      E --> V["Vector index"]
+      C --> K["Keyword index (BM25)"]
+    end
+    subgraph Query
+      Q["Question"] --> QE["Embed question"]
+      QE --> V
+      Q --> K
+      V --> F["Fuse results (RRF)"]
+      K --> F
+      F --> R["Rerank top candidates"] --> A["Assemble prompt within token budget"] --> L["LLM answers with citations"]
+    end`} />
+</Figure>
+
+*Two pipelines share one index. Most quality problems start on the left.*
+
+## Ingestion: parsing and chunking
+
+<DepthStamp depth="deep" />
+
+**Parsing** turns PDFs, HTML, slides and wiki pages into clean text plus structure: headings, lists, tables and the document's title, URL, owner, last-modified time and access-control list. This step is unglamorous and decisive. A PDF parser that reads a two-column layout straight across lines, drops tables, or keeps the page footer "Confidential, page 14 of 80" in every chunk will poison everything downstream, and no embedding model can recover text the parser lost.
+
+<Term slug="chunking">Chunking</Term> splits each document into passages small enough to embed and to fit several into a prompt. Three common strategies:
+
+| Strategy | How it splits | Strength | Weakness |
+|---|---|---|---|
+| Fixed-size | Every N tokens | Simple, predictable sizes | Cuts mid-sentence and mid-list |
+| Sentence or paragraph | Natural boundaries, packed up to N tokens | Each chunk reads as whole thoughts | Sizes vary; long paragraphs still need splitting |
+| Structure-aware (heading) | By section headings, then by size within a section | Chunks align with topics; heading path gives context | Depends on documents actually having good headings |
+
+**Size is a genuine trade-off, and practitioners disagree on defaults.** Small chunks (around 100 to 300 tokens) give precise embeddings, because one chunk is about one thing, but they lose surrounding context: "This does not apply to contractors" is useless without knowing what "this" is. Large chunks (around 800 to 1,500 tokens) keep context but blur several topics into one vector and eat the prompt budget. The only defensible answer is to measure retrieval hit rate on your own questions at two or three sizes.
+
+<Term slug="chunk-overlap">Chunk overlap</Term> repeats the last part of one chunk at the start of the next (for example 50 to 100 tokens), so a sentence near a boundary appears whole in at least one chunk. It costs storage and embedding work in proportion to the overlap, and it creates near-duplicate results that waste context unless you deduplicate.
+
+A strong and cheap improvement is to prepend context to each chunk before embedding: the document title and heading path ("Employee Handbook > Expenses > Refunds"). Anthropic's 2024 "contextual retrieval" write-up takes this further by having a model write a short, chunk-specific context sentence for every chunk before embedding and keyword indexing.
+
+### Failure timeline: the chunk boundary that cut the answer in half
+
+A fictional company handbook contains: "Purchases can be refunded within 30 days of delivery. This does not apply to items bought in a clearance sale, which are final." The ingester uses fixed 200-token chunks with no overlap.
+
+| Step | What happens |
+|---|---|
+| Ingestion | The boundary falls between the two sentences. Chunk 41 ends "within 30 days of delivery." Chunk 42 starts "This does not apply to items bought in a clearance sale". |
+| Query | "Can I return my clearance-sale jacket?" |
+| Retrieval | Chunk 41 ranks first: it is about refunds and returns. Chunk 42 ranks 9th; its vector is mostly about "clearance sale" with an unresolved "this". Top 5 go to the prompt. |
+| Generation | The model, faithfully using its context, answers "Yes, within 30 days of delivery" and cites chunk 41. |
+| Outcome | The citation is real, the answer is wrong, and a reviewer reading only the citation would approve it. |
+
+Fixes: sentence-aware chunking so exceptions stay with their rule, overlap of a sentence or two, and heading-path prefixes so chunk 42 says it is about refunds.
+
+### Worked example: chunk count and index size
+
+Assume a corpus of 50,000 documents averaging 4,000 tokens: 200 million tokens. Chunks are 512 tokens with 64 tokens of overlap, so each new chunk advances by 448 tokens.
+
+- Chunks per document: ceil((4,000 − 64) / 448) = ceil(8.79) = **9**, so about **450,000 chunks**.
+- Tokens embedded: 450,000 × 512 ≈ **230 million** (15% more than the corpus, which is the price of overlap). At an assumed embedding price of P per million tokens, a full re-embed costs about 230 × P.
+- Vector storage at 1,024 float32 dimensions: 450,000 × 1,024 × 4 bytes ≈ **1.84 GB**, plus about 58 MB of HNSW layer-0 links at M = 16 (450,000 × 32 × 4 bytes).
+- Chunk text at roughly 4 bytes per token: 230 million × 4 ≈ **0.92 GB**, stored alongside for the keyword index and the prompt.
+
+This fits on one database server, which is a useful thing to know before anyone proposes a cluster.
+
+## Embedding and retrieval
+
+<DepthStamp depth="deep" />
+
+At ingestion time each chunk is embedded with the same model that will embed questions (see the previous section on why mixing models fails), and written to a vector index with its metadata: document id, chunk position, heading path, ACL, version and a content hash. At query time the question is embedded and the index returns the top k chunks, typically k between 20 and 100 before reranking, then fewer after.
+
+Two production details matter. First, apply **access control inside retrieval**, as a filter on the ACL field, never by asking the model to ignore documents the user may not see. Anything placed in the prompt can appear in the answer. Second, questions and passages are different kinds of text: "what's the parental leave?" versus a paragraph of policy prose. Retrieval-trained embedding models handle this asymmetry, and some expect a different prefix or mode for queries and documents; follow the model's documentation exactly.
+
+## Hybrid search: BM25 plus vectors
+
+<DepthStamp depth="deep" />
+
+Vector search matches meaning and misses exact tokens; <Term slug="bm25">BM25</Term> keyword search (Robertson and Zaragoza's probabilistic relevance framework) matches exact tokens and misses paraphrases. Questions containing an error code, a product SKU, a person's name or an acronym like "PTO" are where vectors fail and BM25 shines. "How do I get my money back" is where BM25 fails and vectors shine. <Term slug="hybrid-search">Hybrid search</Term> runs both and merges the lists.
+
+Scores from the two systems are on unrelated scales (BM25 is unbounded, cosine sits roughly between 0 and 1), so adding them directly is fragile. <Term slug="reciprocal-rank-fusion">Reciprocal rank fusion (RRF)</Term> (Cormack, Clarke and Büttcher, SIGIR 2009) ignores scores and uses ranks: each document gets the sum over lists of 1 / (k + rank), with k = 60 in the paper.
+
+Worked example with k = 60:
+
+| Chunk | BM25 rank | Vector rank | RRF score |
+|---|---|---|---|
+| A | 1 | 4 | 1/61 + 1/64 = 0.01639 + 0.01563 = **0.03202** |
+| B | 3 | 1 | 1/63 + 1/61 = 0.01587 + 0.01639 = **0.03226** |
+| C | not found | 2 | 1/62 = **0.01613** |
+
+B wins narrowly over A because it ranked well in both; C, found by only one method, trails both. That is the behaviour you want: agreement between two different retrieval methods is strong evidence. Elasticsearch, OpenSearch and several vector databases offer RRF or weighted score fusion built in; in Postgres you can run a full-text query and a pgvector query and fuse in SQL or in the application.
+
+## Reranking
+
+<DepthStamp depth="tradeoffs" />
+
+The embedding model is a <Term slug="bi-encoder">bi-encoder</Term>: it encodes the question and each chunk separately, which is what makes precomputed indexes possible, but it never sees them together. A <Term slug="cross-encoder">cross-encoder</Term> reranker reads the question and one candidate chunk together and outputs a relevance score. Seeing both at once lets it notice that "clearance sale items are final" answers the jacket question even though the words differ. Nogueira and Cho's "Passage Re-ranking with BERT" (2019) is the classic demonstration.
+
+Cross-encoders are far too slow to run over the corpus, so the pattern is **retrieve wide, rerank narrow**: hybrid retrieval fetches 50 to 100 candidates cheaply, the reranker scores them, and the top 5 to 10 go to the prompt.
+
+Cost, with labelled assumptions: suppose the reranker scores one (question, chunk) pair in 1 ms of GPU time when batched, and you rerank 50 candidates. That is 50 ms of GPU work per query. At 200 queries a second, the reranker needs 200 × 50 ms = 10 GPU-seconds per second, so about 10 GPUs' worth of capacity at full utilisation. That is why reranker depth (50 versus 200) is a capacity decision, not a free quality knob. An LLM can also act as the reranker; it is more flexible and much more expensive per candidate.
+
+## Context assembly and citation
+
+<DepthStamp depth="deep" />
+
+**Context assembly** builds the prompt from the reranked chunks within a token budget. A budget makes the trade-off explicit: suppose the model's context limit is generous, but you cap retrieved context at 2,000 tokens because every input token costs money and adds prefill latency. With 300-token chunks, that is six chunks; with a 250-token system prompt and a 50-token question, budget for about 2,300 input tokens per query.
+
+Rules that hold up in production:
+
+- **Deduplicate** overlapping or near-identical chunks before spending budget on them.
+- **Merge neighbours:** if chunks 41 and 42 of the same document both rank, put them together in order, which repairs many boundary cuts.
+- **Order deliberately.** Liu et al., "Lost in the Middle" (2023), found that models used information at the start and end of a long context more reliably than information in the middle, so put the strongest evidence first and do not pad the context with marginal chunks.
+- **Label every chunk** with a stable id and source, for example `[handbook-refunds#42] Employee Handbook > Refunds (updated 2026-05-02)`, and instruct the model to answer only from the provided sources, cite ids for each claim, and say it does not know when the sources do not answer the question.
+
+<Term slug="citation-grounding">Citation grounding</Term> means every claim in the answer points to a source the user can open. Treat citations as data to verify, not decoration: check that each cited id was actually in the context (models can invent plausible ids), optionally check that the cited chunk contains the key phrase or number, and render links to the source document so a human can check in one click.
+
+<Figure caption="FIG. 7.2 · QUERY PATH · ONE QUESTION, END TO END">
+  <Diagram label="The app checks access, embeds the question, queries both indexes, fuses and reranks, assembles a budgeted prompt, calls the model, validates the cited ids against the context and returns the answer with links." chart={`sequenceDiagram
+    participant U as User
+    participant App as RAG service
+    participant Ix as Vector + BM25 index
+    participant RR as Reranker
+    participant M as LLM
+    U->>App: question
+    App->>Ix: hybrid search, filter by user ACL, top 50
+    Ix-->>App: candidates
+    App->>RR: score 50 (question, chunk) pairs
+    RR-->>App: top 6
+    App->>M: system rules + 6 labelled chunks + question
+    M-->>App: answer with cited chunk ids
+    App->>App: verify cited ids were in context
+    App-->>U: answer with source links`} />
+</Figure>
+
+*Access control happens in retrieval, and citations are checked before the answer leaves the service.*
+
+## Failure modes
+
+<DepthStamp depth="deep" />
+
+When a RAG answer is wrong, first ask which stage failed. Logging the retrieved chunk ids for every answer makes this answerable.
+
+| Failure | Symptom | Where to look |
+|---|---|---|
+| Bad parsing | Answers miss tables or quote footers | Inspect stored chunk text, not the source file |
+| Bad chunking | Rule retrieved without its exception | Chunk boundaries around the gold passage |
+| Retrieval miss | Gold passage not in top k at all | Retrieval hit rate; try hybrid, query rewriting, bigger k |
+| Ranking miss | Gold passage retrieved but cut by the budget | Reranker, budget, deduplication |
+| Generation error | Gold passage in context, answer still wrong | Prompt instructions, model choice |
+| Stale index | Confident answer from an outdated or deleted page | Index versus source reconciliation |
+
+The single most useful metric is **retrieval hit rate**: on a set of questions with known gold passages, how often does a gold passage reach the final context? If it is 70%, no prompt engineering can push answer accuracy above roughly 70% on those questions, so fix retrieval first. Measure answer quality separately, by human review or an LLM judge with a visible rubric (the evals section covers its caveats).
+
+## Freshness and re-indexing
+
+<DepthStamp depth="tradeoffs" />
+
+The index is a copy of the source documents and, like every copy, it goes stale. Three kinds of change need handling: edits, deletions and permission changes. Deletions and permission changes are the dangerous ones, because a stale index then serves content that should not exist or should not be visible.
+
+### Failure timeline: a deleted policy keeps answering
+
+| Date | Event |
+|---|---|
+| Mar 1, 10:00 | HR deletes the outdated "home office stipend" page from the wiki of a fictional company. |
+| Mar 2, 02:00 | The nightly ingester crawls the wiki and upserts every page it finds. It never sees the deleted page, so it never deletes its chunks. |
+| Mar 2 to Mar 14 | The assistant keeps answering "yes, you can claim a home office stipend", citing the deleted page. The citation link now returns 404, but nobody clicks it. |
+| Mar 14 | Finance rejects a batch of claims; employees point to the assistant's answer. |
+| Mar 15 | Engineers find 3,100 orphaned chunks from 140 deleted pages in the index. |
+
+Fixes, in order of value:
+
+- **Propagate deletes explicitly.** Prefer event-driven sync: webhooks or change data capture from the source system, including delete events, rather than a crawler that only discovers what exists.
+- **Reconcile.** Periodically compare the set of document ids in the index with the source system and delete orphans. This catches whatever the event stream missed.
+- **Check at serve time.** For high-stakes content, verify that each cited document still exists and that the user may still read it before returning the answer.
+- **Re-embed incrementally.** Store a content hash per chunk; on edit, re-chunk the document and re-embed only chunks whose hash changed.
+- **Rebuild for model or chunking changes** into a new index alongside the old one, evaluate it on your question set, then switch an alias (Elasticsearch and OpenSearch index aliases, or a view or table swap in Postgres). Never re-embed in place: halfway through, the index holds vectors from two models.
+
+Is RAG still needed now that context windows are large? Both sides have a point. Pasting a whole small corpus into a long context is simpler and avoids retrieval misses, and for a few hundred pages that are read rarely it can be the right call. But cost and latency grow with every input token on every query, access control still has to be enforced before the text reaches the model, freshness still requires a pipeline, and long contexts still suffer the "lost in the middle" effect. For large, changing, permissioned corpora, retrieval remains the practical design; long context mostly lets you retrieve bigger, fewer chunks.
+
+<TradeoffBox title="RAG design choices" items={[
+  { gain: "Small chunks: precise embeddings, more chunks fit the budget", cost: "Rules lose their exceptions and pronouns lose their referents" },
+  { gain: "Large chunks: context stays intact", cost: "Blurred vectors, fewer chunks per prompt, higher token cost" },
+  { gain: "Overlap: boundary sentences survive whole", cost: "More storage and embedding, near-duplicate results to dedupe" },
+  { gain: "Hybrid BM25 plus vectors: catches codes, names and paraphrases", cost: "Two indexes to keep in sync, a fusion step to tune" },
+  { gain: "Cross-encoder reranking: much better ordering of candidates", cost: "GPU capacity and tens of milliseconds per query" },
+  { gain: "Event-driven re-indexing: fresh within seconds, deletes propagate", cost: "Integration with every source system, plus reconciliation as a backstop" }
+]} />
+
+<NotWhenBox title="When not to use RAG" items={[
+  "The answer is in structured data: 'how many open tickets does Acme have' is a database query or a tool call, not passage retrieval.",
+  "The corpus is tiny and static: a few pages can simply live in the prompt.",
+  "You need the model to learn a style or format, not facts: that is prompting or fine-tuning.",
+  "You cannot build an evaluation set: without gold questions you cannot tell whether a change helped."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="If the answer has a citation, it is grounded." right="A citation can point to a real chunk that does not support the claim, or to an id the model invented. Verify cited ids against the context and spot-check support." />
+
+<Misconception wrong="Wrong answers mean we need a better model." right="Check the logged context first. If the gold passage never reached the prompt, the failure is parsing, chunking or retrieval, and a better model will not fix it." />
+
+<Misconception wrong="Telling the model to ignore documents the user can't see is access control." right="Anything in the prompt can leak into the answer. Filter by ACL inside retrieval so restricted text never reaches the model." />
+
+<Misconception wrong="Re-running ingestion every night keeps the index fresh." right="An upsert-only crawler never removes deleted pages. Propagate delete events and reconcile index ids against the source." />
+
+## Interview angle
+
+<InterviewAngle title="RAG" questions={[
+  "Design an internal assistant over 50,000 policy documents with per-team permissions. Walk me through ingestion and the query path.",
+  "Users say the bot gives confidently wrong answers with citations. How do you find out which stage is failing?",
+  "How do you choose chunk size and overlap? What would you measure?",
+  "A document is deleted or a user loses access. How long until the bot stops using it, and how do you guarantee that?",
+  "Why add BM25 when you already have embeddings? How do you merge the two result lists?"
+]}>
+RAG questions reward engineers who treat it as a search system with a model at the end. Size the corpus (chunks, vectors, bytes) to show it fits on one server. Draw both pipelines. Put access control in retrieval, not the prompt. Explain hybrid search with RRF and retrieve-wide, rerank-narrow with a cost estimate. Define retrieval hit rate as the first metric, and separate it from answer quality. Close with freshness: event-driven deletes, reconciliation, incremental re-embedding by content hash, and alias swaps for model upgrades. Mentioning that you log retrieved chunk ids per answer, so every bad answer can be traced to a stage, is a strong signal.
+</InterviewAngle>
+
+## Practice
+
+1. A corpus has 12,000 documents averaging 2,500 tokens. With 400-token chunks and 50-token overlap, how many chunks, how many tokens embedded, and how many GB of 768-dimension float32 vectors?
+2. Compute RRF scores (k = 60) for chunks ranked BM25 [X, Y, Z] and vector [Z, W, X]. Which chunk wins, and why does W rank where it does?
+3. Design re-indexing for a wiki that sends edit webhooks but not delete webhooks. How do you bound the time a deleted page can still be cited?
+
+## Try it
+
+Build the pipeline over a 22-policy handbook and measure it on 20 questions. Watch a fixed-size chunker split an answer from its exception, compare BM25, vectors and hybrid, and hit 90% retrieval within a 2,000-token context.
+
+<Simulator id="rag-pipeline" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

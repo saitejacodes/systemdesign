@@ -1,0 +1,187 @@
+[
+  {
+    "id": "multi-region-q1",
+    "type": "scenario",
+    "prompt": "Roughly how many acknowledged writes are at risk if the primary region is lost and the standby is promoted?",
+    "scenario": "An active-passive deployment replicates asynchronously to a standby region. At peak the primary takes 3,000 writes a second and the replica lags by 2 seconds.",
+    "options": [
+      { "id": "a", "text": "None, because the writes were already acknowledged" },
+      { "id": "b", "text": "About 1,500, half of one second's worth of writes" },
+      { "id": "c", "text": "About 6,000, the writes still in the replication lag" },
+      { "id": "d", "text": "About 180,000, a full minute of writes at peak" }
+    ],
+    "correct": ["c"],
+    "explanation": "With async replication, writes acknowledged but not yet replicated are lost: lag × write rate = 2 s × 3,000 = 6,000. Acknowledgement only means the primary had them, so 'none' is exactly the async trap. 1,500 divides instead of multiplying. A full minute of writes would only be at risk if the lag were 60 seconds.",
+    "topicId": "active-passive-active-active",
+    "difficulty": 1
+  },
+  {
+    "id": "multi-region-q2",
+    "type": "single",
+    "prompt": "What distinguishes 'active-active with home regions' from 'active-active with multi-writer data'?",
+    "options": [
+      { "id": "a", "text": "Home regions keep one writer per record, so concurrent writes to a record can't conflict" },
+      { "id": "b", "text": "Home regions replicate synchronously, while multi-writer setups always replicate in batches" },
+      { "id": "c", "text": "Home regions serve only reads in non-home regions and refuse every incoming write request" },
+      { "id": "d", "text": "Multi-writer setups need fewer regions, because each region can absorb all writes alone" }
+    ],
+    "correct": ["a"],
+    "explanation": "With home regions every region serves traffic, but each record is written only in its home region, so there are no write conflicts by construction. Replication mode is an independent choice; both flavours can replicate asynchronously. Non-home regions don't refuse writes; they forward them to the home region. Region count is driven by capacity and failure tolerance, not by which flavour you pick.",
+    "topicId": "active-passive-active-active",
+    "difficulty": 2
+  },
+  {
+    "id": "multi-region-q3",
+    "type": "single",
+    "prompt": "Three equal active-active regions must survive the loss of any one region at peak. What is the highest safe peak utilisation per region?",
+    "options": [
+      { "id": "a", "text": "About 33%" },
+      { "id": "b", "text": "About 50%" },
+      { "id": "c", "text": "About 67%" },
+      { "id": "d", "text": "About 90%" }
+    ],
+    "correct": ["c"],
+    "explanation": "With N regions, the survivors of one loss must carry everything, so each can run at most (N − 1)/N: 2/3 ≈ 67% for three. 33% would be the share of traffic each region carries, not its safe utilisation. 50% is the two-region answer. 90% leaves no room to absorb a third of global traffic.",
+    "topicId": "active-passive-active-active",
+    "difficulty": 2
+  },
+  {
+    "id": "multi-region-q4",
+    "type": "scenario",
+    "prompt": "What is the minimum commit latency for a write from a client co-located with the leader?",
+    "scenario": "A consensus group has one replica in each of three regions and commits on a majority of two. The leader is in region A. Round trips: A–B 65 ms, A–C 75 ms, B–C 130 ms.",
+    "options": [
+      { "id": "a", "text": "About 65 ms, the round trip to the nearest follower" },
+      { "id": "b", "text": "About 75 ms, the round trip to the farthest follower" },
+      { "id": "c", "text": "About 140 ms, both follower round trips added" },
+      { "id": "d", "text": "About 1 ms, since the leader commits locally" }
+    ],
+    "correct": ["a"],
+    "explanation": "A majority of two is the leader plus one follower, so the commit waits for the fastest acknowledgement: B at 65 ms. Waiting for C at 75 ms would be needed only if all replicas had to acknowledge. The leader contacts followers in parallel, so latencies don't add. A local-only commit isn't durable in a second region and isn't a majority.",
+    "topicId": "cross-region-latency",
+    "difficulty": 2
+  },
+  {
+    "id": "multi-region-q5",
+    "type": "single",
+    "prompt": "What does Spanner's TrueTime provide, and what does it not change?",
+    "options": [
+      { "id": "a", "text": "It removes the need for Paxos, so writes commit in one region and replicate asynchronously" },
+      { "id": "b", "text": "Bounded clock uncertainty for consistent timestamps; commits still need a Paxos majority" },
+      { "id": "c", "text": "Perfectly synchronised clocks, so cross-region writes no longer need a network round trip" },
+      { "id": "d", "text": "A faster network path between regions, cutting each round trip below the speed-of-light floor" }
+    ],
+    "correct": ["b"],
+    "explanation": "TrueTime returns a time interval with bounded uncertainty, which lets Spanner assign externally consistent timestamps by waiting out the uncertainty. Writes are still replicated with Paxos and must reach a majority, so cross-region writes still pay round trips. TrueTime does not replace Paxos, and the clocks are not perfect, which is why the interval and commit wait exist. Nothing beats the speed of light.",
+    "topicId": "cross-region-latency",
+    "difficulty": 2
+  },
+  {
+    "id": "multi-region-q6",
+    "type": "scenario",
+    "prompt": "What is the final balance after the partition heals, and what went wrong?",
+    "scenario": "A shared account holds $100 in a multi-writer active-active database using last-writer-wins. During a partition, a withdrawal of $80 in eu-west is stamped 10:00:07 (its clock is 2 s fast) and a withdrawal of $70 in us-east is stamped 10:00:06, one second later in real time.",
+    "options": [
+      { "id": "a", "text": "$20: LWW keeps the higher timestamp, discarding the later real write; $150 has left" },
+      { "id": "b", "text": "$30: LWW always keeps the write that happened later in real time, so Bob's wins" },
+      { "id": "c", "text": "-$50: replication applies both withdrawals in order, so the account is overdrawn" },
+      { "id": "d", "text": "$100: the database detects the conflict and rolls back both withdrawals" }
+    ],
+    "correct": ["a"],
+    "explanation": "LWW keeps the highest timestamp, 10:00:07 from the fast eu-west clock, so the stored balance is $20, while $150 was actually withdrawn and Bob's update vanished. LWW compares timestamps, not real time, so with skew it can keep the earlier write. Applying both withdrawals is what a ledger or CRDT would do, not LWW on a balance field. LWW does not detect conflicts or roll back; it silently picks one.",
+    "topicId": "conflict-resolution",
+    "difficulty": 3
+  },
+  {
+    "id": "multi-region-q7",
+    "type": "single",
+    "prompt": "How does a G-Counter merge two replicas' states?",
+    "options": [
+      { "id": "a", "text": "It adds the two replicas' totals together, counting every increment exactly twice" },
+      { "id": "b", "text": "It takes the per-region maximum of each slot, then sums the slots for the value" },
+      { "id": "c", "text": "It keeps whichever replica's total has the newest timestamp and drops the other" },
+      { "id": "d", "text": "It asks the application to choose a value whenever the two totals are different" }
+    ],
+    "correct": ["b"],
+    "explanation": "Each region increments only its own slot; merging takes the element-wise maximum, which is idempotent and order-independent, and the value is the sum. Adding totals would double-count increments every time states are exchanged. Keeping the newest total is LWW and loses the other region's increments. Asking the application is the Dynamo sibling approach, which CRDTs exist to avoid.",
+    "topicId": "conflict-resolution",
+    "difficulty": 2
+  },
+  {
+    "id": "multi-region-q8",
+    "type": "scenario",
+    "prompt": "Which design keeps usernames globally unique?",
+    "scenario": "A global app runs active-active in three regions. Users pick a username at sign-up, and two people in different regions may try to claim the same name within the same second.",
+    "options": [
+      { "id": "a", "text": "Store usernames in an add-wins OR-Set CRDT so concurrent claims merge cleanly" },
+      { "id": "b", "text": "Let each region accept the claim and resolve duplicates with last-writer-wins" },
+      { "id": "c", "text": "Route all claims for a name to one owner or a consensus-replicated store" },
+      { "id": "d", "text": "Check the local replica first and accept the claim if the name looks free" }
+    ],
+    "correct": ["c"],
+    "explanation": "Uniqueness is an invariant, which needs a single decision point: route claims for a name to one owner (for example by hashing the name to a home region) or use a consensus store, paying a round trip at sign-up. An OR-Set would merge both claims into the set, converging but violating uniqueness. LWW silently takes the name away from one user after they were told it was theirs. A local check can't see a concurrent claim in another region.",
+    "topicId": "conflict-resolution",
+    "difficulty": 2
+  },
+  {
+    "id": "multi-region-q9",
+    "type": "multi",
+    "prompt": "An EU customer's personal data must stay in the EU. Which of these can break that even when the primary database is in an EU region? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Application logs shipped to a US logging cluster" },
+      { "id": "b", "text": "A disaster-recovery replica placed in us-east" },
+      { "id": "c", "text": "A global search index containing customer names" },
+      { "id": "d", "text": "A global directory mapping opaque IDs to home regions" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Logs, DR replicas and search indexes are all copies of data, so placing them outside the EU moves personal data out with them. A directory that holds only opaque IDs and region names contains no personal data by design, which is exactly how global routing is kept compatible with residency.",
+    "topicId": "data-residency",
+    "difficulty": 2
+  },
+  {
+    "id": "multi-region-q10",
+    "type": "single",
+    "prompt": "Which statement about GDPR and data location is accurate?",
+    "options": [
+      { "id": "a", "text": "It requires all personal data of EU residents to be stored on servers physically in the EU" },
+      { "id": "b", "text": "It restricts transfers outside the EEA unless an adequacy decision or safeguard applies" },
+      { "id": "c", "text": "It places no limits on where personal data goes once the user has accepted the cookies" },
+      { "id": "d", "text": "It only applies to companies headquartered in the EU, so non-EU firms can store anywhere" }
+    ],
+    "correct": ["b"],
+    "explanation": "GDPR restricts international transfers, permitting them with an adequacy decision or approved safeguards such as standard contractual clauses; it is not a blanket storage-location mandate. Some other laws (Russia's 242-FZ, the RBI payments directive) do require in-country storage. Cookie consent is unrelated to transfer rules. GDPR applies to non-EU firms that process EU residents' data in many circumstances.",
+    "topicId": "data-residency",
+    "difficulty": 2
+  },
+  {
+    "id": "multi-region-q11",
+    "type": "scenario",
+    "prompt": "What is the most likely reason, and the best way to shorten the tail?",
+    "scenario": "During a regional failover the team changes DNS records with a 60-second TTL. Ten minutes later, a noticeable share of traffic still reaches the dead region.",
+    "options": [
+      { "id": "a", "text": "The TTL was ignored by the authoritative server; lower it to 5 seconds and wait" },
+      { "id": "b", "text": "Clients and resolvers cache past TTL and old connections persist; use anycast or client retry" },
+      { "id": "c", "text": "Latency-based routing pins each user to one region for a day; switch to GeoDNS instead" },
+      { "id": "d", "text": "Health checks in the dead region still pass; delete them so DNS stops returning that IP" }
+    ],
+    "correct": ["b"],
+    "explanation": "TTLs are advisory: some resolvers, clients and runtimes cache beyond them, and long-lived connections never re-resolve. An anycast front door that reroutes without DNS changes, or clients that retry against another endpoint, shrink the tail. The authoritative server doesn't enforce caching, so a lower TTL helps only marginally. Latency-based routing has no day-long pinning, and GeoDNS has the same TTL behaviour. The records were already changed, so health checks are not what keeps the old IP in caches.",
+    "topicId": "latency-based-routing",
+    "difficulty": 2
+  },
+  {
+    "id": "multi-region-q12",
+    "type": "single",
+    "prompt": "Why can GeoDNS or latency-based DNS routing send a user to a distant region?",
+    "options": [
+      { "id": "a", "text": "DNS sees the recursive resolver's location, which may be far from the user" },
+      { "id": "b", "text": "DNS routing picks regions at random, then weights the choice by their capacity" },
+      { "id": "c", "text": "The browser overrides DNS answers using its own geolocation of the user" },
+      { "id": "d", "text": "The authoritative server can only return a region on the same continent" }
+    ],
+    "correct": ["a"],
+    "explanation": "Authoritative DNS sees the resolver making the query, so a user on a far-away public resolver is steered by the resolver's location; EDNS Client Subnet (RFC 7871) helps where supported. DNS routing policies are not random. Browsers do not rewrite DNS answers from geolocation. There is no continent restriction; a misplaced resolver can send a user anywhere.",
+    "topicId": "latency-based-routing",
+    "difficulty": 1
+  }
+]

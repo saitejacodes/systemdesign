@@ -1,0 +1,18 @@
+{
+  "id": "p6-edge-computing",
+  "phase": 6,
+  "slug": "edge-computing",
+  "title": "Edge Computing",
+  "order": 2,
+  "week": 13,
+  "estimatedMinutes": 55,
+  "topics": [
+    { "id": "edge-functions", "title": "Edge functions and their runtimes", "depth": "deep" },
+    { "id": "edge-caching-personalization", "title": "Edge caching and personalisation", "depth": "deep" },
+    { "id": "data-locality", "title": "Data locality limits", "depth": "tradeoffs" },
+    { "id": "edge-placement", "title": "What belongs at the edge", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p3-cdn", "p1-dns", "p6-serverless"]
+}

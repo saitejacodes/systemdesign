@@ -1,0 +1,330 @@
+[
+  {
+    "id": "agents-q1",
+    "type": "scenario",
+    "prompt": "What is the best design?",
+    "scenario": "Every incoming invoice must be classified by vendor, have six fields extracted, be checked against a purchase order, and be routed to one of three approval queues. The steps never change; only the documents do.",
+    "options": [
+      {
+        "id": "a",
+        "text": "An autonomous agent with tools for each step that decides the order on its own"
+      },
+      {
+        "id": "b",
+        "text": "A fixed workflow that calls the model only for classification and extraction"
+      },
+      {
+        "id": "c",
+        "text": "One very long prompt that performs every step and returns the queue name"
+      },
+      {
+        "id": "d",
+        "text": "A multi-agent team where a planner agent assigns each step to worker agents"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The steps are known in advance, so a workflow with deterministic code for matching and routing and model calls only where judgement is needed is cheaper, more testable and more reliable. An agent re-decides a fixed order on every invoice and adds compounding error. One giant prompt merges steps you could validate separately. A planner with workers is the most complex option for a task that needs no planning.",
+    "topicId": "workflows-vs-agents",
+    "difficulty": 1
+  },
+  {
+    "id": "agents-q2",
+    "type": "single",
+    "prompt": "Assuming independent steps with 97% success each, roughly what share of 20-step runs succeed end to end?",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 97%"
+      },
+      {
+        "id": "b",
+        "text": "About 80%"
+      },
+      {
+        "id": "c",
+        "text": "About 54%"
+      },
+      {
+        "id": "d",
+        "text": "About 40%"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "0.97²⁰ ≈ 0.54. 97% treats the run as one step. 80% is roughly 0.97 to the 7th, so it undercounts the steps. 40% is roughly 0.97 to the 30th, too many steps. The point: per-step errors compound quickly over long runs.",
+    "topicId": "workflows-vs-agents",
+    "difficulty": 2
+  },
+  {
+    "id": "agents-q3",
+    "type": "single",
+    "prompt": "In a tool-calling loop, where must permission checks for a tool call be enforced?",
+    "options": [
+      {
+        "id": "a",
+        "text": "In the system prompt, which lists the tools the model is allowed to use"
+      },
+      {
+        "id": "b",
+        "text": "In the orchestrator, before it runs the tool the model asked to call"
+      },
+      {
+        "id": "c",
+        "text": "In the tool description, which tells the model when it may call the tool"
+      },
+      {
+        "id": "d",
+        "text": "Inside the model, which refuses calls the current user is not allowed"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The model only proposes calls; your orchestrator executes them, so it is the only place a check is guaranteed to run. A system prompt and tool descriptions are instructions the model usually follows but can ignore or be tricked out of. The model has no reliable knowledge of the current user's permissions and cannot enforce anything.",
+    "topicId": "tool-calling-loop",
+    "difficulty": 1
+  },
+  {
+    "id": "agents-q4",
+    "type": "multi",
+    "prompt": "Which tool-design choices help an agent recover from errors? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Specific error messages that say what was wrong"
+      },
+      {
+        "id": "b",
+        "text": "Saying whether retrying the same call could help"
+      },
+      {
+        "id": "c",
+        "text": "Validating arguments against the schema first"
+      },
+      {
+        "id": "d",
+        "text": "Returning an empty string so the model moves on"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "A precise error lets the model fix its arguments, a retryability hint stops pointless loops, and schema validation catches bad arguments before they cause side effects. An empty result gives the model nothing to reason about, so it tends to guess or repeat the call.",
+    "topicId": "tool-calling-loop",
+    "difficulty": 2
+  },
+  {
+    "id": "agents-q5",
+    "type": "scenario",
+    "prompt": "How many input tokens does the run send in total?",
+    "scenario": "An agent's system prompt and tool definitions are 3,000 tokens. Each step adds 1,000 tokens of reasoning, tool call and result to the history, and the full history is resent on every step. The run takes 10 steps (the first step sends only the 3,000 base tokens).",
+    "options": [
+      {
+        "id": "a",
+        "text": "13,000 tokens"
+      },
+      {
+        "id": "b",
+        "text": "40,000 tokens"
+      },
+      {
+        "id": "c",
+        "text": "75,000 tokens"
+      },
+      {
+        "id": "d",
+        "text": "130,000 tokens"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Step i sends 3,000 + 1,000 × i for i = 0 to 9: 10 × 3,000 + 1,000 × 45 = 75,000. 13,000 is roughly the size of the history at the end of the run, counted once. 40,000 adds each step's 1,000 tokens once instead of resending them on every later step. 130,000 charges every step for the full end-of-run history of 13,000.",
+    "topicId": "agent-state",
+    "difficulty": 2
+  },
+  {
+    "id": "agents-q6",
+    "type": "single",
+    "prompt": "Why should an agent persist a checkpoint after every step?",
+    "options": [
+      {
+        "id": "a",
+        "text": "So the model can read yesterday's runs and learn from their mistakes automatically"
+      },
+      {
+        "id": "b",
+        "text": "So a crashed or paused run resumes at its last step without repeating side effects"
+      },
+      {
+        "id": "c",
+        "text": "Because providers require the full transcript to be stored for later billing audits"
+      },
+      {
+        "id": "d",
+        "text": "So each step can be sent to a different provider for a cheaper price per token"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Durable checkpoints let a worker crash, a deploy happen or a human approval take days, and the run continues from the last completed step instead of restarting and redoing actions. Models do not learn from stored runs unless you build that. Providers do not require you to store transcripts for billing. Routing steps to different providers is unrelated to checkpointing.",
+    "topicId": "agent-state",
+    "difficulty": 1
+  },
+  {
+    "id": "agents-q7",
+    "type": "scenario",
+    "prompt": "Which design prevents the double refund?",
+    "scenario": "An agent calls issue_refund for order 8812. The payments API takes 7 s; the tool timeout is 5 s, so the orchestrator reports a timeout to the model. The refund actually completes. The model then decides to call issue_refund again for the same order and amount.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Raise the tool timeout to 10 s so the first call always finishes before it fires"
+      },
+      {
+        "id": "b",
+        "text": "Orchestrator matches the repeat to the same action and reuses its idempotency key"
+      },
+      {
+        "id": "c",
+        "text": "Let the HTTP client retry on timeout with the key it generated for the first call"
+      },
+      {
+        "id": "d",
+        "text": "Tell the model in the system prompt never to call issue_refund more than once"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The model's second call is a new call, so only the orchestrator, by matching tool and arguments within the run, can reuse the original key and get the original refund back. A longer timeout helps this case but the next slow response will exceed it. The HTTP client's retry is not what happened here: the model issued a fresh call, which the client would give a fresh key. A prompt instruction is not a control.",
+    "topicId": "idempotent-tools",
+    "difficulty": 3
+  },
+  {
+    "id": "agents-q8",
+    "type": "single",
+    "prompt": "A tool sends an SMS through a provider that does not support idempotency keys. How should the agent treat it?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Retry it freely, since an SMS is cheap and duplicates do little harm"
+      },
+      {
+        "id": "b",
+        "text": "Mark it non-idempotent: never auto-retry, and gate it behind approval"
+      },
+      {
+        "id": "c",
+        "text": "Let the model create a random idempotency key for each call it makes"
+      },
+      {
+        "id": "d",
+        "text": "Wrap it in a read-only tool so that the orchestrator can retry it again"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Without provider support (or your own deduplication store), repeats send duplicate messages to a real person, so it must not be retried automatically and belongs behind approval or tight per-run caps. Duplicate messages to customers are real harm. A key the model invents changes on every call and is not sent to a provider that ignores keys anyway. Calling it read-only mislabels a side effect.",
+    "topicId": "idempotent-tools",
+    "difficulty": 2
+  },
+  {
+    "id": "agents-q9",
+    "type": "scenario",
+    "prompt": "Which change most reduces waste in this situation?",
+    "scenario": "A document search index is down and returns 503 for every query. Agent runs keep rephrasing their search, trying related tools that use the same index, and stopping only at the 25-step limit. Each failed run burns about 400,000 input tokens.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Raise the step limit to 50 so the agent has more chances to find a working query"
+      },
+      {
+        "id": "b",
+        "text": "Stop after 3 identical failures, flag errors as not retryable and add a breaker"
+      },
+      {
+        "id": "c",
+        "text": "Lower the step limit to 5 for every run, whatever the task actually requires"
+      },
+      {
+        "id": "d",
+        "text": "Add a sentence to the system prompt asking the agent to give up sooner on errors"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Loop detection ends a doomed run after a few steps, a 'retrying will not help' error tells the model why, and a circuit breaker stops all runs calling the dead tool. A higher step limit doubles the waste. A blanket limit of 5 breaks legitimate long tasks while still wasting the five steps. A prompt request may be followed or not; it is not an enforced limit.",
+    "topicId": "agent-limits",
+    "difficulty": 2
+  },
+  {
+    "id": "agents-q10",
+    "type": "scenario",
+    "prompt": "What is the most effective improvement to the approval step?",
+    "scenario": "An operations agent asks a human to approve each infrastructure change with the message 'Approve action?'. Logs show reviewers approve 99.5% of requests, with a median decision time of 2 seconds. Last week one approval deleted a production volume.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Remove approvals entirely, since reviewers approve almost every request anyway"
+      },
+      {
+        "id": "b",
+        "text": "Show the exact change, auto-approve low-risk tiers and gate only risky actions"
+      },
+      {
+        "id": "c",
+        "text": "Require two reviewers to approve every request in the same 'Approve action?' form"
+      },
+      {
+        "id": "d",
+        "text": "Add a 30-second countdown before the Approve button becomes clickable for reviewers"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Two-second approvals of a vague prompt are approval fatigue: showing the exact effect and reserving review for risky tiers makes each review meaningful. Removing approvals throws away the one control that does not depend on the model. Two reviewers of an uninformative message both rubber-stamp. A countdown adds delay without giving the reviewer any information to judge with.",
+    "topicId": "human-in-the-loop",
+    "difficulty": 2
+  },
+  {
+    "id": "agents-q11",
+    "type": "multi",
+    "prompt": "Which actions should normally sit behind human approval for a customer-support agent? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Issuing a refund above a set threshold"
+      },
+      {
+        "id": "b",
+        "text": "Deleting the customer's account data"
+      },
+      {
+        "id": "c",
+        "text": "Emailing the customer a policy change"
+      },
+      {
+        "id": "d",
+        "text": "Looking up an order's shipping status"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "Large refunds, deletions and messages a customer will receive are irreversible or external, so a person should see the exact effect first. Looking up shipping status is read-only and safe to automate, and gating it would only add fatigue.",
+    "topicId": "human-in-the-loop",
+    "difficulty": 1
+  }
+]

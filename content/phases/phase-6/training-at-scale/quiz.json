@@ -1,0 +1,330 @@
+[
+  {
+    "id": "training-at-scale-q1",
+    "type": "single",
+    "prompt": "Why is pre-training compute approximately 6 × parameters × tokens?",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 2N FLOPs per token forward and about 4N backward, for 6N per token"
+      },
+      {
+        "id": "b",
+        "text": "Each weight is read six times per token, once for every attention sub-layer"
+      },
+      {
+        "id": "c",
+        "text": "Adam keeps six values per parameter, and each is updated once per token"
+      },
+      {
+        "id": "d",
+        "text": "Forward costs N, backward 2N, and recomputation 3N for every single token"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "A forward pass is one multiply and one add per weight per token (2N), and backward computes gradients for both activations and weights, about twice the forward (4N). Six reads per token confuses memory traffic with FLOPs and is not how attention works. Adam keeps a few values per parameter but updates them once per step, not per token. Forward is 2N, not N, and recomputation is optional extra work that MFU deliberately excludes.",
+    "topicId": "compute-budget",
+    "difficulty": 1
+  },
+  {
+    "id": "training-at-scale-q2",
+    "type": "scenario",
+    "prompt": "Roughly how long does the run take on the full cluster, ignoring failures?",
+    "scenario": "You plan to train a 30B-parameter dense model on 600 billion tokens. Assume a GPU peak of 1,000 TFLOP/s dense bf16, 40% MFU, and 1,000 GPUs.",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 1.2 days"
+      },
+      {
+        "id": "b",
+        "text": "About 3 days"
+      },
+      {
+        "id": "c",
+        "text": "About 6 days"
+      },
+      {
+        "id": "d",
+        "text": "About 12 days"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "C = 6 × 3 × 10¹⁰ × 6 × 10¹¹ = 1.08 × 10²³ FLOPs. Effective cluster throughput = 1,000 × 4 × 10¹⁴ = 4 × 10¹⁷ FLOP/s, so 2.7 × 10⁵ s ≈ 3.1 days. About 1.2 days assumes 100% MFU (3.1 × 0.4). About 6 days double-counts the work (12N per token instead of 6N) or halves the MFU to 20%. About 12 days corresponds to roughly 10% MFU, four times less efficient than assumed.",
+    "topicId": "compute-budget",
+    "difficulty": 2
+  },
+  {
+    "id": "training-at-scale-q3",
+    "type": "single",
+    "prompt": "What did the Chinchilla paper (Hoffmann et al., 2022) conclude about a fixed compute budget?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Grow model size much faster than data, keeping tokens per parameter small"
+      },
+      {
+        "id": "b",
+        "text": "Grow parameters and tokens in equal proportion, about 20 tokens per parameter"
+      },
+      {
+        "id": "c",
+        "text": "Grow data much faster than model size, aiming near 2,000 tokens per parameter"
+      },
+      {
+        "id": "d",
+        "text": "Choose the largest model that fits in memory and train it for a single epoch"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Chinchilla found parameters and tokens should scale equally, at roughly 20 tokens per parameter, so its 70B model on 1.4T tokens beat the 280B Gopher. Growing model size faster than data was the earlier Kaplan et al. recommendation that Chinchilla revised. Around 2,000 tokens per parameter is what some heavily served small models are trained on, deliberately past compute-optimal. Fitting the biggest model in memory ignores the data side of the budget entirely.",
+    "topicId": "compute-budget",
+    "difficulty": 1
+  },
+  {
+    "id": "training-at-scale-q4",
+    "type": "scenario",
+    "prompt": "What is the best response to the GPU utilisation argument?",
+    "scenario": "An engineer says the training job is efficient because the GPU utilisation metric in the cluster dashboard shows 98% on every GPU. Measured throughput implies 22% MFU.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Trust the dashboard: MFU is a theoretical number that real jobs never get near"
+      },
+      {
+        "id": "b",
+        "text": "Busy is not useful: GPUs can be busy waiting in collectives or doing low-FLOP kernels"
+      },
+      {
+        "id": "c",
+        "text": "The dashboard is broken, because 98%-busy GPUs always imply at least 90% MFU too"
+      },
+      {
+        "id": "d",
+        "text": "The gap must be activation recomputation, since HFU is always twice the MFU"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A utilisation metric that reports a GPU as busy whenever a kernel is running counts collective waits, memory-bound element-wise kernels and small matrix shapes as busy time; MFU counts only the model's useful FLOPs against peak, so 22% says most time is not doing model maths. MFU is not theoretical: published large runs report around 40%. Busy GPUs do not imply high MFU, so the dashboard need not be broken. Recomputation explains part of a gap at most, and HFU is not fixed at twice MFU (PaLM reported 57.8% vs 46.2%).",
+    "topicId": "mfu",
+    "difficulty": 2
+  },
+  {
+    "id": "training-at-scale-q5",
+    "type": "scenario",
+    "prompt": "Roughly how often should you expect the job to be interrupted?",
+    "scenario": "Assume each GPU, with its share of host, network and cabling, has an independent mean time between failures of 40,000 hours. Your synchronous job uses 10,000 GPUs.",
+    "options": [
+      {
+        "id": "a",
+        "text": "About every 4 hours"
+      },
+      {
+        "id": "b",
+        "text": "About every 40 hours"
+      },
+      {
+        "id": "c",
+        "text": "About every 400 hours"
+      },
+      {
+        "id": "d",
+        "text": "About every 4.5 years"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Failure rates add for a synchronous job, so job MTBF ≈ 40,000 ÷ 10,000 = 4 hours. 40 and 400 hours divide by 1,000 or 100, too few components. 4.5 years is roughly the per-GPU MTBF itself (40,000 hours), which treats the job as reliable as its most reliable part, but any single failure stops the whole gang-scheduled job.",
+    "topicId": "failures-at-scale",
+    "difficulty": 2
+  },
+  {
+    "id": "training-at-scale-q6",
+    "type": "scenario",
+    "prompt": "What checkpoint interval does the Young/Daly approximation suggest?",
+    "scenario": "Job MTBF is 4 hours (14,400 s). Each checkpoint blocks training for 50 s.",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 4 minutes"
+      },
+      {
+        "id": "b",
+        "text": "About 20 minutes"
+      },
+      {
+        "id": "c",
+        "text": "About 2 hours"
+      },
+      {
+        "id": "d",
+        "text": "About 4 hours"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "τ ≈ √(2δM) = √(2 × 50 × 14,400) = √1,440,000 = 1,200 s = 20 minutes. About 4 minutes would spend about 21% of time blocked on checkpoints (50/240). Two hours, half the MTBF, loses about an hour of work per failure on average. Checkpointing once per MTBF loses about half the MTBF per failure, the worst of these options.",
+    "topicId": "checkpointing",
+    "difficulty": 2
+  },
+  {
+    "id": "training-at-scale-q7",
+    "type": "multi",
+    "prompt": "Which must a training checkpoint include for the job to resume exactly? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Model weights and the optimiser's momentum and variance"
+      },
+      {
+        "id": "b",
+        "text": "The data loader's position and the random-number states"
+      },
+      {
+        "id": "c",
+        "text": "The learning-rate schedule's current step and settings"
+      },
+      {
+        "id": "d",
+        "text": "Each GPU's most recent activations from the last step"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "Weights and optimiser state define the model and how it will update next. The data loader position and RNG states keep the run from repeating or skipping data and make dropout and shuffling reproducible. The schedule's step decides the next learning rate. Activations from the last step are recomputed by the next forward pass and are not needed to resume.",
+    "topicId": "checkpointing",
+    "difficulty": 1
+  },
+  {
+    "id": "training-at-scale-q8",
+    "type": "single",
+    "prompt": "Why do stragglers hurt synchronous training more as the cluster grows?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Step time is the slowest rank's time, and with more ranks a slow one is near-certain"
+      },
+      {
+        "id": "b",
+        "text": "Ring all-reduce traffic per rank grows linearly with the number of ranks in the ring"
+      },
+      {
+        "id": "c",
+        "text": "Larger clusters run hotter, so every GPU throttles by the same fixed percentage"
+      },
+      {
+        "id": "d",
+        "text": "The optimiser divides the learning rate by the rank count, slowing convergence"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Every step waits for every rank, so step time is a maximum; with a 0.1% per-step slow chance per GPU, 16,384 GPUs almost always include one slow rank. Ring all-reduce traffic per rank is about 2S regardless of N. Throttling is not uniform: it is the uneven, per-device slowdowns that create stragglers. Optimisers do not divide the learning rate by rank count; that is not a straggler effect.",
+    "topicId": "stragglers-data",
+    "difficulty": 2
+  },
+  {
+    "id": "training-at-scale-q9",
+    "type": "scenario",
+    "prompt": "What is the most likely root cause and response?",
+    "scenario": "Two weeks into a run, the loss on one step jumps sharply and stays high. No hardware errors were logged. Re-running the same step on a different set of machines from the same checkpoint gives a normal loss.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Silent data corruption on the original hardware; quarantine those nodes and resume"
+      },
+      {
+        "id": "b",
+        "text": "A bad batch of training data; delete that data shard and continue the same run"
+      },
+      {
+        "id": "c",
+        "text": "A learning rate that is too high; halve it from now on without rolling back"
+      },
+      {
+        "id": "d",
+        "text": "A checkpoint that was written incorrectly; retrain the whole model from the beginning"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Same checkpoint, same data, different machines, different result: the computation itself was wrong on the original hardware with no error raised, which is silent data corruption, so isolate those nodes. A bad batch would reproduce the spike on any hardware. A learning-rate instability would also reproduce, and changing the schedule without rolling back keeps the damaged state. The checkpoint loaded fine and produced a normal loss elsewhere, so it is not corrupt.",
+    "topicId": "failures-at-scale",
+    "difficulty": 3
+  },
+  {
+    "id": "training-at-scale-q10",
+    "type": "multi",
+    "prompt": "How do RL-based post-training jobs (for example PPO-style RLHF) differ in systems terms from pre-training? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "They generate responses inside the job, so they embed decode-heavy inference"
+      },
+      {
+        "id": "b",
+        "text": "They may hold several models at once: policy, reference, reward and value"
+      },
+      {
+        "id": "c",
+        "text": "They alternate generation and gradient phases with different hardware profiles"
+      },
+      {
+        "id": "d",
+        "text": "They need more training tokens than pre-training to reach the same quality"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "RL loops sample responses from the current policy, which is memory-bound decode inside a training job; PPO setups typically hold a policy, a frozen reference, a reward model and often a value model; and the job alternates sampling with gradient updates. Post-training uses far fewer tokens than pre-training, not more.",
+    "topicId": "post-training",
+    "difficulty": 2
+  },
+  {
+    "id": "training-at-scale-q11",
+    "type": "single",
+    "prompt": "Which statement best contrasts training and inference fleets?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Training is gang-scheduled and synchronous; inference replicas fail independently"
+      },
+      {
+        "id": "b",
+        "text": "Both are synchronous, but inference syncs once per request instead of per step"
+      },
+      {
+        "id": "c",
+        "text": "Inference needs the denser network, since every replica talks to every other replica"
+      },
+      {
+        "id": "d",
+        "text": "Training is spread across regions near users, while inference is centralised"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "A training job needs all its GPUs together and one failure stops it, while inference replicas serve independent requests and one failure affects only its own in-flight work. Inference replicas do not synchronise with each other at all. The dense all-to-all fabric is a training need; inference needs fast links only inside a replica. Location is the other way round: inference goes near users, training is concentrated in large sites.",
+    "topicId": "training-vs-inference",
+    "difficulty": 1
+  }
+]

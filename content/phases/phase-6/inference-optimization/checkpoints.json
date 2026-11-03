@@ -1,0 +1,8 @@
+[
+  { "id": "inference-optimization-c1", "text": "I can say whether a quantization scheme (weight-only INT4, W8A8, FP8, FP8 KV cache) speeds up prefill, decode or concurrency, and compute the weight bytes including group-scale overhead.", "topicId": "quantization" },
+  { "id": "inference-optimization-c2", "text": "I can design a quality gate for a quantized model using task-sliced evals against the full-precision baseline instead of perplexity alone.", "topicId": "quantization" },
+  { "id": "inference-optimization-c3", "text": "I can explain how FlashAttention's tiling and online softmax avoid writing the N × N score matrix to HBM while staying exact.", "topicId": "flash-attention" },
+  { "id": "inference-optimization-c4", "text": "I can compute KV bytes per token for MHA, GQA and MQA from a published model shape and turn it into concurrent sequences per GPU.", "topicId": "mqa-gqa" },
+  { "id": "inference-optimization-c5", "text": "I can work out the prefill compute saved by prefix caching at a given hit rate and name what makes the hit rate collapse.", "topicId": "prefix-caching" },
+  { "id": "inference-optimization-c6", "text": "I can pick a chunked-prefill token budget from a TPOT target and say when disaggregating prefill and decode is worth the KV transfer.", "topicId": "chunked-prefill" }
+]

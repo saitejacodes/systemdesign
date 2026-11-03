@@ -1,0 +1,42 @@
+[
+  {
+    "id": "dataflow-model",
+    "title": "The Dataflow Model: A Practical Approach to Balancing Correctness, Latency, and Cost in Massive-Scale, Unbounded, Out-of-Order Data Processing",
+    "author": "Akidau et al. (VLDB 2015)",
+    "kind": "paper",
+    "url": "https://www.vldb.org/pvldb/vol8/p1792-Akidau.pdf",
+    "why": "The paper that defined event-time windows, watermarks, triggers and accumulation modes; the source of the vocabulary every modern engine uses.",
+    "topicIds": ["streams-vs-batch", "windowing", "watermarks", "late-data"],
+    "free": true
+  },
+  {
+    "id": "streaming-101",
+    "title": "Streaming 101: The world beyond batch",
+    "author": "Tyler Akidau (O'Reilly Radar)",
+    "kind": "blog",
+    "url": "https://www.oreilly.com/radar/the-world-beyond-batch-streaming-101/",
+    "why": "The clearest introduction to bounded vs unbounded data and event time vs processing time; read Streaming 102 next for watermarks and triggers.",
+    "topicIds": ["streams-vs-batch", "event-vs-processing-time", "windowing"],
+    "free": true
+  },
+  {
+    "id": "flink-docs",
+    "title": "Apache Flink documentation: Timely Stream Processing, Windows and Checkpointing",
+    "author": "The Apache Software Foundation",
+    "kind": "docs",
+    "url": "https://nightlies.apache.org/flink/flink-docs-stable/",
+    "why": "Primary reference for watermark strategies, idleness, allowed lateness, side outputs and checkpoint barriers.",
+    "topicIds": ["watermarks", "late-data", "exactly-once-effects", "flink-kafka-streams"],
+    "free": true
+  },
+  {
+    "id": "kafka-streams-docs",
+    "title": "Kafka Streams documentation",
+    "author": "The Apache Software Foundation",
+    "kind": "docs",
+    "url": "https://kafka.apache.org/documentation/streams/",
+    "why": "How Kafka Streams handles stream time, grace periods, state stores with changelog topics and exactly_once_v2.",
+    "topicIds": ["flink-kafka-streams", "exactly-once-effects", "windowing"],
+    "free": true
+  }
+]

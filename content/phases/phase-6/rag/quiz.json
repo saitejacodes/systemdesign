@@ -1,0 +1,331 @@
+[
+  {
+    "id": "rag-q1",
+    "type": "single",
+    "prompt": "What is the main advantage of RAG over fine-tuning a model on your company documents?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Knowledge updates by re-indexing documents, and answers can cite their sources"
+      },
+      {
+        "id": "b",
+        "text": "The model permanently memorises every document, so retrieval is no longer needed"
+      },
+      {
+        "id": "c",
+        "text": "It removes hallucination entirely, because the model can only output retrieved text"
+      },
+      {
+        "id": "d",
+        "text": "It needs no embedding model, since the language model reads the raw corpus itself"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "RAG keeps knowledge outside the model: change a document, re-index it, and the next answer uses it, with a citation to check. Fine-tuning, not RAG, is about changing the model's weights, and even that does not reliably memorise facts. RAG reduces hallucination but does not eliminate it; the model can still misread or ignore its context. A typical RAG pipeline does use an embedding model (and often BM25) for retrieval.",
+    "topicId": "embedding-retrieval",
+    "difficulty": 1
+  },
+  {
+    "id": "rag-q2",
+    "type": "scenario",
+    "prompt": "What is the most likely root cause?",
+    "scenario": "The handbook says: 'Purchases can be refunded within 30 days. This does not apply to clearance-sale items, which are final.' Asked about returning a clearance-sale jacket, the bot answers 'Yes, within 30 days' and cites the correct handbook page. Ingestion uses fixed 200-token chunks with no overlap.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The model ignored its context and answered from its training data instead"
+      },
+      {
+        "id": "b",
+        "text": "The embedding model has too few dimensions to represent the word clearance"
+      },
+      {
+        "id": "c",
+        "text": "A chunk boundary split the rule from its exception, so only the rule was retrieved"
+      },
+      {
+        "id": "d",
+        "text": "BM25 ranked the page too highly because the word refund appears in it twice"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "The answer matches the first sentence exactly and the citation is real, which points to the context containing the rule but not the exception: a fixed-size cut with no overlap. The model was faithful to its context, not to training data. Embedding dimension does not stop a model representing a common word. And the pipeline described has no BM25; even with it, ranking the right page highly is not the problem.",
+    "topicId": "ingestion-chunking",
+    "difficulty": 2
+  },
+  {
+    "id": "rag-q3",
+    "type": "multi",
+    "prompt": "Which changes would help keep rules and their exceptions together? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Sentence- or heading-aware chunking instead of fixed token cuts"
+      },
+      {
+        "id": "b",
+        "text": "Overlap of a sentence or two between consecutive chunks"
+      },
+      {
+        "id": "c",
+        "text": "Merging adjacent chunks of the same document at assembly time"
+      },
+      {
+        "id": "d",
+        "text": "Raising the LLM's sampling temperature so it explores more text"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "Structure-aware chunking avoids cutting between related sentences; overlap makes boundary sentences appear whole in at least one chunk; merging neighbours repairs cuts when both halves are retrieved. Temperature changes how the model samples words from what it already has; it cannot add text that never reached the context.",
+    "topicId": "ingestion-chunking",
+    "difficulty": 2
+  },
+  {
+    "id": "rag-q4",
+    "type": "scenario",
+    "prompt": "About how many chunks will the corpus produce?",
+    "scenario": "You ingest 20,000 documents averaging 3,000 tokens each, with 500-token chunks and 100 tokens of overlap.",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 120,000"
+      },
+      {
+        "id": "b",
+        "text": "About 160,000"
+      },
+      {
+        "id": "c",
+        "text": "About 60,000"
+      },
+      {
+        "id": "d",
+        "text": "About 150,000"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The stride is 500 − 100 = 400 tokens, so each document gives ceil((3,000 − 100) / 400) = ceil(7.25) = 8 chunks, and 20,000 × 8 = 160,000. 120,000 ignores overlap (3,000 / 500 = 6 per document). 60,000 assumes only three chunks per document, as if each chunk held 1,000 tokens. 150,000 divides 3,000 by the stride without the ceiling and without subtracting the overlap (7.5 per document).",
+    "topicId": "ingestion-chunking",
+    "difficulty": 2
+  },
+  {
+    "id": "rag-q5",
+    "type": "single",
+    "prompt": "Why use reciprocal rank fusion rather than adding BM25 and cosine scores?",
+    "options": [
+      {
+        "id": "a",
+        "text": "RRF gives higher recall because it searches a larger part of each index"
+      },
+      {
+        "id": "b",
+        "text": "The two scores sit on unrelated scales, and RRF uses only the ranks"
+      },
+      {
+        "id": "c",
+        "text": "Adding scores is impossible because BM25 scores are always negative"
+      },
+      {
+        "id": "d",
+        "text": "RRF lets you skip BM25 indexing, since it estimates keyword ranks itself"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "BM25 is unbounded and corpus-dependent while cosine sits in a narrow range, so a raw sum is dominated by whichever scale is larger. RRF sums 1 / (k + rank) and ignores the raw scores. RRF changes nothing about how much of each index is searched. BM25 scores are not negative. And RRF needs both ranked lists as input; it cannot invent keyword ranks.",
+    "topicId": "hybrid-search",
+    "difficulty": 1
+  },
+  {
+    "id": "rag-q6",
+    "type": "scenario",
+    "prompt": "With RRF (k = 60), which chunk ranks first?",
+    "scenario": "BM25 returns chunks in the order P, Q, R. Vector search returns R, P, S.",
+    "options": [
+      {
+        "id": "a",
+        "text": "R, because a first place in vector search outweighs everything"
+      },
+      {
+        "id": "b",
+        "text": "P, because it ranks first and second across the two lists"
+      },
+      {
+        "id": "c",
+        "text": "Q, because it is second in BM25 and not penalised elsewhere"
+      },
+      {
+        "id": "d",
+        "text": "R and P tie, because each appears in both lists exactly once"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "P = 1/61 + 1/62 ≈ 0.03252 and R = 1/63 + 1/61 ≈ 0.03227, so P wins narrowly. RRF weights both lists equally, so R's first place in vector search does not outweigh its third place in BM25. Q appears in one list only, scoring 1/62 ≈ 0.01613, about half. Appearing in both lists does not force a tie; the ranks within each list still matter.",
+    "topicId": "hybrid-search",
+    "difficulty": 3
+  },
+  {
+    "id": "rag-q7",
+    "type": "scenario",
+    "prompt": "What is the right fix?",
+    "scenario": "An internal assistant indexes every team's documents. To stop leaks, the system prompt says: 'Never reveal content from documents the user is not allowed to see.' Each chunk carries an ACL field, but retrieval does not use it.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Strengthen the prompt with examples of refusals and repeat the rule at the end"
+      },
+      {
+        "id": "b",
+        "text": "Filter retrieval by the user's ACL so restricted chunks never enter the prompt"
+      },
+      {
+        "id": "c",
+        "text": "Run an output filter that blocks answers mentioning other teams' project names"
+      },
+      {
+        "id": "d",
+        "text": "Give each team a separate model so that knowledge cannot cross team lines"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Access control must happen before text reaches the model: filter retrieval on the ACL. Any text placed in the prompt can leak, however the instructions are worded. An output filter on project names is a partial backstop that misses paraphrases. Separate models change nothing, because the leak comes from the retrieved context, not the model's weights.",
+    "topicId": "embedding-retrieval",
+    "difficulty": 2
+  },
+  {
+    "id": "rag-q8",
+    "type": "single",
+    "prompt": "Why do RAG systems retrieve 50 to 100 candidates and then rerank down to about 5 to 10?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Cross-encoders are accurate but too slow to score the whole corpus per query"
+      },
+      {
+        "id": "b",
+        "text": "Vector indexes cannot return fewer than 50 results, so the extras are discarded"
+      },
+      {
+        "id": "c",
+        "text": "The reranker re-embeds the corpus, so it needs a large sample of chunks first"
+      },
+      {
+        "id": "d",
+        "text": "Sending 100 chunks to the model is cheaper than running any reranking step"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "A cross-encoder reads the question and chunk together, which is accurate but costs a model call per pair, so it is run only on a short candidate list from cheap retrieval. Vector indexes return any k you ask for. Rerankers score pairs; they do not re-embed the corpus. And 100 chunks in the prompt costs far more tokens and suffers from position effects; reranking exists to avoid that.",
+    "topicId": "reranking",
+    "difficulty": 1
+  },
+  {
+    "id": "rag-q9",
+    "type": "multi",
+    "prompt": "Which practices make citations trustworthy? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Label each chunk in the prompt with a stable id and source"
+      },
+      {
+        "id": "b",
+        "text": "Reject or flag cited ids that were not in the assembled context"
+      },
+      {
+        "id": "c",
+        "text": "Link every citation to the source document for one-click checking"
+      },
+      {
+        "id": "d",
+        "text": "Accept any answer that includes at least one citation as grounded"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "Stable ids make citations checkable; validating ids catches invented references; links let humans verify support. Treating the mere presence of a citation as proof of grounding is the misconception: a citation can point to a real chunk that does not support the claim.",
+    "topicId": "context-citation",
+    "difficulty": 2
+  },
+  {
+    "id": "rag-q10",
+    "type": "scenario",
+    "prompt": "What should the team do first?",
+    "scenario": "On a 200-question evaluation set, answers are correct 62% of the time. Logs show the gold passage reached the final context for only 65% of questions. The team proposes switching to a larger, more expensive model.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Switch models, since better reasoning compensates for missing passages"
+      },
+      {
+        "id": "b",
+        "text": "Improve retrieval first, since hit rate caps accuracy at around 65%"
+      },
+      {
+        "id": "c",
+        "text": "Raise the context budget to 50 chunks so the gold passage is included"
+      },
+      {
+        "id": "d",
+        "text": "Rewrite the system prompt to ask the model to think more carefully"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "With the gold passage missing for 35% of questions, no model can answer those from context, so retrieval (hybrid search, chunking, reranking) is the bottleneck. A bigger model cannot read a passage it never received. Fifty chunks inflates cost and latency, buries evidence in the middle, and may still miss. Prompt wording only affects the 65% where the evidence is present, which already score 62%.",
+    "topicId": "failure-modes",
+    "difficulty": 2
+  },
+  {
+    "id": "rag-q11",
+    "type": "scenario",
+    "prompt": "Which change prevents this from happening again?",
+    "scenario": "A wiki page was deleted on March 1, but the assistant kept citing it until March 14. The nightly ingester crawls the wiki and upserts every page it finds.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Run the same crawl every hour instead of nightly, so updates land sooner"
+      },
+      {
+        "id": "b",
+        "text": "Propagate delete events and reconcile index ids against the source wiki"
+      },
+      {
+        "id": "c",
+        "text": "Re-embed all chunks with a newer model so the old vectors are replaced"
+      },
+      {
+        "id": "d",
+        "text": "Lower the top-k from 10 to 5 so that fewer stale chunks reach the prompt"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "An upsert-only crawl never removes chunks for pages it no longer sees, so the fix is explicit deletes plus a reconciliation job that removes orphaned ids. Crawling hourly repeats the same bug more often. Re-embedding in place rewrites the orphaned chunks too, unless deletes are handled. A smaller top-k reduces context but still serves the deleted page whenever it ranks.",
+    "topicId": "freshness",
+    "difficulty": 2
+  }
+]

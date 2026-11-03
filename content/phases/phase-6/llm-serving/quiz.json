@@ -1,0 +1,172 @@
+[
+  {
+    "id": "llm-serving-q1",
+    "type": "single",
+    "prompt": "Why is the decode phase usually limited by memory bandwidth rather than compute?",
+    "options": [
+      { "id": "a", "text": "Each step does little maths per sequence but must read every weight from GPU memory" },
+      { "id": "b", "text": "Each step recomputes keys and values for the whole sequence, which needs memory" },
+      { "id": "c", "text": "The tokenizer runs on the GPU during decode and its vocabulary fills memory bandwidth" },
+      { "id": "d", "text": "Decode streams each token to the client over SSE, and the network copy saturates memory" }
+    ],
+    "correct": ["a"],
+    "explanation": "One decode step produces one token per sequence, a small amount of compute, yet the whole model's weights must be streamed from memory, so bandwidth sets the pace. Recomputing keys and values for the whole sequence is exactly what the KV cache avoids. Tokenization is a cheap CPU-side step, not a GPU bandwidth cost. Streaming to the client is network I/O of a few bytes per token and does not touch GPU memory bandwidth in any meaningful way.",
+    "topicId": "tokens-prefill-decode",
+    "difficulty": 1
+  },
+  {
+    "id": "llm-serving-q2",
+    "type": "scenario",
+    "prompt": "What is the best-case decode speed for a single user?",
+    "scenario": "You serve a 7B-parameter model in fp16 (about 13.5 GB of weights) on a GPU you assume has 2 TB/s of memory bandwidth. One request is running, alone.",
+    "options": [
+      { "id": "a", "text": "About 15 tokens/s, since each token needs 13.5 GB of reads" },
+      { "id": "b", "text": "About 150 tokens/s, since each step reads the weights once" },
+      { "id": "c", "text": "About 1,500 tokens/s, since weights are cached in on-chip SRAM" },
+      { "id": "d", "text": "About 4,000 tokens/s, since a 2,000-token prompt prefills in 0.5 s" }
+    ],
+    "correct": ["b"],
+    "explanation": "13.5 GB ÷ 2,000 GB/s ≈ 6.7 ms per step, so about 150 tokens/s at best. 15 tokens/s is off by ten, mixing up GB and the bandwidth figure. 13.5 GB of weights cannot sit in on-chip SRAM, which is megabytes, so they are read from HBM every step. Prefill speed says nothing about decode: prompt tokens are processed in parallel, output tokens one at a time.",
+    "topicId": "tokens-prefill-decode",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-serving-q3",
+    "type": "single",
+    "prompt": "Llama 2 7B has 32 layers, 32 KV heads and head dimension 128. What is its fp16 KV cache per token?",
+    "options": [
+      { "id": "a", "text": "256 KiB, from layers × KV heads × head dim × 2 bytes" },
+      { "id": "b", "text": "512 KiB, from 2 × layers × KV heads × head dim × 2 bytes" },
+      { "id": "c", "text": "16 KiB, from 2 × KV heads × head dim × 2 bytes, one layer" },
+      { "id": "d", "text": "13.5 GB, the same as the model weights, since KV mirrors them" }
+    ],
+    "correct": ["b"],
+    "explanation": "Keys and values are both stored, so the factor of 2 applies: 2 × 32 × 32 × 128 × 2 = 524,288 bytes = 512 KiB. 256 KiB forgets the separate value vectors. 16 KiB counts only one layer, but every layer keeps its own keys and values. The KV cache is per token and unrelated to weight size; it holds activations, not a copy of the weights.",
+    "topicId": "kv-cache-memory",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-serving-q4",
+    "type": "scenario",
+    "prompt": "Roughly how many requests can run at once if each one reserves its maximum context up front?",
+    "scenario": "After weights and overhead, a GPU has about 54 GB free for KV cache. The model needs about 0.5 MB of KV per token, and the server reserves 4,096 tokens per request when it is admitted.",
+    "options": [
+      { "id": "a", "text": "About 105, because 54 GB holds roughly 105,000 tokens" },
+      { "id": "b", "text": "About 26, because each request reserves roughly 2 GB" },
+      { "id": "c", "text": "About 13, because both K and V double the 2 GB again" },
+      { "id": "d", "text": "About 4, because 54 GB fits only four copies of a model" }
+    ],
+    "correct": ["b"],
+    "explanation": "4,096 tokens × 0.5 MB ≈ 2 GB per request, and 54 ÷ 2 ≈ 26 requests. About 105 confuses tokens (roughly 105,000) with requests. The 0.5 MB per-token figure already includes both K and V, so doubling again is wrong. KV cache space is separate from weights; requests share one copy of the model, so 'copies of the model' is not the constraint.",
+    "topicId": "kv-cache-memory",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-serving-q5",
+    "type": "multi",
+    "prompt": "Which changes let more concurrent sequences fit on the same GPU? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Allocate KV memory in pages as sequences grow instead of reserving max context" },
+      { "id": "b", "text": "Quantize the weights to 8 bits so more memory is left for the KV cache" },
+      { "id": "c", "text": "Lower the maximum context length allowed per request" },
+      { "id": "d", "text": "Switch the response from SSE streaming to a single JSON body" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Paged allocation removes the reserved-but-unused space; smaller weights free memory for KV; a lower maximum context caps the worst-case footprint per sequence. Streaming versus a single body changes how tokens reach the client, not how much GPU memory each sequence holds while it generates.",
+    "topicId": "kv-cache-memory",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-serving-q6",
+    "type": "single",
+    "prompt": "What does continuous (iteration-level) batching change compared with static batching?",
+    "options": [
+      { "id": "a", "text": "It splits each request's prompt into fixed chunks so prefill runs in pieces" },
+      { "id": "b", "text": "It decides batch membership every decode step, so finished sequences leave at once" },
+      { "id": "c", "text": "It waits until a full batch of requests has arrived before starting any prefill" },
+      { "id": "d", "text": "It runs a small draft model that proposes tokens which the large model verifies" }
+    ],
+    "correct": ["b"],
+    "explanation": "Orca's iteration-level scheduling re-forms the batch at every step: a finished sequence frees its slot immediately and a waiting request takes it. Splitting prompts into chunks is chunked prefill, a separate refinement. Waiting for a full batch is a static batching behaviour that continuous batching avoids. A draft model proposing tokens is speculative decoding.",
+    "topicId": "batching",
+    "difficulty": 1
+  },
+  {
+    "id": "llm-serving-q7",
+    "type": "scenario",
+    "prompt": "What utilisation does this static batch achieve?",
+    "scenario": "A static batch holds 4 requests whose outputs are 50, 50, 100 and 400 tokens. The batch keeps all 4 slots until the longest request finishes.",
+    "options": [
+      { "id": "a", "text": "About 38%: 600 useful of 1,600 slot-steps" },
+      { "id": "b", "text": "About 75%: three of the four slots finish" },
+      { "id": "c", "text": "About 25%: one slot of four works at the end" },
+      { "id": "d", "text": "100%: each slot emits a token every step" }
+    ],
+    "correct": ["a"],
+    "explanation": "The batch runs 400 steps × 4 slots = 1,600 slot-steps, and only 50 + 50 + 100 + 400 = 600 produce tokens, about 38%. Counting finished requests is not a utilisation measure. 25% describes only the final stretch, not the whole run. Slots of finished sequences produce nothing, so they are not working every step.",
+    "topicId": "batching",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-serving-q8",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "A vLLM deployment's TTFT p99 jumps from 400 ms to 18 s after a new 'summarise my documents' feature ships. GPU utilisation stays high, logs show preemption warnings, and the number of requests per second has barely changed.",
+    "options": [
+      { "id": "a", "text": "The tokenizer is slow on long documents, so CPU time before prefill dominates TTFT" },
+      { "id": "b", "text": "Long prompts exhaust KV blocks, so requests are preempted and redo their prefill" },
+      { "id": "c", "text": "Streaming over SSE is being buffered by a proxy, so the first token is held back" },
+      { "id": "d", "text": "The model weights were evicted from GPU memory and are reloaded on each request" }
+    ],
+    "correct": ["b"],
+    "explanation": "Preemption warnings plus unchanged request rate point at token volume: long prompts consume KV blocks, the scheduler preempts sequences, and recomputed prefills plus queueing inflate TTFT. Tokenization is fast and would not produce preemption warnings. A buffering proxy delays delivery but cannot cause scheduler preemptions. Weights stay resident; inference servers do not evict them per request.",
+    "topicId": "batching",
+    "difficulty": 3
+  },
+  {
+    "id": "llm-serving-q9",
+    "type": "single",
+    "prompt": "A streamed answer has TTFT 500 ms, TPOT 20 ms and 401 output tokens. What is its end-to-end latency?",
+    "options": [
+      { "id": "a", "text": "About 0.5 s, since streaming hides the rest" },
+      { "id": "b", "text": "About 8.0 s, from 401 × 20 ms of decode only" },
+      { "id": "c", "text": "About 8.5 s, from 0.5 s + 400 × 20 ms" },
+      { "id": "d", "text": "About 200 s, from 500 ms × 401 tokens" }
+    ],
+    "correct": ["c"],
+    "explanation": "End-to-end ≈ TTFT + (tokens − 1) × TPOT = 0.5 + 400 × 0.02 = 8.5 s. 0.5 s is only the perceived wait for the first token; the answer is not complete then. 8.0 s ignores the TTFT, which includes queueing and prefill. Multiplying TTFT by the token count treats every token as paying the first-token cost, which only the first one does.",
+    "topicId": "streaming-metrics",
+    "difficulty": 1
+  },
+  {
+    "id": "llm-serving-q10",
+    "type": "multi",
+    "prompt": "You raise the maximum number of sequences per decode batch from 32 to 128. Which effects should you expect? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Higher aggregate tokens per second across the GPU" },
+      { "id": "b", "text": "Slower token streams for each user (higher TPOT)" },
+      { "id": "c", "text": "More KV memory pressure and a higher risk of preemption" },
+      { "id": "d", "text": "Lower TTFT for very long prompts, since prefill gets faster" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "One pass over the weights now serves more sequences, so aggregate throughput rises, but each step does more work, so per-user TPOT rises, and more live sequences hold more KV blocks. Prefill of a long prompt does not get faster from a bigger decode batch; if anything it competes with more decode work.",
+    "topicId": "streaming-metrics",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-serving-q11",
+    "type": "scenario",
+    "prompt": "What is the self-hosted cost per million tokens?",
+    "scenario": "Assume a GPU rents for $3 an hour and sustains 2,500 output tokens/s at full load. Your traffic keeps it 25% busy on average.",
+    "options": [
+      { "id": "a", "text": "About $0.33, from $3 ÷ (2,500 × 3,600) × 10⁶" },
+      { "id": "b", "text": "About $1.33, from $3 ÷ (2,500 × 3,600 × 0.25) × 10⁶" },
+      { "id": "c", "text": "About $0.08, from $3 × 0.25 ÷ (2,500 × 3,600) × 10⁶" },
+      { "id": "d", "text": "About $5.33, from $3 ÷ (2,500 × 900 × 0.25) × 10⁶" }
+    ],
+    "correct": ["b"],
+    "explanation": "At 25% utilisation the GPU produces 2,500 × 3,600 × 0.25 = 2.25 million tokens per $3 hour, about $1.33 per million. $0.33 assumes the GPU is busy 100% of the time. $0.08 multiplies the price by utilisation, as if you paid only for busy time, but rented GPUs bill every hour. $5.33 counts 900 seconds per hour and then applies utilisation again.",
+    "topicId": "hosted-vs-self-hosted",
+    "difficulty": 3
+  }
+]

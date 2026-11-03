@@ -1,0 +1,19 @@
+{
+  "id": "p6-serverless",
+  "phase": 6,
+  "slug": "serverless",
+  "title": "Serverless and Functions as a Service",
+  "order": 1,
+  "week": 13,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "faas-model", "title": "The FaaS execution model", "depth": "deep" },
+    { "id": "cold-starts", "title": "Cold starts", "depth": "deep" },
+    { "id": "concurrency-limits", "title": "Concurrency limits and throttling", "depth": "deep" },
+    { "id": "cost-at-scale", "title": "Cost at low vs high scale", "depth": "tradeoffs" },
+    { "id": "when-not-serverless", "title": "When not to use serverless", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-scaling", "p5-containers"]
+}

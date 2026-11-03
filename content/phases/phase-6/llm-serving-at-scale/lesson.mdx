@@ -1,0 +1,263 @@
+## Why it matters
+
+A single vLLM replica is a solved problem. A chat product used by millions of people is not, because almost every assumption from web serving breaks. A request can hold a GPU slot for a minute. Its cost is unknown until it ends. A retry is not a cheap re-send but a full re-run of prefill and every token already generated. Capacity cannot be bought in seconds, because a new replica needs scarce GPUs and minutes to load hundreds of gigabytes of weights. And caches live inside specific GPUs, so where you route a request changes how much it costs. This section describes how a system like this is **typically** built, from public papers (DistServe, Llumnix, the VTC fairness paper, SGLang), vendor documentation and general engineering reasoning. It does not claim to describe the internal architecture of Anthropic, OpenAI, Google or any other provider; where it mentions their public behaviour (status codes, rate-limit headers, batch interfaces), that is from their documentation.
+
+<Callout type="analogy" title="Air traffic control for jumbo jets that refuel mid-flight">
+Serving an LLM fleet is running an airport where every flight is a jumbo jet whose fuel load you only learn when it lands. The terminal check-in desks are the API gateway: they check your ticket (auth) and your frequent-flyer limits (quotas). Air traffic control is the router: it sends planes to the runway where their ground crew already has their luggage (the replica holding their prefix cache), not just the emptiest one. When the sky is full, controllers hold planes in a pattern by priority (admission control) or divert them to another airport (cross-region spillover); they cannot conjure a new runway in five minutes, because building one takes heavy machinery that is in short supply (GPU autoscaling). Cargo flights fly at night when runways are empty (batch tiers). And if an engine fails mid-flight, you cannot restart the journey from the gate for free: every mile already flown has to be flown again (retries). Where it breaks down: aircraft keep their passengers when they divert, while a request that moves replicas loses its KV cache unless the system migrates it explicitly.
+</Callout>
+
+## The request path from edge to GPU
+
+<DepthStamp depth="deep" />
+
+A typical path has seven hops, each with a distinct job:
+
+<Figure caption="FIG. 6.17 · A TYPICAL LLM REQUEST PATH">
+  <Diagram label="A request passes edge, API gateway, rate limiter, regional router, model cluster router and replica scheduler before reaching the GPU, which streams tokens back along the same path." chart={`sequenceDiagram
+    participant C as Client
+    participant E as Edge / LB
+    participant G as API gateway
+    participant Q as Quota + rate limiter
+    participant R as Regional router
+    participant M as Model cluster router
+    participant S as Replica scheduler + GPU
+    C->>E: POST /messages (stream)
+    E->>G: TLS terminated, nearest region
+    G->>Q: org id, model, estimated tokens
+    Q-->>G: allow (or 429 with retry-after)
+    G->>R: authenticated request
+    R->>M: pick region with capacity for this model
+    M->>S: pick replica (prefix + load aware)
+    Note over S: admit when KV blocks free, else queue
+    S-->>C: SSE tokens stream back through each hop
+    S-->>Q: final usage (input, output tokens)`} />
+</Figure>
+
+- **Edge and load balancer:** TLS, DDoS protection, nearest healthy region. Must not buffer streamed responses.
+- <Term slug="api-gateway">API gateway</Term>: authentication, request validation, model aliases (a stable name resolved to a specific model version), and token counting of the prompt.
+- **Quota and rate limiter:** per-organisation limits on requests and tokens per minute, enforced with <Term slug="token-bucket">token buckets</Term> charged by **estimated** tokens up front and reconciled with actual usage at the end. Anthropic's API, for example, documents separate requests-per-minute, input-tokens-per-minute and output-tokens-per-minute limits and returns `anthropic-ratelimit-*` headers.
+- **Regional router:** chooses a region by latency, capacity, and data-residency rules for that customer.
+- **Model cluster router:** picks a replica of the right model, ideally the one that already holds this conversation's prefix.
+- **Replica scheduler:** the continuous-batching engine from the LLM serving section, admitting requests by KV budget.
+
+The usage event that flows back at the end matters as much as the tokens: it reconciles quota, billing and per-tenant fairness.
+
+## Capacity planning end to end
+
+<DepthStamp depth="deep" />
+
+Every number below is a labelled assumption chosen to show the method. Replace each with your measured value.
+
+| Step | Assumption | Arithmetic | Result |
+|---|---|---|---|
+| Users | 10 million <Term slug="dau">DAU</Term>, 15 requests each per day | 10M × 15 | 150M requests/day |
+| Average rate | — | 150M ÷ 86,400 | ≈ 1,740 req/s |
+| Peak | <Term slug="peak-factor">peak factor</Term> 3 | 1,740 × 3 | ≈ 5,200 req/s |
+| Input tokens | 1,500 per request | 5,200 × 1,500 | 7.8M tokens/s |
+| Output tokens | 400 per request | 5,200 × 400 | 2.08M tokens/s |
+| Concurrent streams | TPOT target 30 ms, <Term slug="littles-law">Little's law</Term> | 2.08M tokens/s × 0.03 s | ≈ 62,400 decoding at once |
+
+Now the replica. Assume a 70B-class model with the Llama 2 70B attention shape (320 KiB of fp16 KV per token), served with tensor parallelism across 8 GPUs of 80 GB.
+
+- **Memory:** 640 GB × 0.9 usable = 576 GB, minus 140 GB of fp16 weights and an assumed 36 GB of runtime overhead, leaves 400 GB of KV. An average stream holds about 1,700 tokens (prompt plus partial output): 1,700 × 320 KiB ≈ 0.56 GB. Memory allows about 715 streams.
+- **Latency:** assume a load test shows this replica holds the 30 ms TPOT target up to a batch of 256 sequences. That is the binding limit, not memory.
+- **Replicas for decode:** 62,400 ÷ 256 ≈ **244 replicas** (1,952 GPUs).
+
+**Prefill check.** Prefill costs about 2 × parameters FLOPs per uncached token. Assume 70% of input tokens hit the prefix cache, and 400 TFLOP/s of effective compute per GPU.
+
+```
+uncached prefill = 7.8M × 0.3 = 2.34M tokens/s
+compute          = 2.34M × 2 × 70e9 ≈ 3.3e17 FLOP/s
+GPU-equivalents  = 3.3e17 ÷ 4e14 ≈ 820 GPUs  (42% of the 1,952 decode GPUs' compute)
+at 0% cache hits = 7.8M × 1.4e11 ÷ 4e14 ≈ 2,730 GPUs  (more than the whole fleet)
+```
+
+The prefix-cache hit rate is a capacity input, not a nice-to-have: at 0% hits, prefill alone would need more compute than the entire decode fleet has. (This is also where disaggregation from the inference optimisation section becomes attractive.)
+
+**Headroom.** Planning to 100% of the measured limit leaves nothing for failures or forecast error. Assume three regions, any one of which may be lost, and a target of 80% utilisation at peak:
+
+```
+survive one region down: 244 × 3/2 = 366 replicas
+80% peak utilisation:    366 ÷ 0.8 ≈ 458 replicas ≈ 3,660 GPUs
+```
+
+Nearly double the bare minimum. That gap is what the batch tier below exists to fill.
+
+## Admission control, priority tiers and tenant isolation
+
+<DepthStamp depth="deep" />
+
+When GPUs are full, a request has three possible fates: run now, wait, or be refused. <Term slug="admission-control">Admission control</Term> decides which, using signals the replica actually runs out of: free KV blocks, queue depth, and predicted time to first token against the request's deadline.
+
+**Priority tiers.** A typical fleet separates interactive traffic with tight TTFT targets, interactive traffic on a lower tier (free users, best-effort), and batch work with deadlines in hours. Hosted providers expose the bottom tier as batch interfaces: Anthropic's Message Batches API and OpenAI's Batch API both accept large jobs at a discount with results within 24 hours. Under pressure the fleet sheds from the bottom: pause batch, then queue or degrade low tiers, and protect paid interactive traffic last. <Term slug="load-shedding">Load shedding</Term> is a design decision, not an accident.
+
+**Two different "no" signals.** A refusal must tell the client whose problem it is:
+
+| Signal | Meaning | Correct client behaviour |
+|---|---|---|
+| 429 rate limit | *You* exceeded your organisation's quota | Wait for `retry-after`; reduce your own rate |
+| <Term slug="overload-error">Overload</Term> (Anthropic documents HTTP 529 `overloaded_error`) | The *service* is temporarily out of capacity | Back off with jitter; fail over to another region or model if you have one; do not hammer |
+
+Mixing them up hurts: clients that treat overload like a quota error all retry on the same schedule and make the overload worse.
+
+**Fairness across tenants.** First-come-first-served lets one customer's burst of 50,000-token prompts starve everyone else. <Term slug="fair-queuing">Fair queuing</Term> serves tenants in proportion to weights rather than arrival order. LLMs complicate it because a request's cost is unknown until it finishes. Sheng et al. ("Fairness in Serving Large Language Models", OSDI 2024) proposed the Virtual Token Counter: track tokens served per client (input and output, weighted) and always schedule the waiting client with the lowest counter, updating counts as tokens are generated.
+
+**Isolation** has several layers: per-org quotas at the gateway, fair scheduling on the replica, <Term slug="provisioned-throughput">provisioned throughput</Term> (dedicated replicas for large customers, so their load cannot affect others and vice versa), and data isolation. Shared prefix caches deserve care: published research has shown timing side channels, where a fast TTFT reveals that someone else recently sent the same prefix. Scoping cache entries per organisation removes the leak, at the cost of fewer hits. OpenAI's prompt-caching guide states that caches are not shared between organisations.
+
+## Prefix-aware routing
+
+<DepthStamp depth="deep" />
+
+Round robin spreads load evenly and destroys prefix-cache hit rates: with 50 replicas, a conversation's next turn has a 2% chance of landing where its 6,000-token history is cached. <Term slug="prefix-aware-routing">Prefix-aware routing</Term> sends a request to the replica most likely to hold its prefix: hash the first blocks of the prompt (or the conversation id) with consistent hashing, or keep an approximate index of which replica holds which prefix. SGLang's router does cache-aware load balancing this way, and NVIDIA Dynamo has a KV-aware router.
+
+Pure affinity creates <Term slug="hot-key">hot keys</Term>: a popular shared system prompt pins enormous traffic to one replica. Real routers score each candidate on both, roughly `score = expected cached tokens − λ × load`, and fall back to the least-loaded replica past a load threshold. Some replicate very hot prefixes to several replicas.
+
+### Failure timeline: a deploy that resets routing
+
+| Time | Event | Prefix hit rate | TTFT p50 |
+|---|---|---|---|
+| 09:00 | Prefix-aware routing, 120 replicas | 72% | 350 ms |
+| 09:30 | Router redeployed; its in-memory prefix index starts empty and it falls back to least-loaded | 20% | 900 ms |
+| 09:35 | Uncached prefill triples; replica compute saturates; queueing adds delay on top | 15% | 2.4 s |
+| 09:40 | Admission control starts returning overload errors to the free tier | 15% | 2.4 s |
+| 10:10 | Index refills from live traffic; hit rate recovers | 70% | 380 ms |
+| Fix | Derive routing from a deterministic hash of the prefix so it survives restarts; roll router changes gradually | — | — |
+
+## Why GPU autoscaling is slow, and what fleets do instead
+
+<DepthStamp depth="tradeoffs" />
+
+Autoscaling a stateless web tier adds capacity in seconds. A GPU replica, with labelled assumptions:
+
+| Step | Assumed time | Why |
+|---|---|---|
+| Detect sustained load | 1–2 min | Avoid reacting to a burst |
+| Obtain 8 GPUs | minutes, or not at all | Accelerators are scarce; on-demand capacity is often unavailable |
+| Pull serving container | 1–3 min | Multi-gigabyte images |
+| Load 140 GB of weights | 140 s at 1 GB/s from object storage; 28 s at 5 GB/s from local NVMe | Bytes ÷ bandwidth |
+| Initialise, capture CUDA graphs, warm up | 1–2 min | Engine start-up |
+| **Total** | **roughly 5–10 min, if GPUs exist** | |
+
+A traffic spike is over, or has done its damage, long before that. So fleets lean on other tools:
+
+- **Headroom:** the 80% target above is the price of not depending on fast scale-out.
+- <Term slug="cross-region-spillover">Cross-region spillover</Term>: route overflow to a region with spare capacity, paying extra network latency (usually small next to generation time) and respecting data-residency rules.
+- **Batch tiers that soak spare capacity:** off-peak headroom runs offline jobs, which are paused or preempted when interactive load rises. Headroom becomes useful work instead of idle cost.
+- **Graceful degradation:** cap `max_tokens` for low tiers, route best-effort traffic to a smaller model, disable expensive features.
+- **Faster cold starts:** keep weights cached on local disk or host memory of standby machines, stream weights in parallel, and schedule scale-out ahead of known daily peaks.
+
+## Multi-model fleets and version rollout
+
+<DepthStamp depth="tradeoffs" />
+
+A provider serves many models and versions at once, each needing its own warm replicas. Small models can share GPUs; fine-tuned variants can share one base model by loading low-rank (LoRA) adapters per request, as S-LoRA and Punica showed. Providers also commonly expose dated model snapshots plus moving aliases, so customers can pin a version.
+
+Rolling out a new model version is riskier than rolling out code:
+
+1. **Offline evals** on task-sliced suites against the current version.
+2. **Shadow traffic:** <Term slug="shadow-traffic">shadow traffic</Term> duplicates a sample of real requests to the new version and discards its outputs after scoring them. It costs real GPU time, so sample.
+3. **Canary** a small percentage of live traffic, gated on eval metrics (judge scores, refusal rate, format errors, tool-call validity) **and** on TTFT, TPOT and output length. A model that writes 30% longer answers needs 30% more decode capacity.
+4. **Rollback** must be fast, which means the old version's replicas stay loaded until the new one is proven. You cannot reload 140 GB in a hurry.
+
+One subtle cost: a new version starts with a cold prefix cache, and its tokenizer or system prompt may differ, so the canary's TTFT looks worse than steady state. Compare against a warmed baseline.
+
+## Observability and SLOs
+
+<DepthStamp depth="tradeoffs" />
+
+Set TTFT and TPOT <Term slug="slo">SLOs</Term> **per tier**, at p50 and p99, because a single global percentile hides the free tier absorbing all the pain. Then watch the signals that explain them: queue depth and wait time, KV-cache utilisation, preemptions per minute, prefix-cache hit rate, batch size, input and output tokens per second, and error rates split by 429 versus overload.
+
+Two traps. First, `nvidia-smi`'s GPU utilisation reports the fraction of time any kernel was running, not how much of the GPU was used; a memory-bound decode loop shows near 100% while most compute sits idle. Second, raw throughput rewards overloading. DistServe defines <Term slug="goodput">goodput</Term> as the rate of requests that meet both their TTFT and TPOT targets; that is the number to maximise.
+
+Awareness: Llumnix (Sun et al., OSDI 2024) adds <Term slug="live-migration">live migration</Term> of running requests between replicas, copying KV cache while decoding continues, then switching over in a short final stage. It lets the scheduler rebalance load, defragment memory, give priority requests room, and drain replicas for scale-in or upgrades without killing streams.
+
+## Reliability: failures mid-stream
+
+<DepthStamp depth="deep" />
+
+GPUs fail, hosts lose network, and with tensor parallelism one bad GPU takes down the whole 8-GPU replica and every stream on it. Retries are not cheap:
+
+```
+retry cost = prefill(prompt) + decode(all tokens already generated)
+a failure at token 900 of 1,000 wastes ~90% of that request's decode
+```
+
+Blind retries at several layers multiply this into <Term slug="retry-amplification">retry amplification</Term>, and <Term slug="hedged-request">hedged requests</Term>, cheap insurance for small web calls, double GPU cost here. If you hedge at all, hedge only until the first token and cancel the loser.
+
+<Term slug="stream-resumption">Stream resumption</Term> is a common alternative: the router or gateway keeps the tokens it has already sent, and on failure re-submits prompt plus emitted tokens to a healthy replica as a new prefix, then continues streaming. The client sees a pause, not an error.
+
+<Figure caption="FIG. 6.18 · A REPLICA FAILS MID-STREAM">
+  <Diagram label="The gateway streams tokens from replica A; A fails at token 412; the gateway resubmits the prompt plus 412 tokens to replica B, which prefills them and continues streaming from token 413." chart={`sequenceDiagram
+    participant C as Client
+    participant G as Gateway
+    participant A as Replica A
+    participant B as Replica B
+    G->>A: prompt
+    A-->>G: tokens 1..412
+    G-->>C: tokens 1..412
+    Note over A: GPU fault, stream breaks
+    G->>B: prompt + tokens 1..412 as prefix
+    Note over B: prefill 1,500 + 412 tokens (no prefix cache hit)
+    B-->>G: token 413 onward
+    G-->>C: token 413 onward, after a pause`} />
+</Figure>
+
+The costs are honest ones: the new replica re-prefills everything (seconds for long contexts), the continuation is a different sample than the original would have produced, and server-side tool calls already executed must not run twice, which needs idempotency keys. Clients should still handle a stream that ends with an error event.
+
+<TradeoffBox title="Fleet-level choices" items={[
+  { gain: "Prefix-aware routing: large prefill savings and lower TTFT", cost: "Hot prefixes overload replicas; needs load-aware fallback" },
+  { gain: "Priority tiers and shedding: paid interactive traffic survives overload", cost: "Lower tiers see queuing and refusals by design" },
+  { gain: "Fair queuing by tokens: one tenant cannot starve the rest", cost: "More scheduler state; strict FIFO latency for a single tenant gets worse" },
+  { gain: "Headroom plus batch tiers: absorb spikes without slow autoscaling", cost: "Paying for GPUs above the minimum; batch work must be preemptible" },
+  { gain: "Stream resumption: failures become pauses, not errors", cost: "Full re-prefill, different continuation, and idempotent tool calls required" },
+  { gain: "Provisioned throughput: hard isolation for big customers", cost: "Dedicated replicas sit idle when that customer is quiet" }
+]} />
+
+<NotWhenBox title="When not to build this" items={[
+  "Low or steady traffic: one or two replicas behind a simple queue beat a multi-region scheduler.",
+  "Prefix-aware routing when prompts share almost nothing: you get the hot-spot risk without the hits.",
+  "Cross-region spillover when data residency forbids it, or when the latency budget cannot absorb another region.",
+  "Shadow traffic for every release: duplicate GPU cost is real, so sample and stop once evals are confident."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Just autoscale the GPUs like any other service." right="New replicas need scarce GPUs and minutes to load weights. Fleets plan headroom, spill across regions and soak spare capacity with preemptible batch work." />
+
+<Misconception wrong="Round robin is the fairest way to spread LLM load." right="It spreads requests evenly but scatters prefixes, so most requests pay full prefill. Route by prefix and load together." />
+
+<Misconception wrong="A 429 and an overload error mean the same thing: retry later." right="A 429 says you exceeded your quota; an overload says the service is out of capacity. Clients should honour retry-after for one and back off with jitter or fail over for the other." />
+
+<Misconception wrong="High GPU utilisation means the fleet is efficient." right="nvidia-smi utilisation only means a kernel was running. Track goodput: requests per second that meet their TTFT and TPOT targets." />
+
+## Interview angle
+
+<InterviewAngle title="Serving an LLM at scale" questions={[
+  "Estimate the GPUs needed to serve 10 million daily users of a chat product. Show every assumption.",
+  "Traffic doubles in ten minutes. Autoscaling takes longer than that. What happens and what do you do?",
+  "How would you route requests across 200 replicas, and why not round robin?",
+  "A large customer's batch of huge prompts is hurting everyone's latency. Fix it.",
+  "A replica dies while streaming 300 responses. What does each user see, and what should they see?"
+]}>
+Start with the request path and say where each concern lives: quotas at the gateway, region choice at the router, prefix affinity at the cluster router, KV budgets at the replica. For capacity, go users → peak requests/s → output tokens/s → concurrent streams (Little's law with TPOT) → replicas from a measured batch limit, then check prefill compute and add headroom for a lost region. For spikes, admit you cannot scale fast, and describe headroom, shedding by tier, preemptible batch work and cross-region spillover. For noisy tenants, propose token-based fair queuing and provisioned capacity. For failures, show the retry cost formula and describe stream resumption with idempotent tool calls. Close with SLOs per tier and goodput as the north-star metric.
+</InterviewAngle>
+
+## Practice
+
+1. Redo the capacity table for 2 million DAU, 30 requests each, peak factor 4, 3,000 input and 600 output tokens, TPOT target 40 ms and a measured batch limit of 192 per replica. Include the prefill check at 50% cache hits and headroom for losing one of two regions.
+2. Design the admission policy for three tiers (enterprise interactive, free interactive, batch) when KV utilisation passes 90%. State what each tier sees, and which status code you return.
+3. Write the router's scoring rule for prefix affinity versus load, and describe how it behaves when one system prompt receives 30% of all traffic.
+
+## Try it
+
+Serve a 70B model on eight GPUs against a chat SLO. Choose the tensor-parallel split, batching, paged KV and prefix caching, then kill a replica mid-stream and flood it with long prompts to see which setting saves time to first token and which saves time per output token.
+
+<Simulator id="llm-inference" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

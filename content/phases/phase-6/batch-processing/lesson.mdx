@@ -1,0 +1,206 @@
+## Why it matters
+
+Most of the numbers a company runs on are computed in batch: yesterday's revenue, the monthly invoice, the search index, the recommendations model, the fraud model's training set. Batch jobs read a large, bounded input, compute, write an output and finish. That sounds simple until the input is many terabytes on thousands of disks, some machines die mid-job, one key holds a tenth of the data, and a retried job quietly writes yesterday's sales twice. In 2004 Jeff Dean and Sanjay Ghemawat published *MapReduce: Simplified Data Processing on Large Clusters* (OSDI), describing how Google let engineers write two small functions and have a library handle parallelism, data movement and machine failures across a cluster. Hadoop cloned it, Spark replaced much of it, and its ideas (partition by key, move computation to the data, recover by re-running deterministic tasks) still sit underneath every modern data platform. This section covers the model, where it hurts, how pipelines are built today, and the long-running argument about whether you need batch at all once you have streams.
+
+<Callout type="analogy" title="Counting a national election overnight">
+Every polling station counts its own ballot box and writes a tally sheet per candidate (map, with a local subtotal: the combiner). Couriers carry each candidate's sheets to that candidate's counting hall (the shuffle, partitioned by key). Each hall adds up its sheets (reduce). When one rural station is still counting at 3 a.m., the electoral office sends a second team to count a copy of its box, and takes whichever team finishes first (a backup task for a straggler). If one candidate gets half the national vote, that hall drowns in paper while the others go home (data skew). Where it breaks down: in a real election, counting a ballot twice is a scandal. MapReduce re-runs tasks freely, because the functions are deterministic and the framework keeps only one finished copy of each task's output.
+</Callout>
+
+## The MapReduce model
+
+<DepthStamp depth="deep" />
+
+<Term slug="mapreduce">MapReduce</Term> asks you for two functions:
+
+- `map(key, value) → list of (k2, v2)`: called once per input record, emitting intermediate key-value pairs.
+- `reduce(k2, list of v2) → output`: called once per intermediate key, with every value emitted for that key.
+
+Word count is the canonical example: map emits `(word, 1)` for every word in a line; reduce sums the ones for each word. Everything else is the library's job. Per the paper:
+
+1. The input is split into **M** pieces (typically 16–64 MB each, matching the file system's chunk size), and a master assigns map tasks to workers, preferring a machine that already stores that chunk (data locality).
+2. Each map worker writes its output to **local disk**, divided into **R** regions by a partitioning function, by default `hash(key) mod R`.
+3. Each of the R reduce workers fetches its region from every map worker, sorts by key so equal keys are adjacent, and calls reduce once per key. Output goes to the distributed file system, one file per reduce task.
+
+The paper reports routinely running jobs with M = 200,000 and R = 5,000 on 2,000 machines: far more tasks than machines, so work balances dynamically and a failed task is small to redo.
+
+<Figure caption="FIG. 4.1 · MAPREDUCE DATA FLOW · WORD COUNT">
+  <Diagram label="Input splits feed map tasks, map outputs are partitioned by hash of key, each reducer pulls its partition from every mapper, sorts, and writes one output file." chart={`flowchart LR
+    S1[Split 1] --> M1[Map task 1]
+    S2[Split 2] --> M2[Map task 2]
+    S3[Split 3] --> M3[Map task 3]
+    M1 -->|hash key mod 2 = 0| R1[Reduce task 1]
+    M1 -->|hash key mod 2 = 1| R2[Reduce task 2]
+    M2 --> R1
+    M2 --> R2
+    M3 --> R1
+    M3 --> R2
+    R1 --> O1[part-00000]
+    R2 --> O2[part-00001]`} />
+</Figure>
+
+*Every mapper talks to every reducer: with M mappers and R reducers the shuffle is M × R transfers.*
+
+The model is deliberately restrictive. Map and reduce must be **deterministic** functions of their inputs with no side effects outside their output files; that restriction is what lets the framework re-run any task anywhere. Multi-step logic becomes a chain of MapReduce jobs, each writing its full output to the distributed file system before the next one starts. That chain of disk writes is the main reason later systems such as Spark are faster.
+
+## The shuffle and data skew
+
+<DepthStamp depth="deep" />
+
+The <Term slug="shuffle">shuffle</Term> is the step between map and reduce: partition, transfer over the network, sort, merge. It is usually the most expensive part of a batch job, because it moves data across the network and spills it to disk on both sides.
+
+### Worked example: shuffle volume with and without a combiner
+
+Count page views per URL over a day of logs. Assumptions, labelled as such: **1 TB** of logs, **10 billion** lines of about 100 bytes, an intermediate record `(url, count)` of about **60 bytes**, input split into 256 MB chunks.
+
+- **Without a combiner:** one record per line. 10 billion × 60 B = **600 GB** crosses the network and is sorted.
+- **With a combiner:** a <Term slug="combiner">combiner</Term> is a reduce-like function run on each map task's output before the shuffle (for word count, the same summing code). 1 TB ÷ 256 MB ≈ 4,000 map tasks, each reading 2.5 million lines. If each task sees about 200,000 distinct URLs, it emits 200,000 records: 4,000 × 200,000 × 60 B = **48 GB**. That is about 12 times less to shuffle.
+
+A combiner is only valid when partial results can be merged: sums, counts, min, max. An average can't be combined directly, but `(sum, count)` pairs can. A median can't be combined at all without changing the algorithm.
+
+### Data skew
+
+`hash(key) mod R` spreads keys evenly, not *values*. <Term slug="data-skew">Data skew</Term> is when a few keys carry a large share of the records. Suppose a join of orders with customers by `customer_id` runs on R = 1,000 reducers, and one marketplace account accounts for 5% of all orders. An average reducer receives 0.1% of the data; that one reducer receives at least 5%, **50 times the average**. The job finishes when the slowest reducer finishes, so 999 reducers sit idle while one grinds on, and it may run out of memory or disk.
+
+Fixes, roughly in order of preference:
+
+- Combine on the map side so hot keys arrive pre-aggregated.
+- **Broadcast join**: if one side is small (a 200 MB customer table), copy it to every mapper and join locally with no shuffle at all.
+- **Salting**: append a random suffix 0–19 to the hot key, spread it over 20 reducers, then run a second small aggregation to merge the 20 partial results.
+- Let the engine do it: Spark 3's adaptive query execution can split skewed partitions in sort-merge joins at runtime.
+
+## Fault tolerance and stragglers
+
+<DepthStamp depth="deep" />
+
+The MapReduce master pings every worker. If a worker stops responding:
+
+- Its **in-progress** map and reduce tasks are rescheduled elsewhere.
+- Its **completed map tasks are also re-run**, because their output lives on that worker's local disk, which is now unreachable. Reducers that hadn't yet fetched from it read from the new copy.
+- Its completed reduce tasks are not re-run: their output is already in the distributed file system.
+
+Because tasks are deterministic, a re-run produces the same output, and each task commits its output with an atomic rename, so a duplicate attempt can't leave two copies. In the paper's sort benchmark, the authors deliberately killed 200 of 1,746 worker processes a few minutes into the job; it still finished correctly, only about 5% slower than a normal run.
+
+A <Term slug="straggler">straggler</Term> is a task that runs far slower than its peers: a failing disk, a noisy neighbour, a misconfigured machine. Since a job finishes only when its last task does, a single straggler sets the job's latency. MapReduce's fix is **backup tasks**: near the end of a job, the master launches duplicate copies of the remaining in-progress tasks and accepts whichever finishes first. In the paper's sort benchmark, disabling backup tasks made the job take 44% longer. Hadoop and Spark call this speculative execution.
+
+A straggler caused by skew is different: a backup copy of the hot reducer has exactly as much data and is just as slow. Speculation fixes slow machines, not big partitions.
+
+## ETL, ELT and idempotent pipelines
+
+<DepthStamp depth="tradeoffs" />
+
+Most batch work in a company is moving data from operational systems into analytical ones.
+
+- <Term slug="etl">ETL</Term> (extract, transform, load): pull data from sources, clean and reshape it in a separate processing tier, then load the finished tables into a <Term slug="data-warehouse">data warehouse</Term>. This was the norm when warehouse storage and compute were expensive and fixed in size.
+- <Term slug="elt">ELT</Term> (extract, load, transform): land raw data first in the warehouse or a <Term slug="data-lake">data lake</Term>, then transform it there with SQL. Cloud warehouses that separate storage from compute made this cheap, and tools such as dbt made SQL transformations versioned and testable. You keep the raw data, so you can re-derive tables when the logic changes.
+
+ETL still wins when data must be filtered before it lands (removing personal data you are not allowed to store centrally) or when the transformation is not expressible in SQL. ELT wins for flexibility and reprocessing. Many teams do both: light cleaning on the way in, heavy modelling in the warehouse.
+
+Whichever you choose, the property that matters most is that every job is **idempotent and rerunnable**: running it twice for the same date gives the same result as running it once. Orchestrators such as Apache Airflow will retry failed tasks, and you will rerun jobs by hand after bugs. Here is what happens when a job isn't idempotent:
+
+| Time | Event | `daily_sales` rows for 2026-11-02 |
+|---|---|---|
+| 02:00 | Nightly job starts, appends rows for 2026-11-02 | 0 |
+| 02:14 | 80% of rows written; a worker is pre-empted, job fails | 800,000 |
+| 02:20 | Orchestrator retries the job from the start | 800,000 |
+| 02:36 | Retry succeeds, appending all 1,000,000 rows | 1,800,000 |
+| 09:00 | CFO's dashboard shows revenue 80% above forecast | 1,800,000 |
+
+The fix is to make the output a function of the input partition: write to a staging location, then **atomically replace** the whole `date=2026-11-02` partition (`INSERT OVERWRITE` in Hive and Spark SQL, or a delete-and-insert in one transaction in the warehouse). Then a retry, or a deliberate <Term slug="backfill">backfill</Term> that reruns 90 days after a bug fix, is safe. Also avoid reading "now" inside the job: use the run's logical date, so a rerun next week computes the same day.
+
+## Spark
+
+<DepthStamp depth="awareness" />
+
+Apache Spark (Zaharia et al., "Resilient Distributed Datasets", NSDI 2012) kept MapReduce's partition-by-key model but removed the disk write between every step.
+
+- An <Term slug="rdd">RDD</Term> (resilient distributed dataset) is an immutable, partitioned collection that remembers its **lineage**: the transformations that built it from stable input. If a partition is lost, Spark recomputes just that partition from its lineage instead of replicating intermediate data.
+- Transformations (`map`, `filter`, `join`) are **lazy**; nothing runs until an action (`count`, `write`). Spark then builds a DAG and cuts it into **stages** at shuffle boundaries. Steps with narrow dependencies (each output partition depends on one input partition) are pipelined in memory within a stage; wide dependencies (`groupBy`, `join`) need a shuffle.
+- Data can be cached in memory across steps, which is why iterative algorithms (machine learning, graph processing) run much faster than a chain of MapReduce jobs that rereads from disk each time.
+- Most Spark code today uses DataFrames and Spark SQL, which go through the Catalyst query optimiser, rather than raw RDDs.
+
+Spark's shuffle still writes files to local disk, so the shuffle and skew lessons above apply unchanged.
+
+## Lambda vs kappa architecture
+
+<DepthStamp depth="tradeoffs" />
+
+When you need both fresh results and correct ones, how many processing systems should you run? This is a genuine disagreement in the field, and both sides have a point.
+
+The <Term slug="lambda-architecture">lambda architecture</Term>, named by Nathan Marz (and described in the book *Big Data*, Marz and Warren), runs three layers:
+
+- A **batch layer** stores an immutable master dataset of all raw events and periodically recomputes complete views from scratch (say, nightly). It is slow but simple and correct, and if the logic was wrong you fix the code and recompute.
+- A **speed layer** processes only recent events in a stream processor to cover the hours since the last batch run.
+- A **serving layer** answers queries by merging batch views with speed-layer views.
+
+In 2014 Jay Kreps, one of Kafka's creators, published *Questioning the Lambda Architecture*. His objection: you implement the same logic twice, in two different frameworks, and keep them in agreement forever. His alternative, which he called the <Term slug="kappa-architecture">kappa architecture</Term>: use one stream processing job over a replayable log with long retention. To change the logic, start a second instance of the new job reading the log from the beginning, writing to a new output table; when it catches up, switch readers to the new table and delete the old one.
+
+Here is what the lambda complaint looks like in practice (a hypothetical but common failure):
+
+| Time | Event | Dashboard "active users today" |
+|---|---|---|
+| 23:50 | Speed layer counts users, filtering bots by user agent | 1.20 M |
+| 00:00 | Batch job starts, filtering bots by a newer IP list the speed layer never got | 1.20 M |
+| 02:00 | Serving layer swaps in the batch view for yesterday | 1.08 M |
+| 09:00 | Product manager asks why yesterday "lost" 120,000 users overnight | 1.08 M |
+
+### Worked example: can kappa reprocess fast enough?
+
+Assume 30 days of events at an average of **20,000 events a second**, kept in Kafka: 20,000 × 86,400 × 30 ≈ **52 billion events**. If the reprocessing job sustains **500,000 events a second**, replay takes 52 × 10⁹ ÷ 5 × 10⁵ ≈ 104,000 s, about **29 hours**. Scale it to 2 million a second (four times the parallelism, if the topic has enough partitions) and it takes about **7 hours**. For a year of history, multiply by 12: that is where kappa gets expensive and a batch job over columnar files in object storage is usually much cheaper per byte scanned.
+
+The fair summary:
+
+- **Kappa's case:** one codebase, one set of semantics; modern stream processors (event time, watermarks, exactly-once state, see the previous section) can be correct, which removes the original reason for a batch layer.
+- **Lambda's case:** reprocessing years of history through a streaming engine is slow and costly; some computations (training a model over all history, a global sort) are natural batch jobs; and keeping all history in the log needs long retention or tiered storage.
+- **Where practice has landed:** many teams run a unified engine (Apache Beam, Flink or Spark run the same code over bounded and unbounded input), which keeps one codebase while still using batch execution for backfills. That is lambda's operational shape with kappa's single source of logic.
+
+<TradeoffBox title="Batch processing choices" items={[
+  { gain: "Combiner: shuffle volume drops by an order of magnitude", cost: "Only valid for mergeable aggregates (sum, count, min, max)" },
+  { gain: "Broadcast join: no shuffle at all", cost: "Small side must fit in every worker's memory" },
+  { gain: "Salting hot keys: spreads one key over many reducers", cost: "A second aggregation step and more complex code" },
+  { gain: "ELT: raw data kept, transformations easy to rerun", cost: "Raw (possibly sensitive) data lands centrally; warehouse compute bills grow" },
+  { gain: "Partition overwrite: retries and backfills are safe", cost: "Must rewrite a whole partition even for a small change" },
+  { gain: "Kappa: one codebase for fresh and historical results", cost: "Full replay through a streaming engine can take hours to days" }
+]} />
+
+<NotWhenBox title="When batch is the wrong tool" items={[
+  "Users or systems must react within seconds (fraud checks, inventory, alerts): stream it.",
+  "The data fits on one machine: a single Postgres query or a DuckDB script beats a cluster on cost and simplicity.",
+  "You need per-record transactional updates: that is an OLTP database's job, not a nightly rewrite.",
+  "A new lambda architecture when one unified engine can serve both paths: two codebases is a long-term tax."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Adding more reducers fixes a slow reduce stage." right="If the cause is skew, the hot key still goes to one reducer. Combine, broadcast-join or salt the hot key instead." />
+
+<Misconception wrong="Speculative execution fixes stragglers caused by a hot key." right="A backup copy of an overloaded reducer processes the same oversized partition just as slowly. Speculation only helps when the machine, not the data, is slow." />
+
+<Misconception wrong="Kappa means you never need batch processing again." right="Kappa replaces batch logic with replayed stream logic, but full replays are slow and costly. Many teams use a unified engine and still run backfills in batch mode." />
+
+<Misconception wrong="A job that succeeded on retry produced correct output." right="Only if it is idempotent. An appending job that failed halfway and was retried has written some rows twice. Overwrite whole partitions atomically." />
+
+## Interview angle
+
+<InterviewAngle title="Batch processing" questions={[
+  "Walk me through what happens to the data between map and reduce. Where does the time go?",
+  "One reducer runs for three hours while the rest finish in ten minutes. What is going on and what do you do?",
+  "Your nightly job failed halfway and was retried. How do you know the output isn't duplicated?",
+  "We need a real-time dashboard and accurate monthly reports. Lambda or kappa?",
+  "Why is Spark faster than Hadoop MapReduce for iterative jobs, and when is it not?"
+]}>
+Batch comes up in designs for analytics, billing, search indexing, recommendations and "top K over a day". Explain the shuffle concretely (partition by hash of key, every mapper to every reducer, sort, spill) and estimate its volume with a combiner. A three-hour reducer is almost always skew, not a bad machine: confirm by comparing partition sizes, then combine, broadcast-join or salt. For retries, say "idempotent by partition": stage then atomically overwrite, and use the logical run date. For lambda vs kappa, present both sides: kappa if the log retains enough history and replay throughput is acceptable; otherwise one unified engine for both paths so logic is written once. Spark wins on iterative work because it keeps intermediate data in memory and recovers by lineage; it does not escape the shuffle, so a skewed join is slow in Spark too.
+</InterviewAngle>
+
+## Practice
+
+1. A job reads 4 TB of click logs (40 billion records). Each intermediate record is 40 bytes. Estimate the shuffle volume without a combiner, then with one, assuming 16,000 map tasks each seeing 500,000 distinct keys.
+2. A join of 2 billion orders with 50 million customers runs on 2,000 reducers, and one customer has 3% of the orders. How much data does the hot reducer receive compared with the average? Propose two fixes and their costs.
+3. Redesign a nightly `daily_revenue` job that appends rows so that retries and a 180-day backfill are both safe. Name the write pattern and what the job must not read.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

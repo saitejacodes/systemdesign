@@ -1,0 +1,222 @@
+## Why it matters
+
+An LLM endpoint looks like any other HTTP API: send a request, get a response. Underneath it behaves like nothing else you have scaled. One request can occupy a GPU for ten seconds. Its memory footprint grows with every word it writes. The same hardware serves a few requests a second or dozens, depending only on how the scheduler packs work together. And users judge it by two different clocks: how fast the first word appears and how fast the rest follow. The two papers that shaped modern open-source serving were both about scheduling and memory, not models. Orca (Yu et al., OSDI 2022) introduced iteration-level scheduling, now called continuous batching. vLLM (Kwon et al., SOSP 2023) introduced PagedAttention and reported 2–4× higher throughput than the previous best systems at the same latency. This section explains what happens inside that GPU, so you can size it, measure it, and decide whether to run it yourself at all.
+
+<Callout type="analogy" title="The court stenographer who never re-reads the transcript">
+A court case begins with the stenographer speed-reading the entire case file in one go, every page at once (prefill). Then the judge dictates the verdict one word at a time, and after each word the stenographer must consider everything said so far before the next word comes (decode). A naive stenographer would re-read the whole file before every word. A good one keeps shorthand notes on every page already read and only adds one line per new word (the KV cache). Those notebooks take desk space, and the desk is small (GPU memory). The court clerk who seats a new case the instant any case finishes, instead of waiting for the whole morning docket to end, is continuous batching. And a clerk who hands out notebook pages one at a time, instead of reserving a whole fresh notebook per case, is PagedAttention. Where it breaks down: a real stenographer's notes are small, while an LLM's notes for a single word are about half a megabyte, so the desk fills up after a surprisingly short transcript.
+</Callout>
+
+## Tokens, prefill and decode
+
+<DepthStamp depth="deep" />
+
+Models do not read characters or words. A tokenizer splits text into <Term slug="llm-token">tokens</Term>: subword pieces from a fixed vocabulary, usually built with byte-pair encoding. "Unbelievable" might become "un", "believ", "able". A common rule of thumb for English is roughly four characters, or three quarters of a word, per token; code, numbers and non-English text often use more tokens per word. Every limit and every price in LLM systems is stated in tokens, so token counts are the unit of capacity planning, the way bytes are for storage.
+
+A request is served in two phases with completely different hardware profiles:
+
+- <Term slug="prefill">Prefill</Term> processes all prompt tokens in one forward pass. The tokens are known up front, so the GPU can compute them in parallel as large matrix multiplications. Prefill is **compute-bound**: it is limited by floating-point throughput. It produces the first output token and fills the KV cache for every prompt token.
+- The <Term slug="decode-phase">decode phase</Term> generates output one token at a time. Each new token depends on the previous one, so there is no parallelism across a sequence's own output. Each step does a small amount of maths per sequence but must read **every model weight** from GPU memory. Decode is **memory-bandwidth-bound**.
+
+### Worked example: a 7B model's two speeds
+
+Use Llama 2 7B (about 6.7 billion parameters) stored in fp16, 2 bytes per parameter: about **13.5 GB of weights**. The hardware numbers below are labelled assumptions in the range of current datacenter GPUs; check the datasheet for yours.
+
+**Decode at batch size 1.** Assume memory bandwidth of 2 TB/s. Every step reads all weights: 13.5 GB ÷ 2,000 GB/s ≈ **6.7 ms per token**, so at best about **150 tokens/s** for one user. Real systems reach less, but the bound explains the shape: a single sequence leaves almost all of the GPU's compute idle while it waits on memory.
+
+**Prefill.** A forward pass costs roughly 2 × parameters FLOPs per token. For a 2,000-token prompt: 2 × 6.7 × 10⁹ × 2,000 ≈ 2.7 × 10¹³ FLOPs. Assume 200 TFLOP/s of effective throughput: 2.7 × 10¹³ ÷ 2 × 10¹⁴ ≈ **135 ms**. So 2,000 prompt tokens take about the same time as 20 decode steps. Reading is cheap per token; writing is expensive.
+
+**Batching changes the decode maths.** If 32 sequences decode together, one pass over the weights serves all 32. The step gets somewhat slower (more KV cache to read, more maths), but aggregate throughput rises by an order of magnitude. This is the single most important fact about LLM serving: **throughput comes from batching decode steps, and batching is limited by memory.**
+
+## The KV cache and GPU memory
+
+<DepthStamp depth="deep" />
+
+Attention lets each new token look at every earlier token through two vectors per token per layer: a key and a value. Recomputing them for the whole sequence at every step would make generation quadratic. The <Term slug="kv-cache">KV cache</Term> stores them instead, so each decode step computes keys and values only for the newest token and reads the rest from memory.
+
+The size follows from published architecture facts:
+
+```
+KV bytes per token = 2 (K and V) × layers × KV heads × head dim × bytes per value
+```
+
+| Model (published config) | Layers | KV heads | Head dim | fp16 KV per token |
+|---|---|---|---|---|
+| Llama 2 7B | 32 | 32 | 128 | 2 × 32 × 32 × 128 × 2 = 524,288 B = **512 KiB** |
+| Llama 2 70B | 80 | 8 | 128 | 2 × 80 × 8 × 128 × 2 = 327,680 B = **320 KiB** |
+
+The 70B model has more than twice the layers yet a smaller cache per token, because it uses <Term slug="grouped-query-attention">grouped-query attention</Term>: its 64 query heads share 8 key/value heads. Architecture choices like this matter as much to serving cost as parameter count.
+
+A full 4,096-token Llama 2 7B sequence needs 4,096 × 512 KiB = **2 GiB** of KV cache. That is the request's real memory footprint, and it grows by one token's worth with every decode step.
+
+### Worked example: how many requests fit?
+
+Assume one 80 GB GPU serving Llama 2 7B in fp16.
+
+1. vLLM by default lets itself use 90% of GPU memory (`gpu_memory_utilization=0.9`): 72 GB.
+2. Weights: 13.5 GB. Assume about 4 GB for activations and runtime overhead. That leaves roughly **54 GB for KV cache**.
+3. 54 GB ÷ 512 KiB (≈ 0.524 MB) per token ≈ **103,000 tokens** of KV cache in total.
+4. If every request **reserves** the maximum 4,096 tokens up front: 103,000 ÷ 4,096 ≈ **25 concurrent requests**.
+5. If requests actually average 1,200 tokens (prompt plus output) and memory is allocated as they grow: 103,000 ÷ 1,200 ≈ **85 concurrent requests**.
+
+Same GPU, same model, more than three times the concurrency, purely from how KV memory is allocated. That gap is what PagedAttention closes.
+
+The levers on this budget are all trade-offs: <Term slug="quantization">quantization</Term> (storing weights or KV values in 8 or 4 bits) frees memory at some risk to quality; tensor parallelism splits one model across several GPUs, adding memory and bandwidth at the cost of inter-GPU communication; shorter maximum context lengths cap the worst case.
+
+## Batching: static, continuous and paged
+
+<DepthStamp depth="deep" />
+
+**Static (request-level) batching** groups requests and runs them together until **all** of them finish. Output lengths vary wildly, so short requests sit in the batch doing nothing while the longest one finishes, and new arrivals wait outside.
+
+Worked example: a static batch of 8 requests whose outputs are 20, 40, 60, 80, 100, 150, 310 and 500 tokens. The batch runs 500 steps, giving 8 × 500 = 4,000 slot-steps. Useful tokens: 1,260. Utilisation: 1,260 ÷ 4,000 ≈ **32%**, and the request that needed 20 tokens waited for 500 steps before its slot could be reused.
+
+<Term slug="continuous-batching">Continuous batching</Term>, introduced by Orca as iteration-level scheduling, makes scheduling decisions **at every decode step**. When a sequence emits its end token, it leaves the batch immediately and a waiting request takes its place in the next iteration. Orca also used selective batching: operations that do not depend on sequence length are batched across requests, while attention is computed per request. Today vLLM, Hugging Face TGI, NVIDIA TensorRT-LLM and SGLang all schedule this way.
+
+Continuous batching keeps compute busy, but it needs memory to grow on demand, which is where <Term slug="paged-attention">PagedAttention</Term> comes in. vLLM stores the KV cache in fixed-size blocks (16 tokens per block by default) and keeps a per-sequence block table mapping logical positions to physical blocks, exactly like virtual memory pages. Consequences:
+
+- **No up-front reservation.** A sequence holds only the blocks it has filled, so waste is at most the unfilled part of its last block.
+- **Sharing.** Sequences with the same prompt prefix can point at the same physical blocks (copy-on-write when they diverge). vLLM's automatic prefix caching reuses blocks for repeated system prompts.
+- **Preemption.** When free blocks run out, the scheduler must evict someone.
+
+<Figure caption="FIG. 6.8 · REQUEST LIFECYCLE IN A CONTINUOUS-BATCHING SCHEDULER">
+  <Diagram label="A request waits in a queue, runs prefill and decode steps while it holds KV blocks, can be preempted back to waiting when blocks run out, and finishes on an end token or token limit." chart={`stateDiagram-v2
+    [*] --> Waiting: request arrives
+    Waiting --> Prefill: free KV blocks for the prompt
+    Prefill --> Decoding: first token emitted
+    Decoding --> Decoding: one token per step, new block every 16 tokens
+    Decoding --> Preempted: no free block for the next token
+    Preempted --> Waiting: blocks freed (recompute or swap back later)
+    Decoding --> Finished: end token or max_tokens
+    Finished --> [*]: blocks returned to the pool`} />
+</Figure>
+
+### Failure timeline: running out of KV cache
+
+A support chatbot runs Llama 2 7B on the GPU sized above (about 103,000 KV tokens). Traffic is normal until a marketing email links to a "summarise your whole account history" feature.
+
+| Time | Event | KV in use | Effect |
+|---|---|---|---|
+| 14:00:00 | 70 running requests, average 1,100 tokens | ≈ 77,000 tokens (75%) | TTFT ≈ 300 ms, smooth streaming |
+| 14:02:10 | New requests arrive with 3,000-token prompts | ≈ 95,000 (92%) | Scheduler admits them; every step still grows every sequence |
+| 14:02:40 | Free blocks reach zero mid-decode | 100% | vLLM preempts the most recently admitted requests and logs a preemption warning |
+| 14:02:41 | Preempted requests go back to waiting; their KV is dropped (recompute) or swapped to CPU | 100% | Their prefill work is wasted and must be redone |
+| 14:03:00 | Queue grows; each re-admitted request again pushes others out | 100% | TTFT rises from 300 ms to 20+ s; tokens/s per user falls; goodput collapses |
+| 14:05:00 | Fix: cap prompt length for the feature, lower max concurrent sequences, route long prompts to a separate pool | ≈ 85% | Preemptions stop |
+
+The lesson: KV memory is the scarce resource, and it is consumed **after** admission as outputs grow. Admission control must budget for prompt length plus expected output, not request count. Splitting long-context traffic onto its own replicas is a common fix.
+
+## Streaming and latency metrics
+
+<DepthStamp depth="deep" />
+
+Generation takes seconds, so servers stream tokens as they are produced, usually over <Term slug="sse">server-sent events</Term> (most hosted LLM APIs use SSE; some offer WebSockets). Streaming changes nothing about total compute, but it changes what users perceive, and it gives you separate numbers to watch.
+
+- <Term slug="time-to-first-token">Time to first token</Term> (TTFT): queueing + prefill + first decode step. Dominated by prompt length and by how busy the scheduler is.
+- <Term slug="time-per-output-token">Time per output token</Term> (TPOT, also inter-token latency): the gap between streamed tokens. Dominated by batch size and decode speed.
+- End-to-end latency ≈ TTFT + (output tokens − 1) × TPOT.
+- Throughput: tokens per second **per user** (1 ÷ TPOT) and **aggregate** across the GPU. Operators maximise aggregate; users feel per-user. Bigger batches trade one for the other.
+
+Worked example: TTFT 400 ms, TPOT 25 ms, a 500-token answer: 0.4 + 499 × 0.025 ≈ **12.9 seconds** end to end. Unstreamed, that is a spinner for 13 seconds. Streamed, text appears in under half a second and arrives at 40 tokens/s, faster than people read.
+
+<Figure caption="FIG. 6.9 · A STREAMED COMPLETION">
+  <Diagram label="The client sends a prompt; the server queues it, runs prefill, streams the first token, then streams one token per decode step until done." chart={`sequenceDiagram
+    participant C as Client
+    participant G as API server
+    participant S as Scheduler + GPU
+    C->>G: POST /generate (stream=true)
+    G->>S: enqueue (prompt tokens, max_tokens)
+    Note over S: wait for KV blocks and a batch slot
+    S->>S: prefill all prompt tokens
+    S-->>G: token 1
+    G-->>C: SSE data token 1 (TTFT ends here)
+    loop each decode step (TPOT)
+      S-->>G: next token
+      G-->>C: SSE data token
+    end
+    S-->>G: end token
+    G-->>C: SSE done, usage counts`} />
+</Figure>
+
+Watch the tails, not the means: <Term slug="tail-latency">tail latency</Term> of TTFT is where queueing and preemption show up first. Two serving-side effects to know (awareness): a very long prefill admitted into a running batch stalls decode steps for everyone, which is why vLLM and others support chunked prefill (splitting a prompt's prefill across several iterations); and speculative decoding uses a small draft model to propose several tokens that the large model verifies in one pass, cutting TPOT when the guesses are usually right.
+
+Operational notes for streaming: proxies must not buffer the response (disable response buffering for the route), client disconnects should cancel generation so the GPU stops paying for unread tokens, and the final event should carry token usage for billing.
+
+## Hosted APIs vs self-hosting
+
+<DepthStamp depth="tradeoffs" />
+
+Calling a hosted API means paying per token and getting someone else's fleet, scheduler and on-call. Self-hosting means paying per GPU-hour whether or not tokens flow. The break-even is a utilisation question.
+
+Worked example (all prices are labelled assumptions, not quotes): assume a GPU rents for $4 an hour and, with continuous batching, your model sustains 2,000 output tokens/s aggregate at full load. Your traffic keeps it 50% busy on average.
+
+```
+cost per million tokens = hourly cost ÷ (tokens/s × 3,600 × utilisation) × 1,000,000
+                        = 4 ÷ (2,000 × 3,600 × 0.5) × 1,000,000 ≈ $1.11
+```
+
+At 10% utilisation the same GPU costs about $5.56 per million tokens. Compare that with the hosted price per million tokens for a model of similar quality, then add what the formula hides: at least two replicas for availability, idle capacity for peaks, engineers to run the inference stack, upgrades as models change, and evaluation work to prove an open model is good enough.
+
+| Concern | Hosted API | Self-hosted |
+|---|---|---|
+| Cost shape | Per token, scales to zero | Per GPU-hour, fixed while running |
+| Model choice | Provider's catalogue, often the most capable models | Open-weight models only, any fine-tune |
+| Data control | Leaves your network (check retention terms) | Stays in your VPC |
+| Latency control | Shared fleet; rate limits; no scheduler knobs | Full control of batching, quantization, placement |
+| Operations | Provider's problem | GPUs, drivers, scheduler, capacity planning are yours |
+
+<TradeoffBox title="LLM serving choices" items={[
+  { gain: "Larger decode batches: much higher aggregate tokens/s per GPU", cost: "Higher TPOT per user and more KV memory pressure" },
+  { gain: "Continuous batching: slots refilled every step, short requests leave early", cost: "Needs on-demand KV allocation and a preemption policy" },
+  { gain: "PagedAttention: near-zero KV fragmentation and prefix sharing", cost: "Preemption still happens when total demand exceeds blocks" },
+  { gain: "Quantization: fits bigger models or more sequences per GPU", cost: "Possible quality loss that you must measure on your own evals" },
+  { gain: "Self-hosting: data control and low marginal cost at high utilisation", cost: "Fixed GPU cost, idle capacity and a team to run it" }
+]} />
+
+<NotWhenBox title="When not to self-host" items={[
+  "Spiky or low traffic: a GPU idle 90% of the time multiplies your cost per token.",
+  "You need the most capable model for the task and it is only available through an API.",
+  "No one on the team can own GPU drivers, inference servers and capacity planning on call.",
+  "You have not yet shown, with evals, that an open model meets the quality bar."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Generating a token costs about the same as reading one." right="Prefill processes prompt tokens in parallel and is compute-bound; decode emits one token per step and is memory-bound. Output tokens are much slower than input tokens." />
+
+<Misconception wrong="GPU memory is mostly about fitting the model weights." right="Weights are fixed; the KV cache grows with every concurrent token and usually decides how many requests fit. 512 KiB per token for Llama 2 7B adds up fast." />
+
+<Misconception wrong="Bigger batches are always better." right="They raise aggregate throughput but slow each user's token stream and raise preemption risk. Tune against a TTFT and TPOT target, not raw tokens/s." />
+
+<Misconception wrong="Streaming makes the request faster." right="Total compute is the same. Streaming cuts perceived latency to TTFT, and lets you cancel generation early when the client leaves." />
+
+## Interview angle
+
+<InterviewAngle title="LLM serving" questions={[
+  "Why is decode slower per token than prefill, and what does batching do about it?",
+  "Estimate how many concurrent 4k-context requests a 7B model can serve on one 80 GB GPU.",
+  "What is continuous batching and why did it replace static batching?",
+  "TTFT p99 jumped from 400 ms to 15 s but GPU utilisation is high. What is happening?",
+  "When would you self-host an open model instead of calling a hosted API?"
+]}>
+Strong answers start from the two phases: prefill is compute-bound and parallel, decode is bandwidth-bound and sequential, so throughput comes from batching decode. Then size memory out loud: weights plus KV cache, with the per-token formula (2 × layers × KV heads × head dim × bytes) and a published config. For the TTFT spike, suspect KV exhaustion causing preemption and queueing, check preemption counts and prompt lengths, and fix with token-aware admission control or separate pools for long prompts. For hosted versus self-hosted, give the cost-per-million-tokens formula and say the answer turns on utilisation, data control and whether an open model passes your evals.
+</InterviewAngle>
+
+## Practice
+
+1. Compute the fp16 KV cache per token for a model with 40 layers, 8 KV heads and head dimension 128. How many 8,000-token sequences fit in 40 GB of free memory?
+2. A model streams with TTFT 600 ms and TPOT 30 ms. How long does a 300-token answer take end to end, and what per-user tokens/s does the user see?
+3. A GPU costs H dollars an hour and sustains T tokens/s. Write the utilisation at which self-hosting matches a hosted price of P dollars per million tokens, then evaluate it for H = 4, T = 2,000, P = 2 (assumed values).
+
+## Try it
+
+Switch between static and continuous batching, and between reserving the full context and paged KV blocks, and watch goodput and concurrency change. Then push the load until the KV cache fills and see requests get preempted and recomputed.
+
+<Simulator id="llm-inference" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

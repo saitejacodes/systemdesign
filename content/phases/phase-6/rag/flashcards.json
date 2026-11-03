@@ -1,0 +1,18 @@
+[
+  { "id": "rag-f1", "front": "RAG in one sentence?", "back": "At question time, retrieve relevant passages from your documents, put them in the prompt, and have the model answer from them with citations.", "topicId": "embedding-retrieval" },
+  { "id": "rag-f2", "front": "Why parse carefully before chunking?", "back": "Lost tables, merged columns and repeated footers poison every chunk; no embedding model recovers text the parser dropped.", "topicId": "ingestion-chunking" },
+  { "id": "rag-f3", "front": "Small vs large chunks?", "back": "Small: precise vectors, lose context (rules lose exceptions). Large: keep context, blur topics, eat the token budget. Measure hit rate at 2–3 sizes.", "topicId": "ingestion-chunking" },
+  { "id": "rag-f4", "front": "Chunk overlap?", "back": "Repeat the end of one chunk at the start of the next (e.g. 50–100 tokens) so boundary sentences survive whole. Costs storage, creates near-duplicates.", "topicId": "ingestion-chunking" },
+  { "id": "rag-f5", "front": "Chunks for 4,000-token docs at 512 tokens, 64 overlap?", "back": "Stride 448. ceil((4,000 − 64) / 448) = 9 chunks per document.", "topicId": "ingestion-chunking" },
+  { "id": "rag-f6", "front": "Where does access control go in RAG?", "back": "In the retrieval filter on each chunk's ACL. Text that reaches the prompt can appear in the answer.", "topicId": "embedding-retrieval" },
+  { "id": "rag-f7", "front": "Why hybrid search?", "back": "BM25 catches exact tokens (codes, SKUs, names, acronyms); vectors catch paraphrases. Each fails where the other succeeds.", "topicId": "hybrid-search" },
+  { "id": "rag-f8", "front": "Reciprocal rank fusion?", "back": "Score = Σ 1 / (k + rank) over the result lists, k = 60. Uses ranks, so incompatible score scales don't matter.", "topicId": "hybrid-search" },
+  { "id": "rag-f9", "front": "Bi-encoder vs cross-encoder?", "back": "Bi-encoder embeds query and chunk separately (indexable, fast). Cross-encoder reads them together (more accurate, too slow for the whole corpus).", "topicId": "reranking" },
+  { "id": "rag-f10", "front": "Retrieve wide, rerank narrow?", "back": "Fetch 50–100 candidates cheaply with hybrid search, score them with a reranker, send the top 5–10 to the prompt.", "topicId": "reranking" },
+  { "id": "rag-f11", "front": "Lost in the middle?", "back": "Liu et al. (2023): models use information at the start and end of a long context more reliably than in the middle. Put the best evidence first.", "topicId": "context-citation" },
+  { "id": "rag-f12", "front": "How do you verify citations?", "back": "Check every cited id was in the context, spot-check that the chunk supports the claim, and link the source so a human can check.", "topicId": "context-citation" },
+  { "id": "rag-f13", "front": "Retrieval hit rate?", "back": "Share of evaluation questions whose gold passage reached the final context. It caps answer accuracy, so fix it first.", "topicId": "failure-modes" },
+  { "id": "rag-f14", "front": "First debugging step for a wrong RAG answer?", "back": "Read the logged retrieved chunk ids: was the gold passage missing, cut by the budget, or present but misused?", "topicId": "failure-modes" },
+  { "id": "rag-f15", "front": "Why does a nightly upsert crawl leave a stale index?", "back": "It only writes pages it finds, so deleted pages' chunks stay forever. Propagate deletes and reconcile ids against the source.", "topicId": "freshness" },
+  { "id": "rag-f16", "front": "Safe embedding-model upgrade?", "back": "Build a new index in parallel, evaluate on the question set, switch an alias. Never re-embed in place.", "topicId": "freshness" }
+]

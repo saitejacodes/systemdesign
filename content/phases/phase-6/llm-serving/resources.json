@@ -1,0 +1,32 @@
+[
+  {
+    "id": "vllm-paper",
+    "title": "Efficient Memory Management for Large Language Model Serving with PagedAttention",
+    "author": "Kwon et al. (SOSP 2023)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2309.06180",
+    "why": "The vLLM paper: why KV cache fragmentation limits batch size, and how paging, block tables and prefix sharing fix it.",
+    "topicIds": ["kv-cache-memory", "batching"],
+    "free": true
+  },
+  {
+    "id": "orca-paper",
+    "title": "Orca: A Distributed Serving System for Transformer-Based Generative Models",
+    "author": "Yu et al. (OSDI 2022)",
+    "kind": "paper",
+    "url": "https://www.usenix.org/conference/osdi22/presentation/yu",
+    "why": "Introduces iteration-level scheduling and selective batching, the ideas now called continuous batching.",
+    "topicIds": ["batching", "tokens-prefill-decode"],
+    "free": true
+  },
+  {
+    "id": "vllm-docs",
+    "title": "vLLM documentation",
+    "author": "vLLM project",
+    "kind": "docs",
+    "url": "https://docs.vllm.ai/",
+    "why": "Engine arguments (gpu_memory_utilization, max_num_seqs), preemption, prefix caching and chunked prefill in a production inference server.",
+    "topicIds": ["kv-cache-memory", "batching", "streaming-metrics", "hosted-vs-self-hosted"],
+    "free": true
+  }
+]

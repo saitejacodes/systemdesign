@@ -1,0 +1,18 @@
+[
+  { "id": "gpu-parallelism-f1", "front": "All-reduce decomposed?", "back": "Reduce-scatter (each rank ends with 1/N of the sum) followed by all-gather (everyone gets every summed shard).", "topicId": "collectives" },
+  { "id": "gpu-parallelism-f2", "front": "Ring all-reduce bytes sent per rank?", "back": "2 × (N − 1)/N × S. It approaches 2S, so bandwidth cost is flat in N; latency grows with 2(N − 1) steps.", "topicId": "collectives" },
+  { "id": "gpu-parallelism-f3", "front": "All-to-all: where is it used?", "back": "Expert parallelism (dispatch and combine tokens) and DeepSpeed-Ulysses (switching sequence sharding to head sharding).", "topicId": "collectives" },
+  { "id": "gpu-parallelism-f4", "front": "Mixed-precision Adam memory per parameter?", "back": "16 bytes: 2 weights + 2 gradients + 4 fp32 master weights + 4 momentum + 4 variance. 70B params ≈ 1.12 TB.", "topicId": "data-parallelism" },
+  { "id": "gpu-parallelism-f5", "front": "Data parallelism in one line?", "back": "Full model copy per GPU, different data per GPU, gradients all-reduced each step so the copies stay identical.", "topicId": "data-parallelism" },
+  { "id": "gpu-parallelism-f6", "front": "ZeRO stages 1, 2, 3 shard what?", "back": "1: optimiser state. 2: plus gradients (reduce-scatter instead of all-reduce). 3: plus the weights, all-gathered per layer just in time.", "topicId": "zero-fsdp" },
+  { "id": "gpu-parallelism-f7", "front": "ZeRO communication cost vs plain DP?", "back": "Stages 1 and 2: same volume as DP. Stage 3: about 1.5× DP, because weights are gathered for forward and backward.", "topicId": "zero-fsdp" },
+  { "id": "gpu-parallelism-f8", "front": "FSDP sharding strategies?", "back": "FULL_SHARD ≈ ZeRO-3, SHARD_GRAD_OP ≈ ZeRO-2, HYBRID_SHARD shards inside a node and replicates across nodes.", "topicId": "zero-fsdp" },
+  { "id": "gpu-parallelism-f9", "front": "Megatron MLP split?", "back": "First matrix split by columns (GeLU stays local), second by rows (partial sums). One all-reduce finishes the block.", "topicId": "tensor-parallelism" },
+  { "id": "gpu-parallelism-f10", "front": "Tensor parallelism communication per layer?", "back": "Two all-reduces in forward (attention, MLP) and two in backward, each the size of the block's activations.", "topicId": "tensor-parallelism" },
+  { "id": "gpu-parallelism-f11", "front": "Pipeline bubble fraction?", "back": "(p − 1)/(m + p − 1) for p stages and m micro-batches. p = 8, m = 32 → 7/39 ≈ 18%.", "topicId": "pipeline-parallelism" },
+  { "id": "gpu-parallelism-f12", "front": "1F1B vs GPipe?", "back": "Same bubble, but 1F1B alternates forward and backward so at most p micro-batches' activations are held per stage.", "topicId": "pipeline-parallelism" },
+  { "id": "gpu-parallelism-f13", "front": "Ring Attention?", "back": "Context parallelism: each GPU holds a query block and passes key/value blocks round a ring, overlapping transfer with blockwise attention.", "topicId": "context-parallelism" },
+  { "id": "gpu-parallelism-f14", "front": "Expert capacity?", "back": "Tokens per batch ÷ experts × capacity factor. Overflow tokens skip the expert (Switch Transformer) and ride the residual.", "topicId": "expert-parallelism" },
+  { "id": "gpu-parallelism-f15", "front": "3D parallelism placement order?", "back": "TP innermost (inside the node), PP across nodes, DP outermost. Total GPUs = TP × PP × DP.", "topicId": "parallelism-placement" },
+  { "id": "gpu-parallelism-f16", "front": "Data parallelism at inference?", "back": "Independent replicas with no synchronisation at all; scaling them out is just adding replicas behind a router.", "topicId": "parallelism-placement" }
+]

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "chinchilla-2022",
+    "title": "Training Compute-Optimal Large Language Models",
+    "author": "Hoffmann et al., DeepMind (2022)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2203.15556",
+    "why": "The Chinchilla scaling result: grow parameters and tokens together, about 20 tokens per parameter.",
+    "topicIds": ["compute-budget"],
+    "free": true
+  },
+  {
+    "id": "llama3-herd-2024",
+    "title": "The Llama 3 Herd of Models",
+    "author": "Llama Team, Meta AI (2024)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2407.21783",
+    "why": "Rare public detail on a 16K-GPU pre-training run: interruption counts and causes, MFU, 4D parallelism and post-training.",
+    "topicIds": ["failures-at-scale", "mfu", "stragglers-data", "post-training"],
+    "free": true
+  },
+  {
+    "id": "palm-2022",
+    "title": "PaLM: Scaling Language Modeling with Pathways",
+    "author": "Chowdhery et al., Google (2022)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2204.02311",
+    "why": "Defines model FLOPs utilisation and reports how loss spikes were handled by rollback and data skipping.",
+    "topicIds": ["mfu", "failures-at-scale"],
+    "free": true
+  },
+  {
+    "id": "instructgpt-2022",
+    "title": "Training language models to follow instructions with human feedback",
+    "author": "Ouyang et al., OpenAI (2022)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2203.02155",
+    "why": "The SFT, reward model and PPO pipeline that most RLHF descriptions follow.",
+    "topicIds": ["post-training"],
+    "free": true
+  }
+]

@@ -1,0 +1,8 @@
+[
+  { "id": "rag-c1", "text": "I can choose a chunking strategy, size and overlap for a corpus and compute the resulting chunk count and index size.", "topicId": "ingestion-chunking" },
+  { "id": "rag-c2", "text": "I can explain why access control belongs in the retrieval filter and never in the prompt.", "topicId": "embedding-retrieval" },
+  { "id": "rag-c3", "text": "I can combine BM25 and vector results with reciprocal rank fusion and compute the fused scores by hand.", "topicId": "hybrid-search" },
+  { "id": "rag-c4", "text": "I can assemble a prompt within a token budget with deduplicated, labelled chunks and verify the model's citations.", "topicId": "context-citation" },
+  { "id": "rag-c5", "text": "I can trace a wrong answer to parsing, chunking, retrieval, ranking or generation using logged chunk ids and retrieval hit rate.", "topicId": "failure-modes" },
+  { "id": "rag-c6", "text": "I can design re-indexing that propagates deletes, re-embeds only changed chunks and swaps a new index in behind an alias.", "topicId": "freshness" }
+]

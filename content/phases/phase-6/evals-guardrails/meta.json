@@ -1,0 +1,20 @@
+{
+  "id": "p6-evals-guardrails",
+  "phase": 6,
+  "slug": "evals-guardrails",
+  "title": "Evals and Guardrails",
+  "order": 11,
+  "week": 13,
+  "estimatedMinutes": 65,
+  "topics": [
+    { "id": "offline-evals", "title": "Offline eval sets", "depth": "deep" },
+    { "id": "llm-as-judge", "title": "LLM-as-judge, with caveats", "depth": "tradeoffs" },
+    { "id": "prompt-regression", "title": "Regression testing prompts", "depth": "deep" },
+    { "id": "io-filtering", "title": "Input and output filtering", "depth": "deep" },
+    { "id": "pii-handling", "title": "PII handling", "depth": "tradeoffs" },
+    { "id": "production-monitoring", "title": "Monitoring quality in production", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p6-rag", "p6-ai-reliability", "p5-data-protection"]
+}

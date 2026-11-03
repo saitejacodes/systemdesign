@@ -1,0 +1,19 @@
+{
+  "id": "p6-llm-inference-internals",
+  "phase": 6,
+  "slug": "llm-inference-internals",
+  "title": "LLM Inference Internals",
+  "order": 13,
+  "week": 13,
+  "estimatedMinutes": 75,
+  "topics": [
+    { "id": "forward-pass", "title": "The transformer forward pass, end to end", "depth": "deep" },
+    { "id": "flops-roofline", "title": "FLOPs per token and the roofline model", "depth": "deep" },
+    { "id": "prefill-decode-bounds", "title": "Why prefill is compute-bound and decode is bandwidth-bound", "depth": "deep" },
+    { "id": "sampling", "title": "Sampling: from logits to a token", "depth": "deep" },
+    { "id": "nondeterminism", "title": "Why temperature 0 can still drift", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["llm-inference"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p6-llm-serving", "p6-llm-cost-latency", "p1-latency-throughput"]
+}

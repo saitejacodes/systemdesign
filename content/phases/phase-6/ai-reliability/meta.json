@@ -1,0 +1,19 @@
+{
+  "id": "p6-ai-reliability",
+  "phase": 6,
+  "slug": "ai-reliability",
+  "title": "AI Reliability",
+  "order": 10,
+  "week": 13,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "llm-timeouts", "title": "Timeouts for slow, streaming calls", "depth": "deep" },
+    { "id": "llm-retries", "title": "Retries that don't multiply load", "depth": "deep" },
+    { "id": "provider-failover", "title": "Provider failover", "depth": "tradeoffs" },
+    { "id": "fallbacks-degradation", "title": "Fallbacks and graceful degradation", "depth": "tradeoffs" },
+    { "id": "structured-output", "title": "Structured output validation", "depth": "deep" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p6-llm-serving", "p4-timeouts-retries", "p4-circuit-breakers"]
+}

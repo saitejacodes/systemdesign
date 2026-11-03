@@ -1,0 +1,187 @@
+[
+  {
+    "id": "stream-processing-q1",
+    "type": "single",
+    "prompt": "Why do billing and metrics pipelines group events by event time rather than processing time?",
+    "options": [
+      { "id": "a", "text": "Event time is assigned by the broker, so it is always strictly increasing within a topic" },
+      { "id": "b", "text": "Results depend only on the events themselves, so a replay or backlog gives the same answer" },
+      { "id": "c", "text": "Event-time windows never receive late data, so they can be emitted as soon as they end" },
+      { "id": "d", "text": "Processing-time windows require watermarks, which add minutes of latency to every result" }
+    ],
+    "correct": ["b"],
+    "explanation": "Event time is when the event happened, so grouping by it gives the same windows however late or fast you process the data. It is stamped by the producer, not the broker, and it is not ordered: out-of-order arrival is the whole problem. Event-time windows are exactly the ones that receive late data. Processing-time windows need no watermark at all, because the processor's own clock decides when they close.",
+    "topicId": "event-vs-processing-time",
+    "difficulty": 1
+  },
+  {
+    "id": "stream-processing-q2",
+    "type": "scenario",
+    "prompt": "What explains the shape of the chart?",
+    "scenario": "A Kafka consumer computing per-minute order counts by processing time is down from 14:00 to 14:20. When it restarts it catches up in two minutes. The chart shows zero orders from 14:00 to 14:20, then a huge spike at 14:21 and 14:22.",
+    "options": [
+      { "id": "a", "text": "The producers buffered orders during the outage and released them all at 14:21" },
+      { "id": "b", "text": "The watermark was stuck during the outage and released every window at once at 14:21" },
+      { "id": "c", "text": "Processing-time windows put the backlog into the minutes in which it was read, not placed" },
+      { "id": "d", "text": "Kafka log compaction deleted the 14:00 to 14:20 records, then restored them on restart" }
+    ],
+    "correct": ["c"],
+    "explanation": "With processing-time windows, every backlogged order lands in the minute the consumer happened to read it, so 20 minutes of orders pile into two. Producers kept writing to Kafka normally; the outage was in the consumer. A processing-time job has no watermark to get stuck. Log compaction keeps the latest record per key and never restores deleted records.",
+    "topicId": "event-vs-processing-time",
+    "difficulty": 2
+  },
+  {
+    "id": "stream-processing-q3",
+    "type": "scenario",
+    "prompt": "Roughly how many window updates per second does each option cause?",
+    "scenario": "A stream carries 10,000 events a second. Option A: 1-minute tumbling windows. Option B: 15-minute windows that slide every minute.",
+    "options": [
+      { "id": "a", "text": "A: 10,000/s, B: 10,000/s, since both still start one new window each minute" },
+      { "id": "b", "text": "A: 10,000/s, B: 150,000/s, since each event falls into 15 overlapping windows" },
+      { "id": "c", "text": "A: 600,000/s, B: 9,000,000/s, since every event updates every window per hour" },
+      { "id": "d", "text": "A: 10,000/s, B: 666/s, since the larger window updates once per 15 events" }
+    ],
+    "correct": ["b"],
+    "explanation": "An event belongs to size ÷ slide sliding windows, here 15, so B does 15 updates per event: 150,000 a second. Both options do start a new window each minute, but that counts window starts, not the updates each event causes. Option C multiplies by 60 for no reason; an event is not added to every window in the hour. A bigger window does not mean fewer updates: every event still updates each window that contains it.",
+    "topicId": "windowing",
+    "difficulty": 2
+  },
+  {
+    "id": "stream-processing-q4",
+    "type": "single",
+    "prompt": "Which window type groups a user's clicks into visits separated by 30 minutes of inactivity?",
+    "options": [
+      { "id": "a", "text": "A 30-minute tumbling window, aligned to the clock hour and half hour" },
+      { "id": "b", "text": "A session window with a 30-minute inactivity gap, merged when needed" },
+      { "id": "c", "text": "A 30-minute hopping window that advances every single minute" },
+      { "id": "d", "text": "A global window that fires every 30 events from the same user" }
+    ],
+    "correct": ["b"],
+    "explanation": "Session windows are defined by gaps in a key's activity, so a 30-minute silence ends the visit and sessions can be any length. A tumbling window cuts a visit at every half hour even if the user is still clicking. A hopping window has a fixed size too and overlaps, so one visit is counted in many windows. A global window with a count trigger ignores time gaps completely.",
+    "topicId": "windowing",
+    "difficulty": 1
+  },
+  {
+    "id": "stream-processing-q5",
+    "type": "single",
+    "prompt": "Using Flink's bounded-out-of-orderness strategy with a 5-second bound, what is the watermark after the job has seen events up to timestamp 12:00:20?",
+    "options": [
+      { "id": "a", "text": "About 12:00:25, the latest timestamp seen plus the bound" },
+      { "id": "b", "text": "About 12:00:15, the latest timestamp seen minus the bound" },
+      { "id": "c", "text": "The current wall-clock time on the TaskManager minus 5 s" },
+      { "id": "d", "text": "The earliest timestamp seen so far in the stream, unchanged" }
+    ],
+    "correct": ["b"],
+    "explanation": "The watermark is the largest event timestamp seen minus the out-of-orderness bound (Flink also subtracts 1 ms): about 12:00:15. Adding the bound would claim event time has passed timestamps not yet seen. This strategy is driven by event timestamps, not the machine clock. The earliest timestamp would never advance, so no window would ever fire.",
+    "topicId": "watermarks",
+    "difficulty": 2
+  },
+  {
+    "id": "stream-processing-q6",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "A Flink job reads 24 Kafka partitions and emits event-time 1-minute windows. After a producer change, 3 partitions stopped receiving any events. Since then, no windows have been emitted at all, although the other 21 partitions are busy and consumer lag is near zero.",
+    "options": [
+      { "id": "a", "text": "The busy partitions are too fast, so the operator drops their events as too early" },
+      { "id": "b", "text": "Idle partitions never advance their watermark, and the operator uses the minimum" },
+      { "id": "c", "text": "Kafka rebalanced the 3 idle partitions away, so the job lost its checkpoint state" },
+      { "id": "d", "text": "The allowed lateness is too small, so every window is discarded before firing" }
+    ],
+    "correct": ["b"],
+    "explanation": "An operator's watermark is the minimum across its inputs. Partitions with no data never move their watermark forward, so the minimum is frozen and no window fires; Flink's withIdleness marks such inputs idle. Flink does not drop events for being early. A rebalance would not erase checkpointed state, and lag is near zero anyway. Allowed lateness only matters after a window fires; it cannot stop windows from firing.",
+    "topicId": "watermarks",
+    "difficulty": 3
+  },
+  {
+    "id": "stream-processing-q7",
+    "type": "single",
+    "prompt": "In Flink, what happens by default to an event that arrives after the watermark has passed the end of its window?",
+    "options": [
+      { "id": "a", "text": "It is dropped and counted in the numLateRecordsDropped metric" },
+      { "id": "b", "text": "It is buffered until the next checkpoint, then added to the window" },
+      { "id": "c", "text": "It is put into the window that is currently open instead of its own" },
+      { "id": "d", "text": "It makes the job fail and restart from the most recent checkpoint" }
+    ],
+    "correct": ["a"],
+    "explanation": "With the default allowed lateness of zero, Flink discards late elements and counts them in numLateRecordsDropped; you need allowedLateness or sideOutputLateData to keep them. Checkpoints snapshot state; they don't reopen closed windows. Moving an event into the current window would be processing-time behaviour, which event-time windows avoid on purpose. Late data is normal and never fails the job.",
+    "topicId": "late-data",
+    "difficulty": 1
+  },
+  {
+    "id": "stream-processing-q8",
+    "type": "multi",
+    "prompt": "A billing job must count ad clicks per campaign per minute, and about 0.2% of clicks arrive up to an hour late. Which measures are appropriate? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Allowed lateness or a grace period so late clicks re-fire the window" },
+      { "id": "b", "text": "A sink that upserts by campaign and window start instead of appending" },
+      { "id": "c", "text": "A side output for clicks later than that, reconciled by a batch job" },
+      { "id": "d", "text": "Switching to processing-time windows so no click is ever counted late" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Allowed lateness keeps window state so late clicks produce a corrected result; an upsert sink lets the correction replace the earlier row rather than add a duplicate; a side output keeps very late clicks for later reconciliation instead of losing them. Processing-time windows avoid lateness only by putting late clicks into the wrong minute, which is incorrect for billing and changes on every replay.",
+    "topicId": "late-data",
+    "difficulty": 2
+  },
+  {
+    "id": "stream-processing-q9",
+    "type": "scenario",
+    "prompt": "Why are some merchant totals too high, and what is the right fix?",
+    "scenario": "A consumer reads payments from Kafka, runs UPDATE totals SET amount = amount + x in Postgres for each one, and commits its Kafka offset every 5 seconds. After a pod is killed, several merchants' totals are higher than the sum of their payments.",
+    "options": [
+      { "id": "a", "text": "Replay after the crash re-applied updates; store the applied offset in the same DB transaction" },
+      { "id": "b", "text": "Kafka delivered some messages twice by itself; enable the idempotent producer on the consumer" },
+      { "id": "c", "text": "Postgres lost writes when the pod died; raise isolation to serializable for the update" },
+      { "id": "d", "text": "The offset commit is too frequent; commit offsets every minute to reduce the duplicates" }
+    ],
+    "correct": ["a"],
+    "explanation": "Updates applied after the last offset commit are replayed on restart and applied again. Writing the last applied offset (or event ID) in the same transaction as the total makes the effect idempotent. The idempotent producer prevents duplicate writes into Kafka by a producer; it does nothing for a consumer's side effects. Postgres lost nothing: the problem is extra writes, not missing ones, and isolation level doesn't stop a replay. Committing less often widens the replay window and makes duplicates worse.",
+    "topicId": "exactly-once-effects",
+    "difficulty": 3
+  },
+  {
+    "id": "stream-processing-q10",
+    "type": "single",
+    "prompt": "A Flink job uses an exactly-once Kafka sink with checkpoints every 60 seconds. Why do read_committed consumers see results up to a minute late?",
+    "options": [
+      { "id": "a", "text": "The sink batches records for 60 seconds before it sends anything to the Kafka broker" },
+      { "id": "b", "text": "Output is written in a transaction that commits only when the checkpoint completes" },
+      { "id": "c", "text": "The watermark is forced to lag 60 seconds behind event time in exactly-once mode" },
+      { "id": "d", "text": "Kafka replicates transactional records to followers only once every 60 seconds" }
+    ],
+    "correct": ["b"],
+    "explanation": "The sink writes records continuously but inside a Kafka transaction, which is committed as part of the checkpoint's two-phase commit; read_committed consumers can't see them until then. The records are already on the broker, just uncommitted. Exactly-once mode doesn't change how watermarks are computed. Kafka replication is continuous and unrelated to the checkpoint interval.",
+    "topicId": "exactly-once-effects",
+    "difficulty": 2
+  },
+  {
+    "id": "stream-processing-q11",
+    "type": "scenario",
+    "prompt": "Which option fits best?",
+    "scenario": "A team's order services already publish to Kafka. They need a join of orders with customer profiles and a per-customer 1-hour spend total, written back to a Kafka topic. They have no platform team and don't want to run another cluster.",
+    "options": [
+      { "id": "a", "text": "A Flink cluster with a JobManager and TaskManagers, deployed on Kubernetes" },
+      { "id": "b", "text": "Kafka Streams inside a small service, using its local state stores" },
+      { "id": "c", "text": "A nightly Spark batch job that rereads the whole topic and joins it" },
+      { "id": "d", "text": "A Postgres trigger that computes the totals as each order row is inserted" }
+    ],
+    "correct": ["b"],
+    "explanation": "Kafka Streams is a library inside an ordinary application, reads and writes Kafka, supports stream-table joins and windowed aggregations, and needs no separate cluster. Flink could do it but means operating a distributed engine, which they want to avoid. A nightly batch job misses the need for continuous results. The data lives in Kafka, not in a single Postgres table, so a trigger can't see the stream.",
+    "topicId": "flink-kafka-streams",
+    "difficulty": 2
+  },
+  {
+    "id": "stream-processing-q12",
+    "type": "single",
+    "prompt": "In the bounded vs unbounded framing from Streaming 101, which statement is right?",
+    "options": [
+      { "id": "a", "text": "Batch processing is a special case of streaming over an input that has an end" },
+      { "id": "b", "text": "Streaming engines can't give correct results, so a batch job must always follow" },
+      { "id": "c", "text": "Unbounded data must be processed in processing time, since it has no end time" },
+      { "id": "d", "text": "Bounded data must be stored in files, while unbounded data must live in Kafka" }
+    ],
+    "correct": ["a"],
+    "explanation": "A bounded dataset is just a stream with an end, which is why Flink and Beam can run one program in both modes. Akidau's argument is that well-designed streaming systems can be correct using event time, watermarks and consistent state, so a correcting batch layer is optional. Unbounded data is routinely windowed in event time. Bounded vs unbounded describes the data, not the storage technology.",
+    "topicId": "streams-vs-batch",
+    "difficulty": 1
+  }
+]

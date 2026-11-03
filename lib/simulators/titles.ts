@@ -28,4 +28,7 @@ export const SIM_TITLES: Record<string, string> = {
   "error-budget": "Error budget",
   "deployment": "Release strategies",
   "jwt-inspector": "JWT inspector",
+  "vector-search": "Vector search",
+  "rag-pipeline": "RAG pipeline",
+  "llm-inference": "LLM inference",
 };

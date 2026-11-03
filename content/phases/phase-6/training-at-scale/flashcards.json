@@ -1,0 +1,18 @@
+[
+  { "id": "training-at-scale-f1", "front": "Pre-training compute rule of thumb?", "back": "C ≈ 6 × N × D FLOPs: 2N per token forward, 4N backward, ignoring the attention term.", "topicId": "compute-budget" },
+  { "id": "training-at-scale-f2", "front": "Chinchilla compute-optimal ratio?", "back": "Grow parameters and tokens equally: about 20 tokens per parameter (70B model → 1.4T tokens).", "topicId": "compute-budget" },
+  { "id": "training-at-scale-f3", "front": "Why train past compute-optimal?", "back": "Serving cost scales with parameters. A smaller model on more tokens costs more to train once but less to serve forever.", "topicId": "compute-budget" },
+  { "id": "training-at-scale-f4", "front": "GPU-days for 70B on 1.4T tokens (1,000 TFLOP/s peak, 40% MFU)?", "back": "5.88 × 10²³ ÷ 4 × 10¹⁴ ≈ 1.47 × 10⁹ GPU-seconds ≈ 17,000 GPU-days; about 8.3 days on 2,048 GPUs.", "topicId": "compute-budget" },
+  { "id": "training-at-scale-f5", "front": "MFU?", "back": "Observed tokens/s × model FLOPs per token ÷ hardware peak FLOP/s. Counts only useful model maths (PaLM paper).", "topicId": "mfu" },
+  { "id": "training-at-scale-f6", "front": "MFU vs HFU?", "back": "HFU also counts recomputed work such as activation recomputation, so HFU ≥ MFU. PaLM 540B: 46.2% MFU, 57.8% HFU.", "topicId": "mfu" },
+  { "id": "training-at-scale-f7", "front": "Job MTBF for N components?", "back": "About per-component MTBF ÷ N. 50,000 h per GPU over 16,384 GPUs ≈ 3 hours.", "topicId": "failures-at-scale" },
+  { "id": "training-at-scale-f8", "front": "Llama 3 pre-training interruptions (54-day snapshot)?", "back": "466 interruptions: 47 planned, 419 unexpected, about 78% of the unexpected attributed to confirmed or suspected hardware issues.", "topicId": "failures-at-scale" },
+  { "id": "training-at-scale-f9", "front": "Silent data corruption?", "back": "Hardware producing wrong results with no error raised. Detected, if at all, by anomalies such as loss or gradient-norm spikes.", "topicId": "failures-at-scale" },
+  { "id": "training-at-scale-f10", "front": "Handling a loss spike (PaLM)?", "back": "Restart from a checkpoint about 100 steps before the spike and skip roughly 200–500 data batches.", "topicId": "failures-at-scale" },
+  { "id": "training-at-scale-f11", "front": "Young/Daly checkpoint interval?", "back": "τ ≈ √(2δM): δ = blocking checkpoint time, M = job MTBF. Waste ≈ δ/τ + τ/(2M) + R/M.", "topicId": "checkpointing" },
+  { "id": "training-at-scale-f12", "front": "What goes in a training checkpoint?", "back": "Weights, optimiser state, LR schedule position, RNG states and the data loader position. About 14 bytes per parameter with Adam.", "topicId": "checkpointing" },
+  { "id": "training-at-scale-f13", "front": "Why do stragglers matter more at scale?", "back": "Step time is the max over ranks. With 0.1% slow chance per GPU per step, 16,384 GPUs almost always include a slow one.", "topicId": "stragglers-data" },
+  { "id": "training-at-scale-f14", "front": "Hard part of the training data pipeline?", "back": "Not bandwidth (megabytes a second) but deterministic resume, mixture control, dedup and benchmark decontamination.", "topicId": "stragglers-data" },
+  { "id": "training-at-scale-f15", "front": "RLHF pipeline (InstructGPT)?", "back": "SFT on demonstrations, a reward model trained on human comparisons, then PPO against the reward with a penalty for drifting from the start model.", "topicId": "post-training" },
+  { "id": "training-at-scale-f16", "front": "Training vs inference failure impact?", "back": "Training: one GPU stops the whole gang-scheduled job. Inference: one replica fails only its in-flight requests.", "topicId": "training-vs-inference" }
+]

@@ -1,0 +1,172 @@
+[
+  {
+    "id": "llm-cost-latency-q1",
+    "type": "single",
+    "prompt": "Which change usually cuts the end-to-end latency of an LLM response the most?",
+    "options": [
+      { "id": "a", "text": "Halving the number of output tokens the model is asked to produce" },
+      { "id": "b", "text": "Halving the number of input tokens in the system prompt" },
+      { "id": "c", "text": "Switching the client from HTTP/1.1 to HTTP/2 for the API call" },
+      { "id": "d", "text": "Raising the max_tokens limit so the model never has to truncate" }
+    ],
+    "correct": ["a"],
+    "explanation": "Output tokens are generated one at a time, so total time is roughly TTFT plus output tokens × time per token; halving output roughly halves the dominant term. Input tokens are processed in parallel during prefill, so halving them trims TTFT, a smaller part of the total. The transport protocol saves milliseconds at most against seconds of generation. Raising max_tokens permits longer answers and can only make latency worse.",
+    "topicId": "cost-model",
+    "difficulty": 1
+  },
+  {
+    "id": "llm-cost-latency-q2",
+    "type": "scenario",
+    "prompt": "What is the cascade's cost per query, and is it worth it on cost alone?",
+    "scenario": "Assume a small-model call costs 0.2 units and a large-model call 1.0 unit. A validator rejects 40% of small-model answers, which are then sent to the large model.",
+    "options": [
+      { "id": "a", "text": "0.40 units, since only 40% of traffic ever reaches the large model" },
+      { "id": "b", "text": "0.60 units, a 40% saving, below the break-even escalation rate of 0.8" },
+      { "id": "c", "text": "0.68 units, since rejected queries are billed again on the small model" },
+      { "id": "d", "text": "1.20 units, since every query calls both models in a cascade design" }
+    ],
+    "correct": ["b"],
+    "explanation": "Cost = s + e × L = 0.2 + 0.4 × 1.0 = 0.6, a 40% saving; break-even is e = 1 − 0.2/1.0 = 0.8. 0.40 forgets that every query pays for the small call first. Rejected queries are not re-run on the small model, so there is no extra small-model charge. Only escalated queries call both models, not all of them.",
+    "topicId": "model-routing",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-cost-latency-q3",
+    "type": "single",
+    "prompt": "Which escalation signal is most trustworthy for a cascade that generates SQL from questions?",
+    "options": [
+      { "id": "a", "text": "The small model's own stated confidence score in its reply" },
+      { "id": "b", "text": "Whether the query parses and runs against the schema" },
+      { "id": "c", "text": "Whether the small model's answer is shorter than average" },
+      { "id": "d", "text": "Whether the user's question contains more than 20 words" }
+    ],
+    "correct": ["b"],
+    "explanation": "A deterministic check on the output (it parses, references real columns, executes) is the strongest cheap signal that the small model succeeded. Self-reported confidence is cheap but often poorly calibrated: small models are frequently confidently wrong. Answer length says little about correctness. Question length is a weak difficulty proxy that ignores what the small model actually produced.",
+    "topicId": "model-routing",
+    "difficulty": 1
+  },
+  {
+    "id": "llm-cost-latency-q4",
+    "type": "scenario",
+    "prompt": "What most likely happened?",
+    "scenario": "Overnight, input cost per request rises about 7× and TTFT p50 rises, with flat traffic and unchanged prompt length. The response usage now reports zero cached tokens. Yesterday's deploy added the current time with seconds to the first line of the system prompt.",
+    "options": [
+      { "id": "a", "text": "The provider shortened its cache lifetime, so entries expire before reuse" },
+      { "id": "b", "text": "The unique first line changes the prefix, so every request misses the cache" },
+      { "id": "c", "text": "The semantic cache threshold is too strict, so similar queries miss now" },
+      { "id": "d", "text": "The timestamp pushed prompts past the context window, so they are truncated" }
+    ],
+    "correct": ["b"],
+    "explanation": "Prompt caching matches the exact prefix from the first token. A timestamp with seconds at the top makes every prompt unique, so nothing is reused and every call pays full prefill (and possibly a write premium). A shorter provider lifetime would not coincide with your deploy or drop cached tokens to exactly zero at steady traffic. A semantic cache skips the model entirely and does not affect cached-token counts. Prompt length is unchanged, so the context window is not the issue.",
+    "topicId": "prompt-caching",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-cost-latency-q5",
+    "type": "single",
+    "prompt": "How does prompt caching differ from a semantic cache?",
+    "options": [
+      { "id": "a", "text": "Prompt caching stores whole answers; a semantic cache stores prompt prefixes" },
+      { "id": "b", "text": "Prompt caching reuses prefix computation; the model still writes a new answer" },
+      { "id": "c", "text": "Prompt caching matches similar prompts by embedding distance above a threshold" },
+      { "id": "d", "text": "Prompt caching only works when self-hosting, never with hosted provider APIs" }
+    ],
+    "correct": ["b"],
+    "explanation": "Prompt caching reuses the KV state for an exact repeated prefix, so the model still runs and generates a fresh response; a semantic cache returns a stored answer and skips the model. Option a reverses the two. Matching by embedding similarity is what a semantic cache does; prompt caching needs an exact prefix. Several hosted APIs offer prompt caching, and self-hosted servers such as vLLM offer prefix caching too.",
+    "topicId": "prompt-caching",
+    "difficulty": 1
+  },
+  {
+    "id": "llm-cost-latency-q6",
+    "type": "scenario",
+    "prompt": "What is the right fix?",
+    "scenario": "A banking assistant added a global semantic cache keyed only on the query embedding, with a 0.92 similarity threshold. A customer reports seeing another customer's balance after asking 'what's my balance?'",
+    "options": [
+      { "id": "a", "text": "Raise the threshold to 0.99 so only near-identical questions can produce a hit" },
+      { "id": "b", "text": "Stop caching user-specific answers and scope any cache by user and permission" },
+      { "id": "c", "text": "Lower the cache TTL to 30 seconds so leaked answers expire before most reuse" },
+      { "id": "d", "text": "Switch to a larger embedding model so the two users' questions embed apart" }
+    ],
+    "correct": ["b"],
+    "explanation": "The two customers asked the same question and need different answers, so no threshold, TTL or embedding model can make an unscoped cache safe. Answers derived from a user's data or tool calls must not be shared, and any cache must be keyed by user or permission scope. A 0.99 threshold still matches identical wording. A 30-second TTL just narrows the leak window. A better embedding model would embed identical questions identically.",
+    "topicId": "semantic-caching",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-cost-latency-q7",
+    "type": "multi",
+    "prompt": "Which statements about semantic caching are accurate? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Lowering the threshold raises the hit rate and the false-hit rate" },
+      { "id": "b", "text": "Opposite requests can embed close together and produce a false hit" },
+      { "id": "c", "text": "A cached answer can go stale when the source documents change" },
+      { "id": "d", "text": "A hit still runs the model, but on a shorter prompt than usual" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "A lower threshold accepts more distant matches, so both hits and wrong hits rise. Similarity is not equivalence: 'cancel my order' and 'don't cancel my order' can be close. Cached answers do not update when documents change, unlike fresh retrieval. A semantic hit returns the stored answer without calling the model at all; that is the point and the risk.",
+    "topicId": "semantic-caching",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-cost-latency-q8",
+    "type": "scenario",
+    "prompt": "How many input tokens does the whole conversation send?",
+    "scenario": "A chat app resends the full history every turn. Each turn adds about 500 tokens to the history, and a typical conversation runs 10 turns.",
+    "options": [
+      { "id": "a", "text": "5,000, since the final history is 10 × 500 tokens" },
+      { "id": "b", "text": "27,500, from 500 × 10 × 11 ÷ 2 across all turns" },
+      { "id": "c", "text": "50,000, from 500 × 10 × 10 because each turn sends 10" },
+      { "id": "d", "text": "2,500, since prompt caching removes half of each turn" }
+    ],
+    "correct": ["b"],
+    "explanation": "Turn n sends about 500 × n tokens, so the total is 500 × (1 + … + 10) = 500 × 55 = 27,500. 5,000 is only the last turn's history. 50,000 assumes every turn already carries the full 10-turn history. Prompt caching can discount repeated prefixes, but the tokens are still sent and it does not halve each turn by rule.",
+    "topicId": "token-budgets",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-cost-latency-q9",
+    "type": "single",
+    "prompt": "A response comes back with finish reason 'length' while you asked for JSON. What should the caller do?",
+    "options": [
+      { "id": "a", "text": "Parse it anyway, since providers always close any open JSON brackets" },
+      { "id": "b", "text": "Treat it as truncated: retry with a higher cap or a shorter output format" },
+      { "id": "c", "text": "Return it to the user, since 'length' means the answer was suitably long" },
+      { "id": "d", "text": "Lower max_tokens on the retry so the model is pushed to finish sooner" }
+    ],
+    "correct": ["b"],
+    "explanation": "'length' means generation stopped at max_tokens, so the JSON is very likely cut off mid-structure. Handle it as an error: raise the cap or ask for a shorter format and validate the result. Providers do not repair truncated JSON for you. It is not a quality signal. Lowering max_tokens would truncate even earlier.",
+    "topicId": "token-budgets",
+    "difficulty": 1
+  },
+  {
+    "id": "llm-cost-latency-q10",
+    "type": "scenario",
+    "prompt": "What is the maximum sustainable request rate?",
+    "scenario": "Your provider allows 600 requests per minute and 300,000 tokens per minute. Requests average 2,500 input tokens and 500 output tokens.",
+    "options": [
+      { "id": "a", "text": "600 per minute, the request limit, since requests are what get counted" },
+      { "id": "b", "text": "120 per minute, from 300,000 ÷ 2,500 input tokens per request" },
+      { "id": "c", "text": "100 per minute, from 300,000 ÷ 3,000 tokens per request in total" },
+      { "id": "d", "text": "600 per minute, since output tokens are not counted toward the TPM limit" }
+    ],
+    "correct": ["c"],
+    "explanation": "Each request uses about 3,000 tokens, so the token limit allows 300,000 ÷ 3,000 = 100 per minute, well below the 600 request limit; TPM binds first. Counting only requests ignores the token limit entirely. Counting only input tokens assumes output is free of the limit, but token limits generally count output too, and that same mistaken assumption makes option d wrong as well.",
+    "topicId": "rate-limits",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-cost-latency-q11",
+    "type": "multi",
+    "prompt": "During a burst of 429 responses, which practices help? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Retry in one layer only, with exponential backoff and jitter" },
+      { "id": "b", "text": "Honour the retry-after header the provider sends with a 429" },
+      { "id": "c", "text": "Serve interactive requests first and defer batch jobs" },
+      { "id": "d", "text": "Retry immediately in both the app and the SDK to recover faster" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Single-layer retries with backoff and jitter avoid multiplying attempts; retry-after tells you when capacity returns; prioritising interactive work spends scarce quota where users are waiting. Immediate retries in two layers multiply attempts ((1 + app retries) × (1 + SDK retries)) and burn the remaining quota on retries: retry amplification.",
+    "topicId": "rate-limits",
+    "difficulty": 2
+  }
+]

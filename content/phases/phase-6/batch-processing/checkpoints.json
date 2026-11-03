@@ -1,0 +1,8 @@
+[
+  { "id": "batch-processing-c1", "text": "I can trace a word-count job through split, map, partition, shuffle, sort and reduce, naming where each step's data lives.", "topicId": "mapreduce-model" },
+  { "id": "batch-processing-c2", "text": "I can estimate shuffle volume with and without a combiner and say which aggregations a combiner can't handle.", "topicId": "shuffle-skew" },
+  { "id": "batch-processing-c3", "text": "I can diagnose a skewed reducer and fix it with a broadcast join or key salting.", "topicId": "shuffle-skew" },
+  { "id": "batch-processing-c4", "text": "I can explain which tasks MapReduce re-runs after a worker failure and why backup tasks fix slow machines but not skew.", "topicId": "batch-fault-tolerance" },
+  { "id": "batch-processing-c5", "text": "I can make a nightly ETL or ELT job idempotent with atomic partition overwrites so retries and backfills are safe.", "topicId": "etl-elt" },
+  { "id": "batch-processing-c6", "text": "I can argue both sides of lambda vs kappa for a given retention and reprocessing requirement, with replay-time arithmetic.", "topicId": "lambda-kappa" }
+]

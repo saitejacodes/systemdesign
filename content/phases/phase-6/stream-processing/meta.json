@@ -1,0 +1,21 @@
+{
+  "id": "p6-stream-processing",
+  "phase": 6,
+  "slug": "stream-processing",
+  "title": "Stream Processing",
+  "order": 3,
+  "week": 13,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "streams-vs-batch", "title": "Streams vs batch", "depth": "tradeoffs" },
+    { "id": "event-vs-processing-time", "title": "Event time vs processing time", "depth": "deep" },
+    { "id": "windowing", "title": "Windowing: tumbling, sliding, session", "depth": "deep" },
+    { "id": "watermarks", "title": "Watermarks", "depth": "deep" },
+    { "id": "late-data", "title": "Late data", "depth": "deep" },
+    { "id": "exactly-once-effects", "title": "Exactly-once effects", "depth": "deep" },
+    { "id": "flink-kafka-streams", "title": "Flink and Kafka Streams", "depth": "awareness" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p3-kafka-vs-queues", "p3-delivery-semantics", "p3-partitioning-ordering"]
+}

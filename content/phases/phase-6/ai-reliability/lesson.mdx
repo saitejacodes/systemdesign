@@ -1,0 +1,216 @@
+## Why it matters
+
+A model API is a remote dependency like any other, except it is slower, more expensive per call, rate-limited per account, shared with every other customer of the same provider, and its successful responses can still be wrong in shape. On 11 December 2024 OpenAI's API, ChatGPT and Sora were down for roughly four hours; OpenAI's public postmortem traced it to a new telemetry service that overloaded the Kubernetes control plane in its clusters and broke DNS-based service discovery. Every product built on a single provider with no fallback went down with it. Less dramatic failures happen every day: 429 rate-limit responses at peak, a request that streams half an answer and stalls, a "successful" response whose JSON is missing a required field. This section applies the Phase 4 reliability toolkit (timeouts, retries, circuit breakers, fallbacks) to LLM calls, and adds the one problem older services rarely had: output that has to be validated before you can trust it.
+
+<Callout type="analogy" title="The oracle who sometimes mumbles">
+Your product depends on an oracle in a mountain temple. Getting there takes time, the queue at the door is shared with every other pilgrim, and some days the temple is simply shut. A sensible kingdom does four things. It gives every messenger a hard deadline and a rule for when to turn back (timeouts). It lets a messenger try again, but not so often that the whole kingdom camps on the temple steps (retry budgets). It keeps a second oracle in the next valley and knows that she speaks a slightly different dialect (provider failover). And it has a scribe at the gate who checks every prophecy is written on the right form before the king acts on it, sending the messenger back once if it isn't (structured output validation). Where it breaks down: a real oracle's wrong answer is rare and mysterious; an LLM's malformed answer is routine and measurable, so you plan for it as a percentage, not a miracle.
+</Callout>
+
+## Timeouts for slow, streaming calls
+
+<DepthStamp depth="deep" />
+
+An LLM call has two phases with very different speeds. **Prefill** reads the whole prompt and produces the first token; **decode** then produces output tokens one at a time. A single "total request timeout" fits this badly: a 30-second limit is far too generous for a call that should start answering in one second, and too tight for a long report that legitimately streams for 40 seconds.
+
+Use layered timeouts instead, each catching a different failure:
+
+| Timeout | What it catches | Example setting (assumption) |
+|---|---|---|
+| Connect | Network or DNS trouble reaching the provider | 2 s |
+| <Term slug="time-to-first-token-deadline">Time to first token</Term> | Overloaded provider, huge queue, stuck prefill | 5–10 s |
+| <Term slug="stream-idle-timeout">Stream idle (between chunks)</Term> | A stream that stalls halfway | 10 s |
+| Total (from the request's <Term slug="deadline">deadline</Term>) | Everything else, and runaway output | Whatever the user can wait |
+
+### Worked example: sizing the timeouts
+
+Assume a chat answer of **600 output tokens**, a provider that decodes at about **50 tokens/s** for this model, and a time to first token that is normally **0.8 s** and **3 s** at p99.
+
+- Expected decode time: 600 ÷ 50 = **12 s**. Total expected: about 13 s.
+- A first-token deadline of **8 s** is well above the normal p99 (3 s), so it rarely fires on a healthy provider, and it gives up 22 seconds sooner than a flat 30-second timeout would on a stuck one.
+- An idle timeout of **10 s** catches a stall at any point in the stream. A flat 30-second total timeout would have killed this healthy 13-second answer only if it ran long, and would not have noticed a stall until second 30.
+- Cap output with the API's max-tokens parameter so the total time is bounded by design: 1,000 tokens ÷ 50 tokens/s = 20 s worst case.
+
+Two LLM-specific details matter. First, a timeout says nothing about whether the provider finished the work. Depending on the provider you may still be billed for tokens it processed before you disconnected, so a timeout is not free. Second, streaming changes what "failure" means: if the user has already seen 400 tokens, retrying from scratch shows them a different answer. Decide in advance whether a mid-stream failure is retried silently (non-streaming background jobs), shown as "answer interrupted, retry?" (chat), or resumed by asking the model to continue (rarely worth the complexity).
+
+## Retries that don't multiply load
+
+<DepthStamp depth="deep" />
+
+Classify the error before retrying. LLM APIs return the usual HTTP signals, and they mean different things:
+
+| Response | Meaning | Retry? |
+|---|---|---|
+| 429 rate limit | You exceeded your account's requests or tokens per minute | Yes, after the `Retry-After` header if sent, with backoff and jitter |
+| 500, 502, 503; Anthropic's API also documents 529 "overloaded" | Provider-side trouble | Yes, a small number of times, then fail over |
+| 400 invalid request, context too long | Your prompt is wrong or too big | No: the same request fails the same way |
+| 401, 403 | Bad key or no permission | No: page someone |
+| 200 with invalid output | Model produced the wrong shape | Repair retry (see below), not a plain retry |
+
+Rate limits deserve special care because they are usually **per account, counted in both requests and tokens per minute**. Retrying a 429 immediately just spends more of the quota you have already exhausted. Back off with <Term slug="full-jitter">full jitter</Term>, honour `Retry-After`, and put a client-side token bucket in front of the API so you queue or shed work before the provider has to reject it.
+
+### Retry amplification across layers and providers
+
+<Term slug="retry-amplification">Retry amplification</Term> is easy to build by accident in LLM stacks because the official SDKs already retry. The OpenAI and Anthropic Python SDKs both retry certain errors twice by default (three attempts in total). Now stack your own code on top:
+
+- SDK: 3 attempts per call.
+- Your gateway wrapper: 3 attempts, each calling the SDK. 3 × 3 = **9** requests to provider A.
+- Then it fails over to provider B with the same wrapper: another **9**.
+- **18 provider requests for one user request**, all arriving at providers that are already struggling.
+
+With 2,000 user requests per second during an incident, that is up to 36,000 requests per second hitting two providers, and your token-per-minute quota is consumed by attempts that mostly fail. The fixes are the Phase 4 ones: retry at **one layer only** (set the SDK's max retries to 0 if your wrapper retries), use a <Term slug="retry-budget">retry budget</Term> such as "retries may add at most 10% to normal traffic", and let a circuit breaker stop calling a provider that is clearly down.
+
+## Provider failover
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="provider-failover">Provider failover</Term> routes LLM calls to a second model provider, or the same model in another region or cloud, when the primary is failing. It is the LLM version of active-passive redundancy, and it has the same shape: a health signal, a switching rule, and a secondary that must actually work when you need it.
+
+<Figure caption="FIG. 10.1 · FAILOVER BEHIND A CIRCUIT BREAKER">
+  <Diagram label="The gateway sends a request to provider A, gets 503 twice, the breaker opens, and the request and later ones go to provider B with a provider-specific prompt." chart={`sequenceDiagram
+    participant App
+    participant GW as LLM gateway
+    participant A as Provider A
+    participant B as Provider B
+    App->>GW: summarise ticket, deadline 15 s
+    GW->>A: request with prompt variant A
+    A-->>GW: 503
+    Note over GW: backoff 400 ms with jitter
+    GW->>A: retry
+    A-->>GW: 503
+    Note over GW: error rate over threshold, breaker for A opens
+    GW->>B: same task with prompt variant B
+    B-->>GW: 200 streamed answer
+    GW-->>App: answer, tagged served by B
+    App->>GW: next request
+    Note over GW: breaker open, skip A
+    GW->>B: request
+    Note over GW: after 30 s, half-open probe to A`} />
+</Figure>
+
+*Failover behind a circuit breaker: after the breaker opens, requests go straight to B without first wasting time on A.*
+
+### Failure timeline: a provider outage, with and without failover
+
+Assume a support assistant serving 50 requests per second, a 4-hour provider outage, and a breaker that opens after 20 failures in 10 seconds.
+
+| Time | Single provider, no breaker | Breaker plus failover to provider B |
+|---|---|---|
+| 14:00:00 | Provider A starts returning 503s | Same |
+| 14:00:05 | Every request retries 9 times (SDK × wrapper); users wait for the full deadline, then see an error | 20 failures counted; breaker for A opens |
+| 14:00:06 | Request threads pile up waiting on A; the app's own latency alarms fire | New requests go straight to B; p50 latency rises slightly because B is a different model |
+| 14:10 | Support agents stop using the tool | Dashboards show 100% of traffic on B; B's tokens-per-minute quota is at 70% |
+| 14:30 | Status page updated; nothing to do but wait | Half-open probes to A every 30 s keep failing; nothing to do |
+| 18:00 | A recovers; queued retries hit it at once | A recovers; probes succeed, breaker closes, traffic shifts back gradually |
+
+The right column only works if you did the boring work beforehand:
+
+- **Prompts are not portable.** Different providers follow instructions differently, format tool calls differently and have different context limits and tokenisers (the same text can be a different number of tokens). Keep a prompt variant per provider and run your eval set against the secondary regularly, not on the day of the outage.
+- **Quota for the secondary must exist.** If you normally send it 1% of traffic, your account limits there may be sized for 1%. Agree higher limits in advance, or keep a steady share of traffic on it so you know it holds.
+- **Data agreements apply to both.** Sending customer data to a provider you have no data-processing agreement with is a compliance incident, even during an outage.
+- **Failures can be correlated.** Two "different" endpoints that are the same model hosted by the same company, or hosted in the same cloud region, can fail together. Check what is actually independent.
+
+An LLM gateway (a service or library in front of all model calls) is the usual place to put this logic, along with retries, budgets, logging and per-team quotas, so every product team doesn't rebuild it badly.
+
+## Fallbacks and graceful degradation
+
+<DepthStamp depth="tradeoffs" />
+
+Failover keeps the same feature working with another model. A <Term slug="fallback">fallback</Term> accepts a worse answer. For AI features, design a <Term slug="degradation-ladder">degradation ladder</Term> per feature, from best to worst, and decide in advance which rung you are willing to serve:
+
+1. Primary model, full prompt.
+2. Secondary provider or a smaller, faster model (cheaper and more available, usually lower quality).
+3. A cached answer for a common question, or a precomputed result (yesterday's nightly summary).
+4. A non-AI path: keyword search instead of a generated answer, a rules-based classifier, a template reply.
+5. Turn the feature off clearly ("Smart summaries are unavailable right now"), leaving the rest of the product working.
+
+This is <Term slug="graceful-degradation">graceful degradation</Term>, and the test of it is simple: does the checkout page still work when the AI product-recommendation widget's model is down? Optional AI features should never sit on the critical path of a core transaction with a long timeout. Run them in parallel with a short deadline and render the page without them if they miss it.
+
+Be honest with users and with yourself. Tag every response with which rung served it, show a quieter UI when a degraded rung is used if quality differs visibly, and track the share of traffic on each rung as a metric. A fallback that silently serves 30% of traffic for a week is an outage nobody noticed.
+
+## Structured output validation
+
+<DepthStamp depth="deep" />
+
+Many LLM calls feed code, not people: extract fields from an invoice, classify a ticket, produce arguments for a function. That code needs <Term slug="structured-output">structured output</Term>, a response in a defined format such as JSON matching a schema. "Please reply in JSON" in the prompt is a request, not a guarantee, and a "successful" 200 response can still contain:
+
+- Invalid JSON (a trailing comma, a prose preamble such as "Here is the JSON:", or Markdown code fences around it).
+- Valid JSON that violates the schema (a missing required field, a string where a number belongs, an enum value that doesn't exist).
+- Output cut off because it hit the max-tokens limit. The API tells you: Anthropic's Messages API returns a stop reason of `max_tokens`, and OpenAI's Chat Completions returns a finish reason of `length`. Check it before parsing.
+- Schema-valid JSON that is semantically wrong (an invoice total that doesn't equal the sum of its lines, a date in the future, a customer ID that doesn't exist).
+
+### Three levels of protection
+
+**Ask the API for structure.** Most providers now offer a structured output or JSON mode, and tool calling with a JSON Schema for the arguments is another route (Anthropic's tool use takes an `input_schema`; OpenAI's Structured Outputs takes a JSON Schema with a strict flag).
+
+**Constrained decoding.** <Term slug="constrained-decoding">Constrained decoding</Term> restricts which tokens the model may produce at each step so the output must match a grammar or schema. Willard and Louf's Outlines (2023) does this with a finite-state machine over the vocabulary; llama.cpp supports GBNF grammars; vLLM offers guided decoding. It guarantees **syntax**, never **truth**: the model can still fill a perfectly typed field with a wrong value, and forcing a format the model finds unnatural can lower answer quality, so evaluate it.
+
+**Validate in your code, always.** Even with the first two, parse and validate every response against the schema (JSON Schema, Pydantic, zod), then run semantic checks. On failure, do a bounded <Term slug="repair-retry">repair retry</Term>: send the model its previous output and the exact validation error ("field `total` must be a number; got the string 'about 40'") and ask for a corrected version. Allow one or two repairs, then fall back or fail loudly.
+
+```
+call model -> check stop reason -> parse JSON -> validate schema -> semantic checks
+     ^                                                 | fail
+     +---------- repair retry with the error (max 2) --+-> then fallback or error
+```
+
+### Worked example: what validation costs and buys
+
+Assume an extraction pipeline handling **100,000 documents a day**, where **4%** of first responses fail validation and a repair retry fixes **80%** of those.
+
+- First-pass failures: 100,000 × 0.04 = **4,000**.
+- Repaired: 4,000 × 0.8 = 3,200. Still failing after one repair: **800** (0.8%), which go to a human review queue or a second repair.
+- Extra model calls: about 4,000 repairs, so **4%** more calls, and each repair is bigger because it includes the bad output and the error. If the average call is 1,500 input and 300 output tokens and a repair is 2,000 input and 300 output, repairs add roughly 4,000 × 2,000 = 8 million input tokens a day on top of 150 million: about a 5% increase in input tokens.
+- Without validation, those 4,000 bad records go straight into the database every day.
+
+Track the validation failure rate per prompt version and per provider. A jump from 4% to 15% after a model upgrade is the earliest, cheapest warning that something changed.
+
+<TradeoffBox title="LLM reliability choices" items={[
+  { gain: "Layered timeouts (first token, idle, total): fast detection of stuck calls", cost: "More settings to tune per model and per output length" },
+  { gain: "Retries with backoff and a budget: ride out brief 429s and 5xx", cost: "Extra latency and token spend; must live at one layer only" },
+  { gain: "Provider failover: survive a full provider outage", cost: "Prompt variants, evals, quota and data agreements for a second provider" },
+  { gain: "Degradation ladder: core product keeps working", cost: "Lower-quality answers that must be labelled and monitored" },
+  { gain: "Constrained decoding: output always parses", cost: "Guarantees shape not correctness; can lower quality on some tasks" },
+  { gain: "Validation with repair retries: bad records never reach your database", cost: "A few percent more calls and tokens, plus a review queue" }
+]} />
+
+<NotWhenBox title="When not to bother" items={[
+  "A second provider for an internal prototype or a low-stakes feature: a clear 'unavailable' message is cheaper than maintaining two prompt stacks.",
+  "Silent retries of a streamed chat answer the user has already started reading: show the interruption instead.",
+  "Repair retries for free-text answers shown to a person: there is no schema to repair against.",
+  "Constrained decoding when the provider's native structured output already meets your error budget."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A 200 response from the model API means the call succeeded." right="It means the provider returned something. Check the stop reason, parse it, validate the schema and the meaning before your code acts on it." />
+
+<Misconception wrong="Failing over to another provider is just changing the base URL." right="Prompts, tool-call formats, tokenisers, context limits, quotas and data agreements all differ. A secondary you have never evaluated is a guess." />
+
+<Misconception wrong="Constrained decoding makes structured output correct." right="It guarantees the output matches the grammar. A field can still hold a confident, well-typed, wrong value, so semantic validation is still required." />
+
+<Misconception wrong="More retries make an LLM feature more reliable." right="Stacked SDK and wrapper retries multiply load on a struggling provider and burn shared quota. Retry at one layer, with a budget and a breaker." />
+
+## Interview angle
+
+<InterviewAngle title="AI reliability" questions={[
+  "Your summarisation feature times out for 5% of users at peak. Walk through how you'd set the timeouts.",
+  "The primary model provider is down for four hours. What happens to your product, minute by minute?",
+  "How do you stop retries from making a provider outage worse?",
+  "An extraction service writes model output into a database. How do you guarantee the records are valid?",
+  "When would you choose not to add a second provider?"
+]}>
+Treat the model as an unreliable, rate-limited remote dependency and say so. Strong answers split timeouts into first-token, idle and total, sized from labelled assumptions about decode speed. On retries, classify errors (429 and 5xx yes, 400 no), name the SDK's built-in retries, multiply out the amplification and cap it with a budget. On failover, mention a circuit breaker per provider and the real costs: prompt variants, evals on the secondary, quota and data agreements. Finish with structured output: native JSON mode or tool schemas, optional constrained decoding, then always validate shape and meaning, with one or two repair retries and a human queue for the rest. Staff-level candidates also say what they would not build: a second provider is not worth it for every feature.
+</InterviewAngle>
+
+## Practice
+
+1. A report generator produces up to 2,000 output tokens. Assume 40 tokens/s decode and a p99 time to first token of 4 s. Choose first-token, idle and total timeouts, and say what max-tokens limit keeps the total under 60 s.
+2. Your stack has SDK retries (3 attempts), a gateway wrapper (2 attempts) and failover across 3 providers. How many provider requests can one user request cause in the worst case? Redesign it so the worst case is at most 4.
+3. Write the degradation ladder for an AI "suggested reply" button in a customer-support tool, from best to worst, with the signal that moves traffic down each rung.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

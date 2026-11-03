@@ -1,0 +1,256 @@
+## Why it matters
+
+The inference internals section showed that a decode step at small batch sizes leaves nearly all of a GPU's compute idle: the step's time is set by reading the weights, so processing five tokens in a pass costs about the same as processing one. Speculative decoding turns that idle compute into speed. A cheap guesser proposes several tokens; the large model checks all of them in a single pass and keeps the ones it agrees with. Two papers published within weeks of each other, Leviathan, Kalman and Matias ("Fast Inference from Transformers via Speculative Decoding", ICML 2023) and Chen et al. at DeepMind ("Accelerating Large Language Model Decoding with Speculative Sampling", 2023), showed it can be done **without changing the output distribution at all**, reporting roughly 2× to 3× faster generation on large models. It is also easy to deploy badly: it can slow a busy server down, and its benefit depends on what your users ask.
+
+<Callout type="analogy" title="The parrot that finishes your sentences">
+A parrot sits on the shoulder of a slow, very expensive speaker. Before each breath, the parrot blurts out its guess of the speaker's next five words. The speaker then checks all five in a single breath, which takes about as long as saying one word. They keep the parrot's words up to the first one they disagree with, say their own word in its place, and the parrot starts guessing again from there. A parrot that knows its owner's habits saves most of the breaths; a parrot that guesses badly just wastes them. Where it breaks down: the speaker's check is not "is this exactly the word I would have said?" but a probabilistic rule that keeps the speaker's own odds of saying each word intact; and "checking five costs one breath" is only true while the speaker is waiting on memory rather than on maths, which stops being true on a crowded server.
+</Callout>
+
+## Draft, then verify
+
+<DepthStamp depth="deep" />
+
+<Term slug="speculative-decoding">Speculative decoding</Term> uses two models over the same vocabulary:
+
+- A small, fast <Term slug="draft-model">draft model</Term> q (for example, a 1 B model from the same family as the target, sharing its tokenizer).
+- The large **target model** p, whose output you actually want.
+
+One speculative step works like this:
+
+1. The draft model generates γ (gamma) tokens one at a time, autoregressively, recording its probability distribution q at each position. This is γ cheap decode steps.
+2. The target model runs **one** forward pass over the prefix plus all γ draft tokens. Because the tokens are known, this pass is like a tiny prefill: it produces the target's distribution p at all γ + 1 positions (one for each draft token, plus one beyond the last).
+3. Walk through the draft tokens in order and accept or reject each with the rule below. Stop at the first rejection.
+4. At the rejection point, sample a replacement token from a corrected distribution. If every draft token was accepted, sample one bonus token from the target's distribution at position γ + 1.
+
+So every target pass yields **at least one** token (the replacement or bonus) and at most γ + 1.
+
+<Figure caption="FIG. 6.15 · ONE SPECULATIVE STEP WITH γ = 4">
+  <Diagram label="Sequence diagram: the scheduler asks the draft model for four tokens one at a time, sends prefix plus four draft tokens to the target in one pass, gets five distributions back, accepts the first two draft tokens, rejects the third, samples a replacement from the corrected distribution, rolls back the KV cache for the discarded tokens, and starts the next step." chart={`sequenceDiagram
+    participant S as Scheduler
+    participant D as Draft model q
+    participant T as Target model p
+    S->>D: prefix
+    D-->>S: x1 (with q1)
+    S->>D: prefix + x1
+    D-->>S: x2 (with q2)
+    S->>D: prefix + x1 x2
+    D-->>S: x3 (with q3)
+    S->>D: prefix + x1 x2 x3
+    D-->>S: x4 (with q4)
+    S->>T: prefix + x1 x2 x3 x4 (one forward pass)
+    T-->>S: p1 p2 p3 p4 p5
+    Note over S: x1 accepted, x2 accepted
+    Note over S: x3 rejected, sample y3 from norm(max(0, p3 - q3))
+    S->>S: discard x4, roll back KV for x3 and x4 in both models
+    Note over S: emitted x1 x2 y3 (3 tokens for one target pass)`} />
+</Figure>
+
+### Greedy is the easy case
+
+At temperature 0 the rule is simple: accept a draft token if it equals the target's argmax at that position; at the first mismatch, emit the target's argmax instead. The output is the same token sequence greedy decoding of the target alone would give, in exact arithmetic. (In practice the verify pass computes logits for several positions in one batch-shaped pass, so the bit-level numerics differ from one-token decode, the same batch-invariance caveat covered in the inference internals section.)
+
+## The acceptance rule and why it is exact
+
+<DepthStamp depth="deep" />
+
+With sampling (temperature above 0), "does it match?" is the wrong question, because the target itself would have produced a random token. Speculative sampling uses a modified form of <Term slug="rejection-sampling">rejection sampling</Term>. For a draft token x with draft probability q(x) and target probability p(x):
+
+```
+accept x with probability  min(1, p(x) / q(x))
+if rejected, sample a replacement from  p'(·) = norm( max(0, p(·) - q(·)) )
+```
+
+Here norm(·) means rescale so the values sum to 1. Intuitively: where the draft is *under*-confident (p ≥ q), always accept. Where it is *over*-confident (q > p), accept only the fraction p/q of the time. The residual distribution p' then hands out exactly the probability mass the draft under-supplied.
+
+**Proof sketch that the output follows p exactly.** Let β = Σₓ min(p(x), q(x)) be the probability that a draft token is accepted. The probability that the step outputs a particular token x is:
+
+```
+P(x) = P(draft proposes x and it is accepted) + P(rejection) × p'(x)
+     = q(x) × min(1, p(x)/q(x))     + (1 - β) × [p(x) - min(p(x), q(x))] / (1 - β)
+     = min(p(x), q(x))               + p(x) - min(p(x), q(x))
+     = p(x)
+```
+
+The first term simplifies because q × min(1, p/q) = min(q, p). The normaliser of p' is Σ max(0, p − q) = Σ (p − min(p, q)) = 1 − β, which cancels the rejection probability. So every emitted token is distributed exactly as if the target model had sampled it, and by induction the whole sequence is. The draft model's quality affects only **speed**, never **output**.
+
+### Worked example: one position
+
+The target and draft disagree over three candidate tokens:
+
+| Token | Target p | Draft q | min(p, q) | Accept if drafted | max(0, p − q) |
+|---|---|---|---|---|---|
+| "cat" | 0.50 | 0.70 | 0.50 | 0.50 ÷ 0.70 = 71% | 0 |
+| "dog" | 0.30 | 0.20 | 0.20 | 100% | 0.10 |
+| "fox" | 0.20 | 0.10 | 0.10 | 100% | 0.10 |
+
+β = 0.50 + 0.20 + 0.10 = **0.80**, so this position accepts the draft token 80% of the time. On rejection (20%), the residual is [0, 0.10, 0.10], normalised to [0, 0.5, 0.5]. Check "dog": 0.20 × 100% + 0.20 × 0.5 = 0.30. Exactly the target's 0.30. Check "cat": 0.70 × 71.4% = 0.50, and it never comes from the residual. Exactly 0.50.
+
+The quantity β, averaged over positions, is the <Term slug="acceptance-rate">acceptance rate</Term> α. It equals 1 minus the total variation distance between p and q, so it measures directly how closely the draft imitates the target.
+
+## Expected speedup, worked with numbers
+
+<DepthStamp depth="deep" />
+
+Treating each draft token as accepted independently with probability α (a simplifying assumption Leviathan et al. also make), the expected number of tokens produced per target pass with γ draft tokens is:
+
+```
+E[tokens per target pass] = (1 - α^(γ+1)) / (1 - α)
+```
+
+Speed also depends on what drafting costs. Let c be the ratio of one draft step's time to one target step's time, and assume (crucially) that the target's verify pass over γ + 1 tokens costs about the same as a normal one-token step. Then each speculative step costs γc + 1 target-step units, and the walltime improvement factor is:
+
+```
+speedup = (1 - α^(γ+1)) / ((1 - α) × (γc + 1))
+```
+
+**Worked example: α = 0.8, c = 0.05** (a draft about 20× cheaper per step than the target; labelled assumption).
+
+| γ | Tokens per target pass | Cost per step (γc + 1) | Speedup |
+|---|---|---|---|
+| 1 | (1 − 0.64) ÷ 0.2 = 1.80 | 1.05 | 1.71× |
+| 2 | (1 − 0.512) ÷ 0.2 = 2.44 | 1.10 | 2.22× |
+| 4 | (1 − 0.328) ÷ 0.2 = 3.36 | 1.20 | 2.80× |
+| 6 | (1 − 0.210) ÷ 0.2 = 3.95 | 1.30 | 3.04× |
+| 8 | (1 − 0.134) ÷ 0.2 = 4.33 | 1.40 | 3.09× |
+| 10 | (1 − 0.086) ÷ 0.2 = 4.57 | 1.50 | 3.05× |
+
+Returns diminish fast: each extra draft token survives only if *all* earlier ones did, so the 8th token is used only 0.8⁸ ≈ 17% of the time, while the draft cost keeps climbing. The optimum here is near γ = 8, but γ = 4 already captures most of the gain with far less wasted work.
+
+**Now vary the acceptance rate, holding γ = 4:**
+
+| α | c | Tokens per pass | Speedup |
+|---|---|---|---|
+| 0.8 | 0.05 | 3.36 | 2.80× |
+| 0.6 | 0.05 | 2.31 | 1.92× |
+| 0.6 | 0.20 | 2.31 | 1.28× |
+| 0.4 | 0.20 | 1.65 | **0.92× (slower)** |
+
+A draft that is too expensive (c = 0.2) or a domain where it guesses poorly (α = 0.4) turns the optimisation into a slowdown. Measure both c and α on real traffic before shipping.
+
+## When it helps, and when it stops helping
+
+<DepthStamp depth="tradeoffs" />
+
+The "verify costs one step" assumption is the whole trick, and it is only true while the target pass is memory-bound. From the roofline: the tokens processed per pass set the arithmetic intensity of the weight matmuls, and the ridge point is a few hundred FLOPs per byte on current datacenter GPUs (about 300 under the assumptions used in the inference internals section).
+
+With speculation, a pass processes B × (γ + 1) tokens for a batch of B sequences:
+
+| Batch B | γ | Tokens per target pass | Regime | Effect |
+|---|---|---|---|---|
+| 1 | 4 | 5 | Deeply memory-bound | Verify ≈ free; full speedup |
+| 8 | 4 | 40 | Memory-bound | Still close to full speedup |
+| 64 | 4 | 320 | Near the ridge | Verify starts costing more than a plain step |
+| 128 | 4 | 640 | Compute-bound | Rejected tokens are wasted FLOPs; throughput can fall |
+
+Once compute-bound, the GPU's tokens per second are capped by FLOP/s, and every rejected draft token is maths spent on nothing. At α = 0.8 and γ = 4, 3.36 of every 5 verified positions are kept, so at most **67%** of the target's compute does useful work, and aggregate throughput falls below plain decoding. This is why the vLLM documentation describes speculative decoding as a technique for reducing inter-token latency in *memory-bound* inference, and why engines let operators limit or disable speculation under heavy load.
+
+The field does not fully agree on where the crossover sits. The KV cache complicates the simple picture: attention reads each sequence's own KV cache, and verifying γ + 1 positions reuses those bytes γ + 1 times, which raises attention's intensity too. MagicDec (Chen et al., 2024) argues that for **long contexts**, where KV reads dominate each step, decode stays memory-bound even at large batch sizes and speculation can raise throughput there as well. For short contexts at high batch, the conventional view holds: speculation trades throughput for latency.
+
+Other things speculation does not help:
+
+- **TTFT.** Prefill is already parallel and compute-bound. Speculation only shortens the time between output tokens.
+- **Memory.** The draft model's weights and its own KV cache take GPU memory that would otherwise hold target KV cache, so fewer sequences fit.
+
+### Failure timeline: speculation on by default, then the evening peak
+
+A team enables a draft model with γ = 5 on a shared chat cluster after a benchmark at low load showed TPOT falling from 30 ms to 14 ms. (Illustrative scenario; the mechanism is what matters.)
+
+| Time | Event | Batch per replica | Effect |
+|---|---|---|---|
+| 10:00 | Deployed; morning traffic | 4–12 | TPOT ≈ 14 ms, users happy |
+| 17:30 | Evening peak begins | 60–90 | Verify passes now process 360–540 tokens; compute-bound |
+| 17:45 | | 90+ | TPOT climbs to 38 ms, worse than the 30 ms baseline; aggregate tokens/s down about 20% |
+| 18:00 | Queue grows because each replica serves fewer tokens/s | queue rising | TTFT p99 jumps; autoscaler has no spare GPUs |
+| 18:10 | A new enterprise customer's traffic is mostly Japanese text the draft was not tuned for | | Acceptance rate on that route drops from about 0.75 to about 0.35 |
+| 18:20 | Mitigation | | Disable speculation above a batch threshold; disable it on the low-acceptance route |
+| Next week | Fix | | Per-route acceptance dashboards; adaptive γ; a draft distilled on traffic that includes the new language |
+
+## Variants: drafting without a separate draft model
+
+<DepthStamp depth="tradeoffs" />
+
+A separate draft model must share the target's tokenizer, must be served and kept in sync with target upgrades, and costs memory. The main alternatives:
+
+- <Term slug="medusa-heads">Medusa</Term> (Cai et al., ICML 2024) adds several extra decoding heads on top of the target's final hidden state. Head k predicts the token k positions further ahead, so one target pass drafts several tokens with no second model. Candidate continuations from the heads' top choices form a tree, checked in one pass with <Term slug="token-tree-verification">tree attention</Term> (an attention mask that lets each candidate attend only to its own branch). Medusa-1 trains only the heads on a frozen model; Medusa-2 fine-tunes them jointly with the model. For sampling, Medusa proposes a "typical acceptance" scheme that is faster but does **not** exactly preserve the target distribution; with greedy decoding the output is unchanged.
+- **EAGLE** (Li et al., ICML 2024) drafts at the *feature* level: a lightweight autoregressive head takes the target's second-to-top-layer features plus the already-sampled tokens and predicts the next features, which the target's own LM head turns into tokens. Feeding it the sampled token resolves the uncertainty that makes feature prediction hard. It keeps the exact acceptance rule, so the output distribution is preserved. EAGLE-2 (2024) grows the draft tree dynamically, spending more branches where the draft is confident.
+- <Term slug="lookahead-decoding">Lookahead decoding</Term> (Fu et al., ICML 2024) needs no draft model and no training. It runs Jacobi-style parallel iterations to generate candidate n-grams inside the target's own forward passes, keeps a pool of them, and verifies matching n-grams in the same pass.
+- <Term slug="prompt-lookup-decoding">Prompt lookup decoding</Term> (n-gram drafting, popularised by Apoorv Saxena in 2023) finds the last few generated tokens elsewhere in the prompt and proposes the tokens that followed them there. It costs almost nothing and shines when the output copies the input: summarising, editing code, answering from retrieved documents. vLLM exposes it as its n-gram speculative method.
+- <Term slug="self-speculative-decoding">Self-speculative decoding</Term> drafts with a cheaper version of the target itself, for example by running only its first layers and exiting early. LayerSkip (Elhoushi et al., 2024) trains a model to support early exit, drafts with the early layers and verifies with the rest, reusing the computation and cache of the shared layers.
+
+| Approach | Extra model to serve | Training needed | Exact distribution | Best fit |
+|---|---|---|---|---|
+| Separate draft model | Yes | Optional (distillation raises α) | Yes | Families with a small sibling model |
+| Medusa | No (extra heads) | Heads | Greedy yes; typical acceptance no | Single-model deployments |
+| EAGLE | No (small draft head) | Draft head | Yes | High acceptance with little memory |
+| Lookahead | No | No | Designed to preserve output | No training budget |
+| Prompt lookup / n-gram | No | No | Yes | Output that copies the input |
+| Self-speculation | No | Usually (early-exit training) | Yes | Models trained for early exit |
+
+## Running it in production
+
+<DepthStamp depth="tradeoffs" />
+
+**Choose the draft by measuring α and c on real traffic.** A draft from the same family, distilled on the target's own outputs, accepts far more often than a generic small model. Acceptance varies by domain and settings: structured or repetitive output (code, JSON, extraction) is usually easier to guess than creative prose; higher temperature usually lowers acceptance because both distributions spread out; languages or domains under-represented in the draft's training drop α sharply. Log acceptance per route, tenant and temperature.
+
+**Make γ adaptive.** A fixed γ is right for only one acceptance rate. Engines and research systems adjust the draft length or tree size from recent acceptance, and some disable speculation above a batch-size threshold. Treat it as a latency tier: on for interactive traffic, off for batch jobs.
+
+**Account for the KV cache.** Rejected tokens wrote KV entries in both models, so the engine must roll them back. With PagedAttention this means freeing or overwriting slots in the last blocks, which is cheap, but every sequence in a batch accepts a different number of tokens, so the batch becomes ragged and the scheduler must handle sequences advancing by 1 to γ + 1 tokens per step. Budget memory for the draft's weights and KV cache.
+
+**Keep the guarantee honest.** Exactness holds only if the rejection rule is implemented exactly, including the temperature, top-k and top-p processing applied to *both* p and q before comparing them. Variants such as Medusa's typical acceptance trade that guarantee for speed. When you change the scheme, say so to the people who run evals.
+
+<TradeoffBox title="Speculative decoding choices" items={[
+  { gain: "Lower TPOT at small batch: often 2× or more with a well-matched draft", cost: "Wasted compute on rejected tokens; can lower throughput when compute-bound" },
+  { gain: "Exact rejection sampling: output distribution unchanged, no quality re-evaluation", cost: "Restricts variants; must apply sampling settings identically to draft and target" },
+  { gain: "Longer draft (larger γ): more tokens per pass when acceptance is high", cost: "Geometric returns; draft cost grows linearly; more rollback work" },
+  { gain: "Separate draft model: simple, works with any target that shares its tokenizer", cost: "Second model to serve and upgrade, extra weights and KV memory" },
+  { gain: "Medusa, EAGLE or n-gram drafting: no second model to serve", cost: "Training heads, or narrower applicability; Medusa's typical acceptance is not exact" }
+]} />
+
+<NotWhenBox title="When not to use speculative decoding" items={[
+  "Throughput-bound batch or offline jobs at high batch size: plain decoding uses compute better.",
+  "When measured acceptance is low for your traffic, or the draft costs more than a small fraction of a target step.",
+  "When TTFT is the problem: speculation shortens only the gaps between output tokens.",
+  "When GPU memory is the binding constraint and a draft model would push out concurrent sequences."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Speculative decoding trades quality for speed, like using a smaller model." right="With the exact rejection rule, the output distribution is identical to the target's. The draft only changes how fast tokens arrive. Some variants, such as Medusa's typical acceptance, relax this, and say so." />
+
+<Misconception wrong="It always helps, because the target checks several tokens for the price of one." right="That price holds only while the verify pass is memory-bound. At large batch sizes it becomes compute-bound and rejected tokens waste FLOPs, so throughput and even TPOT can get worse." />
+
+<Misconception wrong="A longer draft is always better if acceptance is high." right="Tokens per pass grow geometrically slower (the k-th token needs all earlier ones accepted) while draft cost grows linearly. At α = 0.8, c = 0.05 the gain from γ = 4 to γ = 8 is only about 10%, for twice the draft work." />
+
+<Misconception wrong="Speculative decoding speeds up time to first token." right="Prefill is already parallel and compute-bound. Speculation shortens time per output token only." />
+
+## Interview angle
+
+<InterviewAngle title="Speculative decoding" questions={[
+  "Explain speculative decoding and prove that it does not change the output distribution.",
+  "With acceptance rate 0.7, γ = 4 and a draft 10% the cost of the target, what speedup do you expect?",
+  "Your speculative deployment made p99 TPOT worse at peak. Why, and what would you change?",
+  "How would you choose between a separate draft model, Medusa heads and n-gram drafting for a code assistant?",
+  "How does speculation interact with continuous batching and the KV cache?"
+]}>
+Lead with the hardware reason: decode is memory-bound, so a target pass over γ + 1 tokens costs about one step. Then give the acceptance rule, min(1, p/q) with resampling from norm(max(0, p − q)), and the three-line proof that P(x) = min(p, q) + (p − min(p, q)) = p. For the numeric question: (1 − 0.7⁵) ÷ 0.3 ≈ 2.78 tokens per pass, divided by 4 × 0.1 + 1 = 1.4, about 2.0×. For the peak regression, name the compute-bound crossover at B × (γ + 1) tokens per pass and propose a batch-size threshold, adaptive γ and per-route acceptance monitoring. For a code assistant, note that outputs often copy the input, so n-gram drafting is nearly free and pairs well with a learned draft.
+</InterviewAngle>
+
+## Practice
+
+1. Compute tokens per target pass and speedup for α = 0.7 and α = 0.9 with γ = 3 and γ = 6, taking c = 0.1. Which γ would you pick for each α, and why?
+2. A target and draft assign probabilities p = [0.6, 0.3, 0.1] and q = [0.3, 0.3, 0.4] to three tokens. Compute the acceptance probability for each drafted token, β, and the residual distribution used on rejection. Verify that the output probability of each token equals p.
+3. Your cluster runs decode batches of 16 to 160 sequences over a day. Design a policy for when speculation is on, what γ to use and which metrics trigger changes. State the assumptions about your GPU's ridge point.
+
+## Try it
+
+Turn on speculative decoding at low load and watch each pass accept a run of draft tokens, then stop at the first rejection. Tune draft length and draft cost until the measured speedup passes 2×, then raise the load and watch the gain shrink.
+
+<Simulator id="llm-inference" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "leviathan-speculative",
+    "title": "Fast Inference from Transformers via Speculative Decoding",
+    "author": "Leviathan, Kalman and Matias (ICML 2023)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2211.17192",
+    "why": "The original algorithm with the acceptance rule, the proof of exactness, and the expected-tokens and walltime formulas used in this section.",
+    "topicIds": ["draft-verify", "acceptance-rule", "speedup-math"],
+    "free": true
+  },
+  {
+    "id": "chen-speculative-sampling",
+    "title": "Accelerating Large Language Model Decoding with Speculative Sampling",
+    "author": "Chen et al., DeepMind (2023)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2302.01318",
+    "why": "Independent derivation of the same modified rejection sampling, applied to a 70B model with a clear statement of when it pays off.",
+    "topicIds": ["acceptance-rule", "when-it-helps"],
+    "free": true
+  },
+  {
+    "id": "medusa-paper",
+    "title": "Medusa: Simple LLM Inference Acceleration Framework with Multiple Decoding Heads",
+    "author": "Cai et al. (ICML 2024)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2401.10774",
+    "why": "Extra decoding heads, tree attention and typical acceptance: the main design for drafting without a second model.",
+    "topicIds": ["variants"],
+    "free": true
+  },
+  {
+    "id": "eagle-paper",
+    "title": "EAGLE: Speculative Sampling Requires Rethinking Feature Uncertainty",
+    "author": "Li et al. (ICML 2024)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2401.15077",
+    "why": "Feature-level drafting that keeps the exact acceptance rule; a strong baseline for production draft heads.",
+    "topicIds": ["variants", "production"],
+    "free": true
+  }
+]

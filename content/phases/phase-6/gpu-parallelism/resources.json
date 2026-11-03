@@ -1,0 +1,42 @@
+[
+  {
+    "id": "megatron-lm-2019",
+    "title": "Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism",
+    "author": "Shoeybi et al. (2019)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/1909.08053",
+    "why": "The original column/row split for transformer MLP and attention blocks, with the f and g communication operators.",
+    "topicIds": ["tensor-parallelism", "collectives"],
+    "free": true
+  },
+  {
+    "id": "megatron-3d-2021",
+    "title": "Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM",
+    "author": "Narayanan et al. (SC 2021)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2104.04473",
+    "why": "How to combine tensor, pipeline and data parallelism, the interleaved 1F1B schedule, and placement rules backed by measurements.",
+    "topicIds": ["pipeline-parallelism", "parallelism-placement", "tensor-parallelism"],
+    "free": true
+  },
+  {
+    "id": "zero-2020",
+    "title": "ZeRO: Memory Optimizations Toward Training Trillion Parameter Models",
+    "author": "Rajbhandari, Rasley, Ruwase and He (SC 2020)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/1910.02054",
+    "why": "The 16-bytes-per-parameter memory analysis and the three ZeRO stages with their communication volumes.",
+    "topicIds": ["zero-fsdp", "data-parallelism"],
+    "free": true
+  },
+  {
+    "id": "ultrascale-playbook",
+    "title": "The Ultra-Scale Playbook: Training LLMs on GPU Clusters",
+    "author": "Hugging Face (nanotron team)",
+    "kind": "blog",
+    "url": "https://huggingface.co/spaces/nanotron/ultrascale-playbook",
+    "why": "A long, hands-on walkthrough of every parallelism dimension, including context and expert parallelism, with memory and timing plots.",
+    "topicIds": ["context-parallelism", "expert-parallelism", "parallelism-placement"],
+    "free": true
+  }
+]

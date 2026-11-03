@@ -1,0 +1,8 @@
+[
+  { "id": "gpu-parallelism-c1", "text": "I can explain all-reduce as reduce-scatter plus all-gather and compute ring all-reduce traffic per rank as 2(N − 1)/N × size.", "topicId": "collectives" },
+  { "id": "gpu-parallelism-c2", "text": "I can compute model-state memory per GPU for plain data parallelism and ZeRO stages 1, 2 and 3 from the 16-bytes-per-parameter breakdown.", "topicId": "zero-fsdp" },
+  { "id": "gpu-parallelism-c3", "text": "I can describe the Megatron column/row split of the MLP and attention blocks and say why it needs two all-reduces per layer in forward.", "topicId": "tensor-parallelism" },
+  { "id": "gpu-parallelism-c4", "text": "I can calculate the pipeline bubble fraction (p − 1)/(m + p − 1) and compare GPipe, 1F1B and interleaved schedules on bubble and memory.", "topicId": "pipeline-parallelism" },
+  { "id": "gpu-parallelism-c5", "text": "I can explain expert parallelism's two all-to-alls per MoE layer, expert capacity, and what a hot expert does to step time and dropped tokens.", "topicId": "expert-parallelism" },
+  { "id": "gpu-parallelism-c6", "text": "I can lay out TP × PP × DP for a given cluster, justify TP inside a node with bandwidth arithmetic, and say how the choice differs for inference.", "topicId": "parallelism-placement" }
+]

@@ -1,0 +1,18 @@
+[
+  { "id": "llm-serving-f1", "front": "What is a token?", "back": "A subword piece from the tokenizer's fixed vocabulary. Rule of thumb for English: about 4 characters or 0.75 words per token. All LLM limits and prices are in tokens.", "topicId": "tokens-prefill-decode" },
+  { "id": "llm-serving-f2", "front": "Prefill?", "back": "One parallel forward pass over all prompt tokens. Compute-bound. Produces the first token and fills the KV cache.", "topicId": "tokens-prefill-decode" },
+  { "id": "llm-serving-f3", "front": "Decode?", "back": "Generates one token per step per sequence. Each step reads every weight from memory, so it is memory-bandwidth-bound.", "topicId": "tokens-prefill-decode" },
+  { "id": "llm-serving-f4", "front": "Batch-1 decode bound for a 7B fp16 model at 2 TB/s (assumed)?", "back": "13.5 GB of weights ÷ 2,000 GB/s ≈ 6.7 ms per token, so at most about 150 tokens/s for one user.", "topicId": "tokens-prefill-decode" },
+  { "id": "llm-serving-f5", "front": "KV cache bytes per token formula?", "back": "2 × layers × KV heads × head dim × bytes per value. Llama 2 7B in fp16: 2 × 32 × 32 × 128 × 2 = 512 KiB.", "topicId": "kv-cache-memory" },
+  { "id": "llm-serving-f6", "front": "Why does Llama 2 70B have a smaller KV cache per token than 7B?", "back": "Grouped-query attention: 64 query heads share 8 KV heads, so 2 × 80 × 8 × 128 × 2 = 320 KiB per token.", "topicId": "kv-cache-memory" },
+  { "id": "llm-serving-f7", "front": "What usually decides how many requests fit on a GPU?", "back": "Free memory for the KV cache after weights and overhead, divided by tokens per request. Not the weights alone.", "topicId": "kv-cache-memory" },
+  { "id": "llm-serving-f8", "front": "Static batching's waste?", "back": "The batch runs until its longest request finishes, so short requests hold idle slots and new arrivals wait outside.", "topicId": "batching" },
+  { "id": "llm-serving-f9", "front": "Continuous batching (Orca)?", "back": "Iteration-level scheduling: at every decode step, finished sequences leave and waiting requests join.", "topicId": "batching" },
+  { "id": "llm-serving-f10", "front": "PagedAttention (vLLM)?", "back": "KV cache stored in fixed-size blocks (16 tokens by default) with a per-sequence block table, like virtual memory pages. No up-front reservation; prefixes can be shared.", "topicId": "batching" },
+  { "id": "llm-serving-f11", "front": "What happens in vLLM when KV blocks run out?", "back": "The scheduler preempts requests (by default the most recently admitted), dropping their KV to recompute later or swapping it to CPU.", "topicId": "batching" },
+  { "id": "llm-serving-f12", "front": "TTFT?", "back": "Time to first token: queueing + prefill + first decode step. Driven by prompt length and scheduler load.", "topicId": "streaming-metrics" },
+  { "id": "llm-serving-f13", "front": "TPOT?", "back": "Time per output token (inter-token latency). Driven by decode speed and batch size. Per-user tokens/s = 1 ÷ TPOT.", "topicId": "streaming-metrics" },
+  { "id": "llm-serving-f14", "front": "End-to-end latency of a streamed answer?", "back": "≈ TTFT + (output tokens − 1) × TPOT. 0.4 s + 499 × 25 ms ≈ 12.9 s for 500 tokens.", "topicId": "streaming-metrics" },
+  { "id": "llm-serving-f15", "front": "Self-hosted cost per million tokens?", "back": "Hourly GPU cost ÷ (tokens/s × 3,600 × utilisation) × 1,000,000. Utilisation is the lever.", "topicId": "hosted-vs-self-hosted" },
+  { "id": "llm-serving-f16", "front": "Two reasons to self-host anyway?", "back": "Data must stay in your network, or traffic is steady and high enough to keep GPUs busy with an open model that passes your evals.", "topicId": "hosted-vs-self-hosted" }
+]

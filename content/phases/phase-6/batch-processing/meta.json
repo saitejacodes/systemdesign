@@ -1,0 +1,20 @@
+{
+  "id": "p6-batch-processing",
+  "phase": 6,
+  "slug": "batch-processing",
+  "title": "Batch Processing",
+  "order": 4,
+  "week": 13,
+  "estimatedMinutes": 65,
+  "topics": [
+    { "id": "mapreduce-model", "title": "The MapReduce model", "depth": "deep" },
+    { "id": "shuffle-skew", "title": "The shuffle and data skew", "depth": "deep" },
+    { "id": "batch-fault-tolerance", "title": "Fault tolerance and stragglers", "depth": "deep" },
+    { "id": "etl-elt", "title": "ETL, ELT and idempotent pipelines", "depth": "tradeoffs" },
+    { "id": "spark", "title": "Spark", "depth": "awareness" },
+    { "id": "lambda-kappa", "title": "Lambda vs kappa architecture", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p6-stream-processing", "p2-olap-vs-oltp", "p2-object-storage"]
+}

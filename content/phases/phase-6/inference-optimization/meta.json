@@ -1,0 +1,21 @@
+{
+  "id": "p6-inference-optimization",
+  "phase": 6,
+  "slug": "inference-optimization",
+  "title": "Inference Optimization",
+  "order": 16,
+  "week": 13,
+  "estimatedMinutes": 80,
+  "topics": [
+    { "id": "quantization", "title": "Quantization", "depth": "deep" },
+    { "id": "flash-attention", "title": "FlashAttention: attention without the round trips", "depth": "deep" },
+    { "id": "mqa-gqa", "title": "MQA and GQA: shrinking the cache by sharing heads", "depth": "deep" },
+    { "id": "prefix-caching", "title": "Prefix caching and RadixAttention", "depth": "deep" },
+    { "id": "chunked-prefill", "title": "Chunked prefill", "depth": "deep" },
+    { "id": "disaggregation", "title": "Disaggregated prefill and decode", "depth": "tradeoffs" },
+    { "id": "kv-offload-kernels", "title": "KV offload, CUDA graphs and kernel fusion", "depth": "awareness" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p6-llm-serving", "p6-llm-cost-latency", "p6-llm-inference-internals", "p6-gpu-parallelism"]
+}

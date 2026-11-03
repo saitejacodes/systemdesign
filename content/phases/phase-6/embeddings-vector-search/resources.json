@@ -1,0 +1,32 @@
+[
+  {
+    "id": "hnsw-paper",
+    "title": "Efficient and robust approximate nearest neighbor search using Hierarchical Navigable Small World graphs",
+    "author": "Yu. A. Malkov and D. A. Yashunin",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/1603.09320",
+    "why": "The original HNSW paper: layer assignment, the M and ef parameters, and the neighbour-selection heuristic.",
+    "topicIds": ["hnsw", "recall-latency"],
+    "free": true
+  },
+  {
+    "id": "pgvector-readme",
+    "title": "pgvector README",
+    "author": "Andrew Kane and contributors",
+    "kind": "repo",
+    "url": "https://github.com/pgvector/pgvector",
+    "why": "Distance operators, HNSW and IVFFlat options, and the clearest explanation of filtering with approximate indexes.",
+    "topicIds": ["pgvector-vs-dedicated", "metadata-filtering", "similarity"],
+    "free": true
+  },
+  {
+    "id": "faiss-wiki",
+    "title": "Faiss wiki",
+    "author": "Meta AI Research",
+    "kind": "docs",
+    "url": "https://github.com/facebookresearch/faiss/wiki",
+    "why": "How IVF, PQ and HNSW indexes are built and combined, with guidance on choosing an index for a dataset size.",
+    "topicIds": ["ivf-pq", "exact-vs-ann"],
+    "free": true
+  }
+]

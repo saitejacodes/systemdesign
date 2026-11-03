@@ -1,0 +1,172 @@
+[
+  {
+    "id": "inference-optimization-q1",
+    "type": "single",
+    "prompt": "A team switches a 13B model from fp16 weights to weight-only INT4 (fp16 activations). Which effect should they expect?",
+    "options": [
+      { "id": "a", "text": "Prefill gets about four times faster because the matmuls now run on INT4 tensor cores" },
+      { "id": "b", "text": "Decode steps get noticeably faster because each step reads about a quarter of the weight bytes" },
+      { "id": "c", "text": "The KV cache shrinks to a quarter, so four times as many tokens fit in the same memory" },
+      { "id": "d", "text": "Nothing changes in speed, because dequantizing in the kernel costs exactly what it saves" }
+    ],
+    "correct": ["b"],
+    "explanation": "Decode is memory-bandwidth-bound, so reading fewer weight bytes per step speeds it up roughly in proportion. Prefill is compute-bound and the maths still runs in fp16 after dequantization, so it does not get four times faster. Weight quantization does not touch the KV cache; that needs KV-cache quantization. Dequantization costs some compute, but decode has idle compute to spare, so it does not cancel the bandwidth saving.",
+    "topicId": "quantization",
+    "difficulty": 2
+  },
+  {
+    "id": "inference-optimization-q2",
+    "type": "scenario",
+    "prompt": "How much memory do the weights need, roughly?",
+    "scenario": "You quantize a 70B-parameter model to INT4 weights with group size 128 and one fp16 scale per group.",
+    "options": [
+      { "id": "a", "text": "About 35 GB: 4 bits per weight with no other storage needed" },
+      { "id": "b", "text": "About 36 GB: 4 bits plus 16 bits shared by each 128 weights" },
+      { "id": "c", "text": "About 70 GB: INT4 values are padded to a byte each in memory" },
+      { "id": "d", "text": "About 53 GB: each group stores its own fp16 copy of the outliers" }
+    ],
+    "correct": ["b"],
+    "explanation": "Each weight costs 4 bits plus 16/128 = 0.125 bits of scale, about 4.125 bits, so 70 × 10⁹ × 4.125 ÷ 8 ≈ 36 GB. Option a forgets the scales. INT4 values are packed two per byte, not padded, so 70 GB is the INT8 figure. Group-wise schemes such as GPTQ and AWQ do not store fp16 copies of outliers per group; that is closer to LLM.int8()'s decomposition, and it would not produce that number.",
+    "topicId": "quantization",
+    "difficulty": 2
+  },
+  {
+    "id": "inference-optimization-q3",
+    "type": "scenario",
+    "prompt": "What is the most likely cause, and what should the rollout process have included?",
+    "scenario": "A quantized model was approved because its WikiText perplexity barely changed. A week after full rollout, customers using it for SQL generation report more broken queries, while chat feedback is flat. Calibration used generic web text.",
+    "options": [
+      { "id": "a", "text": "A tokenizer mismatch from quantization; re-export the tokenizer with the new weights" },
+      { "id": "b", "text": "Random sampling noise; raise the temperature threshold and wait for more data to come in" },
+      { "id": "c", "text": "A narrow regression on code that averages hide; gate rollout on task-sliced evals" },
+      { "id": "d", "text": "KV cache corruption from INT4 weights; switch the KV cache to fp32 to restore precision" }
+    ],
+    "correct": ["c"],
+    "explanation": "Perplexity is an average over general text, and calibration data without code meant channels important for code were not protected. Task-sliced evals (SQL, maths, long context, languages) against the fp16 baseline would have caught it. Quantization does not change the tokenizer. Calling a consistent task-specific regression noise ignores the evidence, and temperature is unrelated. Weight quantization does not touch the KV cache, and fp32 KV would not fix weight error.",
+    "topicId": "quantization",
+    "difficulty": 3
+  },
+  {
+    "id": "inference-optimization-q4",
+    "type": "multi",
+    "prompt": "Which statements about FlashAttention are true? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "It computes exact attention, matching standard attention up to rounding" },
+      { "id": "b", "text": "It tiles Q, K and V into SRAM and never writes the N × N scores to HBM" },
+      { "id": "c", "text": "It keeps a running max and sum per row so softmax can be done tile by tile" },
+      { "id": "d", "text": "It reduces the KV cache stored per token, so more sequences fit per GPU" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "FlashAttention is exact (a), tiles into on-chip SRAM so the score matrix never round-trips through HBM (b), and relies on an online softmax with running maximum and sum (c). It changes how attention is computed, not what is cached: the KV cache per token is set by layers, KV heads and head dimension, so d is false. MQA, GQA and KV quantization shrink the cache.",
+    "topicId": "flash-attention",
+    "difficulty": 2
+  },
+  {
+    "id": "inference-optimization-q5",
+    "type": "single",
+    "prompt": "For an 8,192-token prompt, how large is one attention head's fp16 score matrix that standard attention writes to HBM?",
+    "options": [
+      { "id": "a", "text": "16 KiB, one fp16 score per token" },
+      { "id": "b", "text": "128 MiB, 8,192² scores × 2 bytes" },
+      { "id": "c", "text": "2 MiB, 8,192 × 128 head dim × 2 bytes" },
+      { "id": "d", "text": "1 GiB, 8,192² scores × 16 bytes" }
+    ],
+    "correct": ["b"],
+    "explanation": "The score matrix is N × N: 8,192² = 67,108,864 values × 2 bytes = 128 MiB per head. One score per token describes a single query row, not the whole matrix. N × d is the size of Q, K or V for a head, not of QKᵀ. fp16 is 2 bytes, not 16, so 1 GiB overstates it eightfold.",
+    "topicId": "flash-attention",
+    "difficulty": 1
+  },
+  {
+    "id": "inference-optimization-q6",
+    "type": "scenario",
+    "prompt": "How many 4,096-token sequences' KV cache fit for each variant, roughly?",
+    "scenario": "A model has 80 layers, 64 query heads and head dimension 128, stored in fp16. You have 40 GiB free for KV cache. Compare GQA with 8 KV heads to MHA with 64.",
+    "options": [
+      { "id": "a", "text": "GQA about 32 sequences, MHA about 4" },
+      { "id": "b", "text": "GQA about 4 sequences, MHA about 32" },
+      { "id": "c", "text": "Both about 32, since query heads match" },
+      { "id": "d", "text": "GQA about 256 sequences, MHA about 32" }
+    ],
+    "correct": ["a"],
+    "explanation": "GQA: 2 × 80 × 8 × 128 × 2 = 320 KiB per token, × 4,096 = 1.25 GiB per sequence, so 40 ÷ 1.25 = 32. MHA: 2.5 MiB per token, 10 GiB per sequence, so 4. Option b swaps them. The cache depends on KV heads, not query heads, so c is wrong. Option d multiplies by 8 twice.",
+    "topicId": "mqa-gqa",
+    "difficulty": 2
+  },
+  {
+    "id": "inference-optimization-q7",
+    "type": "scenario",
+    "prompt": "What most likely happened, and what is the best first fix?",
+    "scenario": "Chat requests share a 4,000-token system prompt and normally hit the prefix cache 96% of the time. After a feature starts sending unique 60,000-token documents to the same replicas, the hit rate falls to 15% and chat TTFT rises from 250 ms to 3 s.",
+    "options": [
+      { "id": "a", "text": "Long documents evicted the shared prefix; isolate them on their own replica pool" },
+      { "id": "b", "text": "The system prompt changed by a byte; diff the prompt templates across deployments" },
+      { "id": "c", "text": "FlashAttention fails above 32k tokens; fall back to standard attention for documents" },
+      { "id": "d", "text": "The radix tree is too deep to search; flatten the cache into a hash of whole prompts" }
+    ],
+    "correct": ["a"],
+    "explanation": "Each long request fills a large share of KV memory, and LRU eviction drops the chat prefix whenever it is briefly unreferenced. Chat then re-prefills 4,000 tokens per request, saturating compute. Separating long-document traffic (and pinning hot prefixes) fixes it. A changed template would drop hits immediately and to near zero, and would not correlate with the new feature. FlashAttention handles long sequences; that is its point. Radix-tree lookup is cheap, and hashing whole prompts would destroy partial-prefix reuse.",
+    "topicId": "prefix-caching",
+    "difficulty": 3
+  },
+  {
+    "id": "inference-optimization-q8",
+    "type": "single",
+    "prompt": "Why does prefix caching raise a replica's capacity, not just lower TTFT?",
+    "options": [
+      { "id": "a", "text": "Cached prefixes are stored in INT4, so they use less memory than fresh KV entries" },
+      { "id": "b", "text": "A hit returns the stored answer, so the model never runs a decode step for it" },
+      { "id": "c", "text": "Each hit skips the prefill FLOPs for the shared prefix, freeing compute for others" },
+      { "id": "d", "text": "Cached requests bypass the scheduler queue and do not count toward the batch size" }
+    ],
+    "correct": ["c"],
+    "explanation": "A 4,000-token prefix on a 7B model costs about 270 ms of GPU compute per request; at high hit rates that work simply disappears, so the same GPUs serve more requests. Prefix caching does not change the KV storage format. Returning a stored answer is response or semantic caching; prefix caching still decodes a fresh answer. Cached requests still queue and occupy batch slots for their decode.",
+    "topicId": "prefix-caching",
+    "difficulty": 1
+  },
+  {
+    "id": "inference-optimization-q9",
+    "type": "scenario",
+    "prompt": "What does a 512-token chunked-prefill budget change for this batch?",
+    "scenario": "64 sequences are decoding at 25 ms per step on a 7B model (assume 200 TFLOP/s effective). A 16,000-token prompt arrives, whose full prefill would take about 1.07 s.",
+    "options": [
+      { "id": "a", "text": "Both TTFT and decode gaps improve, since chunking removes prefill work" },
+      { "id": "b", "text": "Decode gaps stay near 60 ms instead of one 1 s stall; TTFT rises to ~1.9 s" },
+      { "id": "c", "text": "The long prompt is rejected until enough sequences finish to fit all of it" },
+      { "id": "d", "text": "Decode pauses for 32 short stalls of 1.07 s each while the chunks are run" }
+    ],
+    "correct": ["b"],
+    "explanation": "Each iteration carries one token per decoding sequence plus a 512-token chunk (about 34 ms of compute), so steps take at most about 60 ms. The long request needs 32 such iterations, about 1.9 s to first token versus 1.07 s unchunked. Chunking does not remove work; it spreads it, and adds re-reads of earlier chunks' KV. It does not reject prompts. Each chunk is 1/32 of the prefill, not the whole prefill.",
+    "topicId": "chunked-prefill",
+    "difficulty": 3
+  },
+  {
+    "id": "inference-optimization-q10",
+    "type": "multi",
+    "prompt": "In which situations is disaggregating prefill and decode onto separate pools most likely to pay off? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Long prompts with strict TTFT and TPOT targets at large fleet scale" },
+      { "id": "b", "text": "Decode can run on cheaper, less compute-dense hardware you already own" },
+      { "id": "c", "text": "Two replicas serving short prompts on a modest network in one cluster" },
+      { "id": "d", "text": "A GQA model whose KV per prompt is small relative to link bandwidth" }
+    ],
+    "correct": ["a", "b", "d"],
+    "explanation": "Disaggregation removes prefill-decode interference and lets each pool be sized separately, which matters most with long prompts and tight SLOs at scale (a). Splitwise's argument is that decode needs bandwidth, not compute, so it can use cheaper hardware (b). Small KV per prompt, as with GQA, keeps the transfer cheap (d). With two replicas and short prompts, the transfer, second pool and balancing work cost more than the interference they remove (c).",
+    "topicId": "disaggregation",
+    "difficulty": 2
+  },
+  {
+    "id": "inference-optimization-q11",
+    "type": "single",
+    "prompt": "Why do serving engines capture CUDA graphs for a set of batch sizes and pad each step up to the nearest one?",
+    "options": [
+      { "id": "a", "text": "Graphs record fixed shapes, and small-batch decode is dominated by launch overhead" },
+      { "id": "b", "text": "Padding improves numerical stability of attention when batch sizes are small" },
+      { "id": "c", "text": "The GPU only supports power-of-two batch sizes in its tensor core instructions" },
+      { "id": "d", "text": "Graphs move the KV cache to host memory between steps, which needs aligned sizes" }
+    ],
+    "correct": ["a"],
+    "explanation": "A CUDA graph replays a recorded launch sequence with fixed shapes in one call, removing the CPU cost of launching hundreds of short kernels per decode step. Since shapes must match, engines capture several batch sizes and pad. Padding has nothing to do with numerical stability. Tensor cores do not require power-of-two batch sizes. CUDA graphs do not move the KV cache anywhere; offload is a separate mechanism.",
+    "topicId": "kv-offload-kernels",
+    "difficulty": 2
+  }
+]

@@ -1,0 +1,217 @@
+## Why it matters
+
+Some answers are worth much less if they arrive tomorrow. A card-fraud check has to run before the payment is approved, a surge-pricing map is useless an hour late, and an "items left in stock" counter that updates overnight sells things you no longer have. <Term slug="stream-processing">Stream processing</Term> computes over events continuously as they arrive instead of waiting for a nightly job. The hard part is not speed; it is correctness. Events arrive late, out of order and sometimes twice, machines crash mid-computation, and you still have to decide when a "per-minute count" is finished. Google's Dataflow Model paper (Akidau et al., VLDB 2015) framed the whole field as one trade-off between **correctness, latency and cost**, and gave it the vocabulary this section uses: event time, windows, watermarks, triggers and accumulation. Apache Flink, Kafka Streams, Spark Structured Streaming and Apache Beam all build on those ideas.
+
+<Callout type="analogy" title="The last bus of the night">
+Every passenger (event) has a ticket stamped with the time they *meant* to travel (event time), but they reach the stop whenever traffic lets them (processing time). The depot runs one bus per hour-long window. The dispatcher can't wait forever for stragglers, so she watches the stop and says "I'm confident nobody for the 22:00 bus is still coming": that announcement is the **watermark**, and the bus leaves. A passenger with a 22:00 ticket who turns up after it left is **late data**: either the depot has a late-data desk that sends a taxi and amends the passenger count (allowed lateness), or the passenger is turned away and noted in a book (dropped, or sent to a side output). Where it breaks down: a real dispatcher sees the road; a stream processor only infers lateness from the timestamps it has already seen, so one stalled road (an idle partition) can stop every bus in the city.
+</Callout>
+
+## Streams vs batch
+
+<DepthStamp depth="tradeoffs" />
+
+Akidau's *Streaming 101* argues that the useful split is not "streaming vs batch systems" but **bounded vs unbounded data**. Bounded data has an end: yesterday's log files. Unbounded data never ends: the click stream. A batch job reads a bounded input, computes, and finishes, so "is the answer complete?" is trivially yes. A streaming job runs forever over an unbounded input, so it must keep state between events and decide on its own when a result is ready to emit.
+
+| | Batch | Stream |
+|---|---|---|
+| Input | Bounded (files, a table snapshot) | Unbounded (a log such as a Kafka topic) |
+| Latency | Minutes to hours | Milliseconds to seconds |
+| Completeness | Known: the input is all there | Estimated: must guess when a window is done |
+| Failure recovery | Rerun the task or the job | Restore state from a checkpoint and replay the log |
+| State | Recomputed every run | Kept for days or forever, must be snapshotted |
+| Cost | Pay while the job runs | Pay for an always-on cluster plus state storage |
+
+Batch is a special case of streaming over a bounded input, which is why Flink and Beam run the same program in either mode. The reverse is not true: a nightly job cannot give you a two-second fraud signal.
+
+## Event time vs processing time
+
+<DepthStamp depth="deep" />
+
+<Term slug="event-time">Event time</Term> is when something happened, stamped by the producer (the phone, the card terminal). <Term slug="processing-time">Processing time</Term> is when the stream processor sees the event. The gap between them is called skew, and in practice it is anything from milliseconds to days: a phone in airplane mode uploads three hours of game events when it lands, a Kafka consumer replays a week of data after a bug fix, a network partition holds back one data centre.
+
+If you group by processing time, your numbers describe *your pipeline*, not *the world*. A replay after an outage piles hours of events into the current minute; a backlog makes traffic look like it dropped and then spiked. Results also change if you rerun the job, because processing time is different on every run. Grouping by event time gives the same answer every time you process the same events, no matter when or how fast, which is what billing, metrics and anything you might reprocess need. The price is that you must now cope with events that arrive out of order and late.
+
+### Worked example: the tunnel
+
+A rider's app logs `ride_started` at 08:59:50 event time, then loses signal in a tunnel. The event reaches the processor at 09:04:10.
+
+- Per-minute processing-time counts put it in the 09:04 bucket: the 08:59 count is one short and 09:04 is one too high.
+- Per-minute event-time counts put it in the 08:59 bucket, but only if the 08:59 window has not already been emitted and thrown away. That is exactly the question watermarks answer.
+
+## Windowing: tumbling, sliding, session
+
+<DepthStamp depth="deep" />
+
+You can't "sum all events" in an unbounded stream, so you cut it into finite pieces called windows, usually per key (per user, per card, per page).
+
+- A <Term slug="tumbling-window">tumbling window</Term> has a fixed size and no overlap: 10:00–10:01, 10:01–10:02. Each event belongs to exactly one window.
+- A <Term slug="hopping-window">sliding (hopping) window</Term> has a size and a smaller slide: "the last 10 minutes, updated every minute". Windows overlap, so each event belongs to size ÷ slide windows. Naming differs: Flink calls these sliding windows; Kafka Streams calls them hopping windows and reserves "sliding windows" for windows defined by the time difference between two records.
+- A <Term slug="session-window">session window</Term> has no fixed size. It groups a key's events separated by less than an inactivity gap; a quiet period longer than the gap closes the session. When a late event bridges two sessions, the engine merges them into one.
+- A global window holds everything for a key and only emits when a custom trigger fires (every 100 events, say).
+
+### Worked example: how many windows?
+
+Assume a page-view stream of **20,000 events a second** spread over **500,000 pages**, aggregated per page for one day.
+
+| Window | Windows per page per day | Window assignments per event | Assignments per second |
+|---|---|---|---|
+| Tumbling, 1 minute | 1,440 | 1 | 20,000 |
+| Sliding, 10 min size, 1 min slide | 1,440 (one starts each minute) | 10 | 200,000 |
+| Sliding, 1 hour size, 1 min slide | 1,440 | 60 | 1,200,000 |
+| Session, 30 min gap | Varies with behaviour | 1 (plus merges) | about 20,000 |
+
+The sliding windows have the same number of *starts* as the tumbling ones, but each event updates many open windows at once, so the work and the open state grow by size ÷ slide. A 10-minute window sliding every minute keeps 10 open windows per active page; across 500,000 pages that is up to 5 million live aggregates. Flink and Kafka Streams both store one aggregate per window per key, so a 1-hour window sliding every second (3,600 open windows per key) is a classic way to run out of state. The usual fix is to compute 1-minute tumbling partial sums and add up the last 60 of them per key, which needs one update per event.
+
+## Watermarks
+
+<DepthStamp depth="deep" />
+
+An event-time window for 10:00–10:01 can only be emitted when you believe no more 10:00 events are coming. A <Term slug="watermark">watermark</Term> is the system's running claim: "event time has reached T; I expect no more events with timestamps earlier than T." When the watermark passes the end of a window, the window fires.
+
+Watermarks are a heuristic unless the source can prove ordering. The common one, Flink's `WatermarkStrategy.forBoundedOutOfOrderness(Duration.ofSeconds(5))`, says the watermark is the largest event timestamp seen so far minus 5 seconds (Flink subtracts a further 1 ms). A window `[10:00:00, 10:01:00)` fires when the watermark reaches 10:00:59.999, which happens once an event stamped about 10:01:05 has been seen.
+
+Two operational facts matter more than the formula:
+
+- **The minimum wins.** A Flink operator reading from several parallel inputs (say 12 Kafka partitions) uses the *minimum* of their watermarks. One slow partition holds back the event-time clock for the whole job.
+- **Idle inputs freeze time.** A partition that receives no events never advances its watermark, so no window downstream ever fires. Flink's `withIdleness(Duration)` marks such inputs idle so they are ignored until data returns.
+
+Choosing the bound is the latency vs completeness dial. A 5-second bound emits results within seconds but treats a 20-second-late event as late; a 10-minute bound catches nearly everything and makes every dashboard 10 minutes behind.
+
+Kafka Streams takes a simpler route: it has no separate watermark. It tracks **stream time**, the largest timestamp seen so far in each task, and a window closes when stream time passes window end plus a configured grace period.
+
+## Late data
+
+<DepthStamp depth="deep" />
+
+An event is **late** when it arrives after the watermark has passed its timestamp. You have three choices, and you should make them on purpose:
+
+1. **Drop it.** Flink's default: a window with no allowed lateness silently discards late events and counts them in the `numLateRecordsDropped` metric. Alert on that metric.
+2. **Update the result.** Flink's <Term slug="allowed-lateness">allowed lateness</Term> (`.allowedLateness(Duration.ofMinutes(2))`) keeps the window's state for two more minutes after the watermark passes; each late event fires the window again with a corrected result. In Kafka Streams the grace period does the same job. Downstream must handle updates, for example by upserting on the window key rather than appending.
+3. **Divert it.** Flink's `.sideOutputLateData(tag)` sends events that are too late even for allowed lateness to a separate stream you can store and reconcile later.
+
+<Figure caption="FIG. 3.1 · A LATE EVENT DROPPED AFTER THE WATERMARK">
+  <Diagram label="A one-minute window fires when the watermark reaches 10:01:00; an event stamped 10:00:58 arrives four seconds later and is dropped because allowed lateness is zero." chart={`sequenceDiagram
+    participant P as Phone (event time)
+    participant K as Kafka partition
+    participant F as Flink window 10:00 to 10:01
+    participant S as Sink (dashboard)
+    P->>K: click ts 10:00:58 (stuck in a tunnel)
+    K->>F: click ts 10:00:40
+    K->>F: click ts 10:01:06
+    Note over F: watermark about 10:01:06 - 5 s = 10:01:01
+    F->>S: emit count for 10:00 window (window state cleared)
+    P->>K: tunnel ends, click ts 10:00:58 delivered
+    K->>F: click ts 10:00:58 (arrives 10:01:10 processing time)
+    Note over F: 10:00:58 is below the watermark, allowed lateness 0
+    Note over F: dropped, numLateRecordsDropped + 1
+    Note over S: 10:00 count stays one short forever`} />
+</Figure>
+
+*With allowed lateness of 2 minutes the window would have re-fired with a corrected count, and the sink would have overwritten the old row.*
+
+The same failure as a timeline:
+
+| Processing time | What happens | Watermark |
+|---|---|---|
+| 10:00:41 | Event ts 10:00:40 arrives; window count = 812 | 10:00:35 |
+| 10:01:07 | Event ts 10:01:06 arrives | 10:01:01 |
+| 10:01:07 | Watermark passes 10:00:59.999: window fires, emits 812, state deleted | 10:01:01 |
+| 10:01:10 | Phone reconnects; event ts 10:00:58 arrives | 10:01:01 |
+| 10:01:10 | Late, no allowed lateness: dropped, metric incremented | 10:01:01 |
+| Next morning | Finance reconciles against the batch job, which counts 813 | — |
+
+The Dataflow Model's answer to "when do I emit?" is a <Term slug="trigger">trigger</Term>: emit an early, speculative result every 30 seconds, an on-time result at the watermark, and a late update for each late event, while the accumulation mode says whether each emission replaces the previous one or adds to it.
+
+## Exactly-once effects
+
+<DepthStamp depth="deep" />
+
+You met <Term slug="exactly-once">exactly-once</Term> as a delivery promise in Phase 3: it is impossible to *deliver* a message exactly once across crashes. What stream processors offer is exactly-once **effects on state**: after a failure and replay, each event's contribution to the counts is reflected once. End to end, you need three pieces:
+
+1. **A replayable source.** Kafka lets the job rewind to a stored offset.
+2. **Consistent snapshots of state plus input positions.** Flink takes a <Term slug="checkpoint-barrier">checkpoint</Term> by injecting barrier markers into the streams (asynchronous barrier snapshotting, a variant of Chandy-Lamport; Carbone et al., 2015). Each operator snapshots its state when the barrier reaches it, so the snapshot includes the source offsets and exactly the state those offsets produced. On failure, Flink restores every operator from the last completed checkpoint and rewinds the sources to the saved offsets.
+3. **A sink that doesn't double-apply replayed output.** Either an idempotent sink (upsert by a deterministic key such as `page_id + window_start`) or a transactional one. Flink's Kafka sink with `DeliveryGuarantee.EXACTLY_ONCE` writes into a Kafka transaction and commits it only when the checkpoint completes, a two-phase commit. Kafka Streams with `processing.guarantee=exactly_once_v2` commits output records, state changelog writes and input offsets in one Kafka transaction.
+
+<Figure caption="FIG. 3.2 · WHY AT-LEAST-ONCE DOUBLE COUNTS">
+  <Diagram label="A consumer adds an amount to the database, crashes before committing its offset, restarts from the old offset and adds the same amount again." chart={`sequenceDiagram
+    participant K as Kafka
+    participant C as Consumer job
+    participant D as Totals table
+    K->>C: offset 41: +$30 for merchant 7
+    C->>D: UPDATE total = total + 30
+    Note over C: crash before committing offset 42
+    C->>K: restart, resume from last commit (41)
+    K->>C: offset 41 again: +$30
+    C->>D: UPDATE total = total + 30
+    Note over D: merchant 7 is $30 too high`} />
+</Figure>
+
+*The fix is to make the effect idempotent (store the last applied offset or event ID in the same database transaction as the total) or let the framework commit offsets and output together.*
+
+The costs are real. Transactional output is only visible when the checkpoint commits, so consumers reading with `isolation.level=read_committed` see results up to one checkpoint interval late: with a 60-second interval, a "real-time" dashboard can lag by a minute. Kafka transactions also time out (the broker caps them with `transaction.max.timeout.ms`), so the transaction timeout must exceed the checkpoint interval plus expected recovery time, or a slow recovery aborts committed-looking work. And none of this covers side effects outside the framework: if your operator calls a payment API or sends an email, a replay calls it again unless that call carries an <Term slug="idempotency-key">idempotency key</Term>.
+
+## Flink and Kafka Streams
+
+<DepthStamp depth="awareness" />
+
+| | Apache Flink | Kafka Streams |
+|---|---|---|
+| Shape | A distributed engine: JobManager plus TaskManagers you deploy and operate | A Java library inside your own application; no separate cluster |
+| Sources and sinks | Many (Kafka, files, databases via connectors, Kinesis) | Kafka in, Kafka out (use Kafka Connect for the rest) |
+| State | Local (heap or RocksDB), snapshotted to durable storage in checkpoints | Local RocksDB stores backed by Kafka changelog topics |
+| Event time | Watermarks, allowed lateness, side outputs | Stream time plus a grace period per window |
+| Exactly-once | Checkpoints plus transactional or idempotent sinks | `exactly_once_v2` Kafka transactions |
+| Scaling | Change parallelism, restore from a savepoint | Add app instances; Kafka rebalances partitions to them |
+| Good fit | Large stateful jobs, many sources, complex event time | Services already on Kafka that need joins and aggregations |
+
+Spark Structured Streaming runs streams as a series of small batch jobs (micro-batches) by default, which gives sub-second to seconds latency with Spark's batch tooling. Apache Beam is an API that implements the Dataflow Model and runs on Flink, Spark or Google Cloud Dataflow.
+
+<TradeoffBox title="Stream processing choices" items={[
+  { gain: "Event time: reproducible, correct results on replay", cost: "Must handle out-of-order and late events with watermarks" },
+  { gain: "Short watermark bound: low latency", cost: "More events count as late; results are less complete" },
+  { gain: "Allowed lateness: late events fix the result", cost: "State kept longer; sinks must accept updates, not just appends" },
+  { gain: "Sliding windows: smooth rolling metrics", cost: "Work and state multiply by size ÷ slide" },
+  { gain: "Transactional exactly-once sink: no duplicates downstream", cost: "Output visible only at checkpoint commit; added latency and tuning" },
+  { gain: "Kafka Streams: no cluster to run", cost: "Kafka-only, and scaling is tied to partition count" }
+]} />
+
+<NotWhenBox title="When not to stream" items={[
+  "Nobody acts on the result faster than daily: a nightly batch job is cheaper and simpler to operate and debug.",
+  "The computation needs the whole dataset at once (a global sort, training a model over all history).",
+  "Low event volume with simple per-event logic: a queue consumer or a database trigger does the job without windows or checkpoints.",
+  "The team can't own an always-on stateful system: on-call, state migrations and checkpoint tuning are ongoing work."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Exactly-once means each message is delivered once." right="Delivery can repeat after a crash. Frameworks give exactly-once effects on state by replaying from a consistent checkpoint, and end to end only with a replayable source and an idempotent or transactional sink." />
+
+<Misconception wrong="A watermark guarantees no older events will arrive." right="Most watermarks are heuristics derived from timestamps already seen. Late events still happen, so decide whether to drop, update or divert them, and monitor how many." />
+
+<Misconception wrong="Processing-time windows are fine as long as the pipeline is fast." right="Any backlog, replay or offline device moves events into the wrong window, and the result changes every time you rerun. Use event time for anything you report or bill on." />
+
+## Interview angle
+
+<InterviewAngle title="Stream processing" questions={[
+  "Design a per-minute count of ad clicks per campaign that billing can trust. How do you handle clicks that arrive late?",
+  "Your dashboard stopped updating but Kafka shows events arriving. What do you check first?",
+  "How does Flink recover from a crash without double-counting?",
+  "What happens to state size if you change a 1-minute tumbling window to a 1-hour window sliding every second?",
+  "When would you choose Kafka Streams over Flink, and when the reverse?"
+]}>
+This topic appears in ad-click aggregation, fraud detection, top-K and metrics pipeline designs. Say **event time** in the first minute and explain why. Strong answers: late clicks are bounded with a watermark (bound chosen from measured skew), allowed lateness updates billed totals via upserts keyed by campaign and window, and anything later goes to a side output reconciled by a daily batch job. A stalled dashboard with live traffic is usually a stuck watermark: an idle or lagging partition holds the minimum back, so enable idleness detection and check per-partition consumer lag. Recovery without double-counting is checkpoint barriers that snapshot state with source offsets, plus a transactional or idempotent sink. Sliding every second multiplies open windows by 3,600 per key; pre-aggregate into small tumbling buckets instead. Kafka Streams fits when everything is already in Kafka and you want no extra cluster; Flink fits many sources, very large state and richer event-time control.
+</InterviewAngle>
+
+## Practice
+
+1. A stream carries 50,000 events a second for 2 million users. Compare the number of window updates per second and open windows per user for a 5-minute tumbling window and for a 30-minute window sliding every 5 minutes.
+2. Measured skew is under 3 seconds for 99% of events, but 0.5% arrive up to 10 minutes late. Choose a watermark bound, allowed lateness and side-output policy for a billing aggregation, and state the latency users will see.
+3. A Flink job writes per-merchant totals to Postgres with plain `INSERT` statements and checkpoints every 30 seconds. Describe what happens after a crash 20 seconds into a checkpoint interval, then redesign the sink so totals are correct.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

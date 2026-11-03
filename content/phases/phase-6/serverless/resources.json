@@ -1,0 +1,42 @@
+[
+  {
+    "id": "lambda-execution-environment",
+    "title": "Understanding the Lambda execution environment lifecycle",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html",
+    "why": "The primary description of the Init, Invoke and Shutdown phases, environment reuse and what causes a cold start.",
+    "topicIds": ["faas-model", "cold-starts"],
+    "free": true
+  },
+  {
+    "id": "lambda-concurrency",
+    "title": "Understanding Lambda function scaling and concurrency",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/lambda/latest/dg/lambda-concurrency.html",
+    "why": "How concurrency is calculated, the account quota, scaling rate, and reserved vs provisioned concurrency.",
+    "topicIds": ["concurrency-limits", "cold-starts"],
+    "free": true
+  },
+  {
+    "id": "berkeley-view-serverless",
+    "title": "Cloud Programming Simplified: A Berkeley View on Serverless Computing",
+    "author": "Jonas et al. (UC Berkeley, 2019)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/1902.03383",
+    "why": "The optimistic case for serverless, with a clear list of its current limitations and where research could remove them.",
+    "topicIds": ["faas-model", "when-not-serverless", "cost-at-scale"],
+    "free": true
+  },
+  {
+    "id": "one-step-forward",
+    "title": "Serverless Computing: One Step Forward, Two Steps Back",
+    "author": "Hellerstein et al. (CIDR 2019)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/1812.03651",
+    "why": "The sharpest critique of first-generation FaaS for data-intensive and distributed work; read it alongside the Berkeley View.",
+    "topicIds": ["when-not-serverless"],
+    "free": true
+  }
+]

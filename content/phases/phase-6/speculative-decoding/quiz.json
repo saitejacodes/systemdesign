@@ -1,0 +1,172 @@
+[
+  {
+    "id": "speculative-decoding-q1",
+    "type": "single",
+    "prompt": "Why can a target model verify γ draft tokens in about the time of one normal decode step at small batch sizes?",
+    "options": [
+      { "id": "a", "text": "The verify pass skips attention for tokens the draft model has already processed" },
+      { "id": "b", "text": "The step is bound by reading the weights, so a few extra tokens add little time" },
+      { "id": "c", "text": "The draft model shares its KV cache with the target, halving the work required" },
+      { "id": "d", "text": "The target only computes logits for the last draft token, not for every position" }
+    ],
+    "correct": ["b"],
+    "explanation": "At small batch the target pass is memory-bound: its time is set by reading the weights, and the weights read once can serve a few more tokens almost for free. The verify pass still runs full attention for every draft token. Draft and target have different weights and separate KV caches. The target must compute logits at every draft position (γ + 1 distributions) to decide acceptance.",
+    "topicId": "draft-verify",
+    "difficulty": 1
+  },
+  {
+    "id": "speculative-decoding-q2",
+    "type": "single",
+    "prompt": "With γ = 4 draft tokens, how many tokens can one speculative step emit?",
+    "options": [
+      { "id": "a", "text": "Between 0 and 4, depending on how many drafts are accepted" },
+      { "id": "b", "text": "Exactly 4, because rejected drafts are resampled in place" },
+      { "id": "c", "text": "Between 1 and 5, including a replacement or bonus token" },
+      { "id": "d", "text": "Between 1 and 4, since the bonus token needs another pass" }
+    ],
+    "correct": ["c"],
+    "explanation": "On the first rejection the target samples a replacement, so at least 1 token is always emitted; if all 4 are accepted it samples a bonus from the fifth distribution it already computed, giving 5. Zero is impossible for that reason. Only the first rejected token is replaced; later drafts are discarded, not resampled. The bonus uses the target pass that already ran, so no extra pass is needed.",
+    "topicId": "draft-verify",
+    "difficulty": 1
+  },
+  {
+    "id": "speculative-decoding-q3",
+    "type": "single",
+    "prompt": "In speculative sampling, a draft token x has target probability p(x) = 0.2 and draft probability q(x) = 0.5. What is its acceptance probability?",
+    "options": [
+      { "id": "a", "text": "0.4, which is p(x) ÷ q(x)" },
+      { "id": "b", "text": "0.2, which is the target's p(x)" },
+      { "id": "c", "text": "1.0, because it was drafted" },
+      { "id": "d", "text": "0.7, which is p(x) + q(x)" }
+    ],
+    "correct": ["a"],
+    "explanation": "The rule is accept with min(1, p/q) = min(1, 0.2 ÷ 0.5) = 0.4. Accepting with p(x) alone would double-count the draft's choice: the token was already proposed with probability q. Always accepting would give the draft's distribution, not the target's. Adding the probabilities has no meaning here and can exceed 1.",
+    "topicId": "acceptance-rule",
+    "difficulty": 2
+  },
+  {
+    "id": "speculative-decoding-q4",
+    "type": "multi",
+    "prompt": "Which statements about the exactness of speculative sampling are true? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "With the min(1, p/q) rule and residual resampling, output follows p" },
+      { "id": "b", "text": "The draft model's quality changes speed but not the output distribution" },
+      { "id": "c", "text": "Medusa's typical acceptance scheme preserves the target exactly when sampling" },
+      { "id": "d", "text": "Top-p and temperature must be applied to both p and q before comparing" }
+    ],
+    "correct": ["a", "b", "d"],
+    "explanation": "The proof gives P(x) = min(p, q) + (p − min(p, q)) = p, so the output follows the target and the draft only affects acceptance, hence speed. Both distributions must be the post-processed ones actually sampled from, or the guarantee is about the wrong p. Medusa's typical acceptance deliberately relaxes exactness for speed; Medusa is exact only for greedy decoding.",
+    "topicId": "acceptance-rule",
+    "difficulty": 2
+  },
+  {
+    "id": "speculative-decoding-q5",
+    "type": "scenario",
+    "prompt": "What residual distribution is used when the draft token is rejected?",
+    "scenario": "At one position over three tokens, the target gives p = [0.5, 0.3, 0.2] and the draft gives q = [0.7, 0.2, 0.1].",
+    "options": [
+      { "id": "a", "text": "[0.5, 0.3, 0.2], the target distribution unchanged" },
+      { "id": "b", "text": "[0, 0.5, 0.5], from normalising max(0, p − q)" },
+      { "id": "c", "text": "[0.2, 0.1, 0.1] rescaled to [0.5, 0.25, 0.25]" },
+      { "id": "d", "text": "[0, 0.6, 0.4], from normalising p on the other tokens" }
+    ],
+    "correct": ["b"],
+    "explanation": "max(0, p − q) = [0, 0.1, 0.1], normalised to [0, 0.5, 0.5]; it hands out exactly the mass the draft under-supplied. Resampling from p unchanged would over-produce the first token, because it already came through acceptance. [0.5, 0.25, 0.25] uses |p − q|, which wrongly puts mass back on the over-drafted token. Renormalising p without the drafted token ignores how much each token was already covered by acceptance.",
+    "topicId": "acceptance-rule",
+    "difficulty": 3
+  },
+  {
+    "id": "speculative-decoding-q6",
+    "type": "scenario",
+    "prompt": "What walltime speedup should you expect, using the standard formula?",
+    "scenario": "On your traffic the measured acceptance rate is α = 0.7. You draft γ = 4 tokens, and one draft step costs 10% of a target step (c = 0.1). The server runs at small batch sizes, so verification costs about one target step.",
+    "options": [
+      { "id": "a", "text": "About 2.8×, the expected tokens per target pass" },
+      { "id": "b", "text": "About 2.0×, tokens per pass over a step cost of 1.4" },
+      { "id": "c", "text": "About 3.5×, since 0.7 of 5 positions are accepted" },
+      { "id": "d", "text": "About 1.4×, the ratio of draft cost to target cost" }
+    ],
+    "correct": ["b"],
+    "explanation": "Tokens per pass = (1 − 0.7⁵) ÷ 0.3 ≈ 2.77; each step costs γc + 1 = 1.4 target-step units, so speedup ≈ 2.77 ÷ 1.4 ≈ 2.0×. 2.8× forgets the draft's cost. 0.7 × 5 = 3.5 treats acceptances as independent of earlier rejections, but a token counts only if every earlier one was accepted. 1.4 is the cost per step, not a speedup.",
+    "topicId": "speedup-math",
+    "difficulty": 2
+  },
+  {
+    "id": "speculative-decoding-q7",
+    "type": "single",
+    "prompt": "With α = 0.8 and c = 0.05, raising γ from 4 to 8 improves speedup from about 2.8× to about 3.1×. Why so little?",
+    "options": [
+      { "id": "a", "text": "Later drafts count only if all earlier ones pass, while draft cost keeps growing" },
+      { "id": "b", "text": "Verifying 9 tokens per sequence always pushes the target into compute-bound mode" },
+      { "id": "c", "text": "The acceptance rate falls by a fixed amount for every additional draft token" },
+      { "id": "d", "text": "The bonus token is only sampled when γ is small, so long drafts lose it" }
+    ],
+    "correct": ["a"],
+    "explanation": "The k-th draft token is used only with probability α^k (0.8⁸ ≈ 17%), so expected tokens grow geometrically slower while draft cost γc grows linearly. Nine tokens for one sequence is still far below a ridge of a few hundred, so it stays memory-bound at small batch. The formula holds α constant; the diminishing return comes from the product of acceptances, not a falling α. The bonus token is sampled whenever every draft is accepted, at any γ.",
+    "topicId": "speedup-math",
+    "difficulty": 2
+  },
+  {
+    "id": "speculative-decoding-q8",
+    "type": "scenario",
+    "prompt": "What best explains the evening regression?",
+    "scenario": "Speculation with γ = 5 cut TPOT from 30 ms to 14 ms in the morning, at 4 to 12 sequences per replica. At the evening peak, with 60 to 90 sequences per replica, TPOT rose to 38 ms and aggregate tokens per second fell. Measured acceptance on the main route did not change.",
+    "options": [
+      { "id": "a", "text": "The draft model's KV cache filled GPU memory and forced the target to swap weights" },
+      { "id": "b", "text": "At 360+ tokens per pass, verification is compute-bound and rejected drafts waste FLOPs" },
+      { "id": "c", "text": "Continuous batching cannot mix sequences that accept different numbers of tokens" },
+      { "id": "d", "text": "The acceptance rule becomes inexact at high batch sizes, so outputs are resampled" }
+    ],
+    "correct": ["b"],
+    "explanation": "B × (γ + 1) = 60 × 6 = 360 tokens per pass or more crosses a ridge point of a few hundred FLOPs per byte, so verification costs more than a step and the FLOPs spent on rejected tokens cut throughput. Draft KV does cost memory, but engines preempt sequences rather than swapping weights, and that would show up as preemptions, not this pattern. Engines handle ragged acceptance across a batch. The acceptance rule is exact at any batch size.",
+    "topicId": "when-it-helps",
+    "difficulty": 3
+  },
+  {
+    "id": "speculative-decoding-q9",
+    "type": "scenario",
+    "prompt": "Which drafting approach is the best first choice?",
+    "scenario": "You run a code-editing assistant on a self-hosted model. Most requests paste a file and ask for a modified version, so outputs repeat long stretches of the input. GPU memory is tight and the team has no budget to train anything.",
+    "options": [
+      { "id": "a", "text": "A separate 1B draft model distilled on the target's outputs" },
+      { "id": "b", "text": "Medusa-2 heads fine-tuned jointly with the target model" },
+      { "id": "c", "text": "An EAGLE draft head trained on the target's own features" },
+      { "id": "d", "text": "Prompt lookup decoding that proposes n-grams from the input" }
+    ],
+    "correct": ["d"],
+    "explanation": "When outputs copy the input, n-gram prompt lookup proposes long accepted runs at almost no cost, with no training and no extra memory. A distilled draft model needs training and adds weights and KV cache to tight memory. Medusa-2 and EAGLE both need training, which the team cannot do, though they may be worth adding later.",
+    "topicId": "variants",
+    "difficulty": 2
+  },
+  {
+    "id": "speculative-decoding-q10",
+    "type": "scenario",
+    "prompt": "What is the most likely cause, and the best first response?",
+    "scenario": "A global dashboard shows acceptance steady at 0.72. A new tenant complains that responses got slower after speculation was enabled. Their traffic is mostly in a language that is rare in the draft model's training data, at temperature 1.0.",
+    "options": [
+      { "id": "a", "text": "Their per-route acceptance is far lower; disable speculation for them" },
+      { "id": "b", "text": "Temperature 1.0 makes outputs inexact; force greedy decoding for them" },
+      { "id": "c", "text": "The global rate shows the draft works; raise γ to give them more tokens" },
+      { "id": "d", "text": "Their prompts are long, so TTFT rose; enable speculation for prefill" }
+    ],
+    "correct": ["a"],
+    "explanation": "A global average hides per-route acceptance: an under-represented language at high temperature can drop α low enough that speculation is a net slowdown, so measure per tenant and switch it off (or tune the draft) there. Exactness does not depend on temperature, and changing their sampling changes their product. Raising γ when acceptance is low wastes more draft work. Speculation does not apply to prefill.",
+    "topicId": "production",
+    "difficulty": 3
+  },
+  {
+    "id": "speculative-decoding-q11",
+    "type": "multi",
+    "prompt": "Which are real production costs of running a separate draft model? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Its weights and KV cache take memory that target sequences could use" },
+      { "id": "b", "text": "Rejected tokens' KV entries must be rolled back in both models" },
+      { "id": "c", "text": "It must share a tokenizer and be upgraded with the target model" },
+      { "id": "d", "text": "It lowers output quality in proportion to how weak the draft is" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "The draft consumes GPU memory for weights and its own cache, leaving room for fewer target sequences; rejected drafts leave KV entries in both caches that must be discarded; and the vanilla scheme compares token-by-token over one vocabulary, so a target upgrade with a new tokenizer needs a new draft. Output quality does not change with exact rejection sampling: a weak draft only lowers acceptance, hence speed.",
+    "topicId": "production",
+    "difficulty": 2
+  }
+]

@@ -1,0 +1,226 @@
+## Why it matters
+
+Most software gets cheaper per request as it scales. LLM features often do not: every request pays for every token in and every token out, the most capable model is usually the slowest and most expensive one, and a chat that runs for twenty turns can quietly resend its whole history twenty times. A prototype that costs a few dollars a day can cost thousands once real users arrive, and the same product can feel instant or sluggish depending on how many output tokens it asks for. The fix is rarely "find a cheaper provider". It is engineering: send easy requests to small models, stop paying twice for the same prompt prefix, cap how many tokens anything may spend, and respect the rate limits that the provider will enforce whether you plan for them or not. This section covers those levers, with the arithmetic to argue for each one, and the one popular lever (semantic caching) that can leak one user's answer to another if you get it wrong.
+
+<Callout type="analogy" title="The hospital that bills by the word">
+Picture a hospital where every word spoken by staff is billed. A triage nurse (a small model) sees everyone first and handles the sprains and the sore throats. Only the hard cases are escalated to the consultant (a large model), who costs ten times as much per word and talks slower. The pharmacy keeps standard IV bags pre-mixed because half the prescriptions start with the same base solution (prompt caching: the shared prefix is prepared once). The receptionist has a habit of saying "someone asked something like that this morning" and handing over that person's answer (semantic caching), which is lovely for "where is the car park?" and a disaster for "what were my test results?". The hospital also has a budget per patient (token budgets) and a fire marshal who caps how many people can be inside per minute (rate limits). Where it breaks down: a real triage nurse knows when she is out of her depth. Small models are often confidently wrong, so the decision to escalate needs signals from outside the model.
+</Callout>
+
+## The cost and latency model
+
+<DepthStamp depth="deep" />
+
+Everything in this section rests on one formula. For a single call:
+
+```
+cost    = input tokens × input price + output tokens × output price
+latency ≈ queueing + TTFT (grows with input tokens) + output tokens × time per output token
+```
+
+Three consequences fall out of it, and they hold across providers:
+
+1. **Output tokens dominate latency.** Input is processed in parallel during prefill; output is generated one token at a time (see the LLM serving section). Cutting an answer from 800 tokens to 200 is usually the single biggest latency win.
+2. **Output tokens are usually priced higher than input tokens**, for the same reason. Check your provider's price sheet; the ratio varies.
+3. **Input tokens dominate cost in long-context and chat workloads**, because system prompts, retrieved documents, tool definitions and history are resent on every call.
+
+Worked example with labelled assumptions: a support assistant sends a 2,500-token system prompt with tool definitions, 1,500 tokens of retrieved documents, and 300 tokens from the user, and gets 400 tokens back. Assume an input price of P per million tokens and an output price of 4P per million. Input: 4,300 × P. Output: 400 × 4P = 1,600 × P. Input is 73% of the bill even though output is four times the price per token. That tells you where to look first.
+
+## Model routing
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="model-routing">Model routing</Term> picks a model per request instead of sending everything to the biggest one. Two common shapes:
+
+- **Classify then route.** A cheap classifier (rules, a small model, or a trained router) predicts difficulty or intent and sends the request to one model. Latency is one model call plus the router.
+- **Cascade.** A <Term slug="model-cascade">model cascade</Term> tries the small model first, checks the result, and escalates to a larger model only if the check fails. FrugalGPT (Chen, Zaharia and Zou, 2023) studied this pattern; RouteLLM (Ong et al., 2024) trains routers from preference data.
+
+<Figure caption="FIG. 6.10 · A TWO-TIER CASCADE">
+  <Diagram label="A request goes to the small model; a validator checks the output; passing outputs are returned, failing ones escalate to the large model." chart={`flowchart LR
+    R[Request] --> S[Small model]
+    S --> V{Validator passes?}
+    V -- yes --> OUT[Return answer]
+    V -- no --> L[Large model]
+    L --> OUT`} />
+</Figure>
+
+The escalation check is the whole design. Useful signals, roughly from most to least trustworthy: a deterministic check (the JSON parses against the schema, the SQL compiles, the unit test passes, the cited passage contains the quoted text); a task-specific verifier or classifier; the model's own self-reported confidence, which is cheap but often poorly calibrated.
+
+### Worked example: cost per query with a cascade
+
+Assume per query a small-model call costs s = 0.1 units and a large-model call costs L = 1.0 unit (a 10× price ratio, as an assumption). Escalation rate e is the fraction of queries the validator rejects.
+
+```
+cascade cost per query = s + e × L
+e = 0.30  →  0.1 + 0.30 × 1.0 = 0.40 units  (60% cheaper than always-large)
+break-even: s + e × L = L  →  e = 1 − s / L = 0.9
+```
+
+Latency moves the other way for escalated requests: they pay the small call **and** the large call. If the small model answers in 1.5 s and the large in 4 s, 70% of users get 1.5 s, but 30% get 5.5 s, and your p95 now sits on the escalated path. Teams often bound this by running the small model with a tight output cap or by escalating early on known-hard intents without trying the small model at all.
+
+The hidden cost is the **silent failure**: a small-model answer that is wrong but passes the validator. Routing only saves money if you measure quality per route on an evaluation set and watch it in production; otherwise you have traded a visible bill for an invisible quality regression.
+
+## Prompt caching
+
+<DepthStamp depth="deep" />
+
+<Term slug="prompt-caching">Prompt caching</Term> reuses the provider's computed state for a repeated prompt **prefix**. The server keeps the KV cache for the first N tokens of a prompt it has seen recently; the next request that starts with exactly the same tokens skips prefill for that part. It is the hosted version of vLLM's automatic prefix caching. Behaviour differs by vendor, and these are stable documented properties:
+
+- Anthropic's API uses explicit `cache_control` breakpoints that mark where a cacheable prefix ends; cached entries have a short lifetime (5 minutes by default) refreshed each time they are hit, cache reads are billed at a discount and cache writes at a premium.
+- OpenAI applies prompt caching automatically to prompts above a minimum length and reports cached tokens in the response usage.
+- In both, there is a minimum cacheable length and the match is on the exact prefix: tools, system prompt and earlier messages must be byte-for-byte identical.
+
+That last property sets the rule: **put stable content first and variable content last.** System prompt, tool definitions, long reference documents, few-shot examples; then the conversation; then the new user message.
+
+### Worked example: a 6,000-token shared prefix
+
+Assume a 6,000-token system prompt and tool block shared by every request, plus 300 tokens of user input. Assume cache reads cost 0.1× the normal input price (an assumption; check your provider).
+
+```
+uncached input cost  = 6,300 units
+cached input cost    = 6,000 × 0.1 + 300 = 900 units   (86% less)
+```
+
+TTFT drops too, because 6,000 tokens of prefill are skipped. The write premium is paid once per cache lifetime, so caching pays off only when the same prefix is hit several times within that lifetime. A low-traffic tenant whose requests arrive every 10 minutes against a 5-minute lifetime pays the write premium every time and never reads.
+
+### Failure timeline: one timestamp breaks the cache
+
+| Time | Event | Cache hit rate | Input cost per request |
+|---|---|---|---|
+| Mon 09:00 | 6,000-token prefix, stable | ≈ 95% | ≈ 900 units |
+| Tue 10:15 | Deploy adds "Current time: 10:15:03" to the top of the system prompt for date-aware answers | 0% | 6,300 units plus write premium |
+| Tue 10:16 | Every request has a unique prefix from token 1; every call writes a new cache entry | 0% | ≈ 7× Monday |
+| Tue 16:00 | Finance alert on daily spend; TTFT p50 also up by the 6,000-token prefill | 0% | — |
+| Tue 16:40 | Fix: move the timestamp into the final user message, round it to the date | back to ≈ 95% | ≈ 900 units |
+
+Monitor cached-token counts from the response usage as a first-class metric, and alert when the hit rate falls.
+
+## Semantic caching
+
+<DepthStamp depth="tradeoffs" />
+
+A <Term slug="semantic-cache">semantic cache</Term> returns a stored **answer** when a new query is similar enough to an earlier one. The query is converted to an embedding vector, the cache does a nearest-neighbour lookup, and if the best match's similarity is above a <Term slug="similarity-threshold">similarity threshold</Term> the stored response is returned without calling the model. Open-source projects such as GPTCache implement this pattern. Unlike prompt caching, which reuses computation and still runs the model, a semantic cache skips the model entirely, so a wrong hit is a wrong answer.
+
+The field genuinely disagrees about its value:
+
+- **For:** on repetitive traffic (FAQs, product questions, "how do I reset my password"), a hit costs an embedding and a vector lookup instead of a full generation, and answers in milliseconds.
+- **Against:** on open-ended or personalised traffic hit rates are low, while every false hit is a correctness bug. Similarity is not equivalence: "cancel my order" and "don't cancel my order" can embed very close together. Threshold tuning trades hit rate against false hits, and there is no threshold that is right for every query.
+
+### Failure timeline: another user's answer
+
+| Time | Event |
+|---|---|
+| 11:02:10 | User A asks the banking assistant "what's my balance and when is my next payment due?" The model calls tools, answers with A's balance and due date. The answer is stored in a global semantic cache keyed only by the query embedding. |
+| 11:02:45 | User B asks "what is my balance and next payment date?" Similarity to A's query is above the 0.92 threshold. |
+| 11:02:45 | The cache returns A's answer to B. No model call, no tool call, no access check. |
+| 11:30 | B reports seeing someone else's account details. It is now a data-exposure incident, not a cache bug. |
+
+The defences come from basic caching discipline, not from tuning the threshold:
+
+1. **Never semantically cache answers that depend on the user's data or on tool calls.** Cache only answers that would be identical for every user who may see them.
+2. **Scope the cache key** by tenant, user or permission set and by model and prompt version, so a hit can only return what the requester was allowed to see.
+3. Put an **exact-match cache** in front (normalised text hash); it is safe and catches much of the repetition.
+4. Use short TTLs and invalidate when the underlying documents change; a stale cached answer survives document updates that retrieval would pick up.
+5. Log hits with the matched query so false hits can be audited and the threshold tuned against labelled pairs.
+
+## Token budgets
+
+<DepthStamp depth="deep" />
+
+A <Term slug="token-budget">token budget</Term> is an explicit limit on tokens at some scope: per call (`max_tokens` on output, a cap on input), per conversation, per user per day, or per feature per month. Budgets turn cost from an emergent property into a design decision.
+
+The biggest hidden spender is chat history. If every turn adds about 300 tokens and the full history is resent each time, turn n sends roughly 300 × n input tokens, so a conversation of N turns sends in total:
+
+```
+300 × (1 + 2 + … + N) = 300 × N(N + 1) / 2
+N = 20  →  300 × 210 = 63,000 input tokens, for a conversation whose final history is 6,000
+```
+
+Cost grows quadratically with conversation length. Remedies: keep the last k turns verbatim and summarise older ones; drop tool outputs once they have been used; retrieve only the relevant earlier turns; and put the stable parts first so prompt caching absorbs the repeated prefix.
+
+On the output side, set `max_tokens` from the product need (a classification needs a handful of tokens, not 4,000), ask for concise formats, and prefer structured outputs over prose when a machine reads the answer. Hitting the output cap mid-answer is a failure mode too: the response is cut off, often mid-JSON, so treat a "stopped because of length" finish reason as an error to handle, not a success.
+
+Per-user and per-tenant budgets protect you from one runaway client or one looping agent spending the month's allowance. Enforce them before the call (reject or downgrade to a smaller model when the budget is spent) and reconcile afterwards with the actual usage the provider returns.
+
+## Rate limits and quotas
+
+<DepthStamp depth="tradeoffs" />
+
+Hosted LLM APIs enforce several limits at once, typically requests per minute and <Term slug="tokens-per-minute-limit">tokens per minute</Term>, sometimes separately for input and output, plus daily or monthly spend quotas per organisation or project. Exceeding one returns HTTP 429, often with a `retry-after` header. Token limits usually bind before request limits for LLM workloads. OpenAI's rate-limit guide notes that `max_tokens` counts toward its estimate of a request's tokens, so setting it far above what you need wastes quota.
+
+### Worked example: which limit binds?
+
+Assume a limit of 500 requests per minute and 400,000 tokens per minute, and requests averaging 3,000 input and 500 output tokens.
+
+```
+token-limited rate = 400,000 ÷ 3,500 ≈ 114 requests/minute   (binds)
+request limit      = 500 requests/minute                     (never reached)
+in flight at 10 s per request (Little's law) = (114 ÷ 60) × 10 ≈ 19 concurrent
+```
+
+Treat the provider limit as a shared resource you schedule, not a wall you bounce off:
+
+- A client-side <Term slug="token-bucket">token bucket</Term> that spends **estimated tokens**, not requests, so you slow down before the provider says 429.
+- Per-tenant quotas inside your own system, so one customer cannot consume the whole organisation limit.
+- A priority queue: interactive requests go first, batch jobs (summarise every ticket overnight) fill the gaps or move to the provider's batch interface where one exists.
+- Retries with <Term slug="exponential-backoff">exponential backoff</Term> and jitter, honouring `retry-after`, with a cap.
+
+### Failure timeline: a 429 storm
+
+| Time | Event |
+|---|---|
+| 08:59 | Nightly backfill job is still running and uses 90% of the TPM limit. |
+| 09:00 | Morning traffic arrives. The provider starts returning 429 for a share of calls. |
+| 09:00:05 | The app retries 3 times immediately; the SDK underneath also retries 2 times. Each failed user call becomes up to (1 + 3) × (1 + 2) = **12 attempts**: <Term slug="retry-amplification">retry amplification</Term>. |
+| 09:01 | Almost all quota is spent on retries; real success rate falls below 20%; users see timeouts. |
+| 09:05 | Fix: pause the backfill, retry in one layer only with backoff and jitter, admit requests through a token-aware limiter with interactive traffic first. |
+
+<TradeoffBox title="Cost and latency levers" items={[
+  { gain: "Model routing: most queries on a model a fraction of the price", cost: "Escalated queries pay twice in latency; silent small-model errors need evals to catch" },
+  { gain: "Prompt caching: large discount and lower TTFT on a shared prefix", cost: "Exact-prefix only; low traffic per prefix pays the write premium without reads" },
+  { gain: "Semantic caching: millisecond answers with no model call on repeated questions", cost: "False hits are wrong answers; unscoped caches can leak data across users" },
+  { gain: "Token budgets: predictable spend and shorter, faster answers", cost: "Summarised history can lose details; truncated outputs must be handled" },
+  { gain: "Client-side token-aware rate limiting: fewer 429s and fair sharing", cost: "Needs token estimates and a queue; adds waiting time under load" }
+]} />
+
+<NotWhenBox title="When not to reach for these" items={[
+  "Routing when traffic is small: the router and its evals cost more engineering than the savings.",
+  "Semantic caching for personalised, tool-dependent or fast-changing answers.",
+  "Prompt caching when prefixes differ per request or arrive less often than the cache lifetime.",
+  "Aggressive output caps for tasks whose value is in a complete, long answer."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Prompt caching returns a cached answer." right="It reuses the computed prefix (KV state). The model still runs on the rest of the prompt and generates a fresh answer. Returning stored answers is semantic or exact-match response caching." />
+
+<Misconception wrong="A higher similarity threshold makes a semantic cache safe." right="It reduces false hits but cannot fix a cache that is not scoped by user and permission. Two users asking the identical question about their own accounts need different answers." />
+
+<Misconception wrong="Routing to a small model is free savings." right="Escalated requests pay both latency costs, and wrong answers that pass the validator are a quality cost you only see with evaluation." />
+
+<Misconception wrong="Rate limits are about requests per minute." right="For LLM APIs the token-per-minute limit usually binds first. Plan capacity in tokens, and count requested max_tokens as well as prompts." />
+
+## Interview angle
+
+<InterviewAngle title="LLM cost and latency" questions={[
+  "Your LLM bill doubled last month with flat traffic. How do you find out why?",
+  "Design a cascade from a small to a large model. What decides escalation, and how do you know it is working?",
+  "How would you structure prompts to get the most from prompt caching?",
+  "Would you add a semantic cache to a banking assistant? What could go wrong?",
+  "You keep hitting the provider's token-per-minute limit at 09:00. What do you change?"
+]}>
+Start from the formula: cost is input tokens × price plus output tokens × price, latency is dominated by output tokens, so measure tokens per feature before changing anything. For a doubled bill, check cached-token rate (a prompt change can break caching), history growth in long chats, retries and output length. For routing, insist on an external validator and per-route evals, and quote the arithmetic (s + e × L, break-even e = 1 − s/L). For semantic caching, say both sides, then refuse to cache user-specific or tool-dependent answers and scope keys by tenant and version. For rate limits, compute which limit binds, add a token-aware limiter with priorities, and retry in one layer only.
+</InterviewAngle>
+
+## Practice
+
+1. A small model costs 0.05 units per query and a large one 0.8. Your validator rejects 25% of small-model answers. What is the cascade cost per query, the saving against always-large, and the break-even escalation rate?
+2. A chat sends 400 new tokens per turn and resends full history. How many input tokens does a 30-turn conversation send in total? Redesign it to keep the last 6 turns plus a 500-token summary and recompute.
+3. Your organisation has a 1,000,000 TPM limit, an interactive feature averaging 2,000 tokens per call at 200 calls a minute, and a backfill job. How many tokens per minute can the backfill safely use if you keep 20% headroom?
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

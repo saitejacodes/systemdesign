@@ -1,0 +1,42 @@
+[
+  {
+    "id": "spanner-osdi12",
+    "title": "Spanner: Google's Globally-Distributed Database",
+    "author": "Corbett et al. (OSDI 2012)",
+    "kind": "paper",
+    "url": "https://www.usenix.org/conference/osdi12/technical-sessions/presentation/corbett",
+    "why": "The reference design for consistent multi-region writes: Paxos-replicated shards, TrueTime and commit wait.",
+    "topicIds": ["cross-region-latency", "conflict-resolution"],
+    "free": true
+  },
+  {
+    "id": "crdt-study",
+    "title": "A comprehensive study of Convergent and Commutative Replicated Data Types",
+    "author": "Shapiro, Preguiça, Baquero and Zawirski (INRIA, 2011)",
+    "kind": "paper",
+    "url": "https://inria.hal.science/inria-00555588",
+    "why": "The formal foundation of CRDTs, with the G-Counter, PN-Counter, OR-Set and others specified precisely.",
+    "topicIds": ["conflict-resolution"],
+    "free": true
+  },
+  {
+    "id": "dynamo-sosp07",
+    "title": "Dynamo: Amazon's Highly Available Key-value Store",
+    "author": "DeCandia et al. (SOSP 2007)",
+    "kind": "paper",
+    "url": "https://www.allthingsdistributed.com/2007/10/amazons_dynamo.html",
+    "why": "Vector clocks, application-level merges and the shopping-cart example of choosing availability over consistency.",
+    "topicIds": ["conflict-resolution", "active-passive-active-active"],
+    "free": true
+  },
+  {
+    "id": "dynamodb-global-tables",
+    "title": "Global tables: multi-active, multi-Region replication",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GlobalTables.html",
+    "why": "A production multi-writer design: how replication works, how conflicts are reconciled and what consistency modes exist.",
+    "topicIds": ["conflict-resolution", "active-passive-active-active"],
+    "free": true
+  }
+]

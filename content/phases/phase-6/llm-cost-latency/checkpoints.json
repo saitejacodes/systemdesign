@@ -1,0 +1,8 @@
+[
+  { "id": "llm-cost-latency-c1", "text": "I can break an LLM call's cost into input and output tokens and say which lever cuts latency and which cuts cost.", "topicId": "cost-model" },
+  { "id": "llm-cost-latency-c2", "text": "I can design a small-to-large cascade, choose its escalation signal, and compute its cost per query and break-even escalation rate.", "topicId": "model-routing" },
+  { "id": "llm-cost-latency-c3", "text": "I can lay out a prompt so the shared prefix is cacheable and spot a change that breaks prompt caching.", "topicId": "prompt-caching" },
+  { "id": "llm-cost-latency-c4", "text": "I can argue for and against a semantic cache and scope one so it cannot return another user's answer.", "topicId": "semantic-caching" },
+  { "id": "llm-cost-latency-c5", "text": "I can calculate how chat history grows token spend and set per-call, per-conversation and per-tenant budgets.", "topicId": "token-budgets" },
+  { "id": "llm-cost-latency-c6", "text": "I can work out which provider limit binds and design token-aware rate limiting with priorities and single-layer retries.", "topicId": "rate-limits" }
+]

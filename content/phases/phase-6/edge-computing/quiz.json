@@ -1,0 +1,172 @@
+[
+  {
+    "id": "edge-computing-q1",
+    "type": "single",
+    "prompt": "Why can an isolate-based edge runtime such as Cloudflare Workers start code much faster than a container-based function platform?",
+    "options": [
+      { "id": "a", "text": "It keeps a dedicated warm container for every single customer in every one of its PoPs" },
+      { "id": "b", "text": "It creates a new heap inside an already running engine process instead of booting a sandbox" },
+      { "id": "c", "text": "It compiles JavaScript ahead of time into native binaries that skip the runtime" },
+      { "id": "d", "text": "It runs code only after the response is cached, so any startup time is hidden from users" }
+    ],
+    "correct": ["b"],
+    "explanation": "An isolate is a separate heap and context inside a V8 process that is already running, so starting it avoids booting a container or microVM. Keeping a warm container per customer per PoP would be enormously expensive and is not how isolates work. Workers run JavaScript in V8 (or WebAssembly), not as ahead-of-time native binaries. Edge functions run on the request path, often before the cache lookup, so nothing hides their start time.",
+    "topicId": "edge-functions",
+    "difficulty": 2
+  },
+  {
+    "id": "edge-computing-q2",
+    "type": "multi",
+    "prompt": "Which are typical constraints of edge function runtimes? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "A per-request CPU-time budget and a small memory cap" },
+      { "id": "b", "text": "Web-standard APIs rather than the full Node.js library" },
+      { "id": "c", "text": "No durable local state between requests in a PoP" },
+      { "id": "d", "text": "Code must be deployed separately to each PoP by hand" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Edge runtimes impose tight CPU and memory budgets (for example 128 MB per isolate in Workers), expose Web-standard APIs such as fetch and Web Crypto rather than all of Node.js, and give no durable local state: globals live in one isolate that can vanish. Deployment is the opposite of manual per-PoP: one deploy propagates globally, which is also why a bad deploy is global.",
+    "topicId": "edge-functions",
+    "difficulty": 1
+  },
+  {
+    "id": "edge-computing-q3",
+    "type": "single",
+    "prompt": "Which job is CloudFront Functions designed for, compared with Lambda@Edge?",
+    "options": [
+      { "id": "a", "text": "Calling a database at the origin to assemble a personalised page" },
+      { "id": "b", "text": "Long-running image processing on the origin's large response bodies" },
+      { "id": "c", "text": "Quick header rewrites, redirects and simple checks on viewer requests" },
+      { "id": "d", "text": "Running Python data pipelines on cached objects in between requests" }
+    ],
+    "correct": ["c"],
+    "explanation": "CloudFront Functions are lightweight JavaScript for viewer request and response events with a sub-millisecond budget and no network access, ideal for rewrites, redirects and simple token checks. Calling a database needs network access, which is Lambda@Edge territory or origin work. Long-running processing exceeds both edge budgets. Neither runs background pipelines between requests; both are request-triggered.",
+    "topicId": "edge-functions",
+    "difficulty": 2
+  },
+  {
+    "id": "edge-computing-q4",
+    "type": "scenario",
+    "prompt": "What is the most likely effect of this change?",
+    "scenario": "A shop with 20,000 product pages and 5 million users adds the user ID to the edge cache key so each user sees prices in their saved currency and a personal greeting.",
+    "options": [
+      { "id": "a", "text": "Hit rate stays the same, because each user's page is cached once and then reused later" },
+      { "id": "b", "text": "Hit rate collapses, since almost every request is the first for its user-and-page key" },
+      { "id": "c", "text": "Hit rate rises, because personalised pages are smaller and fit more entries per PoP" },
+      { "id": "d", "text": "Hit rate is unaffected, since the CDN ignores user IDs when it builds cache keys" }
+    ],
+    "correct": ["b"],
+    "explanation": "Keying by user multiplies the possible entries to 20,000 × 5 million, and each must be missed once per PoP, so nearly every request misses. 'Cached once and reused' ignores that a user rarely revisits the same page at the same PoP before expiry. Page size doesn't fix cardinality, and personalised pages are not smaller. The CDN uses whatever the key is configured to include; adding the user ID is exactly what fragments it. The fix is to key by segment (currency) and fetch the greeting privately.",
+    "topicId": "edge-caching-personalization",
+    "difficulty": 2
+  },
+  {
+    "id": "edge-computing-q5",
+    "type": "scenario",
+    "prompt": "What is the root cause, and the most important prevention?",
+    "scenario": "During a bot attack, an engineer adds an edge rule to cache /account pages for 60 seconds keyed by URL. Minutes later users report seeing another person's name and address.",
+    "options": [
+      { "id": "a", "text": "A personalised page was cached under a shared key; mark such responses private or no-store" },
+      { "id": "b", "text": "The TTL was too long; a 5-second TTL makes cross-user caching safe enough" },
+      { "id": "c", "text": "The bots poisoned the cache with forged pages; add a WAF rule to block them before the cache" },
+      { "id": "d", "text": "The origin had a session bug that mixed users; the edge rule only exposed an existing origin defect" }
+    ],
+    "correct": ["a"],
+    "explanation": "The first user's page was stored under /account and served to everyone at that PoP. Personalised responses must never enter a shared cache: Cache-Control private or no-store from the origin, plus an edge policy that refuses responses carrying Set-Cookie or requests with Authorization. A shorter TTL only shrinks the leak; five seconds still exposes data. The data shown belonged to real users, which points to caching, not forged bot content. Nothing suggests an origin bug; the symptom appeared exactly when the cache rule was added.",
+    "topicId": "edge-caching-personalization",
+    "difficulty": 2
+  },
+  {
+    "id": "edge-computing-q6",
+    "type": "single",
+    "prompt": "What does 'Cache-Control: max-age=60, stale-while-revalidate=300' allow a cache to do?",
+    "options": [
+      { "id": "a", "text": "Serve the copy fresh for 60 s, then for up to 300 s more serve it stale while refreshing in the background" },
+      { "id": "b", "text": "Serve the copy for 300 s, then revalidate with the origin every 60 s until the content changes" },
+      { "id": "c", "text": "Keep the copy for 360 s but block every request after 60 s until the refresh completes" },
+      { "id": "d", "text": "Serve the copy for 60 s, then delete it and return errors until 300 s have passed" }
+    ],
+    "correct": ["a"],
+    "explanation": "Under RFC 5861, after max-age expires the cache may keep answering with the stale copy for up to the stale-while-revalidate window while it fetches a fresh one asynchronously. It does not serve for 300 s first and then poll; the order is fresh, then stale-with-refresh. Blocking requests during refresh is exactly what the directive avoids. Nothing in it causes deletion or errors.",
+    "topicId": "edge-caching-personalization",
+    "difficulty": 1
+  },
+  {
+    "id": "edge-computing-q7",
+    "type": "scenario",
+    "prompt": "Roughly how long does the edge-function version wait on data before it can render?",
+    "scenario": "A user is 10 ms from their PoP. The PoP is 200 ms round trip from the only database, in another region. The page needs 3 sequential queries. The team moved the rendering code from the origin (1 ms from the database) into an edge function that queries the database directly.",
+    "options": [
+      { "id": "a", "text": "About 13 ms" },
+      { "id": "b", "text": "About 213 ms" },
+      { "id": "c", "text": "About 610 ms" },
+      { "id": "d", "text": "About 1,830 ms" }
+    ],
+    "correct": ["c"],
+    "explanation": "10 ms to the PoP plus 3 sequential queries × 200 ms = 610 ms, nearly three times the 213 ms of rendering at the origin (10 + 200 + 3 × 1). About 13 ms assumes the database is at the edge. About 213 ms is the origin or a single batched call, not three sequential direct queries. About 1,830 ms triple-counts by charging the 610 ms path for each query.",
+    "topicId": "data-locality",
+    "difficulty": 2
+  },
+  {
+    "id": "edge-computing-q8",
+    "type": "scenario",
+    "prompt": "Which statement best explains the behaviour?",
+    "scenario": "Feature flags are stored in an eventually consistent edge key-value store. An engineer turns a flag off. Users in the same region see it off immediately, but users on another continent see it on for about 40 more seconds.",
+    "options": [
+      { "id": "a", "text": "The store is broken, since a key-value store should apply a write everywhere in the same instant" },
+      { "id": "b", "text": "Expected: other locations serve their old copy until the change propagates to them" },
+      { "id": "c", "text": "The browser cached the flag, since edge stores are strongly consistent by design" },
+      { "id": "d", "text": "The far PoP is down, so its traffic is served from a backup copy made at deploy time" }
+    ],
+    "correct": ["b"],
+    "explanation": "Eventually consistent edge stores such as Workers KV propagate writes to other locations over time, so remote PoPs read the old value for a while. That is the documented behaviour, not a malfunction, and nothing promises an instant global write. Blaming the browser assumes the edge store is strongly consistent, which it is not. A down PoP would not keep serving requests at all, and there is no deploy-time backup copy involved.",
+    "topicId": "data-locality",
+    "difficulty": 1
+  },
+  {
+    "id": "edge-computing-q9",
+    "type": "single",
+    "prompt": "You verify JWT signatures at the edge with cached public keys. A user's account is banned. What is true?",
+    "options": [
+      { "id": "a", "text": "The ban takes effect instantly, since the edge rechecks the signature on every request" },
+      { "id": "b", "text": "The ban cannot ever be enforced while JWTs are in use anywhere in the system" },
+      { "id": "c", "text": "The ban takes effect only once the CDN's cached JWKS public keys are rotated" },
+      { "id": "d", "text": "A valid token keeps passing until it expires, unless there is a revocation check" }
+    ],
+    "correct": ["d"],
+    "explanation": "A signature check proves the token was issued and not altered; it says nothing about whether it was revoked later, so the token passes until expiry unless you add a revocation check, a pushed deny-list or short lifetimes. Rechecking the signature still succeeds for a validly signed token. Bans can be enforced, just not by the signature alone. Rotating signing keys would invalidate every user's token, a heavy hammer, and is not how a single ban works.",
+    "topicId": "edge-placement",
+    "difficulty": 2
+  },
+  {
+    "id": "edge-computing-q10",
+    "type": "scenario",
+    "prompt": "What is the maximum rate the attacker can get through, and what fixes it?",
+    "scenario": "Each PoP enforces 100 requests a minute per API key with a local counter. An attacker spreads requests for one key across 40 PoPs.",
+    "options": [
+      { "id": "a", "text": "100 a minute; local counters synchronise across PoPs instantly" },
+      { "id": "b", "text": "2,500 a minute; the limit is divided across the PoPs being used" },
+      { "id": "c", "text": "4,000 a minute; add a precise shared-counter limit at the origin" },
+      { "id": "d", "text": "40 a minute; each PoP only allows one request per key per minute" }
+    ],
+    "correct": ["c"],
+    "explanation": "Independent per-PoP counters each allow 100, so 40 PoPs allow up to 40 × 100 = 4,000 a minute. Keep the cheap edge limit for bulk filtering and enforce the precise limit at the origin with a shared counter. Local counters do not synchronise instantly, which is the whole problem. Nothing divides the limit across PoPs; 2,500 is invented arithmetic. Each PoP allows 100, not 1, per minute.",
+    "topicId": "edge-placement",
+    "difficulty": 2
+  },
+  {
+    "id": "edge-computing-q11",
+    "type": "multi",
+    "prompt": "Which of these are good candidates to run at the edge? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Redirecting old URLs to new ones from a small rule table" },
+      { "id": "b", "text": "Assigning A/B variants and adding them to the cache key" },
+      { "id": "c", "text": "Debiting a wallet balance stored in one region's database" },
+      { "id": "d", "text": "Rejecting requests whose JWT signature does not verify" }
+    ],
+    "correct": ["a", "b", "d"],
+    "explanation": "Redirects need only a small, rarely changing table; variant assignment keeps personalisation cacheable; signature checks use cacheable public keys and stop bad traffic early. Debiting a wallet is a write that needs the source of truth and its consistency guarantees, plus a long round trip from the edge, so it belongs at the origin.",
+    "topicId": "edge-placement",
+    "difficulty": 1
+  }
+]

@@ -1,0 +1,201 @@
+{
+ "questions": [
+  {
+   "id": "q01",
+   "kind": "semantic",
+   "q": "What happens to vacation days I haven't taken by the end of March?",
+   "gold": [
+    "You may carry over up to five days of unused annual leave into the next leave year. Carried-over days must be used by 30 June of the new leave year, after which they expire without payment."
+   ],
+   "answer": "Up to five unused days can be carried over. They must be used by 30 June of the new leave year; after that they expire without payment [Leave and Time Off › Carrying leave over]."
+  },
+  {
+   "id": "q02",
+   "kind": "lexical",
+   "q": "I've been off ill for five weeks. Am I still on full salary?",
+   "gold": [
+    "Company sick pay is full pay for the first 20 working days of sickness in any rolling twelve-month period, then half pay for the next 20 working days, after which statutory sick pay applies."
+   ],
+   "answer": "Full pay for the first 20 working days of sickness in any rolling twelve months, then half pay for the next 20 working days, then statutory sick pay [Leave and Time Off › Sick leave]."
+  },
+  {
+   "id": "q03",
+   "kind": "split",
+   "q": "What's my meal allowance for a trip to Japan if the event feeds me lunch?",
+   "gold": [
+    "Zone C covers North America, Japan, Singapore and Australia and pays 80 per day. If a customer or conference provides a meal, reduce the per-diem by 15 for each meal provided."
+   ],
+   "answer": "Japan is Zone C, which pays 80 per day. With lunch provided, reduce it by 15, so 65 per full day (travel days get 75 percent of the per-diem) [Travel and Expenses › Daily allowance]."
+  },
+  {
+   "id": "q04",
+   "kind": "semantic",
+   "q": "If nobody answers an on-call alert, who is it escalated to?",
+   "gold": [
+    "If the primary does not acknowledge within 15 minutes, the page goes to the secondary, and after a further 15 minutes it goes to the engineering manager on duty."
+   ],
+   "answer": "After 15 minutes without acknowledgement the page goes to the secondary engineer, and after a further 15 minutes to the engineering manager on duty [On-call and Incident Response › Response times]."
+  },
+  {
+   "id": "q05",
+   "kind": "split",
+   "q": "I want to spend a month working from my family's home overseas. Is that allowed?",
+   "gold": [
+    "You may work from a country other than your contracted country for up to 20 working days in any rolling twelve-month period, provided the country is on the approved list in the portal. You must submit form HR-305 at least three weeks before you travel"
+   ],
+   "answer": "Yes, for up to 20 working days in any rolling twelve months, if the country is on the approved list. Submit form HR-305 at least three weeks before you travel [Remote and Hybrid Work › Working from another country]."
+  },
+  {
+   "id": "q06",
+   "kind": "lexical",
+   "q": "I need to buy test equipment costing 30,000. Whose sign-off do I need?",
+   "gold": [
+    "Purchases above 1,000 and up to 10,000 need approval from the budget holder for the department. Purchases above 10,000 and up to 50,000 need approval from the Finance Controller as well."
+   ],
+   "answer": "A 30,000 purchase is in the 10,000 to 50,000 band, so it needs the department budget holder and the Finance Controller [Purchasing and Suppliers › Spending limits]."
+  },
+  {
+   "id": "q07",
+   "kind": "lexical",
+   "q": "Which form is HR-114?",
+   "gold": [
+    "For absences longer than seven calendar days you need a doctor's note, uploaded with form HR-114."
+   ],
+   "answer": "HR-114 is used to upload a doctor's note for sickness absences longer than seven calendar days [Leave and Time Off › Sick leave]."
+  },
+  {
+   "id": "q08",
+   "kind": "lexical",
+   "q": "What is QA-9?",
+   "gold": [
+    "Anyone who suspects a defect in a shipped or finished product must raise a quality concern with form QA-9 on the same working day."
+   ],
+   "answer": "Use QA-9 to raise a quality concern, on the same working day, when you suspect a defect in a shipped or finished product [Product Quality and Customer Returns › Raising a quality concern]."
+  },
+  {
+   "id": "q09",
+   "kind": "lexical",
+   "q": "What is a SEV2 incident?",
+   "gold": [
+    "SEV2 means a major feature is broken for many customers, but alarm delivery works."
+   ],
+   "answer": "A SEV2 is a major feature broken for many customers while alarm delivery still works [On-call and Incident Response › Severity levels]."
+  },
+  {
+   "id": "q10",
+   "kind": "lexical",
+   "q": "What goes in L3?",
+   "gold": [
+    "Restricted data, level L3, would cause serious harm and is subject to legal duties; examples are personal data about employees or customers, health information, payroll records and customer calibration certificates that identify a site."
+   ],
+   "answer": "L3 is Restricted data: serious harm if leaked and subject to legal duties, such as personal data, health information, payroll records and site-identifying calibration certificates [Data Classification and Handling › The four levels]."
+  },
+  {
+   "id": "q11",
+   "kind": "lexical",
+   "q": "How many years of cover do Kestrel units have?",
+   "gold": [
+    "Kestrel gas detectors carry a two-year warranty."
+   ],
+   "answer": "Kestrel gas detectors have a two-year warranty [Product Quality and Customer Returns › Warranty]."
+  },
+  {
+   "id": "q12",
+   "kind": "split",
+   "q": "What time is the weekly alarm test in Velmont?",
+   "gold": [
+    "Fire alarms are tested every Wednesday at 11:00 at Harrowgate and every Thursday at 09:30 at Velmont; a test lasts no more than one minute."
+   ],
+   "answer": "Every Thursday at 09:30, for no more than one minute [Facilities and Sites › Fire safety]."
+  },
+  {
+   "id": "q13",
+   "kind": "split",
+   "q": "Is my dog allowed at work?",
+   "gold": [
+    "The Velmont office allows well-behaved dogs on Fridays only, in the open-plan area on the second floor, provided the owner has registered the dog with reception and colleagues on that floor have not raised an allergy concern."
+   ],
+   "answer": "Only at Velmont, on Fridays, in the second-floor open-plan area, if the dog is registered with reception and nobody on the floor has raised an allergy concern [Facilities and Sites › Pets]."
+  },
+  {
+   "id": "q14",
+   "kind": "lexical",
+   "q": "Is there money for me to attend a conference or take a course?",
+   "gold": [
+    "Each employee has an annual learning budget of 1,200 for courses, conferences, books and certifications that are relevant to their role."
+   ],
+   "answer": "1,200 per year from the learning budget, for relevant courses, conferences, books and certifications [Performance and Career Development › Learning budget]."
+  },
+  {
+   "id": "q15",
+   "kind": "semantic",
+   "q": "Someone stole my laptop from my bag. Who do I tell, and how fast?",
+   "gold": [
+    "If your laptop, phone or security key is lost or stolen, report it to the IT Service Desk within one hour of noticing, by phone if you cannot reach the portal."
+   ],
+   "answer": "Report it to the IT Service Desk within one hour of noticing, by phone if you can't reach the portal; IT will lock the device remotely [IT Equipment and Security › Lost or stolen devices]."
+  },
+  {
+   "id": "q16",
+   "kind": "semantic",
+   "q": "Do I get paid if a storm stops me getting to work?",
+   "gold": [
+    "If the national weather service issues a red warning for your area, stay at home and work from home if your role allows it; if it does not, you will be paid as normal for that day."
+   ],
+   "answer": "Yes. If there is a red weather warning for your area, stay at home and work from home if your role allows; if it doesn't, you are paid as normal for that day [Business Continuity and Emergencies › Severe weather]."
+  },
+  {
+   "id": "q17",
+   "kind": "semantic",
+   "q": "Can I use a chatbot on payroll data?",
+   "gold": [
+    "L3 data must never be pasted into any AI assistant."
+   ],
+   "answer": "No. Payroll records are L3 (Restricted) data, and L3 data must never be pasted into any AI assistant [Data Classification and Handling › Using AI tools with company data]."
+  },
+  {
+   "id": "q18",
+   "kind": "semantic",
+   "q": "The press called me about Brindlewood. What should I do?",
+   "gold": [
+    "If a journalist contacts you, take their name and deadline, say that someone will get back to them, and pass the details to the communications team the same day."
+   ],
+   "answer": "Don't comment. Take the journalist's name and deadline, say someone will get back to them, and pass the details to the communications team the same day [Communication and Meetings › Talking to the media]."
+  },
+  {
+   "id": "q19",
+   "kind": "semantic",
+   "q": "How much does Brindlewood add to my retirement savings?",
+   "gold": [
+    "Brindlewood matches your contribution up to 6 percent of salary, and adds a further 1 percent for employees with more than five years of service."
+   ],
+   "answer": "It matches your contribution up to 6 percent of salary, plus a further 1 percent after more than five years of service [Pay and Benefits › Pension]."
+  },
+  {
+   "id": "q20",
+   "kind": "lexical",
+   "q": "When is pay day?",
+   "gold": [
+    "Salaries are paid monthly on the 25th of each month. If the 25th falls on a weekend or public holiday, pay arrives on the last working day before it."
+   ],
+   "answer": "On the 25th; if that is a weekend or public holiday, on the last working day before it [Pay and Benefits › Pay dates]."
+  }
+ ],
+ "revisions": [
+  {
+   "doc": "03-leave",
+   "current": "Carried-over days must be used by 30 June",
+   "old": "Carried-over days must be used by 31 May"
+  },
+  {
+   "doc": "05-travel-expenses",
+   "current": "Australia and pays 80 per day",
+   "old": "Australia and pays 70 per day"
+  },
+  {
+   "doc": "10-pay-benefits",
+   "current": "up to 6 percent of salary, and adds a further 1 percent",
+   "old": "up to 5 percent of salary, and adds a further 1 percent"
+  }
+ ]
+}

@@ -240,14 +240,20 @@
       "p6-llm-cost-latency",
       "p6-ai-reliability",
       "p6-evals-guardrails",
-      "p6-agents"
+      "p6-agents",
+      "p6-llm-inference-internals",
+      "p6-gpu-parallelism",
+      "p6-speculative-decoding",
+      "p6-inference-optimization",
+      "p6-llm-serving-at-scale",
+      "p6-training-at-scale"
     ],
     "simulatorChallengeIds": [],
     "caseStudyIds": [
       "rag-docs-assistant"
     ],
     "deliverable": "Design a RAG docs assistant with a latency and cost budget per request.",
-    "estimatedHours": 10
+    "estimatedHours": 14
   },
   {
     "week": 14,

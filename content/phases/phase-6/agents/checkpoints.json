@@ -1,0 +1,8 @@
+[
+  { "id": "agents-c1", "text": "I can decide between a fixed workflow and an agent for a task, using the compounding per-step success arithmetic.", "topicId": "workflows-vs-agents" },
+  { "id": "agents-c2", "text": "I can draw the tool-calling loop and show where argument validation, permission checks and limits are enforced in the orchestrator.", "topicId": "tool-calling-loop" },
+  { "id": "agents-c3", "text": "I can compute how input tokens grow over an agent run and design checkpoints that let a run resume after a crash or a pause.", "topicId": "agent-state" },
+  { "id": "agents-c4", "text": "I can make a side-effecting tool safe to retry with orchestrator-generated idempotency keys, including when the model repeats the call itself.", "topicId": "idempotent-tools" },
+  { "id": "agents-c5", "text": "I can set step, token, time and per-tool limits plus loop detection, and say what the agent returns when each is hit.", "topicId": "agent-limits" },
+  { "id": "agents-c6", "text": "I can choose which actions need human approval and design an approval step that shows the exact effect and resists rubber-stamping.", "topicId": "human-in-the-loop" }
+]

@@ -1,0 +1,209 @@
+## Why it matters
+
+Serverless lets you ship a function and let the cloud provider worry about servers, patching, scaling and idle capacity. You pay per request and per millisecond of compute, and when nobody calls your code, you pay close to nothing. That is why so much glue code (webhooks, image thumbnails, scheduled jobs, queue consumers, small APIs) now runs on AWS Lambda, Google Cloud Run functions or Azure Functions. But the model has sharp edges that only show up under load: the first request to a new instance is slow, a traffic spike can trip a concurrency quota and start returning throttling errors, a thousand fresh instances can each open a database connection and knock the database over, and at steady high volume the per-request bill can be many times what a few always-on machines would cost. This section explains how function platforms actually run your code, so you can predict those edges instead of discovering them in an incident.
+
+<Callout type="analogy" title="The hotel of sleeping chefs">
+Imagine a hotel kitchen with no chefs on shift. Each chef sleeps in a bunk in the basement. When a room-service order arrives and no chef is awake, the hotel wakes one up: they get dressed, wash their hands and lay out their knives before they can cook (a cold start). Once awake, a chef cooks one order at a time and then waits by the stove for a while in case another order comes in (a warm environment). If ten orders arrive at once, ten chefs get woken, and every one of them spends those first minutes getting dressed. The fire marshal caps the kitchen at a fixed number of chefs, and orders beyond that are turned away at the door (throttling). The hotel bills you only for the minutes a chef is actually cooking (pay per use), which is a bargain on a quiet night and very expensive if the kitchen is full all day, every day. Where the analogy breaks: a real chef remembers yesterday's orders. A function may or may not keep anything between requests, and you can never rely on it.
+</Callout>
+
+## The FaaS execution model
+
+<DepthStamp depth="deep" />
+
+<Term slug="faas">Functions as a Service (FaaS)</Term> is a model where you upload a handler, a function that takes one event and returns a result, and the platform decides where and how many copies of it run. "Serverless" is the broader label that also covers per-use managed services such as SQS or S3; this section is about the compute part.
+
+The unit to understand is the <Term slug="execution-environment">execution environment</Term>: an isolated sandbox (in AWS Lambda, a lightweight Firecracker microVM) holding your code, a language runtime and some scratch disk. The AWS Lambda documentation describes its lifecycle in three phases:
+
+1. **Init.** The platform creates the environment, downloads your code package or container image, starts the runtime, and runs your initialisation code: everything outside the handler, such as imports, SDK clients and database connection setup. Lambda limits this phase (10 seconds for on-demand environments).
+2. **Invoke.** The runtime calls your handler with one event. When the handler returns, the environment stays alive, frozen between invocations, so the next event can reuse it. Global variables, open connections and files in `/tmp` survive while the environment lives.
+3. **Shutdown.** After a period of no use, or whenever the platform decides (to rebalance, patch or replace hosts), the environment is destroyed. You are not told in advance, and there is no guaranteed lifetime.
+
+<Figure caption="FIG. 1.1 · EXECUTION ENVIRONMENT LIFECYCLE · ONE INVOCATION AT A TIME">
+  <Diagram label="State diagram of a function execution environment: it is created and initialised, then alternates between idle and invoking, and is eventually shut down by the platform." chart={`stateDiagram-v2
+    [*] --> Init: first request, no idle environment
+    Init --> Invoking: init code done
+    Invoking --> Idle: handler returns
+    Idle --> Invoking: next event reuses it (warm start)
+    Idle --> Shutdown: idle too long or host recycled
+    Invoking --> Shutdown: crash or timeout
+    Shutdown --> [*]`} />
+</Figure>
+
+*An execution environment pays its Init cost once, then serves many invocations, but only one at a time in standard Lambda.*
+
+Three consequences follow, and most serverless design mistakes come from forgetting one of them.
+
+- **One invocation per environment at a time.** In standard Lambda, an environment never runs two handler calls concurrently. Ten simultaneous requests need ten environments. Google Cloud Run is different: one instance can serve many concurrent requests (the per-instance concurrency is a setting), which makes it behave more like a small autoscaled container service.
+- **Statelessness is a contract, not a guarantee of emptiness.** State left in memory may still be there on the next call, which is why you create SDK clients outside the handler. But the next request may land on a different environment, so anything that must persist goes to a database, cache or object store.
+- **Hard limits shape the design.** Lambda caps one invocation at 15 minutes and memory between 128 MB and 10,240 MB, with CPU allocated in proportion to memory. If a job needs an hour, it does not belong in one function call; split it, or use a container or batch service.
+
+Functions are triggered by events. With **synchronous** invocation (an HTTP request through an API gateway, or a direct SDK call), the caller waits for the result and sees any error. With **asynchronous** invocation (an S3 upload notification, an EventBridge event), the platform queues the event, returns immediately, and retries on failure. With **event source mappings** (an SQS queue, a Kinesis or Kafka stream), the platform polls the source and invokes your function with batches of records. The trigger type decides what happens when things go wrong, as the next two topics show.
+
+## Cold starts
+
+<DepthStamp depth="deep" />
+
+A <Term slug="cold-start">cold start</Term> is an invocation that has to wait for a new execution environment to go through Init before the handler runs. A warm start reuses an idle environment and skips Init entirely. Cold starts happen on the first request after a deploy, after a function has been idle long enough for its environments to be reclaimed, and, most importantly, whenever concurrent demand exceeds the number of idle environments.
+
+What goes into the cold start:
+
+- **Placing and booting the sandbox:** the platform's part, mostly outside your control.
+- **Fetching your code:** bigger packages and images take longer to download and unpack.
+- **Starting the runtime:** a JVM or .NET runtime generally starts slower than Node.js, Python or a compiled Go or Rust binary.
+- **Your init code:** importing a large framework, loading config from a secrets store, opening a database connection or warming a model. This part is often the largest and is entirely yours.
+
+The duration varies too much by runtime, package and platform for any single number to be honest. For planning, measure it: in Lambda, the `REPORT` log line of a cold invocation includes an `Init Duration` field. The rest of this section uses an **assumed 1.5-second cold start** and a **200 ms handler**.
+
+### Failure timeline: a cold-start pile-up when traffic jumps 10×
+
+A checkout API runs on one function. At steady state it gets **100 requests a second**, each taking **200 ms**. By <Term slug="littles-law">Little's law</Term> (concurrency = arrival rate × time in system), it needs 100 × 0.2 = **20** warm environments. The account's regional concurrency quota is **1,000**, and the function talks to a Postgres database that allows **500** connections. At 12:00:00 a marketing email lands and traffic jumps to **1,000 requests a second**.
+
+| Time | What happens | Environments in use | Effect |
+|---|---|---|---|
+| 12:00:00.0 | Traffic jumps from 100 to 1,000 req/s | 20 busy | 900 req/s find no idle environment, so each triggers a new Init |
+| 12:00:00.0–01.1 | New environments pile up while none has finished Init | 20 + 900 × t | No new capacity is serving yet; every arrival creates another environment |
+| 12:00:01.1 | 20 + 900 × 1.1 ≈ 1,000: the quota is reached | 1,000 | Further synchronous calls get HTTP 429 throttling errors |
+| 12:00:01.5 | The first cold environments finish Init and each opens a database connection | 1,000 | 1,000 connections against a limit of 500: half the functions fail to connect |
+| 12:00:02 | Clients retry throttles and errors | Demand above 1,000/s | Retries add load to a system that is already saturated |
+| 12:00:10 | Environments are warm; real need is 1,000 × 0.2 = 200 | Falling toward 200 | 800 environments sit idle and are later reclaimed |
+
+The lesson is in the overshoot: steady state at the new load needs **200** environments, but during the cold-start window the platform was asked for about **1,000** and the database for **1,000** connections. Cold starts don't just add latency to a few requests; while they last, every arriving request holds a slot without doing useful work, so concurrency balloons.
+
+### Mitigations
+
+- **Shrink Init.** Fewer dependencies, smaller packages, lazy-load rarely used modules, avoid network calls during init that can wait until first use.
+- **Pre-initialised capacity.** Lambda <Term slug="provisioned-concurrency">provisioned concurrency</Term> keeps a set number of environments initialised and ready, so requests up to that level never see a cold start. You pay for them whether or not they're used, which moves you partway back to always-on pricing. Google Cloud Run's minimum instances and Azure Functions' Premium plan (pre-warmed instances) are the equivalents.
+- **Snapshotting.** Lambda SnapStart, available for some runtimes such as Java, takes a snapshot of an initialised environment and restores from it on a cold start, skipping most of Init. Code that generates unique values (random seeds, connection state) during init must be re-checked after restore, because every restored copy starts from the same snapshot.
+- **Scheduled "warming pings".** A ping every few minutes keeps about *one* environment warm; it does nothing for a spike that needs a hundred new ones.
+- **Shape the traffic.** Put a queue in front of non-interactive work, so a spike becomes a backlog drained at a controlled concurrency instead of a cold-start storm.
+
+## Concurrency limits and throttling
+
+<DepthStamp depth="deep" />
+
+**Concurrency** is the number of invocations running at the same moment. Function platforms cap it in several layers, and the arithmetic is always Little's law: concurrency = requests per second × average duration in seconds. A function doing 2,000 requests a second at 300 ms needs 600 concurrent environments; make the code twice as slow and the same traffic needs 1,200.
+
+The limits in AWS Lambda, as an example of the layers you will find everywhere:
+
+- **Account concurrency quota per Region.** One pool shared by every function in the account and Region. The default has long been 1,000 concurrent executions and can be raised by request. A runaway batch job can therefore starve your customer-facing API, because they draw from the same pool.
+- **Scaling rate.** Even below the quota, a function can only add new environments so fast. AWS documents this as 1,000 additional concurrent executions every 10 seconds per function. A spike faster than that is throttled even with quota to spare.
+- **<Term slug="reserved-concurrency">Reserved concurrency</Term>.** A per-function setting that both guarantees and caps: it sets aside part of the account pool for that function and forbids it from using more. Setting it to 0 stops the function entirely, a useful emergency brake.
+- **Provisioned concurrency.** Pre-initialised environments, covered above. It is about latency, not about limits.
+
+What a throttle looks like depends on the trigger:
+
+| Invocation type | When throttled | Who absorbs it |
+|---|---|---|
+| Synchronous (API, SDK call) | The caller gets an error (HTTP 429, `TooManyRequestsException`) | Your client must back off and retry |
+| Asynchronous (S3, EventBridge) | Lambda keeps the event and retries it for up to 6 hours | The platform queues it; latency grows, events can expire to a dead-letter destination |
+| Queue or stream poller (SQS, Kinesis) | The poller slows down; records wait in the source | The queue or stream absorbs the backlog |
+
+### Concurrency is also a weapon against your own database
+
+Functions scale out far faster than most databases can accept connections. A relational database that handles 500 connections comfortably does not care that each connection comes from a tiny function: 1,000 environments with one connection each is 1,000 connections. Three defences, best used together:
+
+1. **Cap the function** with reserved concurrency set below what the database can take, and let the queue or the client absorb the excess.
+2. **Put a connection pooler in between.** Amazon RDS Proxy, or PgBouncer for Postgres, multiplexes many short-lived client connections onto a small pool of real database connections.
+3. **Prefer HTTP-style data APIs or databases built for many short connections** (DynamoDB, or a database's HTTP data API) when the access pattern allows it.
+
+The staff-level framing: in a serverless system, the concurrency limit is your <Term slug="load-shedding">load-shedding</Term> knob. Choose it deliberately from the capacity of the slowest downstream dependency, rather than letting the account quota choose it for you.
+
+## Cost at low vs high scale
+
+<DepthStamp depth="tradeoffs" />
+
+Function pricing has two parts: a fee per request and a fee per <Term slug="gb-second">GB-second</Term>, the memory you configured multiplied by the billed duration. Always-on compute (a VM or container) costs a fixed amount per hour whether it is busy or idle. So serverless wins when utilisation is low or spiky and loses when a machine would be busy most of the time.
+
+### Worked example: the break-even point
+
+The prices below are **illustrative assumptions** chosen for round arithmetic, not any vendor's list price. Put your provider's current prices into the same formulas.
+
+- Function: **$0.00002 per GB-second** and **$0.25 per million requests**. The function is configured with **512 MB** and runs **100 ms** per request.
+- Always-on: a VM at **$0.10 per hour** that serves **300 requests a second** at this latency. You run at least **2** for redundancy. A month is 730 hours, or 2,628,000 seconds.
+
+Cost per function request: 0.5 GB × 0.1 s = 0.05 GB-s × $0.00002 = $0.000001, plus $0.25 / 1,000,000 = $0.00000025, so **$0.00000125**.
+
+Two VMs: 2 × $0.10 × 730 = **$146 a month**.
+
+Break-even: $146 / $0.00000125 = **116.8 million requests a month**, which is 116.8M / 2,628,000 ≈ **44 requests a second on average**.
+
+| Average load | Requests per month | Functions | Always-on VMs (with headroom) |
+|---|---|---|---|
+| 1 req/s | 2.6 million | $3.29 | $146 (2 VMs) |
+| 44 req/s | 116.8 million | $146 | $146 (2 VMs) |
+| 500 req/s | 1.31 billion | $1,643 | $219 (3 VMs) |
+| 5,000 req/s | 13.1 billion | $16,425 | $1,460 (20 VMs) |
+
+At low volume the function is almost free while the VMs idle; at 5,000 requests a second the function bill is over **11×** larger. Three things move the real break-even:
+
+- **Peakiness.** If peak traffic is ten times the average, always-on fleets must be sized near the peak (or autoscale with a lag), which raises their effective cost per request. Functions only bill for what ran.
+- **Hidden per-request costs.** An API gateway in front often adds its own per-request fee, and per-invocation logging, NAT gateways and data transfer can rival the compute bill. Count them.
+- **People.** A fleet of VMs or a Kubernetes cluster needs patching, capacity planning and on-call care. For a small team, that labour often outweighs a few hundred dollars a month of extra compute.
+
+A common, healthy pattern is to start on functions and move the hot, steady paths to containers when the bill says so.
+
+## When not to use serverless
+
+<DepthStamp depth="tradeoffs" />
+
+The research community is genuinely split on how far the model can go. *Cloud Programming Simplified: A Berkeley View on Serverless Computing* (Jonas et al., 2019) argues serverless will become the default way to program the cloud as its limitations are engineered away. *Serverless Computing: One Step Forward, Two Steps Back* (Hellerstein et al., CIDR 2019) argues that the first generation of FaaS is a poor fit for data-intensive and distributed work: functions cannot address each other directly, so they communicate through slow storage, they ship data to code rather than code to data, and they cannot use specialised hardware. Both papers agree on the strengths: event-driven glue and bursty, embarrassingly parallel work. In practice, reach for something else when:
+
+- **The work is long-running.** Anything that can exceed the invocation limit (15 minutes in Lambda) needs chunking with a workflow engine (AWS Step Functions, a queue of work items) or a container or batch service.
+- **Load is high and steady.** As the arithmetic above shows, always-busy workloads are cheaper on always-on compute.
+- **Tail latency is a hard requirement.** If p99 must stay under, say, 50 ms, a 1-second cold start for even 0.1% of requests breaks the SLO unless you pay for provisioned capacity, at which point much of the cost advantage is gone.
+- **The service holds connection or in-memory state.** WebSocket servers, multiplayer game rooms, and services whose speed depends on a large warm in-memory cache fight the model.
+- **The dependency can't scale with it.** A relational database, a third-party API with a strict rate limit, or a legacy system that dies above 50 concurrent requests. You can cap concurrency, but then you have built a queue with extra steps.
+- **You need special hardware or deep control:** GPUs, custom kernels, specific CPU types, or long-lived local disk.
+- **Portability matters more than convenience.** Event formats, IAM wiring, triggers and deployment tooling are provider-specific. The handler code may be portable; the system around it usually is not.
+
+<TradeoffBox title="Serverless functions vs always-on services" items={[
+  { gain: "Zero cost when idle and no servers to patch or size", cost: "Per-request pricing that grows linearly and passes always-on cost at steady load" },
+  { gain: "Scales out from zero automatically and fast", cost: "Cold starts on every scale-out, plus quotas and scaling-rate limits that throttle spikes" },
+  { gain: "Event triggers (queues, storage, schedules) with built-in retries", cost: "Retries mean at-least-once execution, so handlers must be idempotent" },
+  { gain: "Isolation per invocation limits blast radius of a bad request", cost: "No shared in-memory state; connection-heavy dependencies need a pooler or a cap" },
+  { gain: "Small teams ship without running infrastructure", cost: "Provider lock-in in triggers, IAM, tooling and local testing" }
+]} />
+
+<NotWhenBox title="Skip functions when" items={[
+  "A single unit of work can run longer than the platform's invocation limit.",
+  "The service is busy around the clock at high volume and the bill already shows it.",
+  "Strict p99 latency targets would be broken by occasional cold starts you won't pay to remove.",
+  "The service is stateful: long-lived connections, game rooms or a large warm in-memory cache.",
+  "A downstream system (a relational database, a rate-limited API) can't absorb sudden scale-out."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Serverless means there are no servers to think about." right="There are servers you don't manage, and their behaviour still matters: environment reuse, cold starts, per-invocation limits and concurrency quotas all shape your design." />
+
+<Misconception wrong="A warm-up ping every five minutes eliminates cold starts." right="A ping keeps roughly one environment warm. A spike that needs 100 concurrent environments still cold-starts 99 of them. Provisioned concurrency or minimum instances is the real fix." />
+
+<Misconception wrong="Serverless is always cheaper because you only pay for what you use." right="It is cheaper at low or spiky utilisation. At high, steady load the per-request price adds up to many times the cost of always-on machines doing the same work." />
+
+<Misconception wrong="Functions scale infinitely, so a traffic spike can't hurt the database." right="That fast scale-out is exactly what hurts the database: every new environment can open a connection. Cap concurrency with reserved concurrency and put a pooler in between." />
+
+## Interview angle
+
+<InterviewAngle title="Serverless" questions={[
+  "Your function's p99 latency jumps every morning at 9:00 when traffic ramps up. What is happening and what are your options?",
+  "A function behind an API starts returning 429s during a sale. Walk me through the limits involved and how you'd fix it.",
+  "Your Lambda functions keep exhausting Postgres connections. What do you change?",
+  "At what point would you move this service off functions onto containers? Show me the arithmetic.",
+  "A queue-triggered function sometimes processes the same message twice. Is that a bug?"
+]}>
+Serverless comes up when you propose it for glue, image processing or a spiky API, and the interviewer probes whether you know its costs. Strong answers use Little's law to turn traffic into concurrency (requests per second × duration), explain that each concurrent request needs its own environment in standard Lambda, and connect cold starts to the overshoot during a spike. For the 9:00 ramp: cold starts during scale-out; fix with provisioned concurrency sized to the ramp, a smaller init, or a queue if the work is not interactive. For the 429s: account quota and scaling rate; raise the quota, reserve concurrency for the API so batch jobs can't starve it, and make clients back off with jitter. For Postgres: reserved concurrency below the database's limit plus RDS Proxy or PgBouncer. For cost, compute the break-even against a minimum always-on fleet. For duplicates: asynchronous and queue triggers are at-least-once, so the handler must be idempotent, for example with an idempotency key stored in a database with a conditional write.
+</InterviewAngle>
+
+## Practice
+
+1. A function handles 1,500 requests a second at 400 ms each. How many concurrent environments does it need at steady state? If its cold start is 2 seconds and traffic doubles instantly, roughly how many environments are requested before the first new ones are ready?
+2. Using the illustrative prices in this section, a function uses 1,024 MB and runs 250 ms per request. Find the break-even average request rate against two always-on VMs at $0.10 an hour.
+3. Design the image-thumbnail pipeline for a photo app that receives 50 uploads a second on average and 2,000 a second after a viral post. State the trigger, the concurrency cap, how you protect the metadata database, and how you make a retried event safe.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

@@ -1,0 +1,237 @@
+## Why it matters
+
+An LLM that only writes text can be wrong. An LLM that can call tools can be wrong *and act on it*: refund the wrong order, email the wrong person, drop a table. In July 2025 SaaStr founder Jason Lemkin publicly described how Replit's AI coding agent deleted his project's production database during what he had told it was a code freeze; Replit's CEO apologised and announced changes including automatic separation of development and production databases. Nothing about that failure needed a clever attack. The agent had a destructive capability, nothing in the system stopped it, and the undo path was unclear. Agents are distributed systems in which one of the components makes decisions you cannot fully predict, so every lesson from earlier phases (idempotency, timeouts, budgets, state machines, least privilege) applies with extra force. This section covers when to build an agent at all, how the tool-calling loop works, where its state lives, how to make tools safe to retry, how to bound it, and where a human must stay in the loop.
+
+<Callout type="analogy" title="The intern with the company credit card">
+An agent is a bright, fast intern given a task, a phone and the company card. A sensible manager does not hand over the card and leave for a month. They write down the goal, give the intern only the cards and keys the job needs (least-privilege tools), ask for a note after every call (the transcript, which is the state), insist that every purchase order carries a reference number so a repeated phone call doesn't buy two pallets (idempotent tools), set a spending limit and a deadline (step and cost limits), and require a signature for anything over a threshold (human-in-the-loop). And for a job with a fixed checklist, they don't hire an intern at all; they write a script (a workflow). Where it breaks down: a real intern learns from yesterday's mistakes, while an agent starts each run with only what you put in its context.
+</Callout>
+
+## Workflows vs agents
+
+<DepthStamp depth="tradeoffs" />
+
+Anthropic's *Building effective agents* (December 2024) draws a useful line. **Workflows** are systems where LLMs and tools are orchestrated through predefined code paths. An <Term slug="ai-agent">agent</Term> is a system where the LLM dynamically directs its own process and tool use, deciding what to do next until the task is done. Most production "AI agents" are mostly workflows, and that is usually correct.
+
+Common workflow patterns, all of which your code controls:
+
+| Pattern | Shape | Example |
+|---|---|---|
+| <Term slug="prompt-chaining">Prompt chaining</Term> | Fixed sequence of LLM calls, each using the last one's output, with checks between steps | Draft an outline, check it, write the document |
+| Routing | Classify the input, send it to a specialised prompt or model | Billing vs technical vs refund questions |
+| Parallelisation | Run independent calls at once, or the same call several times and vote | Check a contract for five risk types in parallel |
+| Orchestrator-workers | One LLM call splits the task, workers do the parts, results are combined | Edit several files for one code change |
+| Evaluator-optimiser | One call generates, another critiques, loop a bounded number of times | Translation refined against a rubric |
+
+The same article's core advice is to find the simplest solution that works and add complexity only when it demonstrably improves results. That is the field's broad consensus, though people still argue about where the line sits. One view holds that open-ended agents are the future and that scaffolding written today will be thrown away as models improve. The other holds that predictable, testable workflows win in production because each step can be evaluated, costed and debugged on its own. Both sides agree on the test: **use an agent when you cannot write the steps down in advance** (open-ended research, debugging an unfamiliar codebase), and a workflow when you can (an invoice-processing pipeline with known stages).
+
+### Reliability compounds against long runs
+
+If each step of an agent succeeds independently with probability *s*, a run of *n* steps succeeds with *sⁿ*. Assume 98% per step:
+
+| Steps | Run success (0.98ⁿ) |
+|---|---|
+| 5 | 0.904 |
+| 10 | 0.817 |
+| 20 | 0.668 |
+| 50 | 0.364 |
+
+Real steps are not independent (agents can notice and recover from errors), so treat this as a warning rather than a prediction: every step you remove, or replace with deterministic code, is reliability you get back.
+
+## The tool-calling loop
+
+<DepthStamp depth="deep" />
+
+<Term slug="tool-calling">Tool calling</Term> (also called function calling) lets a model request an action in a structured form. You describe each tool with a name, a description and a JSON Schema for its arguments. The model never executes anything itself: it returns a structured request such as "call `get_order` with `order_id: 8812`", **your code** runs the tool, and you send the result back as the next message. In Anthropic's Messages API a response that wants a tool ends with a stop reason of `tool_use`; in OpenAI's Chat Completions the finish reason is `tool_calls`.
+
+The <Term slug="agent-loop">agent loop</Term> is just that exchange repeated:
+
+```
+messages = [system prompt, user task]
+loop:
+    response = model(messages, tools)
+    if response asks for no tool: return response        # done
+    for each tool call in response:
+        check permission and limits                       # your code, not the model
+        result = run tool (with timeout, idempotency key)
+        append tool call and result to messages
+```
+
+<Figure caption="FIG. 12.1 · ONE TURN OF THE TOOL-CALLING LOOP">
+  <Diagram label="The orchestrator sends messages and tool definitions to the model, which asks for a tool call. The orchestrator checks policy, runs the tool, appends the result and calls the model again until it returns a final answer." chart={`sequenceDiagram
+    participant O as Orchestrator
+    participant M as Model
+    participant P as Policy check
+    participant T as Tool
+    O->>M: messages plus tool schemas
+    M-->>O: tool call get_order with order_id 8812
+    O->>P: allowed for this user, within budget?
+    P-->>O: yes
+    O->>T: get_order 8812, timeout 5 s
+    T-->>O: order JSON
+    O->>M: messages plus tool result
+    M-->>O: final answer, no tool call
+    Note over O: loop ends, run marked complete`} />
+</Figure>
+
+*The model proposes; the orchestrator decides, executes and records. Every guarantee lives in the orchestrator.*
+
+Yao et al.'s **ReAct** (2022) is the pattern behind most agent loops: the model interleaves reasoning ("I need the order's shipping status first") with actions (tool calls) and observations (tool results), rather than reasoning everything out up front. Native tool calling in today's APIs is the structured descendant of that idea.
+
+Design points for the tools themselves:
+
+- **Few, well-described tools.** Every tool's description and schema is in the prompt on every step. Clear names, precise descriptions and examples matter more than clever prompting; Anthropic's article makes the same point about investing in the agent-computer interface.
+- **Return useful errors.** "order_id 8812 not found; order IDs are 8 digits" lets the model recover. A stack trace or an empty string usually leads to guessing.
+- **Validate arguments** against the schema in your code before running the tool, exactly as in structured output validation.
+
+## State: the transcript and beyond
+
+<DepthStamp depth="deep" />
+
+An agent's working state is, at minimum, its message history: the task, every tool call and every result. The model is stateless between calls, so that history is sent again on each step, and it grows.
+
+### Worked example: context growth
+
+Assume a system prompt plus tool definitions of **2,000 tokens**, and that each step adds **1,500 tokens** (the model's reasoning, the tool call and the tool's result).
+
+- Step *i* (starting at 0) sends 2,000 + 1,500 × *i* input tokens.
+- Over 20 steps: 20 × 2,000 + 1,500 × (0 + 1 + … + 19) = 40,000 + 1,500 × 190 = **325,000 input tokens**.
+- The final step alone sends 2,000 + 1,500 × 19 = **30,500** tokens.
+- At an assumed price of P per million input tokens, the run's input costs 0.325 × P, and doubling the steps to 40 roughly quadruples it (40 × 2,000 + 1,500 × 780 = 1.25 million tokens).
+
+Input cost grows with the square of the step count. Prompt caching (reusing the unchanged prefix) cuts the cost of resending history on providers that support it, but the context window still fills. The usual responses are to truncate or summarise tool results before appending them (return the 5 relevant rows, not 5,000), to compact old history into a summary, and to keep long-lived facts in external memory that the agent queries when needed.
+
+### Durable state for long runs
+
+A run that takes minutes, waits for a human approval or survives a deploy cannot live only in a process's memory. Persist a checkpoint after every step: run ID, step number, messages (or a pointer to them), tool calls issued and their results, spend so far and status (running, waiting for approval, done, failed). Then a crashed worker can resume at the last completed step rather than restarting the run and repeating side effects. This is the same idea as a saga's log or a workflow engine's event history; durable execution engines such as Temporal exist to provide exactly this, and many teams run agent loops on top of them.
+
+```
+run 7f3a: step 6 of max 25 | status waiting_for_approval
+  spent: 41,200 input tokens, 3,100 output tokens, 6 tool calls
+  pending: issue_refund(order 8812, amount 49.00, key 7f3a-step6)
+```
+
+## Idempotent tools
+
+<DepthStamp depth="deep" />
+
+The loop will retry. A tool call times out, the worker crashes after running a tool but before recording its result, or the model simply calls the same tool twice because it didn't trust the first answer. For read-only tools this is harmless. For tools with side effects it is the classic duplicate-payment problem.
+
+Make every mutating tool **idempotent**: calling it twice with the same <Term slug="idempotency-key">idempotency key</Term> has the same effect as calling it once.
+
+- **Derive the key from the run and step**, for example `run_id + ":" + step + ":" + call_index`, and generate it in the orchestrator, not in the model. The model can repeat a call with a new key; the orchestrator's key is stable across crash and resume.
+- **Pass it through** to the downstream API (many payment APIs accept an idempotency key header) or store it in your own table with a unique constraint.
+- **Classify tools** as read-only, idempotent-mutating or non-idempotent. Retry the first two freely within limits; never auto-retry the third, and put it behind human approval.
+- **Separate plan from execution** for risky changes: the agent produces a plan or a dry run ("these 3 rows would be deleted"), and a separate, deterministic step applies it.
+
+### Failure timeline: a refund issued twice
+
+| Time | Event |
+|---|---|
+| 10:00:00 | Agent calls `issue_refund(order 8812, 49.00)`; the payments API takes 7 s under load |
+| 10:00:05 | Tool timeout (5 s) fires; the orchestrator reports "timeout" to the model |
+| 10:00:07 | Payments API completes the refund; the response is discarded because the caller gave up |
+| 10:00:09 | Model reasons "the refund failed, try again" and calls `issue_refund` again |
+| 10:00:10 | Without a key: second refund issued, customer refunded 98.00. With key `7f3a:6:0` reused by the orchestrator for the retry of the same logical action: payments API returns the original refund, no duplicate |
+
+Note the subtlety: the model's second call is a **new** call from the model's point of view. Only the orchestrator can recognise it as the same logical action, for example by matching tool name and arguments within the run, and reuse the key. Pure "retry with the same key" logic in the HTTP client would not catch it.
+
+## Limits on steps, time and cost
+
+<DepthStamp depth="deep" />
+
+An agent has no natural end except the model deciding it is done. Without limits, a confused agent loops: it calls a failing tool, reads the error, tries a slightly different argument, and repeats. Every production agent needs hard limits enforced by the orchestrator:
+
+- A <Term slug="step-limit">step limit</Term> (maximum loop iterations, for example 25).
+- A **token or cost budget** per run, checked before each model call.
+- A **wall-clock deadline** for the whole run, plus timeouts on each tool call.
+- **Per-tool limits**, such as at most 3 calls to `send_email` per run.
+- **Loop detection:** the same tool with the same arguments returning the same error 3 times in a row stops the run early.
+
+When a limit is hit, stop cleanly: record why, return the partial result with an honest message, and alert if it happens often.
+
+### Failure timeline: looping on a failing tool
+
+Assume a 25-step limit, 2,000 base tokens, about 1,200 tokens added per step, and a search tool whose index is down.
+
+| Step | What happens | Input tokens this step |
+|---|---|---|
+| 1 | Agent calls `search_docs("refund policy")`; tool returns "503 service unavailable" | 2,000 |
+| 2 | Agent retries with `search_docs("refund policy 2024")`; 503 | 3,200 |
+| 3–10 | Agent keeps rephrasing the query; every call returns 503 | rising to 12,800 |
+| 11–24 | Agent tries other tools that also depend on the index; all fail | rising to 29,600 |
+| 25 | Step limit hit; run ends with no answer | 30,800 |
+
+Total input tokens: 25 × 2,000 + 1,200 × (0 + 1 + … + 24) = 50,000 + 1,200 × 300 = **410,000** for nothing. With loop detection (stop after the same tool fails 3 times with a 503) the run ends at step 3 after 2,000 + 3,200 + 4,400 = **9,600** tokens and tells the user "document search is unavailable", which is also what the user needed to hear. Better still, return errors that say whether retrying can help ("503: search index unavailable, retrying will not help for several minutes"), and put a circuit breaker on the tool so other runs stop calling it too.
+
+## Human-in-the-loop
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="human-in-the-loop">Human-in-the-loop</Term> means the agent pauses and a person approves, edits or rejects an action before it happens. It is the strongest guardrail available, because it does not depend on the model behaving.
+
+Where to put approval gates:
+
+- **Irreversible or external actions:** sending messages, payments and refunds above a threshold, deleting data, deploying code, changing permissions.
+- **Actions on behalf of someone else:** anything a customer or colleague will see.
+- **Low-confidence situations** the agent itself flags, or that a classifier flags.
+
+How to make approvals work in practice:
+
+- **Show exactly what will happen:** the recipient and full text of an email, the diff of a code change, the rows a delete will remove. "Approve action?" with no detail trains people to click yes.
+- **Make the pause durable.** The run checkpoints, releases its worker and resumes when the approval arrives, minutes or days later. A worker blocked waiting for a click does not scale.
+- **Expire stale approvals.** If the world changed (the order was already refunded), re-check before executing.
+- **Watch for approval fatigue.** If people approve 99% of requests within two seconds, the gate is not a control any more. Tier actions by risk, automate the low-risk ones with tight limits, and reserve human review for the ones that matter.
+
+The Replit incident from the opening is the counter-example in miniature: a destructive action, a production environment reachable from the agent's tools, and no gate between the model's decision and the effect.
+
+<TradeoffBox title="Agent design choices" items={[
+  { gain: "Fixed workflow: predictable, testable, cheap per run", cost: "Cannot handle tasks whose steps you can't write down in advance" },
+  { gain: "Autonomous agent: handles open-ended tasks", cost: "Compounding per-step errors, quadratic context cost, harder to evaluate" },
+  { gain: "Durable checkpoints per step: resume after crashes and long pauses", cost: "Storage, a state schema to version, and more infrastructure" },
+  { gain: "Idempotency keys from the orchestrator: safe retries of side effects", cost: "Every mutating tool and downstream API must support or store keys" },
+  { gain: "Step, cost and loop limits: bounded worst case", cost: "Some legitimate long tasks stop early and need a resume path" },
+  { gain: "Human approval gates: harm stops before it happens", cost: "Latency, reviewer time and the risk of rubber-stamping" }
+]} />
+
+<NotWhenBox title="When not to build an agent" items={[
+  "The steps are known in advance: write a workflow or plain code and call the model only where judgement is needed.",
+  "A single well-prompted call with retrieval answers the question.",
+  "Errors are costly and hard to undo, and you cannot put a human gate in front of the risky actions.",
+  "You have no eval set for the task yet: you will not be able to tell whether the agent is better than the script it replaced."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="The model executes the tools." right="The model only returns a structured request. Your orchestrator validates it, checks permissions and limits, runs the tool and records the result." />
+
+<Misconception wrong="A system prompt saying 'never delete production data' is a safety control." right="It is a request the model usually follows. Controls live in code: tools scoped to least privilege, approval gates and separate environments." />
+
+<Misconception wrong="Retries are safe because the HTTP client reuses the idempotency key." right="The model can issue the same action again as a brand-new call. The orchestrator must recognise the same logical action and reuse its key." />
+
+<Misconception wrong="More autonomy always means a more capable system." right="Per-step errors compound and cost grows with the square of steps. Fewer, deterministic steps are usually more reliable and cheaper." />
+
+## Interview angle
+
+<InterviewAngle title="Agents" questions={[
+  "Would you build this support automation as an agent or a workflow? Why?",
+  "Walk me through the tool-calling loop. Where are permissions enforced?",
+  "The agent's refund tool timed out and the model called it again. What happens in your design?",
+  "How do you stop an agent burning money in a loop?",
+  "Which actions need human approval, and how do you keep reviewers from rubber-stamping?"
+]}>
+Start by questioning whether an agent is needed: cite the workflow-versus-agent distinction, show the compounding arithmetic (0.98 to the 20th is about 0.67) and prefer workflows when the steps are known. Then describe the loop precisely: the model proposes tool calls, the orchestrator validates arguments, checks permissions and budgets, executes with timeouts and appends results. Treat state as a durable checkpoint per step so runs can resume and pause for approval. Make mutating tools idempotent with keys generated by the orchestrator, and explain why a model's repeated call needs matching by the orchestrator. Bound every run with step, token, time and per-tool limits plus loop detection, and work the context-growth arithmetic. Finish with risk-tiered human approval that shows the exact effect, and say what you would never let the agent do unattended.
+</InterviewAngle>
+
+## Practice
+
+1. An agent averages 12 steps with 3,000 base tokens and 1,000 tokens added per step. Compute total input tokens per run, then the total if the average rises to 24 steps. What does this suggest about summarising tool results?
+2. Design the tool set for a calendar-scheduling agent. Classify each tool as read-only, idempotent-mutating or non-idempotent, say how its idempotency key is formed, and mark which need approval.
+3. Write the limits and loop-detection rules for a coding agent that can run tests and edit files, including what it returns to the user when each limit is hit.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

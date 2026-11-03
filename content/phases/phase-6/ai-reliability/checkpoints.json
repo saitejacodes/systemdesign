@@ -1,0 +1,7 @@
+[
+  { "id": "ai-reliability-c1", "text": "I can set connect, time-to-first-token, stream-idle and total timeouts for an LLM call from stated assumptions about decode speed and output length.", "topicId": "llm-timeouts" },
+  { "id": "ai-reliability-c2", "text": "I can classify LLM API errors into retry, don't retry and repair, and multiply out the worst-case retry amplification of a stack with SDK, wrapper and failover retries.", "topicId": "llm-retries" },
+  { "id": "ai-reliability-c3", "text": "I can design provider failover behind a per-provider circuit breaker and list the prompt, eval, quota and data-agreement work it needs beforehand.", "topicId": "provider-failover" },
+  { "id": "ai-reliability-c4", "text": "I can write a degradation ladder for an AI feature and say which signal moves traffic down each rung.", "topicId": "fallbacks-degradation" },
+  { "id": "ai-reliability-c5", "text": "I can build a parse, schema-validate, semantic-check and bounded repair-retry pipeline, and estimate its extra token cost.", "topicId": "structured-output" }
+]

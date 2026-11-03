@@ -1,0 +1,19 @@
+{
+  "id": "p6-llm-serving",
+  "phase": 6,
+  "slug": "llm-serving",
+  "title": "LLM Serving",
+  "order": 8,
+  "week": 13,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "tokens-prefill-decode", "title": "Tokens, prefill and decode", "depth": "deep" },
+    { "id": "kv-cache-memory", "title": "The KV cache and GPU memory", "depth": "deep" },
+    { "id": "batching", "title": "Batching: static, continuous and paged", "depth": "deep" },
+    { "id": "streaming-metrics", "title": "Streaming and latency metrics", "depth": "deep" },
+    { "id": "hosted-vs-self-hosted", "title": "Hosted APIs vs self-hosting", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["llm-inference"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-latency-throughput", "p1-realtime"]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "p6-llm-serving-at-scale",
+  "phase": 6,
+  "slug": "llm-serving-at-scale",
+  "title": "LLM Serving at Scale",
+  "order": 17,
+  "week": 13,
+  "estimatedMinutes": 80,
+  "topics": [
+    { "id": "request-path", "title": "The request path from edge to GPU", "depth": "deep" },
+    { "id": "capacity-planning", "title": "Capacity planning end to end", "depth": "deep" },
+    { "id": "admission-control", "title": "Admission control, priority tiers and tenant isolation", "depth": "deep" },
+    { "id": "prefix-aware-routing", "title": "Prefix-aware routing", "depth": "deep" },
+    { "id": "gpu-autoscaling", "title": "Why GPU autoscaling is slow, and what fleets do instead", "depth": "tradeoffs" },
+    { "id": "model-rollout", "title": "Multi-model fleets and version rollout", "depth": "tradeoffs" },
+    { "id": "serving-observability", "title": "Observability and SLOs", "depth": "tradeoffs" },
+    { "id": "stream-reliability", "title": "Reliability: failures mid-stream", "depth": "deep" }
+  ],
+  "simulatorIds": ["llm-inference"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p6-llm-serving", "p6-llm-cost-latency", "p6-inference-optimization", "p4-bulkheads-load-shedding", "p5-slos"]
+}

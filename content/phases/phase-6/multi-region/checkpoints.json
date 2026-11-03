@@ -1,0 +1,8 @@
+[
+  { "id": "multi-region-c1", "text": "I can compare active-passive, home-region active-active and multi-writer active-active, and compute RPO and per-region headroom for each.", "topicId": "active-passive-active-active" },
+  { "id": "multi-region-c2", "text": "I can work out the commit latency of a cross-region consensus write from region RTTs and leader placement.", "topicId": "cross-region-latency" },
+  { "id": "multi-region-c3", "text": "I can walk through a split-brain write under last-writer-wins and show which write is lost and why clock skew matters.", "topicId": "conflict-resolution" },
+  { "id": "multi-region-c4", "text": "I can choose LWW, a CRDT, application merge or single-writer ownership for a given field and explain the invariant that decides it.", "topicId": "conflict-resolution" },
+  { "id": "multi-region-c5", "text": "I can design a residency-compliant layout with home regions and a PII-free global directory, and list the secondary copies that can leak data.", "topicId": "data-residency" },
+  { "id": "multi-region-c6", "text": "I can explain how GeoDNS, latency-based DNS and anycast route users and why DNS failover leaves a straggler tail.", "topicId": "latency-based-routing" }
+]

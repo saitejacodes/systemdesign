@@ -1,0 +1,200 @@
+## Why it matters
+
+Light in optical fibre travels at roughly 200,000 km a second, about two thirds of its speed in a vacuum. Sydney to northern Virginia is about 15,700 km in a straight line, so even a perfect fibre path gives a round trip of about 157 ms before a single router, handshake or database query is counted. No code optimisation removes that. Content delivery networks attacked the problem first for static files, by caching them in data centres close to users. <Term slug="edge-computing">Edge computing</Term> goes one step further: it runs *your code* in those same locations, so a redirect, an authentication check or a personalised page can be answered a few milliseconds from the user. Cloudflare Workers, Amazon CloudFront Functions and Lambda@Edge, Fastly Compute, and the edge runtimes in Vercel and Netlify all sell this idea. The catch is that your code moves to the edge but your data usually does not, and an edge function that keeps calling a database on another continent can be several times *slower* than the plain origin server it replaced. This section is about knowing which work wins at the edge and which loses.
+
+<Callout type="analogy" title="Airport kiosks and head office in Ohio">
+Picture an airline with a tiny kiosk in every airport on Earth and one head office in Ohio that holds the real booking system. Each kiosk clerk has a rubber stamp, a rulebook and a pocket notebook. They can check your passport against the rules (verify a token), send you to the right gate (redirect), hand you a pre-printed timetable (serve from cache) and decide which of two leaflets you get (A/B bucketing), all instantly. But any question about *your* booking means a long-distance phone call to Ohio, and a clerk who asks Ohio three questions one after another makes you wait for three long calls. The notebook gets updates from head office by post, so it is fast to read but sometimes out of date (an eventually consistent edge store). Where it breaks down: real kiosks are staffed separately, while edge functions are identical copies of one program deployed everywhere at once, and the "post" for an edge store usually arrives in seconds, not days.
+</Callout>
+
+## Edge functions and their runtimes
+
+<DepthStamp depth="deep" />
+
+An <Term slug="edge-function">edge function</Term> is code that runs inside a CDN's <Term slug="point-of-presence">points of presence</Term> (PoPs), on the request path between the user and the cache or <Term slug="origin-server">origin</Term>. Users usually reach the nearest PoP through <Term slug="anycast">anycast</Term> routing or DNS steering, so the function runs close to them without any region choice on your part.
+
+<Figure caption="FIG. 2.1 · THE EDGE REQUEST PATH · MOST REQUESTS SHOULD STOP AT THE PoP">
+  <Diagram label="Sequence: a user's request reaches the nearest PoP, an edge function validates it and computes a cache key, the edge cache answers a hit, and only misses travel to the origin." chart={`sequenceDiagram
+    participant U as User (Sydney)
+    participant E as Edge function (Sydney PoP)
+    participant C as Edge cache (Sydney PoP)
+    participant O as Origin (us-east)
+    U->>E: GET /product/42 (about 10 ms RTT)
+    Note over E: verify token, pick variant, build cache key
+    E->>C: lookup product/42 + variant B + AU
+    alt cache hit
+      C-->>E: cached page
+    else cache miss
+      E->>O: fetch (about 200 ms RTT)
+      O-->>E: page + Cache-Control
+      E->>C: store under the same key
+    end
+    E-->>U: response`} />
+</Figure>
+
+*The edge wins when the work at E needs nothing from O. Every arrow to the origin costs a long-haul round trip.*
+
+Edge platforms differ mainly in their runtime model, and the runtime decides what you are allowed to do:
+
+| Platform | Runtime model | Where it runs | What it is good at |
+|---|---|---|---|
+| Cloudflare Workers | V8 isolates running JavaScript, TypeScript and WebAssembly | Every Cloudflare PoP | General request handling with near-instant start; Web-standard APIs |
+| CloudFront Functions | Lightweight JavaScript, viewer request and response events only | CloudFront edge locations | Header and URL rewrites, redirects, simple token checks; no network calls, sub-millisecond budget |
+| Lambda@Edge | Node.js or Python Lambda functions attached to CloudFront | CloudFront regional edge caches | Heavier logic that needs network calls or larger limits, at the cost of slower starts |
+| Fastly Compute | WebAssembly modules (Rust, Go, JavaScript and others compiled to Wasm) | Fastly PoPs | Fast-starting sandboxed code in languages that compile to Wasm |
+
+The isolate model deserves a closer look because it explains both the speed and the restrictions. A <Term slug="v8-isolate">V8 isolate</Term> is a separate JavaScript heap and execution context inside one shared V8 engine process. Cloudflare's documentation describes running many customers' isolates inside a single process, so starting your code means creating an isolate, not booting a container or microVM. That makes the cold start of the previous section (serverless) far smaller. The price is a constrained environment:
+
+- **Web-standard APIs only.** `fetch`, `Request` and `Response`, streams, Web Crypto. Not the full Node.js standard library, no arbitrary native binaries, and often no local filesystem.
+- **Tight resource limits.** A memory cap per isolate (128 MB in Workers) and a CPU-time budget per request. Waiting on the network usually does not count as CPU time, but parsing a 20 MB JSON blob does.
+- **No long-lived local state.** Many copies of your function run in hundreds of locations; anything stored in a global variable is local to one isolate in one PoP and may vanish at any moment.
+
+What edge functions are typically used for: redirects and URL normalisation; adding security headers; verifying a <Term slug="jwt">JWT</Term> signature against cached public keys (<Term slug="jwks">JWKS</Term>) and rejecting bad requests before they cost origin capacity; choosing an A/B variant; geo-based routing using the country the CDN detected; bot filtering; and building cache keys.
+
+## Edge caching and personalisation
+
+<DepthStamp depth="deep" />
+
+Personalisation and caching pull in opposite directions. The CDN stores responses under a <Term slug="cache-key">cache key</Term>, usually the URL plus any headers or cookies you choose to include (the <Term slug="vary-header">Vary</Term> header tells shared caches which request headers change the response). Every extra input multiplies the number of distinct entries, and each entry must be missed once per PoP before it is ever hit.
+
+### Worked example: cache-key cardinality
+
+A shop has **20,000** product pages and **5 million** monthly users.
+
+| Cache key includes | Distinct entries | What happens |
+|---|---|---|
+| URL only | 20,000 | Excellent hit rate, but everyone sees the same page |
+| URL + country (40) + A/B variant (2) | 20,000 × 40 × 2 = 1.6 million | Still cacheable; popular pages stay hot in each PoP |
+| URL + user ID | 20,000 × 5,000,000 = 100 billion possible | Nearly every request is a first request: hit rate collapses toward zero |
+
+The lesson: personalise by **segment**, not by person, at the cache layer. Then put the truly per-user parts somewhere that is not a shared cache. Four standard techniques:
+
+1. **Cache the shell, fetch the personal bits.** Serve the product page from the edge cache for everyone, and let the browser call a small API for the cart count and greeting. That API response is marked `Cache-Control: private, no-store` so shared caches never keep it.
+2. **Compose at the edge.** Cache fragments separately and assemble them per request. <Term slug="edge-side-includes">Edge Side Includes</Term> (ESI), a 2001 W3C Note, does this with markup tags that the CDN replaces with fragment contents; Varnish and several CDNs support it or a subset of it. With an edge function you can do the same in code: fetch the cached shell, then inject a small per-user fragment while streaming the response.
+3. **Bucket at the edge.** An edge function reads a cookie, assigns the user to variant A or B (and stores that in the cookie for consistency), then adds only the variant to the cache key. Two variants double the entries; they do not multiply them by the user count.
+4. **Serve stale while refreshing.** <Term slug="stale-while-revalidate">Stale-while-revalidate</Term> (RFC 5861, `Cache-Control: max-age=60, stale-while-revalidate=300`) lets a cache answer immediately with a slightly old copy while it fetches a fresh one in the background, which hides origin latency for pages that tolerate a little staleness.
+
+### Failure timeline: the cache that showed one user's account to everyone
+
+The most dangerous edge-caching bug is caching a personalised response under a shared key. Valve's explanation of the Steam Store incident on 25 December 2015 describes this class of failure: a caching configuration change, made while handling a flood of traffic, caused some pages generated for one user to be served to others. A hypothetical but typical sequence:
+
+| Time | Event |
+|---|---|
+| 14:00:00 | To absorb a bot flood, an engineer adds an edge rule: cache `/account/*` for 60 seconds. The cache key is the URL only. |
+| 14:00:05 | Alice opens `/account` via the Frankfurt PoP. It misses, the origin renders *her* name, address and order history, and the edge stores it under `/account`. |
+| 14:00:07 | Bob opens `/account` via Frankfurt. Cache hit: Bob sees Alice's page. |
+| 14:00:07–14:01:05 | Every user at Frankfurt sees Alice. Every other PoP caches whichever user hit it first. |
+| 14:03 | Support tickets spike. The rule is rolled back and the cache purged. |
+| Afterwards | A personal-data exposure: incident review, and possibly legal notification duties. |
+
+Defences, in layers: the origin marks every personalised response `Cache-Control: private` or `no-store`; the edge refuses to cache any response that carries `Set-Cookie` or was requested with an `Authorization` header unless a rule explicitly says the key includes the user; and a test in the deploy pipeline requests a personalised URL as two users and fails if the bodies match.
+
+## Data locality limits
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="data-locality">Data locality</Term> is how close the data a computation needs is to where the computation runs. Moving code to the edge only helps if the data comes too, or is not needed. Otherwise every lookup becomes a long-haul round trip.
+
+### Worked example: three queries from Sydney
+
+Assumptions: user to the Sydney PoP is a **10 ms** round trip; the Sydney PoP to the database region in us-east is **200 ms** (the physics floor is about 157 ms, and real routes are longer); origin servers sit **1 ms** from the database. Rendering the page needs **3 sequential queries**.
+
+| Where the code runs | Arithmetic | Time before rendering |
+|---|---|---|
+| Edge function, queries the us-east database directly | 10 + 3 × 200 | **610 ms** |
+| Edge function, one batched call to an origin API | 10 + 200 + 3 × 1 | **213 ms** |
+| Plain origin server (no edge code) | 10 + 200 + 3 × 1 via the CDN | **213 ms** |
+| Edge function, data from an edge store or cache | 10 + a few ms | **about 15 ms** |
+
+Running the chatty version at the edge made the page almost **three times slower** than not using the edge at all. The edge only wins in the last row, when the data is already there.
+
+### Getting data to the edge, and what it costs
+
+- **Edge key-value stores.** Cloudflare Workers KV, for example, replicates values to PoPs and is documented as **eventually consistent**: a write is visible at once in the location that made it, but other locations can keep serving the old value for up to about a minute, sometimes longer. Excellent for config, feature flags, redirect tables and rarely changing content; wrong for balances or inventory.
+- **Regional read replicas.** Run database replicas in a few regions and route edge reads to the nearest one. Reads get fast; writes still go to the leader, and you inherit <Term slug="replication-lag">replication lag</Term> and the read-your-writes problems of the replication section.
+- **Single-home coordination objects.** Cloudflare Durable Objects give each object one location where all its requests are processed, so it can be strongly consistent, but users far from that location pay the round trip to it.
+- **Move compute to the data instead.** Several platforms let you pin a function to a region, or place it automatically near the backend it talks to most. That gives up the edge for that route, which is the right call for data-heavy work.
+
+### Failure timeline: a revoked user who keeps access
+
+An admin removes a contractor's access. The permission lives in an eventually consistent edge store that edge functions check on every request.
+
+| Time | Event |
+|---|---|
+| 09:00:00 | Admin revokes access; the write lands in the store from the admin's region |
+| 09:00:01 | The contractor, served by a PoP on another continent, makes a request. That PoP still has the old value: allowed |
+| 09:00:01–09:00:50 | Requests from that PoP keep succeeding while the change propagates |
+| 09:00:50 | The new value reaches the PoP; requests are now refused |
+
+For most data a minute of staleness is fine. For security decisions it is not. Check revocations at the origin, keep token lifetimes short so revocation takes effect at the next refresh, or push an explicit deny-list with a faster invalidation path. Eventual consistency also breaks read-your-writes: a user changes a setting, their next request lands on a different PoP, and the old value comes back.
+
+Data residency is the other locality limit. An edge platform runs your code in many countries by default, so personal data you process there may cross borders. Some platforms let you restrict execution or storage to a jurisdiction; check this before putting <Term slug="pii">PII</Term> handling at the edge. The multi-region section covers residency in depth.
+
+## What belongs at the edge
+
+<DepthStamp depth="tradeoffs" />
+
+A practical rule: put work at the edge when it needs **no data, public data, or data that may be a little stale**, and when doing it early saves the origin work. Keep it at the origin when it needs the source of truth.
+
+| Work | At the edge? | Reason |
+|---|---|---|
+| Redirects, URL normalisation, security headers | Yes | Needs no data at all |
+| JWT signature checks | Yes | Public keys are cacheable; bad requests die early. Revocation still needs another check |
+| A/B bucketing, geo variants, device-based image formats | Yes | Small segment key keeps the cache hit rate high |
+| Bot filtering and rate limiting | Yes, approximately | Counters are per PoP, not global (see below) |
+| Reading a user's cart, balance or inbox | Usually no | Data lives in one region; each read is a long round trip |
+| Writes and transactions | No | They need the source of truth and its consistency guarantees |
+| Heavy CPU work such as video transcoding | Rarely | Edge CPU budgets are small; use a dedicated service |
+
+**Edge rate limits are approximate.** If each PoP counts requests on its own, a limit of 100 requests a minute per user becomes up to 100 × (number of PoPs the attacker can reach) when traffic is deliberately spread out. Spreading across 50 PoPs gives up to 5,000 a minute. Global limits need a shared counter, which brings back a round trip, so many designs combine a generous per-PoP limit at the edge with a precise limit at the origin.
+
+The costs that do not show up in latency charts: debugging code that runs in hundreds of places, logs and traces that must be shipped back and joined, deploys that propagate globally (so a bad deploy is also global), restricted runtimes that rule out some libraries, and platform-specific APIs (bindings, KV, object stores) that make code hard to move between providers.
+
+<TradeoffBox title="Edge functions vs origin code" items={[
+  { gain: "Answers a few milliseconds from the user when no origin data is needed", cost: "Any call to a central database adds a full long-haul round trip per call" },
+  { gain: "Rejects bad, unauthenticated or bot traffic before it costs origin capacity", cost: "Per-PoP state makes limits and counters approximate" },
+  { gain: "Segment-level personalisation that keeps pages cacheable", cost: "Every input added to the cache key multiplies entries and lowers hit rate" },
+  { gain: "Isolate runtimes start almost instantly", cost: "Web-standard APIs only, tight CPU and memory budgets, few native libraries" },
+  { gain: "Edge stores make config and flags globally fast to read", cost: "Eventual consistency: stale reads and no read-your-writes across PoPs" }
+]} />
+
+<NotWhenBox title="Keep it at the origin when" items={[
+  "The request needs several sequential reads of data that lives in one region.",
+  "It writes data or needs transactional guarantees.",
+  "A stale value would be a security or money problem: permissions, balances, stock levels.",
+  "The work is CPU-heavy or needs libraries the edge runtime doesn't support.",
+  "Data residency rules restrict where personal data can be processed and the platform can't pin execution."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Moving any endpoint to an edge function makes it faster." right="Only if it avoids the origin. An edge function making three sequential calls to a database on another continent is slower than running the same code next to the database." />
+
+<Misconception wrong="Personalised pages can't be cached at the edge." right="Personalise by segment (country, variant, logged-in or not) in the cache key and fetch truly per-user fragments separately with private caching." />
+
+<Misconception wrong="An edge key-value store is a globally consistent database." right="Stores like Workers KV are eventually consistent: other locations can read the old value for a while after a write, so they suit config and flags, not balances or permissions that must take effect immediately." />
+
+## Interview angle
+
+<InterviewAngle title="Edge computing" questions={[
+  "Your product pages are slow for users in Australia. Would you move rendering to edge functions? What would you need to know first?",
+  "How do you serve personalised pages from a CDN without leaking one user's data to another?",
+  "You verify JWTs at the edge. A user is banned. How long until their requests stop, and how would you shorten that?",
+  "Design rate limiting at the edge. How accurate is it, and where do you enforce the hard limit?",
+  "What would you never run at the edge?"
+]}>
+Edge computing usually comes up as a latency fix for global users, and interviewers want to see whether you think about where the data lives. Start with the round-trip arithmetic: count sequential calls to the origin and multiply by the long-haul RTT. If the page needs origin data, the wins come from caching and batching, not from moving code. For personalisation, talk about cache-key cardinality, segments versus users, private caching for per-user fragments, and a test that two users never get the same personalised body. For JWTs, signatures can be checked at the edge but revocation can't, so the answer is short token lifetimes, a revocation check at the origin for sensitive actions, or a pushed deny-list. For rate limiting, explain that per-PoP counters are approximate and pair them with a precise limit at the origin. Things to keep off the edge: writes, money, permissions that must apply immediately, and heavy CPU work.
+</InterviewAngle>
+
+## Practice
+
+1. A page needs 4 sequential reads from a database in Frankfurt. A user in Singapore is 8 ms from their PoP, and the PoP is 160 ms from Frankfurt. Compare an edge function that queries directly, an edge function making one batched origin call, and an edge function reading a replica in Singapore 2 ms from the PoP.
+2. A news site has 50,000 articles and wants to vary pages by 30 countries, logged-in or anonymous, and 3 A/B variants. How many cache entries is that per PoP in the worst case, and what would you take out of the key?
+3. Design the edge layer for a login-protected dashboard: what runs at the edge, what is cached, how you prevent cross-user caching, and how a revoked session stops working within 60 seconds.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

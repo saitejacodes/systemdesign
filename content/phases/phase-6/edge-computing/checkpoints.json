@@ -1,0 +1,7 @@
+[
+  { "id": "edge-computing-c1", "text": "I can explain how isolate-based edge runtimes start fast and list the constraints that come with them.", "topicId": "edge-functions" },
+  { "id": "edge-computing-c2", "text": "I can calculate cache-key cardinality for a personalisation scheme and redesign it around segments.", "topicId": "edge-caching-personalization" },
+  { "id": "edge-computing-c3", "text": "I can configure caching so personalised responses never reach a shared cache, and describe the test that proves it.", "topicId": "edge-caching-personalization" },
+  { "id": "edge-computing-c4", "text": "I can compute end-to-end latency for edge vs origin rendering given RTTs and the number of sequential data calls.", "topicId": "data-locality" },
+  { "id": "edge-computing-c5", "text": "I can sort a list of request-path tasks into edge and origin and justify each choice, including token revocation and rate limits.", "topicId": "edge-placement" }
+]

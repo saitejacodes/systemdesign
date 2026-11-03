@@ -1,0 +1,8 @@
+[
+  { "id": "llm-serving-at-scale-c1", "text": "I can trace a request from edge to GPU and say which hop enforces quotas, picks the region, applies prefix affinity and budgets KV memory.", "topicId": "request-path" },
+  { "id": "llm-serving-at-scale-c2", "text": "I can turn daily active users into peak tokens per second, concurrent streams (Little's law with TPOT), replicas and GPUs, then check prefill compute and add regional headroom.", "topicId": "capacity-planning" },
+  { "id": "llm-serving-at-scale-c3", "text": "I can design priority tiers and token-based fair queuing, and explain when to return a 429 versus an overload error.", "topicId": "admission-control" },
+  { "id": "llm-serving-at-scale-c4", "text": "I can write a router scoring rule that balances prefix-cache affinity against load and explain how it fails with a hot prefix.", "topicId": "prefix-aware-routing" },
+  { "id": "llm-serving-at-scale-c5", "text": "I can explain why GPU scale-out takes minutes and list the fleet-level alternatives: headroom, spillover, preemptible batch tiers and degradation.", "topicId": "gpu-autoscaling" },
+  { "id": "llm-serving-at-scale-c6", "text": "I can compute the cost of a retry mid-stream and design stream resumption with idempotent tool calls.", "topicId": "stream-reliability" }
+]

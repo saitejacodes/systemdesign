@@ -1,0 +1,42 @@
+[
+  {
+    "id": "workers-how-it-works",
+    "title": "How Workers works",
+    "author": "Cloudflare",
+    "kind": "docs",
+    "url": "https://developers.cloudflare.com/workers/reference/how-workers-works/",
+    "why": "The primary explanation of V8 isolates, why they start fast, and how they differ from containers and VMs.",
+    "topicIds": ["edge-functions"],
+    "free": true
+  },
+  {
+    "id": "workers-kv-how-it-works",
+    "title": "How KV works",
+    "author": "Cloudflare",
+    "kind": "docs",
+    "url": "https://developers.cloudflare.com/kv/concepts/how-kv-works/",
+    "why": "A clear vendor description of an eventually consistent edge store: where reads are served from and how long writes take to propagate.",
+    "topicIds": ["data-locality"],
+    "free": true
+  },
+  {
+    "id": "esi-language-spec",
+    "title": "ESI Language Specification 1.0",
+    "author": "W3C Note (Akamai, Oracle and others, 2001)",
+    "kind": "docs",
+    "url": "https://www.w3.org/TR/esi-lang/",
+    "why": "The original idea of assembling cached fragments at the edge, still the mental model behind edge-side composition.",
+    "topicIds": ["edge-caching-personalization"],
+    "free": true
+  },
+  {
+    "id": "rfc-5861",
+    "title": "RFC 5861: HTTP Cache-Control Extensions for Stale Content",
+    "author": "M. Nottingham (IETF, 2010)",
+    "kind": "docs",
+    "url": "https://www.rfc-editor.org/rfc/rfc5861",
+    "why": "Defines stale-while-revalidate and stale-if-error, the two directives that let edge caches hide origin latency and outages.",
+    "topicIds": ["edge-caching-personalization"],
+    "free": true
+  }
+]

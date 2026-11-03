@@ -1,0 +1,172 @@
+[
+  {
+    "id": "ai-reliability-q1",
+    "type": "single",
+    "prompt": "Why do streaming LLM calls need a separate time-to-first-token timeout instead of only a total timeout?",
+    "options": [
+      { "id": "a", "text": "A stuck prefill should be caught in seconds, while a healthy long answer may stream far longer" },
+      { "id": "b", "text": "Providers reject streaming requests that do not declare a first-token timeout in the request headers" },
+      { "id": "c", "text": "The total timeout only starts counting after the first token, so it cannot catch a slow start" },
+      { "id": "d", "text": "First-token delay is fixed per model, so a timeout on it detects model version changes" }
+    ],
+    "correct": ["a"],
+    "explanation": "Prefill and decode run at very different speeds: a first-token deadline detects an overloaded or stuck provider quickly, while the total and idle timeouts let a long, healthy stream finish. Providers do not require any timeout declaration; timeouts are client-side. A total timeout counts from the start of the request, so it does cover a slow start, just far too late. First-token delay varies with load and prompt length, so it is not a model-version detector.",
+    "topicId": "llm-timeouts",
+    "difficulty": 1
+  },
+  {
+    "id": "ai-reliability-q2",
+    "type": "scenario",
+    "prompt": "Which timeout plan fits best?",
+    "scenario": "A chat feature streams answers of up to 800 tokens. Assume decode runs at about 40 tokens/s, time to first token is 1 s normally and 4 s at p99, and the current setting is a single 30-second total timeout. Users complain that a stalled answer sits frozen for half a minute.",
+    "options": [
+      { "id": "a", "text": "Lower the single total timeout to 10 s so stalls are caught three times sooner" },
+      { "id": "b", "text": "First token 8 s, stream idle 10 s, total about 30 s with max tokens capped at 800" },
+      { "id": "c", "text": "Remove timeouts and rely on the provider to close stalled streams on its own side" },
+      { "id": "d", "text": "Raise the total timeout to 60 s so long answers never get cut off halfway through" }
+    ],
+    "correct": ["b"],
+    "explanation": "800 tokens at 40 tokens/s is 20 s of decode plus up to 4 s to start, so about 24 s worst case: a 30 s total with an 800-token cap fits, the 8 s first-token deadline sits above the p99, and a 10 s idle timeout catches a stall at any point instead of waiting for the total. A 10 s total would kill every healthy long answer. Relying on the provider gives you no control over how long users wait. A 60 s total makes the frozen-stream complaint worse.",
+    "topicId": "llm-timeouts",
+    "difficulty": 2
+  },
+  {
+    "id": "ai-reliability-q3",
+    "type": "multi",
+    "prompt": "Which LLM API responses are reasonable to retry with backoff? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "429 rate limit, after the Retry-After delay" },
+      { "id": "b", "text": "503 or an overloaded error from the provider" },
+      { "id": "c", "text": "400 because the prompt exceeds the context window" },
+      { "id": "d", "text": "401 because the API key was revoked yesterday" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "429 and 5xx or overloaded errors are transient: waiting and retrying a small number of times can succeed. A context-length 400 fails identically every time until you shorten the prompt. A revoked key returns 401 forever; retrying hides the problem and should instead alert someone.",
+    "topicId": "llm-retries",
+    "difficulty": 1
+  },
+  {
+    "id": "ai-reliability-q4",
+    "type": "scenario",
+    "prompt": "What is the worst-case number of provider requests for one user request?",
+    "scenario": "The SDK is left at its default of 3 attempts per call. Your gateway wraps each SDK call in its own 3-attempt retry loop. On final failure, the gateway fails over to a second provider using the same wrapper and SDK settings.",
+    "options": [
+      { "id": "a", "text": "6 requests" },
+      { "id": "b", "text": "9 requests" },
+      { "id": "c", "text": "18 requests" },
+      { "id": "d", "text": "27 requests" }
+    ],
+    "correct": ["c"],
+    "explanation": "Each provider gets 3 wrapper attempts × 3 SDK attempts = 9 requests, and failover repeats that on the second provider: 18. 6 adds the layers instead of multiplying them. 9 forgets the failover. 27 treats failover as a third multiplying layer of 3 rather than a second provider tried once.",
+    "topicId": "llm-retries",
+    "difficulty": 2
+  },
+  {
+    "id": "ai-reliability-q5",
+    "type": "single",
+    "prompt": "Why is an immediate retry of a 429 rate-limit error usually harmful?",
+    "options": [
+      { "id": "a", "text": "The provider bans the API key permanently after a second 429 inside one minute" },
+      { "id": "b", "text": "Limits are counted per account, so it spends quota that is already exhausted" },
+      { "id": "c", "text": "A 429 means the request was already processed, so a retry creates a duplicate" },
+      { "id": "d", "text": "Retries of a 429 are billed at a higher rate than the original request was" }
+    ],
+    "correct": ["b"],
+    "explanation": "Rate limits are per account in requests and tokens per minute; retrying instantly adds more load against a limit you have already hit, for every caller sharing the account. Providers do not ban keys for a second 429. A 429 means the request was rejected, not processed. There is no special higher price for retries.",
+    "topicId": "llm-retries",
+    "difficulty": 1
+  },
+  {
+    "id": "ai-reliability-q6",
+    "type": "scenario",
+    "prompt": "What is the most likely root cause?",
+    "scenario": "During a primary-provider outage, the gateway failed over to provider B as designed. Within ten minutes, 40% of requests to B were failing with 429s and the remaining answers frequently broke the downstream JSON parser. B normally receives about 1% of traffic and no one had run the eval suite against it for months.",
+    "options": [
+      { "id": "a", "text": "The breaker for provider A opened too quickly and should have waited for more failures" },
+      { "id": "b", "text": "B's quota was sized for 1% of traffic and its prompt variant was never re-evaluated" },
+      { "id": "c", "text": "Provider B was secretly the same model as A, so it was failing for the same reason" },
+      { "id": "d", "text": "The gateway should have retried provider A more times before ever failing over to B" }
+    ],
+    "correct": ["b"],
+    "explanation": "429s at B point to account limits sized for its normal 1% share, and parser failures point to a prompt that no longer produces the expected format on B; both come from not exercising the secondary. Opening the breaker later would only have delayed the switch while A was down. A correlated failure would show 5xx or the same outage, not 429s and format breakage. More retries against a dead provider add load and latency without helping.",
+    "topicId": "provider-failover",
+    "difficulty": 3
+  },
+  {
+    "id": "ai-reliability-q7",
+    "type": "single",
+    "prompt": "What does a per-provider circuit breaker add to failover?",
+    "options": [
+      { "id": "a", "text": "It guarantees that both providers produce identical answers for the same prompt" },
+      { "id": "b", "text": "It lets requests skip a failing provider without first waiting on it each time" },
+      { "id": "c", "text": "It caps the tokens per minute that the gateway sends to the secondary provider" },
+      { "id": "d", "text": "It permanently removes a provider from rotation after a single failed request" }
+    ],
+    "correct": ["b"],
+    "explanation": "Once the breaker for A opens, new requests go straight to B instead of each one spending its timeout and retries on A; half-open probes later test whether A recovered. A breaker cannot make two models answer identically. Capping tokens per minute is a rate limiter's job. A breaker opens on a threshold of failures and closes again after successful probes, not permanently after one error.",
+    "topicId": "provider-failover",
+    "difficulty": 1
+  },
+  {
+    "id": "ai-reliability-q8",
+    "type": "scenario",
+    "prompt": "What is the best design for the recommendation widget?",
+    "scenario": "A checkout page calls an LLM to generate 'you might also like' suggestions before rendering. When the model provider is slow, checkout page loads take 20 seconds and conversion drops.",
+    "options": [
+      { "id": "a", "text": "Add a second provider so the widget always has a model available during outages" },
+      { "id": "b", "text": "Raise the page timeout to 30 s so suggestions finish loading before render" },
+      { "id": "c", "text": "Call it in parallel with a short deadline and render checkout without it if missed" },
+      { "id": "d", "text": "Retry the model call three times so a slow first attempt is replaced by a faster one" }
+    ],
+    "correct": ["c"],
+    "explanation": "The widget is optional, so it must not sit on the critical path of a core transaction: a parallel call with a short deadline, falling back to no widget or cached suggestions, keeps checkout fast. A second provider helps availability but the page still waits on a slow model. A longer timeout makes slow loads slower. Retries add more waiting and more load on a slow provider.",
+    "topicId": "fallbacks-degradation",
+    "difficulty": 2
+  },
+  {
+    "id": "ai-reliability-q9",
+    "type": "single",
+    "prompt": "Why should every response record which rung of the degradation ladder served it?",
+    "options": [
+      { "id": "a", "text": "So a fallback serving a large share of traffic for days shows up as a metric" },
+      { "id": "b", "text": "Because providers require attribution of the model used in each logged response" },
+      { "id": "c", "text": "So the cache can store fallback answers longer than answers from the primary" },
+      { "id": "d", "text": "Because the degraded rungs are billed differently and invoices must match them" }
+    ],
+    "correct": ["a"],
+    "explanation": "A silent fallback hides an outage: tagging responses lets you alert on the share of traffic on each rung and label degraded answers for users. Providers do not require this attribution. Cache lifetime is a separate decision and not why you tag. Non-AI rungs are often not billed at all, so invoice matching is not the reason.",
+    "topicId": "fallbacks-degradation",
+    "difficulty": 2
+  },
+  {
+    "id": "ai-reliability-q10",
+    "type": "multi",
+    "prompt": "An extraction service uses constrained decoding with a JSON Schema. Which checks are still needed? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Check the stop reason for truncation at max tokens" },
+      { "id": "b", "text": "Semantic checks such as line items summing to the total" },
+      { "id": "c", "text": "A regex to strip Markdown fences around the JSON body" },
+      { "id": "d", "text": "Re-parse the bracket balance of every returned object" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "Constrained decoding guarantees the grammar while generation runs, but output cut off at the token limit is still incomplete, and well-typed values can still be wrong, so stop-reason and semantic checks remain. Markdown fences and unbalanced brackets are exactly the syntax errors constrained decoding prevents, so those extra checks add nothing (your normal parser runs anyway).",
+    "topicId": "structured-output",
+    "difficulty": 3
+  },
+  {
+    "id": "ai-reliability-q11",
+    "type": "scenario",
+    "prompt": "How many documents still fail after one repair retry, and roughly how many extra model calls are made per day?",
+    "scenario": "A pipeline processes 50,000 documents a day. 6% of first responses fail schema validation. One repair retry, which sends the bad output and the validation error back to the model, fixes 75% of those.",
+    "options": [
+      { "id": "a", "text": "750 still fail; about 3,000 extra calls" },
+      { "id": "b", "text": "2,250 still fail; about 750 extra calls" },
+      { "id": "c", "text": "3,000 still fail; no extra calls at all" },
+      { "id": "d", "text": "750 still fail; about 50,000 extra calls" }
+    ],
+    "correct": ["a"],
+    "explanation": "First-pass failures: 50,000 × 0.06 = 3,000, each getting one repair call (3,000 extra calls). Repairs fix 75%, leaving 3,000 × 0.25 = 750. 2,250 is the number repaired, not the number still failing, and the call count is swapped. 3,000 is the failure count before any repair. 50,000 extra calls would mean repairing every document, not only the failures.",
+    "topicId": "structured-output",
+    "difficulty": 2
+  }
+]

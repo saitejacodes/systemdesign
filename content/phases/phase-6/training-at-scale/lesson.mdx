@@ -1,0 +1,205 @@
+## Why it matters
+
+Pre-training a large language model is one synchronous computation spread over thousands of GPUs for weeks, and it only makes progress while every one of them is healthy at the same moment. Meta's Llama 3 paper ("The Llama 3 Herd of Models", 2024) is unusually candid about what that means: during a 54-day snapshot of pre-training on up to 16,384 GPUs, the job was interrupted **466 times**, 47 of them planned and 419 unexpected, with about 78% of the unexpected ones attributed to confirmed or suspected hardware problems. The team still kept effective training time above 90%. That gap between "something breaks every few hours" and "90% of the time is useful" is a distributed-systems achievement, not a machine-learning one. This section is at awareness-to-tradeoffs depth: how big the compute bill is, how efficiently the hardware is used, why failure is the normal state, and what the system around the model must do about it. It assumes [GPU Parallelism](/phase/6/gpu-parallelism).
+
+<Callout type="analogy" title="A galley with 16,000 rowers">
+Picture an ancient galley with 16,000 rowers, all pulling in time to one drum. The ship only moves when every oar strokes together (synchronous training). If one rower faints, the whole ship stops, the crew swaps in a fresh rower, and the ship rows back to the last buoy it passed, because that is the last position the navigator wrote down (restart from a checkpoint). Write the position down too often and the navigator spends all day writing; too rarely and every faint costs miles. The slowest rower sets the pace for all of them (stragglers), and the galley's speed as a fraction of what 16,000 perfect rowers could manage is its MFU. Where it breaks down: a fainting rower is obvious. A GPU can keep rowing while quietly pulling in the wrong direction, producing wrong numbers with no error at all.
+</Callout>
+
+## Compute budgets and scaling laws
+
+<DepthStamp depth="deep" />
+
+The cost of pre-training follows from one approximation:
+
+```
+training compute C ≈ 6 × N × D   (FLOPs)
+```
+
+N is the parameter count and D the number of training tokens. The forward pass costs about 2N FLOPs per token (one multiply and one add per weight, as in inference); backward costs about twice the forward, 4N; together 6N. This ignores the attention term, which grows with context length and is small for typical context sizes relative to the model width. Kaplan et al. ("Scaling Laws for Neural Language Models", OpenAI, 2020) used this count and showed that loss falls as a smooth <Term slug="scaling-law">scaling law</Term>, a power law in N, D and C over many orders of magnitude.
+
+How should a fixed budget C be divided between a bigger model and more tokens? Kaplan et al. concluded that model size should grow faster than data. Hoffmann et al. ("Training Compute-Optimal Large Language Models", DeepMind, 2022), the Chinchilla paper, re-ran the experiment with learning-rate schedules matched to each run's length and found that N and D should grow **in equal proportion**, at roughly **20 tokens per parameter**. Their 70B-parameter Chinchilla, trained on 1.4 trillion tokens, outperformed their 280B-parameter Gopher, trained on 300 billion tokens with a similar budget. That is <Term slug="compute-optimal-training">compute-optimal training</Term>.
+
+The field's later practice adds a twist worth knowing in interviews: compute-optimal minimises **training** cost for a given loss, but a model is trained once and served billions of times, and serving cost scales with N. So teams deliberately train smaller models far past 20 tokens per parameter. Llama 3's 8B model, for example, was pre-trained on roughly 15 trillion tokens, nearly 2,000 tokens per parameter. Both views are correct; they minimise different bills.
+
+### Worked example: from FLOPs to GPU-days
+
+Assumptions, all labelled: a 70B-parameter dense model, Chinchilla-style 20 tokens per parameter, a GPU with a peak of 1,000 TFLOP/s dense bf16 (the order of magnitude published for current flagship datacenter GPUs), and 40% utilisation of that peak.
+
+1. Tokens: D = 20 × 70 × 10⁹ = **1.4 × 10¹²**.
+2. Compute: C = 6 × 7 × 10¹⁰ × 1.4 × 10¹² = **5.88 × 10²³ FLOPs**.
+3. Effective throughput per GPU: 0.4 × 10¹⁵ = 4 × 10¹⁴ FLOP/s.
+4. GPU-seconds: 5.88 × 10²³ ÷ 4 × 10¹⁴ = 1.47 × 10⁹ s, which is **≈ 17,000 GPU-days** (about 46 GPU-years).
+5. On 2,048 GPUs: 17,000 ÷ 2,048 ≈ **8.3 days** of perfect running.
+
+As a sanity check against a published figure: Llama 3 405B was trained on about 15.6 trillion tokens, and 6 × 405 × 10⁹ × 15.6 × 10¹² ≈ 3.8 × 10²⁵ FLOPs, which matches the 3.8 × 10²⁵ the paper reports. The 6ND rule is accurate enough to plan a cluster.
+
+## Model FLOPs utilisation
+
+<DepthStamp depth="deep" />
+
+Step 3 above hid the most important number in the plan. <Term slug="model-flops-utilization">Model FLOPs utilisation</Term> (MFU), introduced in Google's PaLM paper (Chowdhery et al., 2022), is:
+
+```
+MFU = (observed tokens per second × FLOPs per token for the model) ÷ peak FLOP/s of the hardware
+```
+
+It counts only the FLOPs the model mathematically needs (6N per token plus attention), so it is comparable across systems. **Hardware FLOPs utilisation** (HFU) also counts work the system chose to redo, such as activation recomputation, so HFU ≥ MFU and can flatter a system. PaLM 540B reported 46.2% MFU (57.8% HFU) on 6,144 TPU v4 chips; the Llama 3 paper reports roughly 38–43% bf16 MFU for its 405B configurations on H100 GPUs.
+
+Where does the other 55–60% go? Every topic in the parallelism section: communication that does not overlap with compute (tensor-parallel all-reduces, MoE all-to-alls), the pipeline bubble, kernels that are memory-bound rather than compute-bound (layer norms, element-wise operations), small matrix shapes that do not fill the GPU, and waiting on stragglers. MFU is the end-to-end number, so it is the one to put in the plan. At 40% MFU the run above takes 8.3 days; at 25% it takes 13.3. On a 16,000-GPU cluster, each percentage point of MFU is the full peak output of 160 GPUs.
+
+## Failure is the steady state
+
+<DepthStamp depth="deep" />
+
+A synchronous job's failure rate is roughly the **sum** of its components' failure rates. If each GPU, together with its share of host, network card, cables and switch ports, fails independently with a mean time between failures M₁, a job on N of them sees:
+
+```
+job MTBF ≈ M₁ ÷ N
+```
+
+Assume, for illustration only, M₁ = 50,000 hours (almost six years) per GPU. On 16,384 GPUs the job MTBF is 50,000 ÷ 16,384 ≈ **3 hours**. Compare the Llama 3 snapshot: 419 unexpected interruptions in 54 days is about 7.8 a day, one every **3.1 hours**. Individually reliable parts become an unreliable whole. The Llama 3 paper attributes the largest share to GPUs themselves and their HBM memory, followed by network, host and software causes.
+
+The job is also <Term slug="gang-scheduling">gang-scheduled</Term>: all of its GPUs must be allocated and running together, or it cannot run at all. One lost GPU stops thousands. A typical interruption, as a timeline:
+
+| Time | Event |
+|---|---|
+| 02:14:00 | An uncorrectable HBM memory error kills the training process on one GPU of node 1,203. |
+| 02:14:00 | Every other rank reaches its next collective and blocks, waiting for the dead rank. |
+| 02:24:00 | The collective's watchdog timeout fires (its length is a configuration choice, often minutes); the job controller marks the job failed. |
+| 02:26:00 | Health checks identify node 1,203; the scheduler cordons it and swaps in a hot spare. |
+| 02:34:00 | All ranks restart, re-initialise communication groups and load the last checkpoint, saved at 01:55. |
+| 02:41:00 | Training resumes. Lost: 19 minutes of progress since the checkpoint plus 27 minutes of detection and restart, on every GPU. |
+
+<Figure caption="FIG. 18.1 · THE TRAINING JOB RECOVERY LOOP">
+  <Diagram label="State diagram: a training job runs and periodically checkpoints. A rank failure leads to a stall in a collective, then a timeout, then cordoning the bad node and swapping in a spare, then restarting from the last checkpoint and running again." chart={`stateDiagram-v2
+    [*] --> Running
+    Running --> Checkpointing: every tau seconds
+    Checkpointing --> Running: snapshot done
+    Running --> Stalled: a rank dies
+    Stalled --> Failed: collective timeout
+    Failed --> Repairing: cordon node, add spare
+    Repairing --> Restoring: all ranks restart
+    Restoring --> Running: load last checkpoint`} />
+</Figure>
+
+Every stage of that table is an engineering target: faster detection (shorter, smarter timeouts and flight recorders that show which rank stalled), spare capacity ready to swap in, fast restart, and frequent cheap checkpoints. The Llama 3 team reports needing significant manual intervention only three times in the 54-day window: automation, not heroics.
+
+Two failure types do not announce themselves. **Loss spikes** are numerical instabilities where the loss jumps and may not recover; PaLM's authors report about 20 spikes, handled by restarting from a checkpoint about 100 steps earlier and skipping 200–500 batches of data around the spike. <Term slug="silent-data-corruption">Silent data corruption</Term> is hardware that computes wrong results without raising any error; Meta ("Silent Data Corruptions at Scale", Dixit et al., 2021) and Google ("Cores that don't count", Hochschild et al., HotOS 2021) both describe it across large fleets. In training it shows up, if at all, as unexplained loss or gradient-norm anomalies, so teams monitor those signals closely and re-run suspicious steps on different machines.
+
+## Checkpointing frequency
+
+<DepthStamp depth="tradeoffs" />
+
+A <Term slug="training-checkpoint">training checkpoint</Term> is the full state needed to resume exactly: weights, optimiser state, learning-rate schedule position, random-number generator states, and the data loader's position. For mixed-precision Adam that is about 14 bytes per parameter (gradients are not saved), so a 70B model's checkpoint is roughly **980 GB**, written as thousands of shards in parallel.
+
+Checkpoint too rarely and each failure throws away hours. Checkpoint too often and the job spends its time writing. Young (1974) gave the classic first-order answer, refined by Daly (2006):
+
+```
+optimal interval τ ≈ √(2 × δ × M)
+wasted fraction ≈ δ/τ + τ/(2M) + R/M
+```
+
+where δ is the time the job is blocked writing a checkpoint, M is the job MTBF, and R is the restart time. The τ/(2M) term is the average work lost per failure: on average a failure lands halfway through an interval.
+
+### Worked example: blocking vs asynchronous checkpoints
+
+Take M = 3.1 hours = 11,160 s and an assumed restart time R = 10 minutes (600 s, so R/M ≈ 5.4% regardless of checkpointing).
+
+| Checkpoint style (assumed δ) | Optimal τ | δ/τ | τ/(2M) | Total waste incl. restart |
+|---|---|---|---|---|
+| Blocking write to storage, δ = 60 s | √(2 × 60 × 11,160) ≈ 1,157 s ≈ 19 min | 5.2% | 5.2% | ≈ 16% |
+| Asynchronous: snapshot to host memory, δ = 5 s | √(2 × 5 × 11,160) ≈ 334 s ≈ 5.6 min | 1.5% | 1.5% | ≈ 8% |
+
+Cutting the blocking time 12× cut checkpoint-related waste by more than 3× (from about 10% to 3%), because it lets you checkpoint far more often. That is why large-scale trainers copy state to CPU memory in a few seconds and stream it to durable storage in the background (PyTorch's distributed checkpointing offers an asynchronous save), and why some systems also keep recent checkpoints in other nodes' memory. The remaining 5.4% is restart time, which is why fast restart and hot spares matter as much as checkpointing.
+
+## Stragglers and data pipelines
+
+<DepthStamp depth="tradeoffs" />
+
+In synchronous training, the step time is the **maximum** over all ranks. A <Term slug="straggler">straggler</Term> (a rank that is slow but not dead: a thermally throttled GPU, a degraded network link, a noisy neighbour on the host) slows everyone. The arithmetic is unforgiving. Assume each GPU independently has a 0.1% chance of being noticeably slow in a given step. With 16,384 GPUs, the probability that **no** GPU is slow is 0.999¹⁶³⁸⁴ ≈ e⁻¹⁶·⁴ ≈ 10⁻⁷: essentially every step contains a straggler. Rare per-device hiccups become a constant tax at scale. Defences: per-rank step-time telemetry to find and evict persistently slow nodes, health checks before a node rejoins, and overlapping communication so a short delay is absorbed instead of propagated. The Llama 3 paper also notes throughput varying by a percent or two over the day with temperature, and that the whole cluster's synchronised pauses (such as everyone waiting on a checkpoint) swing datacentre power draw by tens of megawatts: at this scale even the power grid is part of the system.
+
+The **data pipeline** is less about bandwidth than people expect. The 70B run above consumes 1.4 × 10¹² tokens in about 717,000 seconds, roughly 2 million tokens a second; at an assumed 4 bytes of text per token that is about 8 MB/s for the whole cluster. The hard parts are elsewhere:
+
+- **Determinism and resumability.** After a restart the loader must continue at exactly the right position, or the model sees some data twice and some never. The loader's state belongs in the checkpoint.
+- **Mixture control.** The corpus is a weighted blend of sources (web, code, books, multilingual); weights may change during training, and each change must be reproducible.
+- **Quality and deduplication.** Filtering, near-duplicate removal and removing evaluation benchmarks from training data happen offline in large batch jobs (see [Batch Processing](/phase/6/batch-processing)) long before the GPUs start.
+
+## Post-training stages
+
+<DepthStamp depth="awareness" />
+
+A pre-trained model predicts text; post-training turns it into an assistant. The common stages:
+
+- <Term slug="supervised-fine-tuning">Supervised fine-tuning</Term> (SFT): continue training on curated demonstrations of good responses. Same machinery as pre-training, at a much smaller token count.
+- <Term slug="rlhf">RLHF</Term> (reinforcement learning from human feedback), as described for InstructGPT (Ouyang et al., 2022): collect human preference comparisons between responses, train a reward model on them, then optimise the policy against that reward with a reinforcement learning algorithm such as PPO, with a penalty for drifting too far from the starting model.
+- **RLAIF** replaces some human labels with AI feedback; Anthropic's Constitutional AI (Bai et al., 2022) uses a written set of principles to guide that feedback. **DPO** (Rafailov et al., 2023) optimises directly on preference pairs without a separate reward model or RL loop.
+
+The systems shape differs from pre-training. An RL loop **generates** responses inside the training job, so it embeds an inference engine and inherits decode's memory-bound behaviour. PPO-style setups hold several models at once (the policy, a frozen reference, the reward model and often a value model), and the job alternates between generation and gradient phases with very different hardware profiles.
+
+## How training and inference fleets differ
+
+<DepthStamp depth="tradeoffs" />
+
+| Property | Training fleet | Inference fleet |
+|---|---|---|
+| Unit of work | One job across thousands of GPUs for weeks | Millions of independent requests of seconds each |
+| Coupling | Synchronous: every step waits for every rank | Replicas independent; a request touches one replica |
+| Failure impact | One GPU stops the whole job; recover from checkpoint | One replica fails its in-flight requests; others carry on |
+| Network | Dense, high-bandwidth fabric between all nodes | Fast links inside a replica; the rest is ordinary datacentre networking |
+| Location | One or a few large sites, close together | Spread across regions, close to users |
+| Metric | MFU, effective training time, cost per token trained | TTFT, TPOT, goodput, cost per token served |
+| Scheduling | Gang scheduling; preemption is expensive | Load balancing, admission control, autoscaling |
+
+Many operators run both on shared hardware: inference capacity follows the day, while research and batch jobs soak up spare capacity at night. But a pre-training job wants its gang of GPUs continuously and next to each other, which is why the largest runs get dedicated clusters.
+
+<TradeoffBox title="Running a large training job" items={[
+  { gain: "Train past compute-optimal (more tokens per parameter): cheaper to serve for its whole life", cost: "More training compute for the same loss" },
+  { gain: "Frequent asynchronous checkpoints: little work lost per failure", cost: "Host memory, storage bandwidth and engineering for background writes" },
+  { gain: "Hot spare nodes: restart in minutes instead of waiting for repair", cost: "Paying for idle GPUs held in reserve" },
+  { gain: "Aggressive straggler eviction: steps run at the healthy speed", cost: "Fewer GPUs in the job; risk of evicting healthy nodes on noisy signals" },
+  { gain: "Activation recomputation: fits bigger micro-batches", cost: "About a third more compute per step, visible as HFU above MFU" }
+]} />
+
+<NotWhenBox title="When this is overkill" items={[
+  "Fine-tuning a model on a few GPUs for hours: checkpoint at epoch boundaries and restart by hand.",
+  "Jobs shorter than the job MTBF: the Young/Daly optimum may be one checkpoint at the end.",
+  "Choosing Chinchilla-optimal sizing for a model you will serve heavily: lifecycle cost favours a smaller model on more tokens.",
+  "Building your own pre-training stack when adapting an open model with fine-tuning would meet the requirement."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Training on reliable hardware means failures are rare events." right="Job MTBF is the per-component MTBF divided by the component count. Thousands of reliable GPUs fail every few hours as a group, so recovery must be automated." />
+
+<Misconception wrong="Chinchilla's 20 tokens per parameter is the right size for every model." right="It minimises training compute for a given loss. Models that will be served heavily are deliberately trained on far more tokens per parameter to cut inference cost." />
+
+<Misconception wrong="Checkpoint as often as possible to be safe." right="Every blocking checkpoint stalls all GPUs. The optimum is about √(2δM); the real win is shrinking δ with asynchronous saves." />
+
+<Misconception wrong="High GPU utilisation in monitoring means the job is efficient." right="A GPU can be busy waiting in a collective or recomputing activations. MFU counts only useful model FLOPs." />
+
+## Interview angle
+
+<InterviewAngle title="Training at scale" questions={[
+  "Estimate how many GPU-days it takes to pre-train a 70B model compute-optimally. State your assumptions.",
+  "Your 10,000-GPU job fails every few hours. How do you decide how often to checkpoint?",
+  "What is MFU, and why is it lower than the GPU utilisation shown in nvidia-smi?",
+  "Why might a team train an 8B model on 15 trillion tokens when Chinchilla says 160 billion is optimal?",
+  "How does a training cluster differ from an inference cluster in design and failure handling?"
+]}>
+These come up in ML-infrastructure and research-engineering interviews, and increasingly as deep dives in general system design. Lead with 6ND, convert to GPU-seconds with an explicit peak and MFU, and divide by cluster size. For reliability, derive job MTBF as M₁ ÷ N, then use Young/Daly and point out that restart time and checkpoint blocking time are the levers. Strong answers name the silent failures too: stragglers set the step time, loss spikes need rollback and data skipping, silent data corruption needs anomaly detection. Close by contrasting fleets: gang-scheduled synchronous training against independent, latency-bound inference replicas.
+</InterviewAngle>
+
+## Practice
+
+1. Estimate the compute and GPU-days to train a 13B model on 2 trillion tokens at an assumed 1,000 TFLOP/s peak and 35% MFU. How many days on 1,024 GPUs?
+2. A 4,096-GPU job sees a failure every 8 hours, checkpoints block for 90 s and restarts take 15 minutes. Compute the optimal checkpoint interval and the total wasted fraction. What happens if asynchronous checkpointing cuts blocking to 10 s?
+3. Design the failure-handling path for a 16,000-GPU run: detection, spare capacity, restart, data-loader resume, and the dashboards that would reveal a straggler or silent data corruption.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

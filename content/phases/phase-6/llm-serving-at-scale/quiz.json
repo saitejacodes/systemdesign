@@ -1,0 +1,172 @@
+[
+  {
+    "id": "llm-serving-at-scale-q1",
+    "type": "scenario",
+    "prompt": "About how many sequences are decoding concurrently at peak?",
+    "scenario": "Peak traffic is 5,200 requests per second with 400 output tokens each. The TPOT target is 30 ms.",
+    "options": [
+      { "id": "a", "text": "About 5,200, one per request arriving each second" },
+      { "id": "b", "text": "About 62,400, from 2.08M tokens/s × 0.03 s" },
+      { "id": "c", "text": "About 69,000, from 2.08M tokens/s ÷ 30 tokens" },
+      { "id": "d", "text": "About 2,080, from 2.08M tokens/s ÷ 1,000 ms" }
+    ],
+    "correct": ["b"],
+    "explanation": "Output is 5,200 × 400 = 2.08M tokens/s. By Little's law, concurrency = arrival rate × time in system; each stream emits one token every 0.03 s, so concurrency = 2.08M × 0.03 ≈ 62,400. Arrivals per second is not concurrency, because each request decodes for about 12 s. Dividing by 30 treats the TPOT in milliseconds as tokens. Dividing by 1,000 ms gives tokens per millisecond, not streams.",
+    "topicId": "capacity-planning",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-serving-at-scale-q2",
+    "type": "single",
+    "prompt": "A replica's KV memory could hold about 715 average streams, but a load test shows TPOT exceeds its 30 ms target beyond 256 sequences. Which number should capacity planning use per replica?",
+    "options": [
+      { "id": "a", "text": "715, since memory is the scarce resource in LLM serving" },
+      { "id": "b", "text": "256, since the latency target binds before memory runs out" },
+      { "id": "c", "text": "486, the average of the memory and latency limits taken together" },
+      { "id": "d", "text": "971, since memory and latency limits apply to separate requests" }
+    ],
+    "correct": ["b"],
+    "explanation": "A replica's usable batch is the smaller of its limits. Past 256 sequences every user's TPOT breaks the SLO, so the 459 extra streams memory could hold are not usable at that target. Memory is often scarce, but not here. Averaging limits has no meaning: one of them is violated. The limits apply to the same batch, so they do not add.",
+    "topicId": "capacity-planning",
+    "difficulty": 1
+  },
+  {
+    "id": "llm-serving-at-scale-q3",
+    "type": "scenario",
+    "prompt": "What should clients have done differently, and what signal should the service have sent?",
+    "scenario": "During a capacity shortfall the service returns 429 to every client. Thousands of clients, each well under its quota, wait for the retry-after value and retry at the same moment. The overload deepens.",
+    "options": [
+      { "id": "a", "text": "Nothing; a 429 is the correct signal and the clients behaved exactly right" },
+      { "id": "b", "text": "Send an overload error so clients back off with jitter or fail over elsewhere" },
+      { "id": "c", "text": "Raise every quota so that clients stop receiving 429s during the shortfall" },
+      { "id": "d", "text": "Switch clients to hedged requests so that the first replica to answer wins" }
+    ],
+    "correct": ["b"],
+    "explanation": "The clients were not over quota; the service was out of capacity. An overload signal (Anthropic documents HTTP 529 overloaded_error) tells clients to back off with jitter and, if they can, fail over, instead of retrying in lockstep after retry-after. Option a ignores that 429 misattributes the problem. Raising quotas admits more load onto full GPUs. Hedged requests double GPU cost during an overload.",
+    "topicId": "admission-control",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-serving-at-scale-q4",
+    "type": "multi",
+    "prompt": "One tenant sends a burst of 50,000-token prompts and other tenants' TTFT rises sharply. Which measures address this? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Fair queuing that counts tokens served per tenant, like VTC" },
+      { "id": "b", "text": "Per-organisation token-per-minute quotas at the gateway" },
+      { "id": "c", "text": "Provisioned throughput: dedicated replicas for that tenant" },
+      { "id": "d", "text": "Strict first-come-first-served order across all tenants" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Token-based fair queuing schedules the tenant with the least service first, so one burst cannot starve others (a). Token quotas cap how much one organisation can send (b). Dedicated replicas isolate a large customer's load entirely (c). First-come-first-served is the cause: the burst arrives first and occupies the GPUs (d).",
+    "topicId": "admission-control",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-serving-at-scale-q5",
+    "type": "scenario",
+    "prompt": "What is the most likely explanation?",
+    "scenario": "After the cluster router is redeployed, prefix-cache hit rate falls from 72% to 15% and TTFT p50 rises from 350 ms to 2.4 s. Replica count, traffic and model are unchanged. Over 40 minutes it recovers on its own.",
+    "options": [
+      { "id": "a", "text": "The new router has a bug that duplicates each request to two replicas" },
+      { "id": "b", "text": "The replicas' KV caches were all wiped when the router itself restarted" },
+      { "id": "c", "text": "The router's prefix index restarted empty, so routing fell back to load" },
+      { "id": "d", "text": "The model's tokenizer changed and old prefixes no longer match tokens" }
+    ],
+    "correct": ["c"],
+    "explanation": "An in-memory prefix index starts empty, so requests are spread by load and miss the replicas holding their prefixes; it refills from traffic, which is why it recovers. Deterministic hashing of the prefix survives restarts. Duplicated requests would double load and token counts, not just hit rate. Replica caches live on the replicas, which did not restart. The model and tokenizer did not change.",
+    "topicId": "prefix-aware-routing",
+    "difficulty": 3
+  },
+  {
+    "id": "llm-serving-at-scale-q6",
+    "type": "single",
+    "prompt": "With 50 replicas and round-robin routing, roughly how often does a conversation's next turn land on the replica holding its cached history?",
+    "options": [
+      { "id": "a", "text": "About 2% of the time" },
+      { "id": "b", "text": "About 50% of the time" },
+      { "id": "c", "text": "Every time, by design" },
+      { "id": "d", "text": "About 20% of the time" }
+    ],
+    "correct": ["a"],
+    "explanation": "Round robin ignores where a prefix lives, so the chance of landing on the right replica is about 1 in 50, or 2%. 50% confuses replica count with a percentage. Round robin guarantees even spread, not affinity. 20% would correspond to five replicas.",
+    "topicId": "prefix-aware-routing",
+    "difficulty": 1
+  },
+  {
+    "id": "llm-serving-at-scale-q7",
+    "type": "scenario",
+    "prompt": "Which response best protects users in the next ten minutes?",
+    "scenario": "Interactive traffic jumps 60% at 14:00 after a launch. New 8-GPU replicas take 5–10 minutes to come up, if GPUs are available at all. The fleet runs at 80% utilisation and an offline evaluation job is using spare capacity.",
+    "options": [
+      { "id": "a", "text": "Wait for autoscaling, then add replicas until utilisation falls back to 80%" },
+      { "id": "b", "text": "Raise max batch size on every replica so each one accepts the extra load" },
+      { "id": "c", "text": "Preempt batch work, spill to other regions, and shed or degrade low tiers" },
+      { "id": "d", "text": "Retry every rejected request three times so that no user sees an error" }
+    ],
+    "correct": ["c"],
+    "explanation": "Fleets cannot scale GPUs within minutes, so they free capacity they already have (preempt the offline job), borrow other regions' headroom, and protect paid interactive traffic by shedding or degrading lower tiers. Scale-out should start too, but waiting for it leaves ten minutes of overload. Raising batch size beyond the measured limit breaks TPOT for everyone and risks KV preemption. Retries multiply load during an overload.",
+    "topicId": "gpu-autoscaling",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-serving-at-scale-q8",
+    "type": "single",
+    "prompt": "Why should the previous model version's replicas stay loaded during a canary of a new version?",
+    "options": [
+      { "id": "a", "text": "So rollback is instant; reloading hundreds of GB of weights takes minutes" },
+      { "id": "b", "text": "So both versions can share one KV cache and halve the memory they each need" },
+      { "id": "c", "text": "Because providers are legally required to serve every version indefinitely" },
+      { "id": "d", "text": "Because the new version needs the old one's weights to compute its outputs" }
+    ],
+    "correct": ["a"],
+    "explanation": "If the canary regresses you need to move traffic back immediately, and a cold reload of a large model takes minutes and needs free GPUs. Different versions cannot share KV caches, since their weights produce different keys and values. Version retention is a product policy, not a legal rule. A new version is a separate model and does not read the old weights.",
+    "topicId": "model-rollout",
+    "difficulty": 1
+  },
+  {
+    "id": "llm-serving-at-scale-q9",
+    "type": "multi",
+    "prompt": "A dashboard shows GPU utilisation at 98% across the fleet. Which conclusions are justified? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Some kernel was running nearly all the time on most GPUs" },
+      { "id": "b", "text": "The fleet is near its compute limit and needs more GPUs now" },
+      { "id": "c", "text": "You still need goodput to know if users meet their SLOs" },
+      { "id": "d", "text": "Memory-bound decode can show this while compute sits idle" }
+    ],
+    "correct": ["a", "c", "d"],
+    "explanation": "nvidia-smi utilisation is the fraction of time any kernel was executing (a). It says nothing about how much of the compute was used, and memory-bound decode keeps kernels running while tensor cores idle (d). Whether users are served well is goodput: requests meeting TTFT and TPOT targets (c). Concluding the fleet is at its compute limit (b) is exactly the trap.",
+    "topicId": "serving-observability",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-serving-at-scale-q10",
+    "type": "scenario",
+    "prompt": "Which recovery strategy best balances user experience and GPU cost?",
+    "scenario": "An 8-GPU replica fails while streaming 300 responses, most of them several hundred tokens in. Some requests had already triggered server-side tool calls.",
+    "options": [
+      { "id": "a", "text": "Hedge every new request to two replicas from now on so failures are hidden" },
+      { "id": "b", "text": "Return an error event and let every client retry the full request from scratch" },
+      { "id": "c", "text": "Resume: resubmit prompt plus sent tokens to healthy replicas, tools idempotent" },
+      { "id": "d", "text": "Keep the streams open and wait for the replica to reboot, then carry on decoding" }
+    ],
+    "correct": ["c"],
+    "explanation": "Resumption turns the failure into a pause: the gateway re-prefills prompt plus already-sent tokens on a healthy replica and continues, while idempotency keys stop tool calls running twice. It still costs a full re-prefill and the continuation is a different sample. Hedging every request doubles GPU cost permanently to cover a rare event. Full client retries redo prefill and all decoded tokens and show users an error. The failed replica's KV cache is gone, so waiting for it saves nothing and holds streams for minutes.",
+    "topicId": "stream-reliability",
+    "difficulty": 3
+  },
+  {
+    "id": "llm-serving-at-scale-q11",
+    "type": "single",
+    "prompt": "In the typical request path, where are per-organisation token quotas best enforced?",
+    "options": [
+      { "id": "a", "text": "At the GPU replica scheduler, after the KV cache is allocated" },
+      { "id": "b", "text": "At the gateway's limiter, before any region or replica is chosen" },
+      { "id": "c", "text": "At the edge CDN, using cached copies of previous responses" },
+      { "id": "d", "text": "In the client SDK, which is trusted to count its own tokens" }
+    ],
+    "correct": ["b"],
+    "explanation": "Quotas belong early, at the gateway's rate limiter, so over-quota requests never consume routing or GPU resources; usage is reconciled when the stream ends. Enforcing at the replica wastes the work of routing and admitting. A CDN cannot cache personalised generations or enforce per-org token budgets. Client-side limits are a courtesy, not enforcement, because clients cannot be trusted.",
+    "topicId": "request-path",
+    "difficulty": 1
+  }
+]

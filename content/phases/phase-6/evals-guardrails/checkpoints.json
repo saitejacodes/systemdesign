@@ -1,0 +1,8 @@
+[
+  { "id": "evals-guardrails-c1", "text": "I can build an eval set from real traffic and past bugs, sliced by category, and compute the confidence interval its size gives me.", "topicId": "offline-evals" },
+  { "id": "evals-guardrails-c2", "text": "I can name the main LLM-as-judge biases and calibrate a judge against human labels before trusting its scores.", "topicId": "llm-as-judge" },
+  { "id": "evals-guardrails-c3", "text": "I can set up a CI gate that runs the eval set on every prompt or model change and blocks per-slice regressions.", "topicId": "prompt-regression" },
+  { "id": "evals-guardrails-c4", "text": "I can design layered input and output guardrails and explain why least privilege still matters when filters leak.", "topicId": "io-filtering" },
+  { "id": "evals-guardrails-c5", "text": "I can list where PII leaks in an LLM feature (provider, logs, eval sets, other users) and the control for each.", "topicId": "pii-handling" },
+  { "id": "evals-guardrails-c6", "text": "I can choose online quality signals for a dashboard and feed confirmed bad answers back into the eval set.", "topicId": "production-monitoring" }
+]

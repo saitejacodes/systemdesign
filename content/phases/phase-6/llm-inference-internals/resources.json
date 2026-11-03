@@ -1,0 +1,42 @@
+[
+  {
+    "id": "tml-nondeterminism",
+    "title": "Defeating Nondeterminism in LLM Inference",
+    "author": "Horace He and Thinking Machines Lab (2025)",
+    "kind": "blog",
+    "url": "https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/",
+    "why": "The clearest account of why temperature-0 output drifts: batch-variant reductions in matmul, attention and RMSNorm, and how batch-invariant kernels fix it.",
+    "topicIds": ["nondeterminism", "sampling"],
+    "free": true
+  },
+  {
+    "id": "kaplan-scaling-laws",
+    "title": "Scaling Laws for Neural Language Models",
+    "author": "Kaplan et al. (2020)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2001.08361",
+    "why": "Section 2.1 derives forward-pass FLOPs per token (≈ 2N plus an attention term) and the parameter count of a transformer layer by layer.",
+    "topicIds": ["flops-roofline", "forward-pass"],
+    "free": true
+  },
+  {
+    "id": "holtzman-nucleus",
+    "title": "The Curious Case of Neural Text Degeneration",
+    "author": "Holtzman et al. (ICLR 2020)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/1904.09751",
+    "why": "Introduces nucleus (top-p) sampling and shows why greedy and pure sampling both produce poor text.",
+    "topicIds": ["sampling"],
+    "free": true
+  },
+  {
+    "id": "vaswani-attention",
+    "title": "Attention Is All You Need",
+    "author": "Vaswani et al. (NeurIPS 2017)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/1706.03762",
+    "why": "The original transformer: scaled dot-product attention, multi-head attention and the block structure every modern LLM still follows.",
+    "topicIds": ["forward-pass"],
+    "free": true
+  }
+]

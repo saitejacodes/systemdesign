@@ -1,0 +1,21 @@
+{
+  "id": "p6-rag",
+  "phase": 6,
+  "slug": "rag",
+  "title": "Retrieval-Augmented Generation",
+  "order": 7,
+  "week": 13,
+  "estimatedMinutes": 80,
+  "topics": [
+    { "id": "ingestion-chunking", "title": "Ingestion: parsing and chunking", "depth": "deep" },
+    { "id": "embedding-retrieval", "title": "Embedding and retrieval", "depth": "deep" },
+    { "id": "hybrid-search", "title": "Hybrid search: BM25 plus vectors", "depth": "deep" },
+    { "id": "reranking", "title": "Reranking", "depth": "tradeoffs" },
+    { "id": "context-citation", "title": "Context assembly and citation", "depth": "deep" },
+    { "id": "failure-modes", "title": "Failure modes", "depth": "deep" },
+    { "id": "freshness", "title": "Freshness and re-indexing", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["rag-pipeline"],
+  "practiceCaseStudyIds": ["rag-docs-assistant"],
+  "prerequisites": ["p6-embeddings-vector-search", "p2-search"]
+}

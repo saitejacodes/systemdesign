@@ -1,0 +1,218 @@
+## Why it matters
+
+Keyword search finds documents that share your words. It fails the moment a user types "how do I get my money back" and the policy page says "refund eligibility". Embeddings fix this by turning text (or images, or products, or users) into vectors whose geometry encodes meaning, so "money back" and "refund" land near each other. Search by meaning, recommendations ("more like this"), deduplication, clustering and the retrieval step of every RAG system all reduce to one operation: given a query vector, find the nearest vectors among millions. Doing that exactly means comparing against every vector, which stops being affordable somewhere between a few hundred thousand and a few million items per query at real traffic. The whole field of vector search is about giving up a little accuracy to make that operation thousands of times cheaper, and then managing the consequences: missed results, memory bills, filters that silently return nothing, and indexes that rot when the embedding model changes.
+
+<Callout type="analogy" title="HNSW is a city road network">
+Imagine you must drive to an address in a city you have never seen, and the only rule is "always take the road that gets you closer". If you only had side streets, you would crawl block by block for hours. HNSW adds motorways on top: a sparse top layer with a few long roads between distant districts, a middle layer of arterial roads, and the full grid of side streets at the bottom. You start on the motorway, stay on it while it brings you closer, exit when it stops helping, take arterials, and finish on side streets. You visit a few hundred junctions instead of every house in the city. Where the analogy breaks: real roads have signposts, so you never get lost. HNSW has none. Greedy driving can get stuck in a cul-de-sac that looks close but is not the true destination, which is exactly why the search keeps a list of several candidate routes (efSearch) rather than one, and why it is approximate.
+</Callout>
+
+## What embeddings are
+
+<DepthStamp depth="deep" />
+
+An <Term slug="embedding">embedding</Term> is a fixed-length list of numbers (a vector) produced by a model so that inputs with similar meaning get similar vectors. A text embedding model reads a sentence and outputs, say, 768 floating-point numbers. No single number means "about refunds"; meaning lives in directions and distances across all of them.
+
+The idea is older than large language models. Mikolov et al.'s word2vec (2013) learned one vector per word from co-occurrence, famously giving vector arithmetic such as king − man + woman landing near queen. Modern sentence embedding models, in the line of Reimers and Gurevych's Sentence-BERT (2019), are transformers trained with contrastive objectives: pull a question and its correct passage together, push unrelated passages apart. That training objective is what you are buying. A model trained on question-to-passage pairs is good at retrieval; one trained on paraphrase pairs is good at deduplication. They are not interchangeable.
+
+Four properties drive system design:
+
+- **Dimension** is fixed per model, typically a few hundred to a few thousand. It sets storage and compute: 768 float32 values is 3,072 bytes per vector before any index.
+- **Vectors from different models live in different spaces.** A vector from model A compared against vectors from model B is noise, even when the dimensions match. Changing models means re-embedding the whole corpus.
+- **Input length is capped** by the model's maximum sequence length; longer text is truncated or must be split first (the RAG section covers chunking).
+- **Embeddings are lossy.** They capture topical similarity well and exact details poorly. Part numbers, error codes, names and negation ("not eligible") are where pure vector search is weakest, which is why production search usually mixes in keyword search.
+
+## Cosine similarity and distance metrics
+
+<DepthStamp depth="deep" />
+
+<Term slug="cosine-similarity">Cosine similarity</Term> measures the angle between two vectors: the dot product divided by the product of their lengths. It ranges from −1 (opposite) through 0 (unrelated) to 1 (same direction), and ignores length entirely. Two other metrics are common: the **dot product** (inner product), which rewards both alignment and length, and **Euclidean (L2) distance**.
+
+The useful fact: if every vector is normalised to length 1, all three give the same ranking. For unit vectors the dot product *is* the cosine, and squared L2 distance equals 2 − 2 × cosine, so the nearest by L2 is the most similar by cosine. Many systems normalise at write time and then use the cheapest operation, the dot product.
+
+A tiny worked example in 3 dimensions with unit vectors:
+
+| Vector | Values | Dot with query q = (0.6, 0.8, 0) |
+|---|---|---|
+| "refund policy" | (0.6, 0.64, 0.48) | 0.36 + 0.512 + 0 = **0.872** |
+| "return window" | (0.8, 0.6, 0) | 0.48 + 0.48 + 0 = **0.96** |
+| "office parking" | (0, 0.6, 0.8) | 0 + 0.48 + 0 = **0.48** |
+
+"Return window" is nearest, "office parking" farthest. Real vectors just have hundreds more columns.
+
+Two cautions. First, use the metric the model was trained for; the model's documentation says which. Using L2 on unnormalised vectors from a model trained for cosine changes rankings. Second, the absolute score is not a calibrated probability. A cosine of 0.8 can be a great match for one model and mediocre for another, so a fixed "relevance threshold" must be tuned per model and per corpus, and re-tuned when either changes.
+
+In pgvector these are operators on the `vector` type: `<->` is L2 distance, `<#>` is negative inner product (negated so that smaller is better, matching `ORDER BY ... LIMIT`), and `<=>` is cosine distance (1 − cosine similarity).
+
+## Exact versus approximate search
+
+<DepthStamp depth="deep" />
+
+**Exact (brute-force) k-nearest-neighbour search** compares the query with every vector and keeps the top k. It is perfectly accurate, trivially parallel, needs no index and handles any filter. Its cost is linear in the corpus.
+
+<Term slug="approximate-nearest-neighbor">Approximate nearest neighbour (ANN)</Term> search uses an index to examine a small fraction of the vectors and returns results that are usually, not always, the true nearest. Its quality is measured by <Term slug="recall-at-k">recall@k</Term>: of the true top k (found by brute force), what fraction did the index return? Recall@10 of 0.95 means that on average 9.5 of the true 10 nearest appear.
+
+### Worked example: when brute force stops being enough
+
+Assume 10 million documents, 768-dimensional float32 embeddings.
+
+- Raw storage: 10,000,000 × 768 × 4 bytes = **30.72 GB** (about 28.6 GiB).
+- One brute-force query: 10,000,000 distance computations × 768 multiply-adds = **7.68 billion multiply-adds**, and it must stream all 30.72 GB through the CPU.
+- Assume one server streams vectors from memory at 20 GB/s. One query then takes about 30.72 / 20 ≈ **1.5 seconds**, and the server handles well under one query per second.
+
+Now assume an HNSW index where each query computes around 3,000 distances (a labelled assumption; the real number depends on M, efSearch and the data, and you should measure it). That is 10,000,000 / 3,000 ≈ **3,300× fewer** distance computations, which turns seconds into low milliseconds.
+
+The same arithmetic tells you when brute force is fine: 100,000 vectors × 768 dims is 307 MB and a few milliseconds per scan. Below roughly that scale, or for offline batch jobs, skip the index.
+
+## HNSW: the layered graph
+
+<DepthStamp depth="deep" />
+
+<Term slug="hnsw">HNSW (Hierarchical Navigable Small World)</Term>, from Malkov and Yashunin (arXiv 2016, IEEE TPAMI 2018), is the default ANN index in most vector databases and in pgvector. It builds a graph where each vector is a node linked to its near neighbours, stacked in layers like the road network above.
+
+**Building it.** Each new vector draws a random top level from an exponentially decaying distribution, so every node is on layer 0, about 1/M of them also on layer 1, about 1/M² on layer 2, and so on. The vector is inserted by searching for its nearest neighbours on each layer it belongs to and linking to up to **M** of them (implementations such as hnswlib allow 2M on layer 0). **efConstruction** is the size of the candidate list used while finding those neighbours: larger means better links and slower builds.
+
+**Searching it.** Start at the single entry point on the top layer. Greedily hop to whichever neighbour is closest to the query until no neighbour improves; drop one layer and repeat from there. On layer 0, run a wider best-first search that keeps the **efSearch** best candidates seen so far, then return the top k. efSearch must be at least k, and it is the main query-time knob.
+
+<Figure caption="FIG. 6.1 · HNSW SEARCH · GREEDY DESCENT THROUGH THE LAYERS">
+  <Diagram label="A query enters at the top layer, greedily moves toward the query on each sparse upper layer, drops down a layer when no neighbour is closer, and finishes with a wider beam search on the dense bottom layer." chart={`flowchart TD
+    E["Entry point on top layer"] --> L2["Layer 2: few nodes, long links. Greedy hop to the closest neighbour"]
+    L2 -->|"no closer neighbour"| L1["Layer 1: more nodes. Continue greedy hops from where layer 2 ended"]
+    L1 -->|"no closer neighbour"| L0["Layer 0: every node. Best-first search keeping efSearch candidates"]
+    L0 --> R["Return top k of the candidate list"]`} />
+</Figure>
+
+*HNSW search: long hops on sparse layers, then a careful local search on the dense bottom layer.*
+
+Derived numbers for 10 million vectors with M = 16: the expected number of layers is about ln(10,000,000) / ln(16) = 16.1 / 2.77 ≈ **6**, and only 1/16 = 6.25% of nodes appear above layer 0. Memory for links on layer 0 is about 2M × 4 bytes = 128 bytes per vector, so roughly **1.28 GB** of graph on top of the 30.72 GB of vectors. HNSW wants all of it in RAM: the search jumps to random nodes, and each jump that misses memory becomes a random disk read.
+
+What HNSW costs you: slow builds (each insert is a search), high memory, and awkward deletes. Most implementations mark deleted nodes and skip them, so heavy churn leaves the graph full of tombstones and recall drifts down until you rebuild or the system compacts.
+
+## IVF and product quantization
+
+<DepthStamp depth="awareness" />
+
+The other major family, popularised by Meta's FAISS library, is the <Term slug="ivf-index">inverted file (IVF) index</Term>. Run k-means on the vectors to get **nlist** centroids; assign each vector to its nearest centroid's list. At query time, compare the query with all centroids, then scan only the **nprobe** closest lists.
+
+Worked numbers for 10 million vectors, assuming nlist = 4,096 and nprobe = 16: each list holds about 10,000,000 / 4,096 ≈ 2,441 vectors, so a query does 4,096 centroid comparisons plus 16 × 2,441 ≈ 39,062 vector comparisons, about **43,000 in total, or 0.43%** of brute force. Recall suffers when a true neighbour sits in a list just across a centroid boundary that you did not probe; raising nprobe trades speed for recall.
+
+IVF builds faster and uses less memory than HNSW, but the centroids are trained on the data you had, so it needs retraining when the distribution shifts. pgvector offers it as `ivfflat` and its README recommends creating the index after the table has data, with lists of about rows / 1,000 up to a million rows.
+
+<Term slug="product-quantization">Product quantization (PQ)</Term> (Jégou, Douze and Schmid, 2011) compresses vectors so more fit in memory. Split a 768-dimension vector into 96 sub-vectors of 8 dimensions, learn 256 centroids for each sub-space, and store each sub-vector as a 1-byte centroid id: 96 bytes instead of 3,072, a **32× compression**, so 10 million vectors drop from 30.72 GB to 0.96 GB. Distances become approximate, so systems usually re-rank the top candidates with the full vectors. FAISS's IVFPQ combines both ideas.
+
+## Recall versus latency
+
+<DepthStamp depth="tradeoffs" />
+
+Every ANN index exposes a dial between recall and work per query: efSearch in HNSW, nprobe in IVF. Turning it up visits more of the graph or more lists, raising recall and latency together, with diminishing returns: the last few points of recall cost the most.
+
+How to set it like an engineer rather than by folklore:
+
+1. Take a few hundred real queries. Compute their true top k with brute force; that is your ground truth.
+2. Sweep the knob (for example efSearch = 20, 40, 80, 160, 320) and record recall@k and p99 latency at your expected concurrency.
+3. Pick the lowest setting that meets the product's recall target, and re-run the sweep whenever the corpus grows a lot, the model changes, or you add filters.
+
+Two staff-level points. First, index recall is only part of end-to-end quality: an index with recall 0.99 over a poor embedding model still returns poor results, and measuring "did the user find the right document" matters more than recall against brute force. Second, recall drifts silently. Nothing errors when recall falls from 0.97 to 0.85 after a month of deletes; you only see it if you keep running the ground-truth check as a scheduled job.
+
+### Failure timeline: the silent model swap
+
+| Time | Event |
+|---|---|
+| 09:00 | A team upgrades the query service to a new embedding model. The new model also outputs 768 dimensions, so nothing fails a type check. |
+| 09:00 | The 10 million stored vectors were all embedded with the old model. Queries and documents are now in different spaces. |
+| 09:05 | Search returns fluent-looking but unrelated results. Latency, error rate and CPU are all normal; no alert fires. |
+| 11:30 | Click-through on search results is down sharply; support tickets mention "search is broken". |
+| 12:10 | Someone diffs the deploy, rolls the query model back, and results recover instantly. |
+
+The fix is structural: store the embedding model id and version with every vector, refuse queries whose model does not match the index, and do model upgrades by building a second index in the background, testing it, then switching an alias.
+
+## pgvector versus a dedicated vector database
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="pgvector">pgvector</Term> is a PostgreSQL extension that adds a `vector` column type, the distance operators above, and HNSW and IVFFlat indexes. Dedicated vector databases (for example Milvus, Qdrant, Weaviate and Pinecone) and search engines with vector support (Elasticsearch and OpenSearch) are the alternatives. The field genuinely disagrees here, and both sides have a point.
+
+The case for pgvector: your vectors sit next to the rows they describe, so one transaction can insert a document and its embedding, deletes are consistent, joins and access-control filters are plain SQL, and you already know how to back up, replicate and monitor Postgres. For millions of vectors and moderate query rates, that operational simplicity usually wins.
+
+The case for a dedicated system: it is built to scale vector search horizontally across shards, often has more filter-aware index strategies, quantization options and hybrid keyword search built in, and keeps a heavy, memory-hungry workload from competing with your transactional database for RAM and CPU. At hundreds of millions of vectors or high query rates, Postgres's single-primary write path and buffer cache become the constraint.
+
+A pragmatic rule: start with pgvector (or the vector feature of a search engine you already run) unless you can show, with the arithmetic above, that vector RAM or query volume will outgrow one well-sized database server. Moving later is a re-embedding-free bulk copy; starting with an extra distributed system you do not need costs you every day.
+
+## Metadata filtering
+
+<DepthStamp depth="tradeoffs" />
+
+Real queries are rarely "nearest overall". They are "nearest among documents this tenant can see, in English, updated this year". There are two basic ways to combine a filter with ANN:
+
+- **Post-filtering:** run the ANN search for k (or some multiple of k) candidates, then drop the ones that fail the filter. Simple, fast, and broken for selective filters.
+- **Pre-filtering:** restrict to matching rows first, then search only among them. Exact for small matching sets (brute force over the few thousand allowed vectors), but a plain HNSW graph cannot be cleanly restricted without losing connectivity.
+
+### Failure timeline: the tenant who sees nothing
+
+The pgvector README describes the trap directly: with approximate indexes, filtering is applied after the index scan, so with the default `hnsw.ef_search` of 40 and a condition matching 10% of rows, you get about 4 matches on average.
+
+| Step | What happens |
+|---|---|
+| 1 | A multi-tenant app stores all tenants' vectors in one HNSW-indexed table. Tenant 42 owns 2% of rows. |
+| 2 | Query: `WHERE tenant_id = 42 ORDER BY embedding <=> $1 LIMIT 10`. |
+| 3 | The index returns its 40 best candidates across all tenants. Expected matches for tenant 42: 40 × 0.02 = **0.8**. |
+| 4 | The user sees zero or one result. No error; the query "succeeded". |
+
+Fixes, from simplest: raise ef_search for filtered queries (costly); use pgvector's iterative index scans (added in 0.8.0), which keep scanning until enough rows pass the filter; use a partial index or table partitioning per tenant or per category; or use an engine whose index is filter-aware. For very selective filters, the right answer is often exact search over the filtered subset, because 2% of 10 million is 200,000 vectors: a few milliseconds of brute force.
+
+<TradeoffBox title="Vector search choices" items={[
+  { gain: "Brute force: perfect recall, any filter, no index to build", cost: "Linear cost per query; impractical past a few million vectors at real traffic" },
+  { gain: "HNSW: high recall at low latency, incremental inserts", cost: "Large RAM footprint, slow builds, deletes degrade the graph" },
+  { gain: "IVF: faster builds and less memory than HNSW", cost: "Centroids go stale as data shifts; recall drops at list boundaries" },
+  { gain: "Product quantization: around 32x less memory", cost: "Approximate distances; needs re-ranking with full vectors" },
+  { gain: "pgvector: transactions, joins and one system to run", cost: "Shares RAM and CPU with OLTP; harder to scale past one primary" },
+  { gain: "Dedicated vector DB: horizontal scale, filter-aware indexes", cost: "Another distributed system to sync, secure and operate" }
+]} />
+
+<NotWhenBox title="When not to use vector search" items={[
+  "Exact lookups: SKUs, order ids, error codes and names belong in a keyword index or a B-tree.",
+  "Small corpora: under a few hundred thousand vectors, brute force is simpler and exact.",
+  "Structured questions: 'orders over 100 last week' is SQL, not similarity.",
+  "When you cannot evaluate: without labelled queries you cannot tell a good model or index from a bad one."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A higher cosine score means the result is relevant." right="Scores are relative and model-specific. 0.8 can be excellent for one model and weak for another; thresholds must be tuned per model and corpus." />
+
+<Misconception wrong="ANN indexes return the true nearest neighbours, just faster." right="They return approximate results. Recall@k below 1.0 means some true neighbours are missed, and recall drifts with growth, deletes and filters." />
+
+<Misconception wrong="Two embedding models with the same dimension are interchangeable." right="Each model defines its own space. Mixing vectors from two models produces meaningless distances; a model change requires re-embedding everything." />
+
+<Misconception wrong="Adding a WHERE clause to a vector query just narrows the results." right="With post-filtering an ANN index, a selective filter can leave far fewer than k results, or none, without any error." />
+
+## Interview angle
+
+<InterviewAngle title="Embeddings and vector search" questions={[
+  "You have 50 million product embeddings at 1,024 dimensions. How much RAM does HNSW need, and how would you cut it?",
+  "How do you choose efSearch, and how do you know recall has not drifted six months later?",
+  "Each customer must only see their own documents. How do you combine that filter with ANN without losing results?",
+  "Would you use pgvector or a dedicated vector database for this product, and what would change your mind?",
+  "You want to upgrade the embedding model. Walk me through doing it with zero bad results."
+]}>
+Vector search appears in any design with semantic search, recommendations or RAG. Strong answers start with sizing: vectors × dimensions × 4 bytes, plus graph overhead, which decides whether one machine is enough. Then show you know the index is approximate: define recall@k, explain efSearch or nprobe as the dial, and describe a ground-truth recall job. For 50 million × 1,024 float32 that is 204.8 GB of raw vectors, so mention quantization (PQ, or half-precision at 102.4 GB) and sharding. Treat filtering as a first-class concern (post-filter starvation, partitioning per tenant, exact search for small subsets). Finish with operations: model version stored with vectors, background re-embedding into a new index, alias switch, and the pgvector versus dedicated-system choice argued from your numbers.
+</InterviewAngle>
+
+## Practice
+
+1. Size an HNSW index for 25 million vectors of 1,536 dimensions in float32 with M = 16. How much RAM for vectors and for layer-0 links? How much with PQ at 192 bytes per vector?
+2. An IVF index has 20 million vectors, nlist = 8,192 and nprobe = 32. Roughly how many distance computations does one query make, and what fraction of brute force is that?
+3. A filter matches 5% of rows and efSearch is 100 with post-filtering. How many results do you expect for LIMIT 10? Propose two fixes and the cost of each.
+
+## Try it
+
+Query 2,000 embedded texts and compare brute force with a real HNSW graph. Tune M, efConstruction and efSearch until recall@10 passes 0.95 at a fraction of the distance computations, then turn on a rare metadata filter and watch post-filtering return too few results.
+
+<Simulator id="vector-search" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

@@ -8,8 +8,8 @@ test("plan shows week 1 open and live, later weeks coming soon; today points at 
   await expect(wk1.getByRole("link", { name: "Client–server and where state lives" })).toBeVisible();
   // Phases 1–4 are built, so week 1 is all live; week 11 (Phase 5) still has coming-soon items.
   await expect(wk1.getByText("· Coming soon")).toHaveCount(0);
-  await page.locator("details").nth(12).locator("summary").click();
-  await expect(page.locator("details").nth(12).getByText("· Coming soon").first()).toBeVisible();
+  await page.locator("details").nth(13).locator("summary").click();
+  await expect(page.locator("details").nth(13).getByText("· Coming soon").first()).toBeVisible();
   await page.locator("details").nth(4).locator("summary").click();
   await expect(page.locator("details").nth(4).getByText("Deliverable")).toBeVisible();
 

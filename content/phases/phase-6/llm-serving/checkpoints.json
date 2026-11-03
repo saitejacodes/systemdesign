@@ -1,0 +1,7 @@
+[
+  { "id": "llm-serving-c1", "text": "I can explain why prefill is compute-bound and decode is memory-bandwidth-bound, and estimate both from parameter count and assumed hardware numbers.", "topicId": "tokens-prefill-decode" },
+  { "id": "llm-serving-c2", "text": "I can compute KV cache bytes per token from a published model config and work out how many concurrent requests fit on a GPU.", "topicId": "kv-cache-memory" },
+  { "id": "llm-serving-c3", "text": "I can contrast static batching, continuous batching and PagedAttention, and describe what happens when KV blocks run out.", "topicId": "batching" },
+  { "id": "llm-serving-c4", "text": "I can define TTFT and TPOT, compute end-to-end latency from them, and say which one a given change affects.", "topicId": "streaming-metrics" },
+  { "id": "llm-serving-c5", "text": "I can compute a self-hosted cost per million tokens from GPU price, throughput and utilisation, and argue hosted versus self-hosted for a workload.", "topicId": "hosted-vs-self-hosted" }
+]

@@ -1,0 +1,172 @@
+[
+  {
+    "id": "embeddings-vector-search-q1",
+    "type": "single",
+    "prompt": "Why can't you compare a query embedded with model B against documents embedded with model A, even if both output 768 dimensions?",
+    "options": [
+      { "id": "a", "text": "Each model learns its own vector space, so cross-model distances carry no meaning" },
+      { "id": "b", "text": "The vectors would need to be normalised first, after which they become comparable" },
+      { "id": "c", "text": "The index refuses mixed models and the query fails with a dimension mismatch error" },
+      { "id": "d", "text": "It works, but recall drops by a small and predictable amount that you can tune away" }
+    ],
+    "correct": ["a"],
+    "explanation": "Each model defines its own geometry; position 17 in model A means nothing in model B, so distances between them are noise. Normalising fixes length, not the mismatch of spaces. Nothing errors when dimensions match, which is exactly why the failure is silent. And the damage is not small or tunable: results become effectively random.",
+    "topicId": "embeddings",
+    "difficulty": 1
+  },
+  {
+    "id": "embeddings-vector-search-q2",
+    "type": "single",
+    "prompt": "All vectors are normalised to unit length. Which statement is true?",
+    "options": [
+      { "id": "a", "text": "L2 distance and cosine can rank the same results in a different order" },
+      { "id": "b", "text": "Dot product, cosine similarity and L2 distance all give the same ranking" },
+      { "id": "c", "text": "Dot product becomes meaningless and only cosine similarity should be used" },
+      { "id": "d", "text": "Cosine similarity now behaves like a calibrated probability of relevance" }
+    ],
+    "correct": ["b"],
+    "explanation": "For unit vectors the dot product equals the cosine, and squared L2 = 2 − 2·cosine, so all three order results identically. L2 and cosine only diverge on unnormalised vectors. The dot product is not meaningless; it is the cheapest way to compute the cosine here. And normalising does not calibrate scores: a cosine of 0.8 still means different things for different models.",
+    "topicId": "similarity",
+    "difficulty": 2
+  },
+  {
+    "id": "embeddings-vector-search-q3",
+    "type": "scenario",
+    "prompt": "About how much RAM do the raw vectors need, before any index?",
+    "scenario": "You are sizing semantic search for 20 million support articles. The embedding model outputs 1,024 float32 values per text.",
+    "options": [
+      { "id": "a", "text": "About 20.5 GB" },
+      { "id": "b", "text": "About 8.2 GB" },
+      { "id": "c", "text": "About 81.9 GB" },
+      { "id": "d", "text": "About 327 GB" }
+    ],
+    "correct": ["c"],
+    "explanation": "20,000,000 × 1,024 × 4 bytes = 81.92 GB. 20.5 GB forgets that each float32 is 4 bytes. 8.2 GB is off by a factor of ten. 327 GB counts 16 bytes per value, as if every number were stored four times.",
+    "topicId": "exact-vs-ann",
+    "difficulty": 2
+  },
+  {
+    "id": "embeddings-vector-search-q4",
+    "type": "single",
+    "prompt": "What does recall@10 = 0.9 mean for an ANN index?",
+    "options": [
+      { "id": "a", "text": "On average 9 of the true 10 nearest neighbours appear in its top 10" },
+      { "id": "b", "text": "90% of queries return exactly the right top result in first position" },
+      { "id": "c", "text": "The returned results are 90% similar to the query by cosine score" },
+      { "id": "d", "text": "Users find a relevant document within the first ten results 90% of the time" }
+    ],
+    "correct": ["a"],
+    "explanation": "Recall@k compares the index's top k with the true top k from brute force. It is not about the first position only. It is not a similarity score. And it says nothing about user relevance: a perfect index over a weak embedding model has recall 1.0 and still returns irrelevant documents.",
+    "topicId": "exact-vs-ann",
+    "difficulty": 1
+  },
+  {
+    "id": "embeddings-vector-search-q5",
+    "type": "single",
+    "prompt": "In HNSW, what does raising efSearch do?",
+    "options": [
+      { "id": "a", "text": "Adds more links per node, so the graph must be rebuilt before it takes effect" },
+      { "id": "b", "text": "Adds more layers above layer 0, so the greedy descent gets faster for all queries" },
+      { "id": "c", "text": "Keeps more candidates during the layer-0 search, raising recall and latency" },
+      { "id": "d", "text": "Normalises the query vector more precisely, so cosine scores become accurate" }
+    ],
+    "correct": ["c"],
+    "explanation": "efSearch is the size of the candidate list kept during the bottom-layer search; bigger means more of the graph is explored, higher recall and more latency, with no rebuild. Links per node is M, set at build time. The number of layers comes from random level assignment, not efSearch. Normalisation is unrelated to efSearch.",
+    "topicId": "hnsw",
+    "difficulty": 2
+  },
+  {
+    "id": "embeddings-vector-search-q6",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "A pgvector table holds documents for 200 tenants in one HNSW-indexed table. A small tenant with 1% of rows reports that semantic search 'returns nothing'. The query is WHERE tenant_id = $1 ORDER BY embedding <=> $2 LIMIT 10, with default settings. Large tenants see full results.",
+    "options": [
+      { "id": "a", "text": "The tenant's vectors were embedded with a different model and fail the distance check" },
+      { "id": "b", "text": "The filter is applied after the index returns about 40 candidates, so very few pass" },
+      { "id": "c", "text": "HNSW cannot index tables with a tenant_id column, so the planner skips the index" },
+      { "id": "d", "text": "Cosine distance excludes vectors whose score falls below a default threshold of 0.5" }
+    ],
+    "correct": ["b"],
+    "explanation": "With approximate indexes pgvector filters after the index scan; with the default hnsw.ef_search of 40 and a 1% filter you expect 0.4 matches. A different model would return wrong results, not none, and would not track tenant size. HNSW indexes work fine on tables with other columns. pgvector applies no default similarity threshold.",
+    "topicId": "metadata-filtering",
+    "difficulty": 3
+  },
+  {
+    "id": "embeddings-vector-search-q7",
+    "type": "multi",
+    "prompt": "Which changes fix the small tenant's empty results? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Enable pgvector's iterative index scans so the scan continues until enough rows match" },
+      { "id": "b", "text": "Partition the table by tenant or use a partial index for the tenant's rows" },
+      { "id": "c", "text": "For tiny tenants, run exact search over their few thousand rows without the ANN index" },
+      { "id": "d", "text": "Switch the operator from cosine distance to L2 distance on normalised vectors" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Iterative scans keep pulling candidates until the filter yields enough rows. Partitioning or partial indexes make the index contain only that tenant's vectors. Exact search on a small subset is cheap and perfectly accurate. Switching to L2 on normalised vectors gives the same ranking and does nothing about post-filtering.",
+    "topicId": "metadata-filtering",
+    "difficulty": 2
+  },
+  {
+    "id": "embeddings-vector-search-q8",
+    "type": "scenario",
+    "prompt": "Roughly how many distance computations does one query make?",
+    "scenario": "An IVF index holds 8 million vectors with nlist = 2,000 and nprobe = 10. Assume lists are evenly sized.",
+    "options": [
+      { "id": "a", "text": "About 4,000" },
+      { "id": "b", "text": "About 42,000" },
+      { "id": "c", "text": "About 400,000" },
+      { "id": "d", "text": "About 8,000,000" }
+    ],
+    "correct": ["b"],
+    "explanation": "Each list holds 8,000,000 / 2,000 = 4,000 vectors. The query compares with 2,000 centroids, then scans 10 × 4,000 = 40,000 vectors: about 42,000 in total. 4,000 is a single list. 400,000 is what nprobe = 100 would cost. 8,000,000 is brute force.",
+    "topicId": "ivf-pq",
+    "difficulty": 2
+  },
+  {
+    "id": "embeddings-vector-search-q9",
+    "type": "scenario",
+    "prompt": "What is the best way to choose efSearch for launch?",
+    "scenario": "Your team needs recall@10 of at least 0.95 within a 30 ms p99 budget. Someone suggests copying efSearch = 400 from a blog post because 'higher is always safer'.",
+    "options": [
+      { "id": "a", "text": "Keep 400, since recall can only improve and latency is only a secondary concern here" },
+      { "id": "b", "text": "Measure recall with brute-force ground truth on real queries and sweep efSearch values" },
+      { "id": "c", "text": "Set efSearch equal to k, since the index only ever needs to return ten results anyway" },
+      { "id": "d", "text": "Pick the value from the vendor's benchmark page, since it was tuned on similar datasets" }
+    ],
+    "correct": ["b"],
+    "explanation": "Only measurement on your own data shows the lowest efSearch that meets 0.95 within 30 ms, and the sweep should be rerun as the corpus changes. A blindly high value wastes latency and may break the p99 budget. efSearch = k is the minimum allowed and usually gives poor recall. Benchmarks on other datasets do not transfer to your data, dimension or filters.",
+    "topicId": "recall-latency",
+    "difficulty": 2
+  },
+  {
+    "id": "embeddings-vector-search-q10",
+    "type": "scenario",
+    "prompt": "Which choice is easiest to defend?",
+    "scenario": "A B2B app on PostgreSQL wants semantic search over 3 million documents, about 50 queries a second, with each customer seeing only their own documents and deletes taking effect immediately.",
+    "options": [
+      { "id": "a", "text": "A dedicated vector DB, because Postgres cannot store vectors efficiently at this scale" },
+      { "id": "b", "text": "pgvector, because transactional deletes and SQL access filters come for free at this size" },
+      { "id": "c", "text": "Brute force in the app server, because 3 million vectors is always too small for an index" },
+      { "id": "d", "text": "A dedicated vector DB, because pgvector has no approximate index and only scans every row" }
+    ],
+    "correct": ["b"],
+    "explanation": "3 million vectors fits comfortably on one database server, and keeping vectors beside their rows gives transactional deletes and SQL tenant filters with no sync pipeline. Postgres stores vectors fine at this scale. Brute force over 3 million at 50 queries a second is billions of multiply-adds per second and makes filtering your problem. pgvector does have approximate indexes: HNSW and IVFFlat.",
+    "topicId": "pgvector-vs-dedicated",
+    "difficulty": 3
+  },
+  {
+    "id": "embeddings-vector-search-q11",
+    "type": "multi",
+    "prompt": "Which statements about HNSW are true? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Every node is on layer 0; about 1/M of them also appear on layer 1" },
+      { "id": "b", "text": "Search descends greedily on upper layers, then runs a beam search on layer 0" },
+      { "id": "c", "text": "It guarantees the exact nearest neighbour when efSearch is at least k" },
+      { "id": "d", "text": "Heavy deletes leave tombstoned nodes that slowly degrade recall" }
+    ],
+    "correct": ["a", "b", "d"],
+    "explanation": "Levels decay exponentially, so all nodes are on layer 0 and roughly 1/M reach layer 1. Search is greedy on sparse layers and a wider best-first beam on the bottom. Deleted nodes are usually marked and skipped, which degrades the graph over time. HNSW never guarantees the exact answer; efSearch ≥ k is merely the minimum legal setting.",
+    "topicId": "hnsw",
+    "difficulty": 2
+  }
+]

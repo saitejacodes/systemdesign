@@ -1,0 +1,19 @@
+[
+  { "id": "speculative-decoding-f1", "front": "Speculative decoding in one sentence?", "back": "A cheap draft proposes γ tokens; the target checks them all in one forward pass and keeps a prefix of them, plus one token of its own.", "topicId": "draft-verify" },
+  { "id": "speculative-decoding-f2", "front": "Minimum and maximum tokens per target pass?", "back": "At least 1 (the replacement or bonus token) and at most γ + 1 (all drafts accepted plus a bonus).", "topicId": "draft-verify" },
+  { "id": "speculative-decoding-f3", "front": "Greedy speculative decoding rule?", "back": "Accept a draft token if it equals the target's argmax; at the first mismatch emit the target's argmax instead.", "topicId": "draft-verify" },
+  { "id": "speculative-decoding-f4", "front": "Acceptance rule with sampling?", "back": "Accept draft token x with probability min(1, p(x) / q(x)). On rejection, sample from norm(max(0, p − q)).", "topicId": "acceptance-rule" },
+  { "id": "speculative-decoding-f5", "front": "Why is the output exactly the target's distribution?", "back": "P(x) = q·min(1, p/q) + (1 − β)·p'(x) = min(p, q) + (p − min(p, q)) = p.", "topicId": "acceptance-rule" },
+  { "id": "speculative-decoding-f6", "front": "Per-position acceptance probability β?", "back": "Σ min(p(x), q(x)) = 1 − total variation distance between target and draft.", "topicId": "acceptance-rule" },
+  { "id": "speculative-decoding-f7", "front": "Expected tokens per target pass?", "back": "(1 − α^(γ+1)) / (1 − α). α = 0.8, γ = 4: 3.36.", "topicId": "speedup-math" },
+  { "id": "speculative-decoding-f8", "front": "Walltime speedup formula?", "back": "(1 − α^(γ+1)) / ((1 − α)(γc + 1)), with c = draft step time ÷ target step time. Assumes verify costs one step.", "topicId": "speedup-math" },
+  { "id": "speculative-decoding-f9", "front": "Can speculation be slower than plain decoding?", "back": "Yes. α = 0.4, γ = 4, c = 0.2 gives 1.65 ÷ 1.8 ≈ 0.92×.", "topicId": "speedup-math" },
+  { "id": "speculative-decoding-f10", "front": "Why does speculation stop helping at large batch?", "back": "A pass processes B × (γ + 1) tokens; past the ridge point it is compute-bound, so verifying costs more than one step and rejected tokens waste FLOPs.", "topicId": "when-it-helps" },
+  { "id": "speculative-decoding-f11", "front": "Does speculation reduce TTFT?", "back": "No. Prefill is already parallel and compute-bound; speculation reduces time per output token.", "topicId": "when-it-helps" },
+  { "id": "speculative-decoding-f12", "front": "MagicDec's point?", "back": "At long contexts KV-cache reads dominate, decode stays memory-bound even at large batch, so speculation can raise throughput there too.", "topicId": "when-it-helps" },
+  { "id": "speculative-decoding-f13", "front": "Medusa?", "back": "Extra heads on the target's last hidden state predict tokens several positions ahead; tree attention verifies candidates; typical acceptance is not exact.", "topicId": "variants" },
+  { "id": "speculative-decoding-f14", "front": "EAGLE?", "back": "A light head drafts next-layer features from the target's features plus sampled tokens; keeps the exact acceptance rule.", "topicId": "variants" },
+  { "id": "speculative-decoding-f15", "front": "Prompt lookup (n-gram) drafting?", "back": "Find the last generated tokens in the prompt and propose what followed. Nearly free; best when output copies input.", "topicId": "variants" },
+  { "id": "speculative-decoding-f16", "front": "Production metrics for speculation?", "back": "Acceptance rate per route, tenant and temperature; mean accepted length; TPOT and throughput vs a no-speculation baseline by batch size.", "topicId": "production" },
+  { "id": "speculative-decoding-f17", "front": "What happens to KV entries of rejected tokens?", "back": "They are rolled back in both draft and target caches; with paged KV that means freeing slots in the last blocks.", "topicId": "production" }
+]

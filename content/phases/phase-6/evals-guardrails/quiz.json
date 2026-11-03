@@ -1,0 +1,172 @@
+[
+  {
+    "id": "evals-guardrails-q1",
+    "type": "scenario",
+    "prompt": "What should the team conclude?",
+    "scenario": "A new prompt scores 91% on a 200-example eval set; the current prompt scored 89% on the same set in an earlier run. A product manager wants to ship today and announce a quality improvement.",
+    "options": [
+      { "id": "a", "text": "Ship and announce it: two points is a clear gain on an eval set of 200 examples" },
+      { "id": "b", "text": "The gap is within about ±4 points of noise; run a paired comparison or add examples" },
+      { "id": "c", "text": "Reject it: any change under five points means the new prompt must be worse" },
+      { "id": "d", "text": "Re-run only the new prompt until it scores 93% and then announce that number" }
+    ],
+    "correct": ["b"],
+    "explanation": "At roughly 90% on 200 examples the standard error is about 2.1 points, so the 95% interval is about ±4.2: a 2-point gap is inside the noise. A paired look at the examples whose outcome changed, or a larger set, can settle it. Calling it a clear gain ignores the arithmetic. Small differences are not evidence of being worse either. Re-running until you get a good number is cherry-picking noise.",
+    "topicId": "offline-evals",
+    "difficulty": 2
+  },
+  {
+    "id": "evals-guardrails-q2",
+    "type": "multi",
+    "prompt": "Which make an offline eval set more useful? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Sampled, anonymised real user inputs" },
+      { "id": "b", "text": "Every input from a bug you have fixed" },
+      { "id": "c", "text": "Slices labelled by category of request" },
+      { "id": "d", "text": "Dropping examples the system keeps failing" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Real inputs reflect actual usage, past bugs stop regressions coming back, and slices stop an average from hiding a collapse in one category. Dropping persistently failing examples makes the score look better while removing exactly the cases that show where the system is weak.",
+    "topicId": "offline-evals",
+    "difficulty": 1
+  },
+  {
+    "id": "evals-guardrails-q3",
+    "type": "single",
+    "prompt": "In pairwise LLM-as-judge comparisons, how do you control position bias?",
+    "options": [
+      { "id": "a", "text": "Always put the new prompt's answer first so that the comparison stays consistent" },
+      { "id": "b", "text": "Judge each pair in both orders and only count a win when both verdicts agree" },
+      { "id": "c", "text": "Raise the judge's temperature so its preference for one position averages out" },
+      { "id": "d", "text": "Ask the judge for a 1–10 score instead, since numeric scores remove all bias" }
+    ],
+    "correct": ["b"],
+    "explanation": "Swapping the order and requiring agreement cancels a preference for one position. Always putting one answer first bakes the bias into every comparison in its favour. Higher temperature adds randomness without removing the systematic lean. Numeric scales have their own biases, such as verbosity, and do not remove position effects in comparisons.",
+    "topicId": "llm-as-judge",
+    "difficulty": 1
+  },
+  {
+    "id": "evals-guardrails-q4",
+    "type": "scenario",
+    "prompt": "What is the best next step?",
+    "scenario": "A team uses an LLM judge to rate answers from a medical-billing assistant on 'helpfulness, 1–10'. Average score rose from 7.1 to 7.9 after a change that made answers about 60% longer. Billing experts reviewing a sample say accuracy did not improve.",
+    "options": [
+      { "id": "a", "text": "Trust the judge, since it is more consistent than individual human reviewers" },
+      { "id": "b", "text": "Suspect verbosity bias; write binary criteria and calibrate them on expert labels" },
+      { "id": "c", "text": "Swap to a bigger judge model and keep the same 1–10 helpfulness rubric unchanged" },
+      { "id": "d", "text": "Average the judge and expert scores together to get a final balanced number" }
+    ],
+    "correct": ["b"],
+    "explanation": "Scores rising with length while experts see no gain is the signature of verbosity bias, and a vague 1–10 scale invites it. Specific yes/no criteria checked against expert labels make the judge measure what matters. Consistency is not correctness. A bigger judge with the same vague rubric can carry the same bias. Averaging with expert scores blends a biased number into a good one rather than fixing it.",
+    "topicId": "llm-as-judge",
+    "difficulty": 2
+  },
+  {
+    "id": "evals-guardrails-q5",
+    "type": "scenario",
+    "prompt": "What CI change most directly prevents a repeat?",
+    "scenario": "A 'be concise' prompt edit passed CI because the overall pass rate went from 91% to 90%. In production, a 40-example refunds slice had dropped from 88% to 55%, and multi-step refund instructions lost their final step.",
+    "options": [
+      { "id": "a", "text": "Raise the overall pass threshold from 89% to 92% so the edit would have failed" },
+      { "id": "b", "text": "Gate on per-slice thresholds and add the refund failures as must-pass examples" },
+      { "id": "c", "text": "Run the whole eval set three times on each change and average the overall scores" },
+      { "id": "d", "text": "Ban prompt edits that reduce output length, since shorter answers drop content" }
+    ],
+    "correct": ["b"],
+    "explanation": "The average hid a collapse in one slice; per-slice thresholds and must-pass examples catch exactly that. A higher overall threshold would also block many harmless changes and could still miss a small slice. Repeated runs reduce run-to-run noise, but the averaged overall score still hides the slice. Banning shorter output is a blunt rule that blocks legitimate improvements and does not address the measurement gap.",
+    "topicId": "prompt-regression",
+    "difficulty": 2
+  },
+  {
+    "id": "evals-guardrails-q6",
+    "type": "single",
+    "prompt": "Why should production code pin an explicit model version instead of a floating alias?",
+    "options": [
+      { "id": "a", "text": "Aliases are billed at a higher per-token price than pinned model versions" },
+      { "id": "b", "text": "When the alias moves to a new model, behaviour changes without an eval run" },
+      { "id": "c", "text": "Pinned versions are immune to rate limits that apply to the alias endpoint" },
+      { "id": "d", "text": "Floating aliases cannot be used with streaming or with structured outputs" }
+    ],
+    "correct": ["b"],
+    "explanation": "An alias that silently points to a newer model is an untested deploy: your prompts and evals were validated on the old one. Pricing, rate limits and feature support are properties of the underlying model and account, not of whether you named it by alias, so those options are not the reason.",
+    "topicId": "prompt-regression",
+    "difficulty": 1
+  },
+  {
+    "id": "evals-guardrails-q7",
+    "type": "scenario",
+    "prompt": "Which control would have prevented the harm even if the injection succeeded?",
+    "scenario": "An email assistant summarises the user's inbox and can call a send_email tool. A received email contains hidden text telling the assistant to forward the user's last ten messages to an outside address, and the assistant did so.",
+    "options": [
+      { "id": "a", "text": "A stronger system prompt telling the model never to follow instructions found in emails" },
+      { "id": "b", "text": "Require explicit user confirmation, shown with the recipient, before any email is sent" },
+      { "id": "c", "text": "A better prompt-injection classifier on incoming email bodies before summarisation" },
+      { "id": "d", "text": "Lower the model temperature so that it follows the system prompt more consistently" }
+    ],
+    "correct": ["b"],
+    "explanation": "A confirmation gate in code, outside the model, stops the side effect regardless of what the model was tricked into wanting. A stronger system prompt and a classifier both reduce the chance of success but cannot guarantee it; injections are unbounded in phrasing. Temperature does not make a model immune to instructions it has read.",
+    "topicId": "io-filtering",
+    "difficulty": 2
+  },
+  {
+    "id": "evals-guardrails-q8",
+    "type": "multi",
+    "prompt": "Which are sound defence-in-depth measures for prompt injection? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Tools limited to what this user is allowed to do" },
+      { "id": "b", "text": "Escaping model output before rendering it as HTML" },
+      { "id": "c", "text": "Delimiters marking retrieved text as untrusted data" },
+      { "id": "d", "text": "Passing model output to a shell if it looks harmless" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Least privilege limits the damage, escaping treats model output as untrusted input, and delimiters reduce (not eliminate) the chance the model treats data as instructions. Running model output in a shell on a judgement of 'looks harmless' is the opposite of treating it as untrusted and turns an injection into code execution.",
+    "topicId": "io-filtering",
+    "difficulty": 2
+  },
+  {
+    "id": "evals-guardrails-q9",
+    "type": "scenario",
+    "prompt": "What is the root-cause fix?",
+    "scenario": "A banking assistant uses a semantic cache keyed only on the question's embedding. User B asked about 'my balance and next payment date' and received the cached answer generated for user A, including A's balance.",
+    "options": [
+      { "id": "a", "text": "Raise the similarity threshold so only near-identical questions ever hit the cache" },
+      { "id": "b", "text": "Scope the cache key by tenant and user, and mark personalised answers as uncacheable" },
+      { "id": "c", "text": "Shorten the cache TTL to one minute so that other users' cached answers expire much sooner" },
+      { "id": "d", "text": "Run a PII redaction step on the question before computing its embedding vector" }
+    ],
+    "correct": ["b"],
+    "explanation": "The bug is that a personalised answer was shared across users; partitioning by user and refusing to cache personal answers removes the leak entirely. A higher threshold makes a collision less likely but two users can ask the identical question. A shorter TTL only narrows the window (this leak happened within 40 seconds). Redacting the question does nothing about the personal data in the cached answer.",
+    "topicId": "pii-handling",
+    "difficulty": 2
+  },
+  {
+    "id": "evals-guardrails-q10",
+    "type": "single",
+    "prompt": "What is the main limitation of automated PII redaction before sending prompts to a provider?",
+    "options": [
+      { "id": "a", "text": "Detection recall is below 100%, especially for names and free-form IDs" },
+      { "id": "b", "text": "Redacted prompts are rejected by providers as malformed input requests" },
+      { "id": "c", "text": "Redaction must run on a GPU, which makes it too slow for chat traffic" },
+      { "id": "d", "text": "It removes the need for a data-processing agreement with the provider" }
+    ],
+    "correct": ["a"],
+    "explanation": "Pattern matching and NER miss some personal data, so redaction reduces exposure but does not prove absence. Providers accept placeholder text like PERSON_1 normally. Regex and many NER recognisers run fine on CPUs. And redaction does not replace a data-processing agreement; imperfect recall is exactly why you still need one.",
+    "topicId": "pii-handling",
+    "difficulty": 1
+  },
+  {
+    "id": "evals-guardrails-q11",
+    "type": "single",
+    "prompt": "After a provider-side model update, which production signal is the earliest sign of a quality change, before users complain?",
+    "options": [
+      { "id": "a", "text": "Monthly active users, because unhappy users stop logging in within the hour" },
+      { "id": "b", "text": "Shifts in refusal rate, output length or validation failures per model version" },
+      { "id": "c", "text": "The provider's status page, which lists every model behaviour change it makes" },
+      { "id": "d", "text": "Average request latency, since a worse model always takes longer to answer" }
+    ],
+    "correct": ["b"],
+    "explanation": "Distribution shifts in refusals, output length, validation failures or guardrail triggers show up immediately and need no labels. Active-user counts react far too slowly and for many reasons. Status pages report availability incidents, not subtle behaviour changes. Latency and quality are not linked that simply; a worse model can be faster.",
+    "topicId": "production-monitoring",
+    "difficulty": 2
+  }
+]

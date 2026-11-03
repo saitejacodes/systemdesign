@@ -1,0 +1,19 @@
+{
+  "id": "p6-multi-region",
+  "phase": 6,
+  "slug": "multi-region",
+  "title": "Multi-Region Architecture",
+  "order": 5,
+  "week": 13,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "active-passive-active-active", "title": "Active-passive vs active-active", "depth": "deep" },
+    { "id": "cross-region-latency", "title": "Cross-region latency and synchronous writes", "depth": "deep" },
+    { "id": "conflict-resolution", "title": "Conflict resolution", "depth": "deep" },
+    { "id": "data-residency", "title": "Data residency", "depth": "tradeoffs" },
+    { "id": "latency-based-routing", "title": "Latency-based routing", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p2-replication", "p4-cap-pacelc", "p4-disaster-recovery"]
+}

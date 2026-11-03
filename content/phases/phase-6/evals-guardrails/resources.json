@@ -1,0 +1,42 @@
+[
+  {
+    "id": "judging-llm-as-judge",
+    "title": "Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena",
+    "author": "Lianmin Zheng et al. (2023)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2306.05685",
+    "why": "The paper that measured how well model judges agree with people and named position, verbosity and self-enhancement bias.",
+    "topicIds": ["llm-as-judge", "offline-evals"],
+    "free": true
+  },
+  {
+    "id": "hamel-evals",
+    "title": "Your AI Product Needs Evals",
+    "author": "Hamel Husain",
+    "kind": "blog",
+    "url": "https://hamel.dev/blog/posts/evals/",
+    "why": "A practitioner's case for error analysis first, unit-test-style assertions, and judges calibrated against humans.",
+    "topicIds": ["offline-evals", "prompt-regression", "llm-as-judge"],
+    "free": true
+  },
+  {
+    "id": "owasp-llm-top10",
+    "title": "OWASP Top 10 for Large Language Model Applications",
+    "author": "OWASP GenAI Security Project",
+    "kind": "docs",
+    "url": "https://genai.owasp.org/",
+    "why": "The standard checklist of LLM application risks, from prompt injection to sensitive information disclosure, with defences.",
+    "topicIds": ["io-filtering", "pii-handling"],
+    "free": true
+  },
+  {
+    "id": "presidio",
+    "title": "Microsoft Presidio documentation",
+    "author": "Microsoft",
+    "kind": "docs",
+    "url": "https://microsoft.github.io/presidio/",
+    "why": "An open-source PII detection and anonymisation toolkit; useful for seeing how regex and NER recognisers combine and where they miss.",
+    "topicIds": ["pii-handling"],
+    "free": true
+  }
+]

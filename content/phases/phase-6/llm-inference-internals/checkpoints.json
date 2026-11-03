@@ -1,0 +1,7 @@
+[
+  { "id": "llm-inference-internals-c1", "text": "I can trace one decode step from token ID through embedding, attention and MLP blocks, the LM head and the sampler, and say where the KV cache is read and written.", "topicId": "forward-pass" },
+  { "id": "llm-inference-internals-c2", "text": "I can estimate FLOPs per token as 2 × parameters and compute a GPU's ridge point from its peak FLOP/s and memory bandwidth.", "topicId": "flops-roofline" },
+  { "id": "llm-inference-internals-c3", "text": "I can show with numbers why prefill is compute-bound, why decode is bandwidth-bound, and why batching stops scaling once KV-cache reads dominate.", "topicId": "prefill-decode-bounds" },
+  { "id": "llm-inference-internals-c4", "text": "I can compute temperature-scaled probabilities by hand and say which tokens survive a given top-k or top-p setting.", "topicId": "sampling" },
+  { "id": "llm-inference-internals-c5", "text": "I can explain why temperature 0 drifts on a shared endpoint (non-associative floating point, batch-variant kernels, MoE routing) and propose mitigations with their costs.", "topicId": "nondeterminism" }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "id": "anthropic-building-agents",
+    "title": "Building effective agents",
+    "author": "Erik Schluntz and Barry Zhang, Anthropic (2024)",
+    "kind": "blog",
+    "url": "https://www.anthropic.com/engineering/building-effective-agents",
+    "why": "Defines workflows versus agents, catalogues the workflow patterns, and argues for the simplest design that works.",
+    "topicIds": ["workflows-vs-agents", "tool-calling-loop", "human-in-the-loop"],
+    "free": true
+  },
+  {
+    "id": "react-paper",
+    "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
+    "author": "Shunyu Yao et al. (2022)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2210.03629",
+    "why": "The reasoning-action-observation loop that most agent frameworks still follow.",
+    "topicIds": ["tool-calling-loop", "agent-state"],
+    "free": true
+  },
+  {
+    "id": "anthropic-tool-use-docs",
+    "title": "Tool use with Claude",
+    "author": "Anthropic",
+    "kind": "docs",
+    "url": "https://docs.anthropic.com/en/docs/build-with-claude/tool-use",
+    "why": "A concrete reference for tool schemas, the tool_use stop reason and returning tool results and errors to the model.",
+    "topicIds": ["tool-calling-loop", "idempotent-tools", "agent-limits"],
+    "free": true
+  }
+]

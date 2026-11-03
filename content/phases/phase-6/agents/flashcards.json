@@ -1,0 +1,19 @@
+[
+  { "id": "agents-f1", "front": "Workflow vs agent (Anthropic's definitions)?", "back": "Workflow: LLMs and tools orchestrated through predefined code paths. Agent: the LLM dynamically directs its own process and tool use.", "topicId": "workflows-vs-agents" },
+  { "id": "agents-f2", "front": "Run success for 20 steps at 98% each?", "back": "0.98²⁰ ≈ 0.67. Per-step errors compound, so fewer or deterministic steps buy reliability.", "topicId": "workflows-vs-agents" },
+  { "id": "agents-f3", "front": "Five workflow patterns?", "back": "Prompt chaining, routing, parallelisation, orchestrator-workers and evaluator-optimiser.", "topicId": "workflows-vs-agents" },
+  { "id": "agents-f4", "front": "Who executes a tool call?", "back": "Your orchestrator. The model only returns a structured request (name plus JSON arguments); your code validates, runs and returns the result.", "topicId": "tool-calling-loop" },
+  { "id": "agents-f5", "front": "How does the API signal that the model wants a tool?", "back": "Stop reason tool_use in Anthropic's Messages API; finish reason tool_calls in OpenAI's Chat Completions.", "topicId": "tool-calling-loop" },
+  { "id": "agents-f6", "front": "ReAct?", "back": "Yao et al., 2022: the model interleaves reasoning, actions (tool calls) and observations (results) instead of planning everything up front.", "topicId": "tool-calling-loop" },
+  { "id": "agents-f7", "front": "What makes a good tool error?", "back": "A specific message the model can act on, such as 'order_id not found; IDs are 8 digits', and whether retrying can help.", "topicId": "tool-calling-loop" },
+  { "id": "agents-f8", "front": "Why does agent input cost grow quadratically?", "back": "Each step resends the whole growing history: step i costs base + per-step × i, so the total over n steps grows with n².", "topicId": "agent-state" },
+  { "id": "agents-f9", "front": "What goes in an agent checkpoint?", "back": "Run ID, step number, messages, tool calls and results, spend so far, and status such as running or waiting for approval.", "topicId": "agent-state" },
+  { "id": "agents-f10", "front": "Three ways to slow context growth?", "back": "Truncate or summarise tool results, compact old history into a summary, and keep long-lived facts in external memory.", "topicId": "agent-state" },
+  { "id": "agents-f11", "front": "Where should an agent tool's idempotency key come from?", "back": "The orchestrator, derived from run, step and call index, so it is stable across crash and resume. Never from the model.", "topicId": "idempotent-tools" },
+  { "id": "agents-f12", "front": "Why isn't HTTP-level key reuse enough for agents?", "back": "The model can issue the same action again as a new call. The orchestrator must recognise the same logical action and reuse its key.", "topicId": "idempotent-tools" },
+  { "id": "agents-f13", "front": "Three classes of tools?", "back": "Read-only, idempotent-mutating and non-idempotent. Never auto-retry the last; put it behind approval.", "topicId": "idempotent-tools" },
+  { "id": "agents-f14", "front": "Five limits every agent run needs?", "back": "Step limit, token or cost budget, wall-clock deadline with per-tool timeouts, per-tool call caps, and loop detection.", "topicId": "agent-limits" },
+  { "id": "agents-f15", "front": "Simple loop-detection rule?", "back": "Stop when the same tool with the same arguments returns the same error three times in a row.", "topicId": "agent-limits" },
+  { "id": "agents-f16", "front": "Which actions need human approval?", "back": "Irreversible or external ones (messages, payments, deletes, deploys, permission changes), actions seen by others, and low-confidence cases.", "topicId": "human-in-the-loop" },
+  { "id": "agents-f17", "front": "Approval fatigue?", "back": "Reviewers approving nearly everything within seconds, so the gate stops being a control. Tier by risk and show the exact effect.", "topicId": "human-in-the-loop" }
+]

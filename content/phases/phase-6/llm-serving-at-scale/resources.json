@@ -1,0 +1,42 @@
+[
+  {
+    "id": "llumnix-paper",
+    "title": "Llumnix: Dynamic Scheduling for Large Language Model Serving",
+    "author": "Sun et al. (OSDI 2024)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2406.03243",
+    "why": "Live migration of running requests across replicas, and how it enables load balancing, de-fragmentation, priorities and draining.",
+    "topicIds": ["serving-observability", "gpu-autoscaling"],
+    "free": true
+  },
+  {
+    "id": "vtc-fairness-paper",
+    "title": "Fairness in Serving Large Language Models",
+    "author": "Sheng et al. (OSDI 2024)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2401.00588",
+    "why": "Defines token-based fairness between clients and the Virtual Token Counter scheduler for when request cost is unknown up front.",
+    "topicIds": ["admission-control"],
+    "free": true
+  },
+  {
+    "id": "anthropic-api-errors",
+    "title": "Claude API errors and rate limits documentation",
+    "author": "Anthropic",
+    "kind": "docs",
+    "url": "https://docs.anthropic.com/en/api/errors",
+    "why": "A public example of distinct rate-limit (429) and overload (529) errors, with the rate-limit pages describing per-minute request and token limits.",
+    "topicIds": ["admission-control", "request-path"],
+    "free": true
+  },
+  {
+    "id": "sre-handling-overload",
+    "title": "Site Reliability Engineering, chapter 21: Handling Overload",
+    "author": "Google (O'Reilly, 2016)",
+    "kind": "free-book",
+    "url": "https://sre.google/sre-book/handling-overload/",
+    "why": "Criticality tiers, per-customer limits and client-side throttling: the general overload playbook that LLM fleets adapt.",
+    "topicIds": ["admission-control", "stream-reliability"],
+    "free": true
+  }
+]

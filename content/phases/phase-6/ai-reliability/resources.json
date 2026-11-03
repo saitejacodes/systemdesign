@@ -1,0 +1,32 @@
+[
+  {
+    "id": "aws-timeouts-retries",
+    "title": "Timeouts, retries, and backoff with jitter",
+    "author": "Marc Brooker, Amazon Builders' Library",
+    "kind": "blog",
+    "url": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
+    "why": "The clearest explanation of why retries at every layer multiply load, and how backoff, jitter and retry limits fix it. Applies directly to LLM gateways.",
+    "topicIds": ["llm-timeouts", "llm-retries"],
+    "free": true
+  },
+  {
+    "id": "sre-cascading-failures",
+    "title": "Addressing Cascading Failures (Site Reliability Engineering, chapter 22)",
+    "author": "Google SRE",
+    "kind": "free-book",
+    "url": "https://sre.google/sre-book/addressing-cascading-failures/",
+    "why": "Retry budgets, deadlines and graceful degradation from the people who popularised them; read it with a model provider as the overloaded backend.",
+    "topicIds": ["llm-retries", "provider-failover", "fallbacks-degradation"],
+    "free": true
+  },
+  {
+    "id": "outlines-paper",
+    "title": "Efficient Guided Generation for Large Language Models",
+    "author": "Brandon T. Willard and Rémi Louf (2023)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2307.09702",
+    "why": "How constrained decoding turns a regex or JSON Schema into a finite-state machine over the vocabulary, the idea behind the Outlines library.",
+    "topicIds": ["structured-output"],
+    "free": true
+  }
+]

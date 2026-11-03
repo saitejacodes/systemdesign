@@ -1,0 +1,330 @@
+[
+  {
+    "id": "gpu-parallelism-q1",
+    "type": "single",
+    "prompt": "In a ring all-reduce of a tensor of size S over N ranks, roughly how many bytes does each rank send?",
+    "options": [
+      {
+        "id": "a",
+        "text": "2 × (N − 1)/N × S, which approaches 2S as N grows"
+      },
+      {
+        "id": "b",
+        "text": "(N − 1) × S, because each rank sends its tensor to every peer"
+      },
+      {
+        "id": "c",
+        "text": "S / N, because each rank only sends its own shard once"
+      },
+      {
+        "id": "d",
+        "text": "S × log₂ N, because the ring halves the work at each step"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "A ring all-reduce is a reduce-scatter then an all-gather, each sending (N − 1)/N × S per rank, for 2(N − 1)/N × S in total, nearly flat in N. (N − 1) × S is the naive all-to-all-peers approach that rings exist to avoid. S/N ignores that every chunk must travel round the ring in both phases. S × log₂ N describes tree-style algorithms' step count, not ring bandwidth, and still mixes up steps with bytes.",
+    "topicId": "collectives",
+    "difficulty": 1
+  },
+  {
+    "id": "gpu-parallelism-q2",
+    "type": "scenario",
+    "prompt": "Which configuration is the first that fits model state in 80 GB per GPU with room left for activations?",
+    "scenario": "You train a 30B-parameter model with mixed-precision Adam (16 bytes per parameter of model state) on 64 data-parallel GPUs with 80 GB each. You need at least 25 GB per GPU for activations.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Plain data parallelism, since each GPU only sees 1/64 of the data"
+      },
+      {
+        "id": "b",
+        "text": "ZeRO-1, which shards the 12 bytes of optimiser state 64 ways"
+      },
+      {
+        "id": "c",
+        "text": "ZeRO-2, which also shards gradients, leaving just 2 bytes per parameter"
+      },
+      {
+        "id": "d",
+        "text": "ZeRO-3, which shards weights, gradients and optimiser state together"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "Ψ = 30 × 10⁹. Plain DP needs 16Ψ = 480 GB per GPU: splitting data does not split model state. ZeRO-1 needs 4Ψ + 12Ψ/64 ≈ 120 + 5.6 = 125.6 GB. ZeRO-2 needs 2Ψ + 14Ψ/64 ≈ 60 + 6.6 = 66.6 GB, which fits in 80 GB but leaves only about 13 GB, short of the 25 GB needed. ZeRO-3 needs 16Ψ/64 = 7.5 GB, leaving plenty for activations.",
+    "topicId": "zero-fsdp",
+    "difficulty": 2
+  },
+  {
+    "id": "gpu-parallelism-q3",
+    "type": "single",
+    "prompt": "In Megatron-style tensor parallelism of an MLP block, why is the first weight matrix split by columns rather than rows?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Each GPU then gets a slice of the hidden units and can apply GeLU locally with no sync"
+      },
+      {
+        "id": "b",
+        "text": "Column slices are smaller in memory than row slices of the same matrix on every GPU"
+      },
+      {
+        "id": "c",
+        "text": "A column split lets the GPUs skip the all-reduce in the backward pass completely"
+      },
+      {
+        "id": "d",
+        "text": "It makes each GPU process different tokens, so the block behaves like data parallelism"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "A column split gives each GPU complete values for its own hidden units, and GeLU is element-wise, so it can be applied without communication; a row split would leave partial sums that need an all-reduce before the non-linearity. Column and row slices of the same matrix hold the same number of elements. Backward still needs an all-reduce (Megatron's f operator). All GPUs process the same tokens in tensor parallelism; that is what distinguishes it from data parallelism.",
+    "topicId": "tensor-parallelism",
+    "difficulty": 2
+  },
+  {
+    "id": "gpu-parallelism-q4",
+    "type": "scenario",
+    "prompt": "What is the most likely cause of the slowdown?",
+    "scenario": "A team has 16 GPUs: two nodes of 8, NVLink inside each node and a much slower network between nodes. To fit a large model they set tensor parallelism to 16 and no pipeline parallelism. Step time is several times worse than a colleague's run with TP 8 and PP 2 on the same hardware.",
+    "options": [
+      {
+        "id": "a",
+        "text": "TP's per-layer activation all-reduces now cross the slow inter-node network"
+      },
+      {
+        "id": "b",
+        "text": "TP 16 doubles the pipeline bubble compared with two pipeline stages"
+      },
+      {
+        "id": "c",
+        "text": "The gradient all-reduce at the end of each step now has twice the bytes"
+      },
+      {
+        "id": "d",
+        "text": "TP 16 forces each GPU to store the full KV cache for every one of the heads"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Tensor parallelism does four activation-sized all-reduces per layer on the critical path, so spanning two nodes puts all of them on the slow link. There is no pipeline with PP = 1, so no bubble. There is no data parallelism here at all, and in any case ring all-reduce bytes per rank barely change with group size. Tensor parallelism splits heads across GPUs, so each GPU holds fewer heads' state, not all of them.",
+    "topicId": "parallelism-placement",
+    "difficulty": 2
+  },
+  {
+    "id": "gpu-parallelism-q5",
+    "type": "scenario",
+    "prompt": "Roughly what fraction of time is the pipeline bubble?",
+    "scenario": "A training job uses 8 pipeline stages with a simple GPipe or 1F1B schedule and 24 micro-batches per optimiser step.",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 9%"
+      },
+      {
+        "id": "b",
+        "text": "About 23%"
+      },
+      {
+        "id": "c",
+        "text": "About 29%"
+      },
+      {
+        "id": "d",
+        "text": "About 33%"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Bubble fraction = (p − 1)/(m + p − 1) = 7/31 ≈ 22.6%. About 29% is 7/24, dividing by the micro-batch count alone, which gives bubble time relative to ideal compute rather than the share of total time. About 33% is 8/24, using p instead of p − 1. About 9% would need roughly 72 micro-batches or an interleaved schedule.",
+    "topicId": "pipeline-parallelism",
+    "difficulty": 2
+  },
+  {
+    "id": "gpu-parallelism-q6",
+    "type": "multi",
+    "prompt": "Which statements about 1F1B pipeline scheduling are true? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "It bounds in-flight micro-batches per stage to about the number of stages"
+      },
+      {
+        "id": "b",
+        "text": "Its synchronous form has the same bubble fraction as GPipe's schedule"
+      },
+      {
+        "id": "c",
+        "text": "It removes the bubble entirely once the pipeline has fully warmed up"
+      },
+      {
+        "id": "d",
+        "text": "Interleaving v chunks per GPU shrinks its bubble by roughly a factor v"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "d"
+    ],
+    "explanation": "1F1B alternates one forward and one backward after warm-up, so each stage holds activations for at most about p micro-batches instead of all m. The synchronous variant (PipeDream-Flush) keeps GPipe's bubble; its win is memory. The interleaved schedule from Narayanan et al. 2021 divides the bubble by v at the cost of more messages. The fill and drain at each step boundary remain, so the bubble is never zero for a synchronous schedule.",
+    "topicId": "pipeline-parallelism",
+    "difficulty": 2
+  },
+  {
+    "id": "gpu-parallelism-q7",
+    "type": "single",
+    "prompt": "What does ZeRO stage 3 add over stage 2, and what does it cost?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It shards activations too, at the cost of recomputing every layer in backward"
+      },
+      {
+        "id": "b",
+        "text": "It shards the weights, adding per-layer all-gathers, about 1.5× DP's traffic"
+      },
+      {
+        "id": "c",
+        "text": "It splits each layer across GPUs, adding four activation all-reduces per layer"
+      },
+      {
+        "id": "d",
+        "text": "It shards gradients, replacing the all-reduce with a cheaper reduce-scatter"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Stage 3 shards the parameters themselves and all-gathers each layer's weights before its forward and backward, for about 1.5× the communication of plain data parallelism. ZeRO does not shard activations; activation recomputation is a separate technique. Splitting each layer with per-layer all-reduces is tensor parallelism. Sharding gradients with a reduce-scatter is what stage 2 adds, not stage 3.",
+    "topicId": "zero-fsdp",
+    "difficulty": 1
+  },
+  {
+    "id": "gpu-parallelism-q8",
+    "type": "scenario",
+    "prompt": "What is the best first explanation?",
+    "scenario": "An MoE training run with 64 experts on 64 GPUs (top-1 routing, capacity factor 1.25) shows step time rising 40% after a data-mix change. Average GPU utilisation is down, but one GPU is at 100%, and the logged fraction of dropped tokens has jumped from 1% to 12%.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The router now sends a big share of tokens to one expert, so others wait at the all-to-all"
+      },
+      {
+        "id": "b",
+        "text": "The gradient all-reduce has grown because the new data mix added many vocabulary tokens"
+      },
+      {
+        "id": "c",
+        "text": "The pipeline bubble grew because the new data has longer sequences than before"
+      },
+      {
+        "id": "d",
+        "text": "The capacity factor is too high, so every expert pads far too many empty slots"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "A hot expert gets more tokens than its capacity: overflow tokens are dropped (the drop rate jump) and its GPU is saturated while every other rank waits for it at the combine all-to-all, so step time is set by the slowest rank. Data mix does not change the number of parameters, so gradient all-reduce size is unchanged. Nothing here points at pipeline stages. A too-high capacity factor wastes compute evenly on all experts and would reduce drops, not increase them.",
+    "topicId": "expert-parallelism",
+    "difficulty": 3
+  },
+  {
+    "id": "gpu-parallelism-q9",
+    "type": "multi",
+    "prompt": "Which statements about serving (inference) versus training parallelism are true? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Data-parallel inference replicas need no synchronisation with each other"
+      },
+      {
+        "id": "b",
+        "text": "Tensor parallelism inside a node can reduce per-token decode latency"
+      },
+      {
+        "id": "c",
+        "text": "Pipeline parallelism cuts per-token latency for a single long request"
+      },
+      {
+        "id": "d",
+        "text": "Inference needs no optimiser state, so memory is mostly weights and KV"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "d"
+    ],
+    "explanation": "Inference replicas are independent: no gradients, nothing to average. Tensor parallelism splits every layer's weight reads across GPUs, so each decode step reads fewer bytes per GPU and finishes sooner. Inference memory is weights plus KV cache plus activations, with no gradients or optimiser state. Pipeline parallelism does not shorten one request's per-token time: each token still passes through every stage in sequence, plus a hop between stages; it raises throughput or makes a model fit.",
+    "topicId": "parallelism-placement",
+    "difficulty": 2
+  },
+  {
+    "id": "gpu-parallelism-q10",
+    "type": "single",
+    "prompt": "When is context parallelism (for example Ring Attention) the right tool?",
+    "options": [
+      {
+        "id": "a",
+        "text": "When one long sequence's activations will not fit on a GPU even with TP"
+      },
+      {
+        "id": "b",
+        "text": "When the model's weights are too large to fit across a single 8-GPU node"
+      },
+      {
+        "id": "c",
+        "text": "When the global batch size is larger than the critical batch size"
+      },
+      {
+        "id": "d",
+        "text": "When an MoE router sends too many tokens to a single hot expert"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Context parallelism splits the sequence dimension, which is what you need when activations for very long contexts are the memory problem. Weights that do not fit in a node call for pipeline parallelism or ZeRO-3. An oversized global batch is a data-parallel problem solved by fewer DP ranks or gradient accumulation choices, not by sequence splitting. A hot expert is an MoE load-balancing problem.",
+    "topicId": "context-parallelism",
+    "difficulty": 1
+  },
+  {
+    "id": "gpu-parallelism-q11",
+    "type": "scenario",
+    "prompt": "Which layout is most sensible?",
+    "scenario": "You have 512 GPUs, 8 per node with NVLink inside each node. The model has 64 layers and does not fit on one node even with tensor parallelism 8, but fits on two nodes. The global batch is 512 sequences.",
+    "options": [
+      {
+        "id": "a",
+        "text": "TP 8 inside each node, PP 2 across node pairs, and DP 32 across the pairs"
+      },
+      {
+        "id": "b",
+        "text": "TP 16 spanning node pairs, PP 1, and DP 32 across the node pairs"
+      },
+      {
+        "id": "c",
+        "text": "TP 1, PP 64 with one layer per GPU stage, and DP 8 across the groups"
+      },
+      {
+        "id": "d",
+        "text": "TP 8 inside each node, PP 1, and DP 64 with every node a full replica"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "TP 8 × PP 2 × DP 32 = 512 keeps the activation all-reduces on NVLink, uses two light pipeline stages across nodes, and leaves 16 sequences per replica (m = 16 at micro-batch 1, bubble 1/17 ≈ 6%). TP 16 puts tensor-parallel all-reduces on the slow inter-node network. PP 64 with DP 8 gives each replica 64 micro-batches but 64 stages, a bubble of 63/127 ≈ 50%. TP 8 with PP 1 fails because the model does not fit on one node.",
+    "topicId": "parallelism-placement",
+    "difficulty": 3
+  }
+]

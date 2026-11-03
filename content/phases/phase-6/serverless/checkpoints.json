@@ -1,0 +1,7 @@
+[
+  { "id": "serverless-c1", "text": "I can describe the Init, Invoke and Shutdown lifecycle and explain what survives between invocations and what doesn't.", "topicId": "faas-model" },
+  { "id": "serverless-c2", "text": "I can explain why a traffic spike makes concurrency overshoot during cold starts and estimate it as rate × (cold start + duration).", "topicId": "cold-starts" },
+  { "id": "serverless-c3", "text": "I can turn requests per second and duration into required concurrency and pick a reserved-concurrency cap from a database's connection limit.", "topicId": "concurrency-limits" },
+  { "id": "serverless-c4", "text": "I can compute the break-even request rate between functions and an always-on fleet from GB-second and request prices.", "topicId": "cost-at-scale" },
+  { "id": "serverless-c5", "text": "I can name at least five workload traits that make FaaS a poor fit and propose the alternative for each.", "topicId": "when-not-serverless" }
+]

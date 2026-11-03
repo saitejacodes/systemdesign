@@ -18,6 +18,12 @@
     "sectionId": "p5-access-control"
   },
   {
+    "term": "Acceptance rate",
+    "slug": "acceptance-rate",
+    "definition": "The average probability that a draft token is accepted in speculative decoding, equal to the sum over tokens of min(p, q). It sets how many tokens each target pass yields.",
+    "sectionId": "p6-speculative-decoding"
+  },
+  {
     "term": "Access token",
     "slug": "access-token",
     "definition": "A short-lived credential issued by an authorization server that a client presents to an API. It may be an opaque reference or a self-contained JWT.",
@@ -34,6 +40,12 @@
     "slug": "ack",
     "definition": "An acknowledgement: a TCP packet field telling the sender which bytes have arrived.",
     "sectionId": "p1-tcp-udp"
+  },
+  {
+    "term": "Activation outlier",
+    "slug": "activation-outlier",
+    "definition": "A hidden dimension whose activation values are far larger than the rest, which appears in large transformers. Outliers make naive 8-bit activation quantization lose precision, which methods such as LLM.int8() and SmoothQuant work around.",
+    "sectionId": "p6-inference-optimization"
   },
   {
     "term": "Active-active",
@@ -66,6 +78,18 @@
     "sectionId": "p4-bulkheads-load-shedding"
   },
   {
+    "term": "Agent loop",
+    "slug": "agent-loop",
+    "definition": "The repeated cycle of calling the model, running any tools it requests, appending the results to the history and calling it again until it gives a final answer.",
+    "sectionId": "p6-agents"
+  },
+  {
+    "term": "AI agent",
+    "slug": "ai-agent",
+    "definition": "A system in which an LLM dynamically decides which tools to call and in what order until a task is done, instead of following predefined code paths.",
+    "sectionId": "p6-agents"
+  },
+  {
     "term": "Alert fatigue",
     "slug": "alert-fatigue",
     "definition": "The loss of attention that comes from receiving too many false or unactionable alerts, which leads responders to ignore or miss real ones.",
@@ -88,6 +112,18 @@
     "slug": "alert-inhibition",
     "definition": "Muting some alerts while another, usually their cause, is firing, so responders see the root problem instead of every downstream effect.",
     "sectionId": "p5-alerting"
+  },
+  {
+    "term": "All-reduce",
+    "slug": "all-reduce",
+    "definition": "A collective operation in which every rank contributes a tensor and every rank ends up with their element-wise sum. It is equivalent to a reduce-scatter followed by an all-gather; a ring all-reduce sends about 2(N − 1)/N times the tensor size per rank.",
+    "sectionId": "p6-gpu-parallelism"
+  },
+  {
+    "term": "Allowed lateness",
+    "slug": "allowed-lateness",
+    "definition": "How long a stream processor keeps a window's state after the watermark passes it, so late events can still update and re-emit the result. Kafka Streams calls this the grace period.",
+    "sectionId": "p6-stream-processing"
   },
   {
     "term": "Amplification attack",
@@ -124,6 +160,18 @@
     "slug": "append-only-file",
     "definition": "A Redis persistence log of every write command, replayed on restart. Its fsync policy sets how much data a crash can lose.",
     "sectionId": "p3-redis"
+  },
+  {
+    "term": "Approximate nearest neighbour (ANN) search",
+    "slug": "approximate-nearest-neighbor",
+    "definition": "Vector search that uses an index to examine a small fraction of the vectors and returns results that are usually, but not always, the true nearest neighbours.",
+    "sectionId": "p6-embeddings-vector-search"
+  },
+  {
+    "term": "Arithmetic intensity",
+    "slug": "arithmetic-intensity",
+    "definition": "The number of floating-point operations a computation performs per byte it moves to or from memory. Compared with a chip's ridge point, it shows whether compute or memory bandwidth limits speed.",
+    "sectionId": "p6-llm-inference-internals"
   },
   {
     "term": "Artifact promotion",
@@ -204,6 +252,12 @@
     "sectionId": "p2-api-gateway"
   },
   {
+    "term": "Backfill",
+    "slug": "backfill",
+    "definition": "Rerunning a data pipeline for past dates, for example after a bug fix or a new column, which is only safe if each run is idempotent.",
+    "sectionId": "p6-batch-processing"
+  },
+  {
     "term": "Backpressure",
     "slug": "backpressure",
     "definition": "A signal from a slow receiver that makes the sender slow down, instead of letting unprocessed work pile up until something fails.",
@@ -216,10 +270,22 @@
     "sectionId": "p1-tcp-udp"
   },
   {
+    "term": "Batch invariance",
+    "slug": "batch-invariance",
+    "definition": "The property that a kernel returns bit-identical results for one input whatever else is in the batch. Kernels without it change their reduction order with batch size, which makes temperature-0 output vary with server load.",
+    "sectionId": "p6-llm-inference-internals"
+  },
+  {
     "term": "Bearer token",
     "slug": "bearer-token",
     "definition": "A token that grants access to whoever presents it, usually sent as Authorization: Bearer. Anyone who copies it can use it.",
     "sectionId": "p5-authn-authz"
+  },
+  {
+    "term": "Bi-encoder",
+    "slug": "bi-encoder",
+    "definition": "A model that embeds queries and documents separately into vectors, so document vectors can be precomputed and indexed. Standard embedding models are bi-encoders.",
+    "sectionId": "p6-rag"
   },
   {
     "term": "Binding",
@@ -426,6 +492,30 @@
     "sectionId": "p4-chaos-engineering"
   },
   {
+    "term": "Checkpoint (stream processing)",
+    "slug": "checkpoint-barrier",
+    "definition": "A consistent snapshot of every operator's state together with the source offsets that produced it; Flink takes one by sending barrier markers through the data streams and restores from it after a failure.",
+    "sectionId": "p6-stream-processing"
+  },
+  {
+    "term": "Chunk overlap",
+    "slug": "chunk-overlap",
+    "definition": "Repeating the end of one chunk at the start of the next so sentences near a boundary appear whole in at least one chunk.",
+    "sectionId": "p6-rag"
+  },
+  {
+    "term": "Chunked prefill",
+    "slug": "chunked-prefill",
+    "definition": "Splitting a long prompt's prefill into fixed-size chunks that share each scheduler iteration with ongoing decode steps, so a long prompt does not freeze every other stream (Sarathi-Serve).",
+    "sectionId": "p6-inference-optimization"
+  },
+  {
+    "term": "Chunking",
+    "slug": "chunking",
+    "definition": "Splitting documents into passages small enough to embed and to fit several into a prompt, by fixed size, by sentences or paragraphs, or by document structure.",
+    "sectionId": "p6-rag"
+  },
+  {
     "term": "Cipher suite",
     "slug": "cipher-suite",
     "definition": "The named set of algorithms a TLS connection uses for key exchange, encryption and integrity.",
@@ -436,6 +526,12 @@
     "slug": "circuit-breaker",
     "definition": "A wrapper around calls to a dependency that stops calling it when its failure rate crosses a threshold, failing fast for a while and then testing recovery with a few trial calls.",
     "sectionId": "p4-circuit-breakers"
+  },
+  {
+    "term": "Citation grounding",
+    "slug": "citation-grounding",
+    "definition": "Requiring every claim in a generated answer to point to a source passage that was in the context, and verifying those citations before showing the answer.",
+    "sectionId": "p6-rag"
   },
   {
     "term": "Client",
@@ -462,10 +558,22 @@
     "sectionId": "p1-dns"
   },
   {
+    "term": "Cold start",
+    "slug": "cold-start",
+    "definition": "An invocation that must wait for a new execution environment to be created and initialised before the handler runs, adding latency compared with reusing a warm one.",
+    "sectionId": "p6-serverless"
+  },
+  {
     "term": "Columnar storage",
     "slug": "columnar-storage",
     "definition": "Storing each column's values together on disk, so queries read only the columns they need.",
     "sectionId": "p2-olap-vs-oltp"
+  },
+  {
+    "term": "Combiner",
+    "slug": "combiner",
+    "definition": "A reduce-like function run on each map task's output before the shuffle to pre-aggregate it; valid only for mergeable operations such as sum, count, min and max.",
+    "sectionId": "p6-batch-processing"
   },
   {
     "term": "Command (message)",
@@ -508,6 +616,12 @@
     "slug": "composite-index",
     "definition": "An index on several columns, sorted by the first, then the second, and so on.",
     "sectionId": "p2-indexing"
+  },
+  {
+    "term": "Compute-optimal training",
+    "slug": "compute-optimal-training",
+    "definition": "Splitting a fixed compute budget between model size and training tokens to minimise loss. The Chinchilla paper found roughly 20 tokens per parameter.",
+    "sectionId": "p6-training-at-scale"
   },
   {
     "term": "Conditional request",
@@ -564,6 +678,12 @@
     "sectionId": "p1-load-balancers"
   },
   {
+    "term": "Constrained decoding",
+    "slug": "constrained-decoding",
+    "definition": "Restricting which tokens a model may generate at each step so the output must match a grammar or schema. It guarantees syntax, not correct values.",
+    "sectionId": "p6-ai-reliability"
+  },
+  {
     "term": "Consumer group",
     "slug": "consumer-group",
     "definition": "A set of consumers sharing a group ID that split a topic's partitions so each partition is read by exactly one member; separate groups each read every message.",
@@ -606,10 +726,22 @@
     "sectionId": "p5-containers"
   },
   {
+    "term": "Context parallelism",
+    "slug": "context-parallelism",
+    "definition": "Splitting one long sequence across GPUs for every operation, including attention, for example by passing key/value blocks round a ring (Ring Attention). Used when activations for long contexts do not fit.",
+    "sectionId": "p6-gpu-parallelism"
+  },
+  {
     "term": "Context propagation",
     "slug": "context-propagation",
     "definition": "Passing the trace ID and current span ID from one service to the next, usually in the W3C traceparent header, so spans join one trace.",
     "sectionId": "p5-tracing"
+  },
+  {
+    "term": "Continuous batching",
+    "slug": "continuous-batching",
+    "definition": "Iteration-level scheduling for LLM inference, introduced by Orca: batch membership is decided at every decode step, so finished sequences leave immediately and waiting requests join.",
+    "sectionId": "p6-llm-serving"
   },
   {
     "term": "Continuous delivery",
@@ -660,6 +792,12 @@
     "sectionId": "p5-logging"
   },
   {
+    "term": "Cosine similarity",
+    "slug": "cosine-similarity",
+    "definition": "The dot product of two vectors divided by the product of their lengths, measuring the angle between them from −1 to 1. For unit-length vectors it equals the dot product.",
+    "sectionId": "p6-embeddings-vector-search"
+  },
+  {
     "term": "Counter",
     "slug": "counter",
     "definition": "A metric whose value only increases, resetting to zero when the process restarts. You query its rate of increase, not its raw value.",
@@ -702,6 +840,18 @@
     "sectionId": "p5-slos"
   },
   {
+    "term": "Cross-encoder",
+    "slug": "cross-encoder",
+    "definition": "A model that reads a query and one candidate passage together and outputs a relevance score. More accurate than a bi-encoder but too slow to run over a whole corpus, so it is used for reranking.",
+    "sectionId": "p6-rag"
+  },
+  {
+    "term": "Cross-region spillover",
+    "slug": "cross-region-spillover",
+    "definition": "Sending traffic that a region cannot serve to another region with spare capacity, accepting extra network latency and subject to data-residency rules.",
+    "sectionId": "p6-llm-serving-at-scale"
+  },
+  {
     "term": "Cross-site scripting (XSS)",
     "slug": "xss",
     "definition": "Injection into a web page: untrusted data inserted into HTML or JavaScript without encoding runs as script in other users' browsers with their session.",
@@ -712,6 +862,12 @@
     "slug": "crypto-shredding",
     "definition": "Deleting data by destroying the key it was encrypted with, so every copy, including immutable backups, becomes permanently unreadable.",
     "sectionId": "p5-data-protection"
+  },
+  {
+    "term": "CUDA graph",
+    "slug": "cuda-graph",
+    "definition": "A recorded sequence of GPU kernel launches that can be replayed with a single call, removing per-kernel CPU launch overhead. It requires fixed tensor shapes.",
+    "sectionId": "p6-inference-optimization"
   },
   {
     "term": "Dark launch",
@@ -732,10 +888,40 @@
     "sectionId": "p2-olap-vs-oltp"
   },
   {
+    "term": "Data locality",
+    "slug": "data-locality",
+    "definition": "How close the data a computation needs is to where the computation runs. Poor locality turns every data access into a long network round trip.",
+    "sectionId": "p6-edge-computing"
+  },
+  {
+    "term": "Data parallelism",
+    "slug": "data-parallelism",
+    "definition": "Training with a full copy of the model on every GPU, each processing a different slice of the batch, with gradients all-reduced each step so the copies stay identical.",
+    "sectionId": "p6-gpu-parallelism"
+  },
+  {
     "term": "Data plane",
     "slug": "data-plane",
     "definition": "The part of a system that serves each request, such as running instances, load balancers forwarding traffic and databases answering queries.",
     "sectionId": "p4-fault-tolerance"
+  },
+  {
+    "term": "Data residency",
+    "slug": "data-residency",
+    "definition": "A requirement, from law, regulation or contract, that certain data be stored and processed within a particular geography.",
+    "sectionId": "p6-multi-region"
+  },
+  {
+    "term": "Data skew",
+    "slug": "data-skew",
+    "definition": "An uneven distribution in which a few keys hold a large share of the records, so the tasks handling them take far longer than the rest.",
+    "sectionId": "p6-batch-processing"
+  },
+  {
+    "term": "Data sovereignty",
+    "slug": "data-sovereignty",
+    "definition": "The principle that data is subject to the laws of the country where it is physically located, which can differ from the laws of the user's or company's home country.",
+    "sectionId": "p6-multi-region"
   },
   {
     "term": "Data warehouse",
@@ -802,6 +988,18 @@
     "slug": "declarative-infrastructure",
     "definition": "Describing the desired end state of infrastructure and letting a tool compute and apply the changes needed to reach it, so repeated runs change nothing.",
     "sectionId": "p5-iac"
+  },
+  {
+    "term": "Decode phase",
+    "slug": "decode-phase",
+    "definition": "The phase of LLM inference that generates output one token per step per sequence. Each step reads all model weights, so it is limited by memory bandwidth.",
+    "sectionId": "p6-llm-serving"
+  },
+  {
+    "term": "Degradation ladder",
+    "slug": "degradation-ladder",
+    "definition": "A ranked list of progressively simpler ways to serve a feature, from the primary model down to a non-AI path or a clear 'unavailable' message, decided in advance.",
+    "sectionId": "p6-ai-reliability"
   },
   {
     "term": "Delayed double delete",
@@ -876,6 +1074,12 @@
     "sectionId": "p2-sql-vs-nosql"
   },
   {
+    "term": "Draft model",
+    "slug": "draft-model",
+    "definition": "The small, fast model in speculative decoding that proposes candidate tokens for the target model to verify. It must share the target's vocabulary.",
+    "sectionId": "p6-speculative-decoding"
+  },
+  {
     "term": "Dual write",
     "slug": "dual-write",
     "definition": "Updating two separate systems, such as a database and a message broker, without a shared transaction, so a failure between the writes leaves them inconsistent.",
@@ -886,6 +1090,30 @@
     "slug": "dynamic-secret",
     "definition": "A credential generated on demand for one requester with a lease, and revoked automatically when the lease expires, such as a temporary database user created by Vault.",
     "sectionId": "p5-data-protection"
+  },
+  {
+    "term": "Edge computing",
+    "slug": "edge-computing",
+    "definition": "Running application code in many locations close to users, typically a CDN's points of presence, instead of only in a few central regions.",
+    "sectionId": "p6-edge-computing"
+  },
+  {
+    "term": "Edge function",
+    "slug": "edge-function",
+    "definition": "Code that runs inside a CDN's points of presence on the request path, able to inspect, rewrite, answer or forward requests before they reach the cache or origin.",
+    "sectionId": "p6-edge-computing"
+  },
+  {
+    "term": "Edge Side Includes (ESI)",
+    "slug": "edge-side-includes",
+    "definition": "A markup language, published as a W3C Note in 2001, that lets a CDN assemble a page at the edge from separately cached fragments.",
+    "sectionId": "p6-edge-computing"
+  },
+  {
+    "term": "EDNS Client Subnet",
+    "slug": "edns-client-subnet",
+    "definition": "A DNS extension (RFC 7871) that lets a recursive resolver pass a truncated version of the client's IP subnet to the authoritative server, so location-based answers reflect the user rather than the resolver.",
+    "sectionId": "p6-multi-region"
   },
   {
     "term": "Effectively-once processing",
@@ -910,6 +1138,18 @@
     "slug": "election-timeout",
     "definition": "How long a Raft follower waits without hearing from a leader before becoming a candidate. It is randomised (the Raft paper's example is 150 to 300 ms) so split votes are rare.",
     "sectionId": "p4-consensus"
+  },
+  {
+    "term": "ELT",
+    "slug": "elt",
+    "definition": "Extract, load, transform: landing raw data in a warehouse or lake first and transforming it there, usually with SQL, so the raw data stays available for reprocessing.",
+    "sectionId": "p6-batch-processing"
+  },
+  {
+    "term": "Embedding",
+    "slug": "embedding",
+    "definition": "A fixed-length vector of numbers produced by a model so that inputs with similar meaning get nearby vectors. Vectors from different models are not comparable.",
+    "sectionId": "p6-embeddings-vector-search"
   },
   {
     "term": "Envelope encryption",
@@ -948,6 +1188,12 @@
     "sectionId": "p1-http"
   },
   {
+    "term": "ETL",
+    "slug": "etl",
+    "definition": "Extract, transform, load: pulling data from sources, cleaning and reshaping it in a separate processing step, then loading the finished tables into an analytical store.",
+    "sectionId": "p6-batch-processing"
+  },
+  {
     "term": "Event (domain event)",
     "slug": "domain-event",
     "definition": "A message stating that something has already happened, named in the past tense (OrderPlaced), published for any number of subscribers to react to.",
@@ -964,6 +1210,12 @@
     "slug": "event-sourcing",
     "definition": "Storing the full sequence of events as the source of truth and deriving current state by replaying them, instead of storing only current state.",
     "sectionId": "p3-event-driven"
+  },
+  {
+    "term": "Event time",
+    "slug": "event-time",
+    "definition": "The time an event actually happened, stamped by the device or service that produced it.",
+    "sectionId": "p6-stream-processing"
   },
   {
     "term": "Event-carried state transfer",
@@ -996,6 +1248,12 @@
     "sectionId": "p3-kafka-vs-queues"
   },
   {
+    "term": "Execution environment",
+    "slug": "execution-environment",
+    "definition": "The isolated sandbox a function platform creates to run your code, holding the runtime, your code and scratch storage. In AWS Lambda it goes through Init, Invoke and Shutdown phases and handles one invocation at a time.",
+    "sectionId": "p6-serverless"
+  },
+  {
     "term": "Exemplar",
     "slug": "exemplar",
     "definition": "A trace ID attached to a metric sample, such as a histogram bucket, so a point on a graph links to a real request's trace.",
@@ -1006,6 +1264,12 @@
     "slug": "expand-contract",
     "definition": "A pattern for incompatible changes (also called parallel change): expand the schema or interface to support old and new, migrate, then contract by removing the old shape once nothing uses it.",
     "sectionId": "p5-release-strategies"
+  },
+  {
+    "term": "Expert parallelism",
+    "slug": "expert-parallelism",
+    "definition": "Placing the experts of a mixture-of-experts layer on different GPUs and moving each token to its chosen expert and back with two all-to-all exchanges per layer.",
+    "sectionId": "p6-gpu-parallelism"
   },
   {
     "term": "Exponential backoff",
@@ -1042,6 +1306,12 @@
     "slug": "failover",
     "definition": "Shifting work from a failed component to a redundant one, for example promoting a standby database and redirecting clients to it.",
     "sectionId": "p4-high-availability"
+  },
+  {
+    "term": "Fair queuing",
+    "slug": "fair-queuing",
+    "definition": "Scheduling that serves competing clients in proportion to assigned weights instead of arrival order, so one client's burst cannot starve the others. For LLMs it is usually measured in tokens served, not requests.",
+    "sectionId": "p6-llm-serving-at-scale"
   },
   {
     "term": "Fallback",
@@ -1092,6 +1362,12 @@
     "sectionId": "p5-ci-cd"
   },
   {
+    "term": "FlashAttention",
+    "slug": "flash-attention",
+    "definition": "An exact, IO-aware attention kernel (Dao et al., 2022) that tiles queries, keys and values into on-chip SRAM and uses an online softmax, so the N × N score matrix is never written to GPU memory.",
+    "sectionId": "p6-inference-optimization"
+  },
+  {
     "term": "Flow control",
     "slug": "flow-control",
     "definition": "Preventing a fast sender from overwhelming a slow receiver; in TCP the receiver advertises how much buffer space it has.",
@@ -1102,6 +1378,12 @@
     "slug": "foreign-key",
     "definition": "A column that refers to the primary key of another table, which the database can enforce.",
     "sectionId": "p2-data-modeling"
+  },
+  {
+    "term": "Forward pass",
+    "slug": "forward-pass",
+    "definition": "One run of a model from input token IDs through every layer to a score for each possible next token. Generating one token takes one forward pass.",
+    "sectionId": "p6-llm-inference-internals"
   },
   {
     "term": "Forward proxy",
@@ -1116,6 +1398,12 @@
     "sectionId": "p1-tls"
   },
   {
+    "term": "FP8",
+    "slug": "fp8",
+    "definition": "An 8-bit floating-point number format (commonly the E4M3 and E5M2 variants) used for weights, activations or the KV cache. Its exponent gives it a wider range than INT8, and recent datacenter GPUs run matrix maths on it natively.",
+    "sectionId": "p6-inference-optimization"
+  },
+  {
     "term": "Full jitter",
     "slug": "full-jitter",
     "definition": "A retry delay drawn uniformly between zero and the capped exponential backoff: sleep = random_between(0, min(cap, base × 2^attempt)).",
@@ -1128,16 +1416,40 @@
     "sectionId": "p1-realtime"
   },
   {
+    "term": "Functions as a Service (FaaS)",
+    "slug": "faas",
+    "definition": "A compute model where you deploy individual handler functions and the platform runs, scales and bills them per invocation, with no servers for you to manage.",
+    "sectionId": "p6-serverless"
+  },
+  {
+    "term": "G-Counter",
+    "slug": "g-counter",
+    "definition": "A grow-only counter CRDT: each replica increments only its own slot, merging takes the per-slot maximum, and the value is the sum of all slots.",
+    "sectionId": "p6-multi-region"
+  },
+  {
     "term": "Game day",
     "slug": "game-day",
     "definition": "A scheduled exercise in which a team triggers a failure scenario and practises responding, testing people, runbooks and paging as well as software.",
     "sectionId": "p4-chaos-engineering"
   },
   {
+    "term": "Gang scheduling",
+    "slug": "gang-scheduling",
+    "definition": "Allocating and running all of a job's processes together or not at all. Synchronous training jobs need it, so one lost GPU stops the whole job.",
+    "sectionId": "p6-training-at-scale"
+  },
+  {
     "term": "Gauge",
     "slug": "gauge",
     "definition": "A metric whose value can go up and down, such as memory in use or queue depth, read as a current level.",
     "sectionId": "p5-metrics"
+  },
+  {
+    "term": "GB-second",
+    "slug": "gb-second",
+    "definition": "The billing unit for function compute: configured memory in gigabytes multiplied by billed run time in seconds. 512 MB for 100 ms is 0.05 GB-seconds.",
+    "sectionId": "p6-serverless"
   },
   {
     "term": "GeoDNS",
@@ -1170,10 +1482,28 @@
     "sectionId": "p2-graphql"
   },
   {
+    "term": "Greedy decoding",
+    "slug": "greedy-decoding",
+    "definition": "Always choosing the single most likely next token (the argmax of the logits). Most APIs treat temperature 0 as greedy decoding.",
+    "sectionId": "p6-llm-inference-internals"
+  },
+  {
+    "term": "Grouped-query attention",
+    "slug": "grouped-query-attention",
+    "definition": "An attention design in which several query heads share one key/value head, shrinking the KV cache per token. Llama 2 70B uses 8 KV heads for 64 query heads.",
+    "sectionId": "p6-llm-serving"
+  },
+  {
     "term": "gRPC-Web",
     "slug": "grpc-web",
     "definition": "A variant of the gRPC protocol that browsers can send, translated to native gRPC by a proxy.",
     "sectionId": "p2-grpc"
+  },
+  {
+    "term": "Guardrail (LLM)",
+    "slug": "llm-guardrail",
+    "definition": "A check that runs outside the prompt, before or after a model call, to block or rewrite unsafe inputs and outputs.",
+    "sectionId": "p6-evals-guardrails"
   },
   {
     "term": "Half-duplex",
@@ -1254,6 +1584,18 @@
     "sectionId": "p5-metrics"
   },
   {
+    "term": "HNSW (Hierarchical Navigable Small World)",
+    "slug": "hnsw",
+    "definition": "A graph-based ANN index with sparse upper layers for long greedy hops and a dense bottom layer searched with a candidate list of size efSearch. Introduced by Malkov and Yashunin.",
+    "sectionId": "p6-embeddings-vector-search"
+  },
+  {
+    "term": "Home region",
+    "slug": "home-region",
+    "definition": "The one region where a given user's or entity's data is written in a multi-region system. Other regions may serve reads but forward writes there, which avoids write conflicts.",
+    "sectionId": "p6-multi-region"
+  },
+  {
     "term": "Horizontal Pod Autoscaler",
     "slug": "horizontal-pod-autoscaler",
     "definition": "A Kubernetes controller that sets a workload's replica count to ceil(current replicas × current metric ÷ target), evaluated every 15 seconds by default.",
@@ -1290,10 +1632,22 @@
     "sectionId": "p2-grpc"
   },
   {
+    "term": "Human-in-the-loop",
+    "slug": "human-in-the-loop",
+    "definition": "A design where an automated system pauses for a person to approve, edit or reject an action before it takes effect.",
+    "sectionId": "p6-agents"
+  },
+  {
     "term": "Hybrid logical clock (HLC)",
     "slug": "hybrid-logical-clock",
     "definition": "A timestamp combining wall-clock time with a logical counter, so it stays close to real time, never goes backwards and respects happens-before. Used by CockroachDB and YugabyteDB.",
     "sectionId": "p4-time-ordering"
+  },
+  {
+    "term": "Hybrid search",
+    "slug": "hybrid-search",
+    "definition": "Running keyword search (such as BM25) and vector search for the same query and merging the result lists, so both exact tokens and paraphrases are matched.",
+    "sectionId": "p6-rag"
   },
   {
     "term": "HyperLogLog",
@@ -1398,6 +1752,12 @@
     "sectionId": "p2-transactions"
   },
   {
+    "term": "IVF (inverted file) index",
+    "slug": "ivf-index",
+    "definition": "An ANN index that clusters vectors around k-means centroids into lists and, at query time, scans only the nprobe lists whose centroids are closest to the query.",
+    "sectionId": "p6-embeddings-vector-search"
+  },
+  {
     "term": "Jitter",
     "slug": "jitter",
     "definition": "Randomness added to retry delays so clients that failed at the same moment don't all retry at the same moment.",
@@ -1420,6 +1780,12 @@
     "slug": "k-sortable",
     "definition": "An ID that is roughly ordered by creation time: sorting by ID gives creation order except for IDs made close together on different machines.",
     "sectionId": "p4-id-generation"
+  },
+  {
+    "term": "Kappa architecture",
+    "slug": "kappa-architecture",
+    "definition": "Jay Kreps's alternative to lambda: a single stream processing codebase over a retained, replayable log, reprocessing history by replaying the log into a new output.",
+    "sectionId": "p6-batch-processing"
   },
   {
     "term": "Keep-alive",
@@ -1446,6 +1812,12 @@
     "sectionId": "p2-sql-vs-nosql"
   },
   {
+    "term": "KV cache",
+    "slug": "kv-cache",
+    "definition": "GPU memory holding the attention key and value vectors for every token already processed, so each decode step only computes them for the newest token. Its size is 2 × layers × KV heads × head dimension × bytes per value, per token.",
+    "sectionId": "p6-llm-serving"
+  },
+  {
     "term": "L4 load balancing",
     "slug": "l4-load-balancing",
     "definition": "Balancing on IP addresses and ports at the transport layer, without reading the HTTP request.",
@@ -1458,16 +1830,34 @@
     "sectionId": "p1-load-balancers"
   },
   {
+    "term": "Lambda architecture",
+    "slug": "lambda-architecture",
+    "definition": "A design named by Nathan Marz that runs a batch layer recomputing complete views from immutable data, a speed layer for recent events, and a serving layer that merges them.",
+    "sectionId": "p6-batch-processing"
+  },
+  {
     "term": "Lamport clock",
     "slug": "lamport-clock",
     "definition": "A per-process counter incremented on each event and set to max(local, received) + 1 on receive. If a happens before b, a's timestamp is lower, but not the other way round.",
     "sectionId": "p4-time-ordering"
   },
   {
+    "term": "Last-writer-wins (LWW)",
+    "slug": "last-write-wins",
+    "definition": "A conflict-resolution rule that keeps the write with the highest timestamp and discards the others. It always converges but silently loses concurrent updates, and clock skew can make it keep the earlier write.",
+    "sectionId": "p6-multi-region"
+  },
+  {
     "term": "Latency",
     "slug": "latency",
     "definition": "How long one operation takes from start to finish, measured in time per request.",
     "sectionId": "p1-latency-throughput"
+  },
+  {
+    "term": "Latency-based routing",
+    "slug": "latency-based-routing",
+    "definition": "A DNS routing policy, such as Amazon Route 53's, that answers each query with the region that has the lowest measured latency from the querying resolver's network.",
+    "sectionId": "p6-multi-region"
   },
   {
     "term": "Leader-follower replication",
@@ -1530,10 +1920,22 @@
     "sectionId": "p1-latency-throughput"
   },
   {
+    "term": "Live migration (LLM serving)",
+    "slug": "live-migration",
+    "definition": "Moving a running request, including its KV cache, from one replica to another while it keeps decoding, then switching over in a short final step (as in Llumnix).",
+    "sectionId": "p6-llm-serving-at-scale"
+  },
+  {
     "term": "Liveness probe",
     "slug": "liveness-probe",
     "definition": "A periodic check that decides whether a container is stuck beyond recovery. On failure the kubelet kills and restarts the container.",
     "sectionId": "p5-kubernetes"
+  },
+  {
+    "term": "LLM-as-judge",
+    "slug": "llm-as-judge",
+    "definition": "Using a language model to grade another model's output against a rubric. It scales grading but has known biases and must be calibrated against human labels.",
+    "sectionId": "p6-evals-guardrails"
   },
   {
     "term": "Load balancer",
@@ -1596,10 +1998,28 @@
     "sectionId": "p5-logging"
   },
   {
+    "term": "Logit bias",
+    "slug": "logit-bias",
+    "definition": "A fixed amount added to the logits of chosen token IDs before sampling, used to favour or effectively ban specific tokens.",
+    "sectionId": "p6-llm-inference-internals"
+  },
+  {
+    "term": "Logits",
+    "slug": "logits",
+    "definition": "The raw, unnormalised scores a language model outputs, one per vocabulary token. A softmax (with a temperature) turns them into probabilities.",
+    "sectionId": "p6-llm-inference-internals"
+  },
+  {
     "term": "Long polling",
     "slug": "long-polling",
     "definition": "The client sends a request and the server holds it open until there is data or a timeout, then the client asks again.",
     "sectionId": "p1-realtime"
+  },
+  {
+    "term": "Lookahead decoding",
+    "slug": "lookahead-decoding",
+    "definition": "A speculative method that needs no draft model: it generates candidate n-grams with parallel Jacobi-style iterations inside the target's own passes and verifies them in the same pass (Fu et al., 2024).",
+    "sectionId": "p6-speculative-decoding"
   },
   {
     "term": "LRU (least recently used)",
@@ -1614,10 +2034,22 @@
     "sectionId": "p2-indexing"
   },
   {
+    "term": "MapReduce",
+    "slug": "mapreduce",
+    "definition": "A batch programming model from Google (Dean and Ghemawat, 2004) where you write a map function that emits key-value pairs and a reduce function that combines all values for a key, and the framework handles distribution and failures.",
+    "sectionId": "p6-batch-processing"
+  },
+  {
     "term": "maxmemory-policy",
     "slug": "maxmemory-policy",
     "definition": "The Redis setting that decides what happens when the maxmemory limit is reached: reject writes (noeviction, the default) or evict keys by LRU, LFU, random or TTL.",
     "sectionId": "p3-eviction"
+  },
+  {
+    "term": "Medusa heads",
+    "slug": "medusa-heads",
+    "definition": "Extra decoding heads added on top of a model's final hidden state, each predicting a token several positions ahead, so the model drafts its own candidates for speculative decoding (Cai et al., 2024).",
+    "sectionId": "p6-speculative-decoding"
   },
   {
     "term": "Merkle tree",
@@ -1668,6 +2100,24 @@
     "sectionId": "p1-monolith-vs-microservices"
   },
   {
+    "term": "Model cascade",
+    "slug": "model-cascade",
+    "definition": "A routing pattern that tries a cheaper model first, checks its output, and escalates to a more capable model only when the check fails.",
+    "sectionId": "p6-llm-cost-latency"
+  },
+  {
+    "term": "Model FLOPs utilisation (MFU)",
+    "slug": "model-flops-utilization",
+    "definition": "Observed training throughput in useful model FLOPs divided by the hardware's peak FLOP/s. Unlike hardware FLOPs utilisation, it excludes recomputed work.",
+    "sectionId": "p6-training-at-scale"
+  },
+  {
+    "term": "Model routing",
+    "slug": "model-routing",
+    "definition": "Choosing which model handles each request, for example sending easy requests to a small, cheap model and hard ones to a large model.",
+    "sectionId": "p6-llm-cost-latency"
+  },
+  {
     "term": "Modular monolith",
     "slug": "modular-monolith",
     "definition": "A single deployable whose modules own their own code and data and only call each other through defined interfaces.",
@@ -1702,6 +2152,12 @@
     "slug": "multi-leader",
     "definition": "Replication where several nodes accept writes and replicate to each other.",
     "sectionId": "p2-replication"
+  },
+  {
+    "term": "Multi-query attention",
+    "slug": "multi-query-attention",
+    "definition": "An attention variant (Shazeer, 2019) in which all query heads share a single key/value head, shrinking the KV cache by the number of heads at some cost in quality.",
+    "sectionId": "p6-inference-optimization"
   },
   {
     "term": "Multi-stage build",
@@ -1800,6 +2256,12 @@
     "sectionId": "p2-object-storage"
   },
   {
+    "term": "Offline eval set",
+    "slug": "offline-eval-set",
+    "definition": "A fixed collection of inputs with expected outputs or grading criteria, run against a prompt and model before shipping. Also called a golden set.",
+    "sectionId": "p6-evals-guardrails"
+  },
+  {
     "term": "OLAP",
     "slug": "olap",
     "definition": "Online analytical processing: workloads that scan and aggregate large amounts of data.",
@@ -1810,6 +2272,12 @@
     "slug": "oltp",
     "definition": "Online transaction processing: workloads of many small, fast reads and writes of individual records.",
     "sectionId": "p2-olap-vs-oltp"
+  },
+  {
+    "term": "Online evaluation",
+    "slug": "online-evaluation",
+    "definition": "Measuring LLM output quality on live production traffic with feedback signals, sampled automatic grading and distribution monitoring.",
+    "sectionId": "p6-evals-guardrails"
   },
   {
     "term": "OpenID Connect (OIDC)",
@@ -1848,6 +2316,12 @@
     "sectionId": "p4-circuit-breakers"
   },
   {
+    "term": "Overload error",
+    "slug": "overload-error",
+    "definition": "A response that says the service itself is temporarily out of capacity, as distinct from a 429 that says the caller exceeded its quota. Anthropic's API documents HTTP 529 overloaded_error for this case.",
+    "sectionId": "p6-llm-serving-at-scale"
+  },
+  {
     "term": "PACELC",
     "slug": "pacelc",
     "definition": "Daniel Abadi's extension of CAP: if there is a Partition, choose Availability or Consistency; Else, choose Latency or Consistency.",
@@ -1858,6 +2332,12 @@
     "slug": "page-split",
     "definition": "What a B-tree does when an insert lands in a full page: it splits the page in two, each half-empty. Random keys cause frequent splits and a larger, less cache-friendly index.",
     "sectionId": "p4-id-generation"
+  },
+  {
+    "term": "PagedAttention",
+    "slug": "paged-attention",
+    "definition": "vLLM's technique of storing the KV cache in fixed-size blocks mapped through a per-sequence block table, like virtual memory pages. It removes up-front reservation and lets sequences share prefix blocks.",
+    "sectionId": "p6-llm-serving"
   },
   {
     "term": "Parameterised query",
@@ -1920,10 +2400,34 @@
     "sectionId": "p2-connection-pooling"
   },
   {
+    "term": "pgvector",
+    "slug": "pgvector",
+    "definition": "A PostgreSQL extension that adds a vector column type, distance operators and HNSW and IVFFlat indexes, so embeddings can live beside the rows they describe.",
+    "sectionId": "p6-embeddings-vector-search"
+  },
+  {
+    "term": "PII redaction",
+    "slug": "pii-redaction",
+    "definition": "Detecting personal data with patterns and named-entity recognition and removing or replacing it before it is sent, logged or stored. Detection is never perfect.",
+    "sectionId": "p6-evals-guardrails"
+  },
+  {
     "term": "Pilot light",
     "slug": "pilot-light",
     "definition": "A disaster recovery tier where data is replicated live to a recovery region but application servers are switched off or at zero until a disaster.",
     "sectionId": "p4-disaster-recovery"
+  },
+  {
+    "term": "Pipeline bubble",
+    "slug": "pipeline-bubble",
+    "definition": "The idle time while a pipeline fills and drains each step. For p stages and m micro-batches it is (p − 1)/(m + p − 1) of the total time.",
+    "sectionId": "p6-gpu-parallelism"
+  },
+  {
+    "term": "Pipeline parallelism",
+    "slug": "pipeline-parallelism",
+    "definition": "Splitting a model by layers into stages on different GPUs and streaming micro-batches through them like an assembly line. Only boundary activations cross the network.",
+    "sectionId": "p6-gpu-parallelism"
   },
   {
     "term": "Pivot transaction",
@@ -1986,6 +2490,24 @@
     "sectionId": "p3-failure-handling"
   },
   {
+    "term": "Prefill",
+    "slug": "prefill",
+    "definition": "The first phase of LLM inference, which processes all prompt tokens in one parallel forward pass and fills the KV cache. It is compute-bound and largely determines time to first token.",
+    "sectionId": "p6-llm-serving"
+  },
+  {
+    "term": "Prefill-decode disaggregation",
+    "slug": "prefill-decode-disaggregation",
+    "definition": "Running the prefill and decode phases of LLM inference on separate GPU pools and transferring the KV cache between them, so the phases stop interfering and each pool can be sized and configured separately.",
+    "sectionId": "p6-inference-optimization"
+  },
+  {
+    "term": "Prefix-aware routing",
+    "slug": "prefix-aware-routing",
+    "definition": "Routing an LLM request to the replica most likely to already hold its prompt prefix in KV cache, balanced against replica load, instead of spreading requests blindly.",
+    "sectionId": "p6-llm-serving-at-scale"
+  },
+  {
     "term": "Presigned URL",
     "slug": "presigned-url",
     "definition": "A time-limited URL, signed by a service's credentials, that lets a client perform one operation on one object.",
@@ -2010,16 +2532,76 @@
     "sectionId": "p4-distributed-locks"
   },
   {
+    "term": "Processing time",
+    "slug": "processing-time",
+    "definition": "The time a stream processor happens to observe an event, according to its own clock. It differs on every run and during backlogs.",
+    "sectionId": "p6-stream-processing"
+  },
+  {
+    "term": "Product quantization (PQ)",
+    "slug": "product-quantization",
+    "definition": "A compression scheme that splits each vector into sub-vectors and stores each as a short centroid id, shrinking memory many times at the cost of approximate distances.",
+    "sectionId": "p6-embeddings-vector-search"
+  },
+  {
     "term": "Projection",
     "slug": "projection",
     "definition": "A read model built and kept up to date by consuming a stream of events, shaped for a specific query.",
     "sectionId": "p3-event-driven"
   },
   {
+    "term": "Prompt caching",
+    "slug": "prompt-caching",
+    "definition": "Reusing the computed KV state of an exactly repeated prompt prefix so later requests skip prefill for that part. The model still generates a fresh answer.",
+    "sectionId": "p6-llm-cost-latency"
+  },
+  {
+    "term": "Prompt chaining",
+    "slug": "prompt-chaining",
+    "definition": "A workflow pattern where a fixed sequence of LLM calls each uses the previous call's output, with code checks between steps.",
+    "sectionId": "p6-agents"
+  },
+  {
+    "term": "Prompt injection",
+    "slug": "prompt-injection",
+    "definition": "Untrusted text, typed by a user or hidden in fetched content, that tries to override an LLM application's instructions. Filters reduce it but cannot fully prevent it.",
+    "sectionId": "p6-evals-guardrails"
+  },
+  {
+    "term": "Prompt lookup decoding",
+    "slug": "prompt-lookup-decoding",
+    "definition": "N-gram drafting that finds the most recent generated tokens elsewhere in the prompt and proposes the tokens that followed them. It works best when the output copies the input.",
+    "sectionId": "p6-speculative-decoding"
+  },
+  {
+    "term": "Prompt regression test",
+    "slug": "prompt-regression-test",
+    "definition": "An automated run of the eval set on every prompt or model change that blocks the change if quality drops beyond set thresholds.",
+    "sectionId": "p6-evals-guardrails"
+  },
+  {
     "term": "Protocol Buffers",
     "slug": "protobuf",
     "definition": "Google's binary, schema-based serialisation format where fields are identified by numeric tags.",
     "sectionId": "p2-grpc"
+  },
+  {
+    "term": "Provider failover",
+    "slug": "provider-failover",
+    "definition": "Routing LLM calls to a second model provider, region or cloud when the primary is failing, usually behind a per-provider circuit breaker.",
+    "sectionId": "p6-ai-reliability"
+  },
+  {
+    "term": "Provisioned concurrency",
+    "slug": "provisioned-concurrency",
+    "definition": "A function setting that keeps a chosen number of execution environments initialised in advance, so requests up to that level avoid cold starts. You pay for them whether or not they are used.",
+    "sectionId": "p6-serverless"
+  },
+  {
+    "term": "Provisioned throughput",
+    "slug": "provisioned-throughput",
+    "definition": "Capacity reserved for one customer, such as dedicated model replicas, so their traffic is isolated from other tenants. The reserved capacity is paid for whether or not it is used.",
+    "sectionId": "p6-llm-serving-at-scale"
   },
   {
     "term": "Pseudonymisation",
@@ -2058,6 +2640,12 @@
     "sectionId": "p1-estimation"
   },
   {
+    "term": "Quantization",
+    "slug": "quantization",
+    "definition": "Storing model weights or KV cache values with fewer bits, such as 8 or 4 instead of 16, to save memory and bandwidth at some risk to output quality.",
+    "sectionId": "p6-llm-serving"
+  },
+  {
     "term": "QUIC",
     "slug": "quic",
     "definition": "A transport protocol over UDP, with built-in TLS 1.3 and independent streams, that HTTP/3 runs on.",
@@ -2068,6 +2656,12 @@
     "slug": "quorum",
     "definition": "A minimum set of replicas that must take part for an operation to count, such as W replicas acknowledging a write or R replicas answering a read. A majority quorum is more than half of the nodes.",
     "sectionId": "p4-quorums"
+  },
+  {
+    "term": "RadixAttention",
+    "slug": "radix-attention",
+    "definition": "SGLang's prefix-caching mechanism: it keeps finished requests' KV cache in a radix tree keyed by tokens, reuses the longest matching prefix for new requests and evicts least-recently-used leaves.",
+    "sectionId": "p6-inference-optimization"
   },
   {
     "term": "Raft",
@@ -2098,6 +2692,12 @@
     "slug": "rdb-snapshot",
     "definition": "A Redis point-in-time dump of the whole dataset to a compact file, written by a forked child process.",
     "sectionId": "p3-redis"
+  },
+  {
+    "term": "RDD",
+    "slug": "rdd",
+    "definition": "Resilient distributed dataset: Spark's immutable, partitioned collection that records its lineage so lost partitions can be recomputed rather than replicated.",
+    "sectionId": "p6-batch-processing"
   },
   {
     "term": "Read repair",
@@ -2134,6 +2734,18 @@
     "slug": "consumer-rebalance",
     "definition": "Reassigning a consumer group's partitions when members join, leave or are presumed dead, which pauses some consumption and can cause redelivery.",
     "sectionId": "p3-partitioning-ordering"
+  },
+  {
+    "term": "Recall@k",
+    "slug": "recall-at-k",
+    "definition": "The fraction of the true top k nearest neighbours (found by brute force) that a search actually returned in its top k. It measures how approximate an ANN index is.",
+    "sectionId": "p6-embeddings-vector-search"
+  },
+  {
+    "term": "Reciprocal rank fusion (RRF)",
+    "slug": "reciprocal-rank-fusion",
+    "definition": "A way to merge ranked lists by giving each item the sum of 1 / (k + rank) across lists, usually with k = 60. It uses ranks only, so incompatible score scales do not matter.",
+    "sectionId": "p6-rag"
   },
   {
     "term": "Reconciliation loop",
@@ -2196,6 +2808,12 @@
     "sectionId": "p5-authn-authz"
   },
   {
+    "term": "Rejection sampling (speculative)",
+    "slug": "rejection-sampling",
+    "definition": "The rule that accepts a draft token x with probability min(1, p(x)/q(x)) and, on rejection, samples from norm(max(0, p − q)). It makes the output follow the target distribution p exactly.",
+    "sectionId": "p6-speculative-decoding"
+  },
+  {
     "term": "Relational database",
     "slug": "relational-database",
     "definition": "A database that stores data in tables with a fixed schema, linked by keys and queried with SQL.",
@@ -2206,6 +2824,12 @@
     "slug": "reliable-delivery",
     "definition": "A guarantee that every byte arrives, in order, by retransmitting anything not acknowledged.",
     "sectionId": "p1-tcp-udp"
+  },
+  {
+    "term": "Repair retry",
+    "slug": "repair-retry",
+    "definition": "Re-asking the model with its invalid output and the exact validation error so it can return a corrected version, limited to one or two attempts.",
+    "sectionId": "p6-ai-reliability"
   },
   {
     "term": "Replica",
@@ -2250,6 +2874,12 @@
     "sectionId": "p1-client-server"
   },
   {
+    "term": "Reserved concurrency",
+    "slug": "reserved-concurrency",
+    "definition": "A per-function setting that sets aside part of the account's concurrency pool for that function and caps it at that amount. Setting it to zero stops the function.",
+    "sectionId": "p6-serverless"
+  },
+  {
     "term": "Resharding",
     "slug": "resharding",
     "definition": "Moving data to a new shard layout, usually to add capacity, while the system stays online.",
@@ -2266,6 +2896,12 @@
     "slug": "rest",
     "definition": "An architectural style for web APIs: resources with URIs, acted on with standard HTTP methods, exchanging representations such as JSON.",
     "sectionId": "p2-rest"
+  },
+  {
+    "term": "Retrieval-augmented generation (RAG)",
+    "slug": "rag",
+    "definition": "An architecture that retrieves relevant passages from your own documents at question time and places them in the model's prompt so it can answer from them and cite them.",
+    "sectionId": "p6-rag"
   },
   {
     "term": "Retry amplification",
@@ -2292,10 +2928,22 @@
     "sectionId": "p1-reverse-proxy"
   },
   {
+    "term": "RLHF",
+    "slug": "rlhf",
+    "definition": "Reinforcement learning from human feedback: train a reward model on human preference comparisons, then optimise the model against that reward (for example with PPO) while limiting drift from the starting model.",
+    "sectionId": "p6-training-at-scale"
+  },
+  {
     "term": "Rolling deployment",
     "slug": "rolling-deployment",
     "definition": "Replacing instances of the old version with the new one in batches, so some capacity always serves traffic and two versions run side by side during the rollout.",
     "sectionId": "p5-release-strategies"
+  },
+  {
+    "term": "Roofline model",
+    "slug": "roofline-model",
+    "definition": "A performance model (Williams, Waterman and Patterson, 2009) in which attainable throughput is the lower of peak FLOP/s and memory bandwidth × arithmetic intensity. The ridge point, peak FLOP/s ÷ bandwidth, separates memory-bound from compute-bound work.",
+    "sectionId": "p6-llm-inference-internals"
   },
   {
     "term": "Root nameserver",
@@ -2352,10 +3000,28 @@
     "sectionId": "p4-distributed-transactions"
   },
   {
+    "term": "Scaling law",
+    "slug": "scaling-law",
+    "definition": "An empirical power-law relationship between a model's loss and its parameter count, training tokens and compute, used to predict results and plan budgets before training.",
+    "sectionId": "p6-training-at-scale"
+  },
+  {
     "term": "Scrubbing centre",
     "slug": "scrubbing-center",
     "definition": "A high-capacity network location run by a DDoS mitigation provider that receives a victim's traffic, filters out attack traffic and forwards the clean remainder.",
     "sectionId": "p5-common-attacks"
+  },
+  {
+    "term": "Self-speculative decoding",
+    "slug": "self-speculative-decoding",
+    "definition": "Drafting with a cheaper version of the target model itself, for example its first layers with an early exit, then verifying with the full model.",
+    "sectionId": "p6-speculative-decoding"
+  },
+  {
+    "term": "Semantic cache",
+    "slug": "semantic-cache",
+    "definition": "A response cache that returns a stored answer when a new query's embedding is similar enough to an earlier query's, skipping the model call entirely.",
+    "sectionId": "p6-llm-cost-latency"
   },
   {
     "term": "Sentinel node",
@@ -2436,6 +3102,18 @@
     "sectionId": "p4-consistency-models"
   },
   {
+    "term": "Session window",
+    "slug": "session-window",
+    "definition": "A window that groups one key's events separated by less than an inactivity gap; it has no fixed length and can merge when a late event bridges two sessions.",
+    "sectionId": "p6-stream-processing"
+  },
+  {
+    "term": "Shadow traffic",
+    "slug": "shadow-traffic",
+    "definition": "A copy of real production requests sent to a new version of a service whose responses are recorded and compared but never returned to users.",
+    "sectionId": "p6-llm-serving-at-scale"
+  },
+  {
     "term": "Shard key",
     "slug": "shard-key",
     "definition": "The column or value that decides which shard a row is stored on.",
@@ -2454,16 +3132,40 @@
     "sectionId": "p1-realtime"
   },
   {
+    "term": "Shuffle",
+    "slug": "shuffle",
+    "definition": "The step between map and reduce that partitions intermediate data by key, moves it across the network from every mapper to every reducer, and sorts it so equal keys are together.",
+    "sectionId": "p6-batch-processing"
+  },
+  {
     "term": "Sidecar proxy",
     "slug": "sidecar-proxy",
     "definition": "A proxy process deployed next to each service instance that handles its network traffic.",
     "sectionId": "p1-reverse-proxy"
   },
   {
+    "term": "Silent data corruption",
+    "slug": "silent-data-corruption",
+    "definition": "Hardware computing or storing wrong values without raising any error. In training it may show up only as unexplained loss or gradient anomalies.",
+    "sectionId": "p6-training-at-scale"
+  },
+  {
+    "term": "Similarity threshold",
+    "slug": "similarity-threshold",
+    "definition": "The minimum similarity score at which a vector match is accepted, for example as a semantic cache hit. Lowering it raises both hits and false hits.",
+    "sectionId": "p6-llm-cost-latency"
+  },
+  {
     "term": "Single point of failure",
     "slug": "single-point-of-failure",
     "definition": "A component whose failure takes the whole system down because nothing else can take over (SPOF).",
     "sectionId": "p1-scaling"
+  },
+  {
+    "term": "Sliding (hopping) window",
+    "slug": "hopping-window",
+    "definition": "A fixed-size time window that advances by a smaller slide, so windows overlap and each event belongs to size ÷ slide windows. Flink calls these sliding windows; Kafka Streams calls them hopping windows.",
+    "sectionId": "p6-stream-processing"
   },
   {
     "term": "Sliding window",
@@ -2508,6 +3210,12 @@
     "sectionId": "p5-tracing"
   },
   {
+    "term": "Speculative decoding",
+    "slug": "speculative-decoding",
+    "definition": "Speeding up generation by letting a cheap drafter propose several tokens that the large target model verifies in one forward pass. With the exact acceptance rule the output distribution is unchanged.",
+    "sectionId": "p6-speculative-decoding"
+  },
+  {
     "term": "SPIFFE",
     "slug": "spiffe",
     "definition": "A CNCF standard for workload identity: each workload gets a URI identity (spiffe://trust-domain/path) proven by a short-lived X.509 or JWT credential called an SVID.",
@@ -2536,6 +3244,12 @@
     "slug": "stale-read",
     "definition": "A read that returns a value older than the latest committed write in the source of truth.",
     "sectionId": "p3-invalidation"
+  },
+  {
+    "term": "Stale-while-revalidate",
+    "slug": "stale-while-revalidate",
+    "definition": "A Cache-Control extension (RFC 5861) that lets a cache keep serving a stale copy for a set time after it expires while it fetches a fresh copy in the background.",
+    "sectionId": "p6-edge-computing"
   },
   {
     "term": "Startup probe",
@@ -2586,6 +3300,12 @@
     "sectionId": "p4-chaos-engineering"
   },
   {
+    "term": "Step limit",
+    "slug": "step-limit",
+    "definition": "A hard cap, enforced by the orchestrator, on how many loop iterations an agent run may take before it is stopped.",
+    "sectionId": "p6-agents"
+  },
+  {
     "term": "Sticky connection",
     "slug": "sticky-connection",
     "definition": "A long-lived connection that stays bound to one server for its whole life, so it cannot be moved without reconnecting.",
@@ -2604,10 +3324,34 @@
     "sectionId": "p4-chaos-engineering"
   },
   {
+    "term": "Straggler",
+    "slug": "straggler",
+    "definition": "A task that runs much slower than its peers and so delays the whole job; MapReduce counters slow machines with backup tasks (speculative execution).",
+    "sectionId": "p6-batch-processing"
+  },
+  {
     "term": "Strangler fig pattern",
     "slug": "strangler-fig",
     "definition": "Replacing an old system gradually by routing one capability at a time to new code until the old code can be deleted.",
     "sectionId": "p1-monolith-vs-microservices"
+  },
+  {
+    "term": "Stream idle timeout",
+    "slug": "stream-idle-timeout",
+    "definition": "The longest a client will wait between chunks of a streamed response before treating the stream as stalled.",
+    "sectionId": "p6-ai-reliability"
+  },
+  {
+    "term": "Stream processing",
+    "slug": "stream-processing",
+    "definition": "Computing continuously over an unbounded sequence of events as they arrive, keeping state between events instead of waiting for a complete input.",
+    "sectionId": "p6-stream-processing"
+  },
+  {
+    "term": "Stream resumption",
+    "slug": "stream-resumption",
+    "definition": "Recovering a streamed generation after a replica fails by resubmitting the prompt plus the tokens already sent to a healthy replica and continuing from there.",
+    "sectionId": "p6-llm-serving-at-scale"
   },
   {
     "term": "Structured logging",
@@ -2616,10 +3360,22 @@
     "sectionId": "p5-logging"
   },
   {
+    "term": "Structured output",
+    "slug": "structured-output",
+    "definition": "Model output in a defined machine-readable format, such as JSON matching a schema, so code can consume it. It still needs validation before use.",
+    "sectionId": "p6-ai-reliability"
+  },
+  {
     "term": "Stub resolver",
     "slug": "stub-resolver",
     "definition": "The small DNS client in your operating system that forwards lookups to a recursive resolver.",
     "sectionId": "p1-dns"
+  },
+  {
+    "term": "Supervised fine-tuning (SFT)",
+    "slug": "supervised-fine-tuning",
+    "definition": "Continuing to train a pre-trained model on curated examples of desired responses, usually the first post-training stage.",
+    "sectionId": "p6-training-at-scale"
   },
   {
     "term": "Surrogate key",
@@ -2662,6 +3418,18 @@
     "slug": "tcp",
     "definition": "Transmission Control Protocol: a connection-based transport that delivers a reliable, ordered byte stream between two hosts.",
     "sectionId": "p1-tcp-udp"
+  },
+  {
+    "term": "Temperature (sampling)",
+    "slug": "temperature-sampling",
+    "definition": "A number that divides the logits before the softmax. Below 1 it sharpens the distribution toward the top token; above 1 it flattens it.",
+    "sectionId": "p6-llm-inference-internals"
+  },
+  {
+    "term": "Tensor parallelism",
+    "slug": "tensor-parallelism",
+    "definition": "Splitting each layer's weight matrices across GPUs so they compute the same tokens together, as in Megatron-LM's column/row split. It needs activation-sized all-reduces in every layer, so it is kept inside a node's fast interconnect.",
+    "sectionId": "p6-gpu-parallelism"
   },
   {
     "term": "Terraform plan",
@@ -2712,10 +3480,28 @@
     "sectionId": "p4-id-generation"
   },
   {
+    "term": "Time per output token (TPOT)",
+    "slug": "time-per-output-token",
+    "definition": "The average gap between successive streamed output tokens, also called inter-token latency. Per-user tokens per second is its inverse.",
+    "sectionId": "p6-llm-serving"
+  },
+  {
+    "term": "Time to first token (TTFT)",
+    "slug": "time-to-first-token",
+    "definition": "The time from sending an LLM request to receiving its first output token, covering queueing, prefill and the first decode step.",
+    "sectionId": "p6-llm-serving"
+  },
+  {
     "term": "Time-series database",
     "slug": "time-series-database",
     "definition": "A database optimised for timestamped data that is mostly appended and queried by time range.",
     "sectionId": "p2-olap-vs-oltp"
+  },
+  {
+    "term": "Time-to-first-token deadline",
+    "slug": "time-to-first-token-deadline",
+    "definition": "A client-side limit on how long to wait for the first streamed token of an LLM response. It catches an overloaded or stuck provider much sooner than a total timeout.",
+    "sectionId": "p6-ai-reliability"
   },
   {
     "term": "Timeout",
@@ -2760,10 +3546,22 @@
     "sectionId": "p1-tls"
   },
   {
+    "term": "Token (LLM)",
+    "slug": "llm-token",
+    "definition": "A subword piece of text from a model's fixed tokenizer vocabulary, the unit in which LLM context limits, throughput and prices are measured. English averages roughly four characters per token.",
+    "sectionId": "p6-llm-serving"
+  },
+  {
     "term": "Token bucket",
     "slug": "token-bucket",
     "definition": "A rate-limiting algorithm with a bucket of up to B tokens refilled at R per second; each request spends a token.",
     "sectionId": "p2-rate-limiting"
+  },
+  {
+    "term": "Token budget",
+    "slug": "token-budget",
+    "definition": "An explicit limit on tokens at some scope, such as per call, per conversation, per user per day or per feature, used to control LLM cost and latency.",
+    "sectionId": "p6-llm-cost-latency"
   },
   {
     "term": "Tokenisation",
@@ -2778,10 +3576,40 @@
     "sectionId": "p5-data-protection"
   },
   {
+    "term": "Tokens-per-minute limit (TPM)",
+    "slug": "tokens-per-minute-limit",
+    "definition": "A provider rate limit on the number of tokens an account or project may process per minute. For LLM workloads it usually binds before the requests-per-minute limit.",
+    "sectionId": "p6-llm-cost-latency"
+  },
+  {
     "term": "Tombstone",
     "slug": "tombstone",
     "definition": "A marker written in place of deleted data that records the deletion, so that replicas which missed the delete do not bring the data back. Tombstones are purged after a grace period.",
     "sectionId": "p4-quorums"
+  },
+  {
+    "term": "Tool calling",
+    "slug": "tool-calling",
+    "definition": "A model returning a structured request to run a named tool with JSON arguments, which the application executes and returns the result of. Also called function calling.",
+    "sectionId": "p6-agents"
+  },
+  {
+    "term": "Top-k sampling",
+    "slug": "top-k-sampling",
+    "definition": "Keeping only the k most likely tokens, renormalising their probabilities and sampling among them.",
+    "sectionId": "p6-llm-inference-internals"
+  },
+  {
+    "term": "Top-p (nucleus) sampling",
+    "slug": "top-p-sampling",
+    "definition": "Keeping the smallest set of most likely tokens whose probabilities sum to at least p, then sampling among them, so the set shrinks when the model is confident and grows when it is not (Holtzman et al., 2020).",
+    "sectionId": "p6-llm-inference-internals"
+  },
+  {
+    "term": "Training checkpoint",
+    "slug": "training-checkpoint",
+    "definition": "A saved snapshot of everything needed to resume training exactly: weights, optimiser state, learning-rate schedule position, random-number states and the data loader position.",
+    "sectionId": "p6-training-at-scale"
   },
   {
     "term": "Transaction",
@@ -2802,16 +3630,34 @@
     "sectionId": "p3-event-driven"
   },
   {
+    "term": "Tree attention (token-tree verification)",
+    "slug": "token-tree-verification",
+    "definition": "Verifying several candidate continuations in one forward pass by arranging them as a tree and masking attention so each candidate sees only its own branch.",
+    "sectionId": "p6-speculative-decoding"
+  },
+  {
     "term": "Trie",
     "slug": "trie",
     "definition": "A tree that stores strings by their characters, so strings sharing a prefix share a path.",
     "sectionId": "p2-search"
   },
   {
+    "term": "Trigger",
+    "slug": "trigger",
+    "definition": "In the Dataflow Model, the rule that decides when a window emits a result: early speculative results, an on-time result at the watermark, and late updates.",
+    "sectionId": "p6-stream-processing"
+  },
+  {
     "term": "Trip threshold",
     "slug": "trip-threshold",
     "definition": "The condition that moves a circuit breaker from closed to open, such as a failure rate above 50% over the window or a number of consecutive failures.",
     "sectionId": "p4-circuit-breakers"
+  },
+  {
+    "term": "TrueTime",
+    "slug": "truetime",
+    "definition": "Google Spanner's clock API, which returns a time interval guaranteed to contain the true time, using GPS and atomic clocks. Spanner waits out the uncertainty to give globally consistent commit timestamps.",
+    "sectionId": "p6-multi-region"
   },
   {
     "term": "Trunk-based development",
@@ -2830,6 +3676,12 @@
     "slug": "ttl-jitter",
     "definition": "Adding a random amount to each key's time to live so keys written together don't all expire at the same moment.",
     "sectionId": "p3-cache-failures"
+  },
+  {
+    "term": "Tumbling window",
+    "slug": "tumbling-window",
+    "definition": "A fixed-size, non-overlapping time window such as each whole minute; every event belongs to exactly one window.",
+    "sectionId": "p6-stream-processing"
   },
   {
     "term": "Twelve-Factor App",
@@ -2886,6 +3738,12 @@
     "sectionId": "p4-id-generation"
   },
   {
+    "term": "V8 isolate",
+    "slug": "v8-isolate",
+    "definition": "A separate JavaScript heap and execution context inside one shared V8 engine process. Edge platforms such as Cloudflare Workers use isolates so code starts far faster than a container.",
+    "sectionId": "p6-edge-computing"
+  },
+  {
     "term": "Vary header",
     "slug": "vary-header",
     "definition": "An HTTP response header listing which request headers change the response, so caches store a separate copy for each value.",
@@ -2932,6 +3790,12 @@
     "slug": "warm-standby",
     "definition": "A disaster recovery tier where a scaled-down but fully working copy of the stack runs in a recovery region, ready to take traffic and scale up.",
     "sectionId": "p4-disaster-recovery"
+  },
+  {
+    "term": "Watermark",
+    "slug": "watermark",
+    "definition": "A stream processor's running estimate that event time has reached T, meaning no more events older than T are expected. Event-time windows fire when the watermark passes their end.",
+    "sectionId": "p6-stream-processing"
   },
   {
     "term": "Web application firewall (WAF)",
@@ -2998,5 +3862,11 @@
     "slug": "write-through",
     "definition": "A caching strategy where each write updates the cache and the database synchronously, and is acknowledged only when both succeed.",
     "sectionId": "p3-cache-strategies"
+  },
+  {
+    "term": "ZeRO",
+    "slug": "zero-sharding",
+    "definition": "The Zero Redundancy Optimizer (Rajbhandari et al., 2020): data parallelism that shards optimiser state (stage 1), gradients (stage 2) and weights (stage 3) across ranks instead of replicating them. PyTorch FSDP implements the same idea.",
+    "sectionId": "p6-gpu-parallelism"
   }
 ]

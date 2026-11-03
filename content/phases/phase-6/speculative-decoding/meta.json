@@ -1,0 +1,20 @@
+{
+  "id": "p6-speculative-decoding",
+  "phase": 6,
+  "slug": "speculative-decoding",
+  "title": "Speculative Decoding",
+  "order": 15,
+  "week": 13,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "draft-verify", "title": "Draft, then verify", "depth": "deep" },
+    { "id": "acceptance-rule", "title": "The acceptance rule and why it is exact", "depth": "deep" },
+    { "id": "speedup-math", "title": "Expected speedup, worked with numbers", "depth": "deep" },
+    { "id": "when-it-helps", "title": "When it helps, and when it stops helping", "depth": "tradeoffs" },
+    { "id": "variants", "title": "Variants: drafting without a separate draft model", "depth": "tradeoffs" },
+    { "id": "production", "title": "Running it in production", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["llm-inference"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p6-llm-inference-internals", "p6-llm-serving"]
+}

@@ -1,0 +1,8 @@
+[
+  { "id": "training-at-scale-c1", "text": "I can estimate pre-training compute with 6 × parameters × tokens and convert it to GPU-days using a stated peak FLOP/s and MFU.", "topicId": "compute-budget" },
+  { "id": "training-at-scale-c2", "text": "I can explain the Chinchilla result (about 20 tokens per parameter) and why heavily served models are trained on far more tokens.", "topicId": "compute-budget" },
+  { "id": "training-at-scale-c3", "text": "I can define MFU, distinguish it from HFU, and list where the missing utilisation goes in a large job.", "topicId": "mfu" },
+  { "id": "training-at-scale-c4", "text": "I can derive job MTBF as per-component MTBF ÷ component count and walk through the detect, swap, restart timeline of a failure.", "topicId": "failures-at-scale" },
+  { "id": "training-at-scale-c5", "text": "I can choose a checkpoint interval with √(2δM) and quantify the waste saved by asynchronous checkpointing.", "topicId": "checkpointing" },
+  { "id": "training-at-scale-c6", "text": "I can contrast training and inference fleets on coupling, failure impact, network and the metric each is judged by.", "topicId": "training-vs-inference" }
+]

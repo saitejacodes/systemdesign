@@ -1,0 +1,172 @@
+[
+  {
+    "id": "llm-inference-internals-q1",
+    "type": "single",
+    "prompt": "In a decoder-only transformer such as Llama 2 7B, which part holds the largest share of the parameters?",
+    "options": [
+      { "id": "a", "text": "The token embedding table and the LM head together" },
+      { "id": "b", "text": "The attention Q, K, V and output projections" },
+      { "id": "c", "text": "The MLP gate, up and down projections" },
+      { "id": "d", "text": "The RMSNorm scale vectors in every block" }
+    ],
+    "correct": ["c"],
+    "explanation": "The MLPs hold about 135 M parameters per layer (3 × 4,096 × 11,008) against 67 M for attention, roughly two thirds of the 6.7 B total. Embedding and LM head together are only about 0.26 B. Attention projections are about a third. Norm scales are a few thousand numbers per layer, negligible.",
+    "topicId": "forward-pass",
+    "difficulty": 1
+  },
+  {
+    "id": "llm-inference-internals-q2",
+    "type": "single",
+    "prompt": "During a decode step, what does the LM head produce?",
+    "options": [
+      { "id": "a", "text": "One unnormalised score per vocabulary token for the last position" },
+      { "id": "b", "text": "A probability for each token already sampled, used to rescore them" },
+      { "id": "c", "text": "The key and value vectors that get appended to the KV cache" },
+      { "id": "d", "text": "A single token ID chosen by argmax inside the model itself" }
+    ],
+    "correct": ["a"],
+    "explanation": "The LM head maps the final residual to logits: one raw score per vocabulary entry. They are not probabilities until a softmax, and they score the next token, not past ones. Keys and values come from the attention projections inside each block. Choosing a token is the sampler's job, outside the model's weights, which is why temperature and top-p can change without retraining.",
+    "topicId": "forward-pass",
+    "difficulty": 1
+  },
+  {
+    "id": "llm-inference-internals-q3",
+    "type": "scenario",
+    "prompt": "What is the best lower bound on the decode step time at batch size 1, ignoring the KV cache?",
+    "scenario": "A 13 B-parameter dense model is stored in fp16 on one GPU whose datasheet lists 1,000 TFLOP/s of dense 16-bit throughput and 3.35 TB/s of memory bandwidth (treat both as assumptions).",
+    "options": [
+      { "id": "a", "text": "About 0.026 ms, set by the 26 GFLOPs of compute per token" },
+      { "id": "b", "text": "About 7.8 ms, set by reading 26 GB of weights from memory" },
+      { "id": "c", "text": "About 3.9 ms, set by reading 13 GB of weights from memory" },
+      { "id": "d", "text": "About 26 ms, set by 2 FLOPs per weight at 1 TFLOP per ms" }
+    ],
+    "correct": ["b"],
+    "explanation": "fp16 is 2 bytes per weight, so 13 B parameters are 26 GB, and every decode step reads them all: 26 ÷ 3,350 GB/s ≈ 7.8 ms. Compute is 2 × 13 B = 26 GFLOPs, only 0.026 ms, so it is not the binding limit. 3.9 ms forgets that each parameter is 2 bytes. 26 ms mixes up units: 1,000 TFLOP/s is 1 TFLOP per ms, so 26 GFLOPs takes 0.026 ms, not 26 ms.",
+    "topicId": "prefill-decode-bounds",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-inference-internals-q4",
+    "type": "single",
+    "prompt": "For fp16 weight matmuls that process T tokens in one pass, what is the arithmetic intensity, approximately?",
+    "options": [
+      { "id": "a", "text": "About 2 FLOPs per byte, whatever the value of T" },
+      { "id": "b", "text": "About T² FLOPs per byte, because attention is quadratic" },
+      { "id": "c", "text": "About T FLOPs per byte of weights read from memory" },
+      { "id": "d", "text": "About T ÷ 2 FLOPs per byte, since each weight is 2 bytes" }
+    ],
+    "correct": ["c"],
+    "explanation": "Each weight is read once (2 bytes) and used in T multiply-adds (2T FLOPs), so intensity ≈ 2T ÷ 2 = T. A constant 2 would ignore reuse across tokens. Quadratic cost belongs to the attention scores over context, not to the weight matmuls, and it does not make intensity T². T ÷ 2 halves twice: the 2 FLOPs per multiply-add and the 2 bytes per weight cancel.",
+    "topicId": "flops-roofline",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-inference-internals-q5",
+    "type": "scenario",
+    "prompt": "Which change will most improve tokens per second per user for this workload?",
+    "scenario": "Your chat product's traffic averages 300 input and 700 output tokens per request. You can swap to a GPU with 2× the peak FLOP/s and 1.1× the memory bandwidth, or to one with 1.1× the FLOP/s and 1.6× the bandwidth. Both have the same memory capacity.",
+    "options": [
+      { "id": "a", "text": "The 1.6× bandwidth GPU, because decode reads all weights and KV each step" },
+      { "id": "b", "text": "The 2× FLOP/s GPU, because the forward pass costs 2 FLOPs per parameter" },
+      { "id": "c", "text": "Either one equally, because the roofline ridge point is the same for both" },
+      { "id": "d", "text": "The 2× FLOP/s GPU, because short prompts make prefill the bottleneck" }
+    ],
+    "correct": ["a"],
+    "explanation": "Output-heavy chat is dominated by decode, which is memory-bandwidth-bound: per-user speed follows bytes per step ÷ bandwidth. The 2 FLOPs per parameter rule is true but compute is mostly idle during decode. The two GPUs have very different ridge points (about 1.8× and 0.7× of today's), so they are not equivalent. Short prompts make prefill a small share of the time, the opposite of a bottleneck.",
+    "topicId": "prefill-decode-bounds",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-inference-internals-q6",
+    "type": "scenario",
+    "prompt": "Why did throughput grow only about 19× when the batch grew 64×?",
+    "scenario": "Serving Llama 2 7B in fp16 (512 KiB of KV cache per token), you raise the decode batch from 1 to 64 sequences, each with about 1,000 tokens of context. Aggregate tokens per second rises from roughly 240 to roughly 4,600.",
+    "options": [
+      { "id": "a", "text": "Compute became the bottleneck once 64 tokens were processed per pass" },
+      { "id": "b", "text": "Each sequence's KV cache is read every step and is not shared across the batch" },
+      { "id": "c", "text": "The weights must be re-read once per sequence when sequences are batched" },
+      { "id": "d", "text": "Continuous batching adds a scheduler pause between every decode step" }
+    ],
+    "correct": ["b"],
+    "explanation": "Batching shares the 13.5 GB weight read across 64 sequences, but each sequence brings about 0.52 GB of its own KV cache, so bytes per step grow from 14 GB to about 47 GB. At intensity ≈ 64 the weight matmuls are still far below a ridge of about 300, so compute is not yet binding. Weights are read once per step, not once per sequence: that is the whole point of batching. Scheduling overhead is small and would not explain a factor of three.",
+    "topicId": "prefill-decode-bounds",
+    "difficulty": 3
+  },
+  {
+    "id": "llm-inference-internals-q7",
+    "type": "single",
+    "prompt": "Logits for four tokens are [4.0, 3.0, 2.0, 0.0]. At temperature 1 their probabilities are about 0.657, 0.242, 0.089 and 0.012. How many tokens survive top-p = 0.9?",
+    "options": [
+      { "id": "a", "text": "One, because the top token alone is above 0.5" },
+      { "id": "b", "text": "Two, because 0.657 + 0.242 is close enough to 0.9" },
+      { "id": "c", "text": "Three, the smallest set whose sum reaches 0.9" },
+      { "id": "d", "text": "Four, because top-p never removes a token outright" }
+    ],
+    "correct": ["c"],
+    "explanation": "Top-p keeps the smallest set whose cumulative probability is at least p. The top two sum to 0.899, just under 0.9, so the third joins (0.988). There is no 'more than half' rule, and 'close enough' is not how the cut works. Top-p does remove tokens: here the fourth, at 0.012, is dropped before the draw.",
+    "topicId": "sampling",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-inference-internals-q8",
+    "type": "multi",
+    "prompt": "Which statements about sampling controls are correct? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Raising temperature flattens the distribution over tokens" },
+      { "id": "b", "text": "A fixed seed makes the random draw repeatable for given logits" },
+      { "id": "c", "text": "Logit bias works on token IDs, so it depends on the tokenizer" },
+      { "id": "d", "text": "Top-k keeps a different number of tokens at every decode step" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Dividing logits by a larger T shrinks their differences, flattening the softmax. A seed fixes the random number generator, so the same logits give the same draw; it cannot fix logits that changed. Logit bias adds to specific token IDs' logits, so a word with several tokenizations is only partly covered. Top-k always keeps exactly k tokens; it is top-p whose set size varies with confidence.",
+    "topicId": "sampling",
+    "difficulty": 2
+  },
+  {
+    "id": "llm-inference-internals-q9",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "A regression suite of 500 prompts at temperature 0 matches its stored outputs every night at 02:00, when the self-hosted endpoint is nearly idle. Rerun at noon during peak traffic, 20 outputs differ. Each mismatch shares a prefix with the stored output, diverges at one token, then differs completely. Nothing was deployed.",
+    "options": [
+      { "id": "a", "text": "GPU threads finish in random order, so each run's sums differ by chance" },
+      { "id": "b", "text": "Kernel reduction order depends on batch size, which changes with load" },
+      { "id": "c", "text": "The server silently raised the temperature to shed load during the peak" },
+      { "id": "d", "text": "The KV cache was evicted at peak and rebuilt with different stored keys" }
+    ],
+    "correct": ["b"],
+    "explanation": "Results that are stable when idle and vary under load point to batch-variant kernels: the batch size changes the split and order of reductions, rounding changes the last bits of logits, and a near-tied token flips, after which everything diverges. Random thread order would make idle runs flaky too; typical forward-pass kernels are deterministic for a fixed shape. Engines do not silently change temperature. Recomputing a preempted KV cache does not store different keys in principle, and it would not explain the idle-versus-peak pattern by itself.",
+    "topicId": "nondeterminism",
+    "difficulty": 3
+  },
+  {
+    "id": "llm-inference-internals-q10",
+    "type": "scenario",
+    "prompt": "Which request is the best answer to give the compliance team?",
+    "scenario": "A compliance team wants every audited answer from your mixture-of-experts model to be exactly reproducible later from the prompt alone. You serve it on a shared, continuously batched cluster at temperature 0 with a fixed seed.",
+    "options": [
+      { "id": "a", "text": "Store the generated output itself; promise bit-exact replay only on pinned, batch-invariant serving" },
+      { "id": "b", "text": "Promise exact replay, because temperature 0 plus a fixed seed removes every source of randomness" },
+      { "id": "c", "text": "Turn off the MoE router at audit time so every token uses the same experts as before" },
+      { "id": "d", "text": "Re-run the prompt several times later and keep whichever answer appears most often" }
+    ],
+    "correct": ["a"],
+    "explanation": "On a shared batched cluster, logits depend on load through batch-variant kernels, and MoE routing can flip near-ties, so the honest control is to store the output and reserve bit-exact replay for a pinned configuration (same hardware, versions and batch-invariant kernels). A seed fixes only the draw, not the numerics. The router is part of the model; you cannot switch it off without changing the model. A majority vote later is not the answer that was actually given.",
+    "topicId": "nondeterminism",
+    "difficulty": 3
+  },
+  {
+    "id": "llm-inference-internals-q11",
+    "type": "single",
+    "prompt": "On a GPU whose ridge point is about 300 FLOPs per byte, why can chunked prefill use chunks of a few hundred tokens without losing much efficiency?",
+    "options": [
+      { "id": "a", "text": "Smaller chunks need less KV cache in total, which frees bandwidth" },
+      { "id": "b", "text": "Attention cost is quadratic, so many small chunks do less work overall" },
+      { "id": "c", "text": "A pass of a few hundred tokens already reaches the compute-bound region" },
+      { "id": "d", "text": "The LM head runs only once per chunk instead of once per token in it" }
+    ],
+    "correct": ["c"],
+    "explanation": "Intensity of the weight matmuls ≈ tokens per pass, so a few hundred tokens per pass reaches the ridge and the GPU is compute-bound either way. The total KV cache for the prompt is the same however you chunk it. Later chunks still attend to all earlier tokens, so chunking does not reduce attention work. Engines already compute the LM head only for the last position during prefill, so chunking does not change that.",
+    "topicId": "flops-roofline",
+    "difficulty": 3
+  }
+]

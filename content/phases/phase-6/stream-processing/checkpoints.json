@@ -1,0 +1,8 @@
+[
+  { "id": "stream-processing-c1", "text": "I can explain why billing and metrics must use event-time windows and what goes wrong with processing time during a backlog or replay.", "topicId": "event-vs-processing-time" },
+  { "id": "stream-processing-c2", "text": "I can calculate window updates and open state for tumbling and sliding windows (size ÷ slide) and propose pre-aggregation when it is too large.", "topicId": "windowing" },
+  { "id": "stream-processing-c3", "text": "I can compute a bounded-out-of-orderness watermark, say when a window fires, and diagnose a stuck watermark caused by an idle partition.", "topicId": "watermarks" },
+  { "id": "stream-processing-c4", "text": "I can choose between dropping, updating and diverting late events and design a sink that accepts window updates.", "topicId": "late-data" },
+  { "id": "stream-processing-c5", "text": "I can explain how checkpoints plus a replayable source and an idempotent or transactional sink give exactly-once effects, and what latency that adds.", "topicId": "exactly-once-effects" },
+  { "id": "stream-processing-c6", "text": "I can pick Flink, Kafka Streams or a nightly batch job for a given requirement and justify it.", "topicId": "flink-kafka-streams" }
+]

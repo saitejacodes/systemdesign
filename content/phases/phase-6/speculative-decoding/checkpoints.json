@@ -1,0 +1,8 @@
+[
+  { "id": "speculative-decoding-c1", "text": "I can walk through one draft-then-verify step and say why every target pass yields between 1 and γ + 1 tokens.", "topicId": "draft-verify" },
+  { "id": "speculative-decoding-c2", "text": "I can state the min(1, p/q) acceptance rule and the residual norm(max(0, p − q)), and prove the output distribution equals the target's.", "topicId": "acceptance-rule" },
+  { "id": "speculative-decoding-c3", "text": "I can compute tokens per target pass and walltime speedup from α, γ and c, and spot when the answer is a slowdown.", "topicId": "speedup-math" },
+  { "id": "speculative-decoding-c4", "text": "I can explain, using B × (γ + 1) tokens per pass and the roofline ridge, why speculation helps at small batch and can hurt at large batch.", "topicId": "when-it-helps" },
+  { "id": "speculative-decoding-c5", "text": "I can compare a separate draft model, Medusa, EAGLE, lookahead and n-gram drafting on serving cost, training and exactness.", "topicId": "variants" },
+  { "id": "speculative-decoding-c6", "text": "I can design a production policy for speculation: per-route acceptance metrics, adaptive γ, batch thresholds and KV-cache rollback.", "topicId": "production" }
+]

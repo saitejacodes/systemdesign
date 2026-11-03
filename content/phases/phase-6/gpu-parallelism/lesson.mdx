@@ -1,0 +1,266 @@
+## Why it matters
+
+A 70-billion-parameter model in bf16 is 140 GB of weights. Train it with the Adam optimiser in mixed precision and the weights, gradients and optimiser state together need about 16 bytes per parameter: **1.12 TB**, before a single activation is stored. No GPU has that much memory, and even if one did, one GPU would take decades to push trillions of tokens through it. So every frontier model is trained, and most large models are served, by splitting the work across many GPUs. NVIDIA's Megatron-LM team (Narayanan et al., SC 2021) reported training a 1-trillion-parameter model on 3,072 GPUs at 52% of peak per-GPU throughput by combining three kinds of parallelism and placing each one on the right wire. This section builds on [LLM Serving](/phase/6/llm-serving) and [LLM Inference Internals](/phase/6/llm-inference-internals), not repeating them.
+
+<Callout type="analogy" title="The whale-sized lasagna">
+You have to cook one lasagna the size of a whale. **Data parallelism** is 64 identical kitchens each cooking a full lasagna for different guests, then phoning each other after every course to agree on the recipe tweaks (gradients). **Tensor parallelism** is eight chefs around one enormous pan, each responsible for a strip of it, shouting measurements to each other after every layer of pasta: brilliant, but only if they stand in the same room. **Pipeline parallelism** is an assembly line: kitchen 1 does the base layers, kitchen 2 the middle, kitchen 3 the top. While the line fills up and drains, some kitchens stand idle (the bubble). **ZeRO** is the kitchens agreeing that nobody keeps the whole cookbook: each keeps a few chapters and photocopies a chapter for the others just before it is needed. **Expert parallelism** is specialist stations (pastry, sauces, cheese) with a dispatcher who sends each ingredient to the right station and back, which jams when everyone wants cheese. Where it breaks down: kitchens tolerate "roughly the same recipe", but gradient averaging must be exact, and the real bottleneck is almost never the chefs. It is the phone lines.
+</Callout>
+
+## Collective operations
+
+<DepthStamp depth="deep" />
+
+Every strategy is built from **collective operations**, where a group of GPUs (ranks) exchange data in a fixed pattern; NVIDIA's NCCL is the common library.
+
+| Collective | Input on each rank | Output on each rank |
+|---|---|---|
+| Reduce-scatter | A full tensor of size S | 1/N of the element-wise sum |
+| All-gather | A 1/N shard | The full concatenated tensor |
+| <Term slug="all-reduce">All-reduce</Term> | A full tensor of size S | The full element-wise sum |
+| All-to-all | N chunks, one addressed to each rank | N chunks, one from each rank |
+
+The identity to remember is **all-reduce = reduce-scatter + all-gather**. In a **ring all-reduce**, the N ranks form a ring and the tensor is cut into N chunks. In the reduce-scatter phase each rank sends one chunk to its neighbour and adds the chunk it receives, N − 1 times, until each rank owns one fully summed chunk. In the all-gather phase the summed chunks travel round the ring another N − 1 steps. Each rank sends (N − 1)/N × S bytes in each phase, so:
+
+```
+bytes sent per rank in a ring all-reduce = 2 × (N − 1) / N × S
+```
+
+This is almost **independent of N**: about 2 × S whether there are 8 ranks or 8,000. What grows with N is latency (2 × (N − 1) sequential steps), which is why NCCL also has tree algorithms.
+
+### Worked example: one gradient all-reduce
+
+Assumptions, labelled: a 7B-parameter model, bf16 gradients (14 GB), 64 data-parallel ranks, and 50 GB/s per GPU of network bandwidth in each direction (one 400 Gb/s network card per GPU).
+
+- Bytes sent per rank: 2 × 63/64 × 14 GB ≈ **27.6 GB**.
+- Time at 50 GB/s: 27.6 ÷ 50 ≈ **0.55 s** per optimiser step, if nothing overlaps.
+
+Frameworks hide most of this by starting the all-reduce for the last layers' gradients while backward is still computing the earlier layers. If backward takes longer than 0.55 s, communication is nearly free.
+
+## Data parallelism
+
+<DepthStamp depth="deep" />
+
+<Term slug="data-parallelism">Data parallelism</Term> (DP) gives every GPU a full copy of the model and a different slice of each batch. Each rank runs forward and backward on its own micro-batch, then the ranks all-reduce their gradients so every copy applies the same averaged update and stays identical. PyTorch's DistributedDataParallel works this way.
+
+DP is the most efficient split when the model fits. It fails on memory. Mixed-precision Adam, as counted in the ZeRO paper, stores per parameter:
+
+| State | Bytes per parameter |
+|---|---|
+| bf16/fp16 weights | 2 |
+| bf16/fp16 gradients | 2 |
+| fp32 master weights | 4 |
+| fp32 Adam momentum | 4 |
+| fp32 Adam variance | 4 |
+| **Total** | **16** |
+
+For 70B parameters that is 1.12 TB per replica, and DP copies all of it onto every GPU. DP also has a statistical limit: the global batch grows with ranks, and past a model-dependent critical batch size a bigger batch stops reducing the steps needed.
+
+## ZeRO and FSDP: sharding the redundant state
+
+<DepthStamp depth="deep" />
+
+The <Term slug="zero-sharding">ZeRO</Term> optimiser (Zero Redundancy Optimizer; Rajbhandari et al., SC 2020, part of Microsoft's DeepSpeed) observes that DP keeps N identical copies of state that each rank only needs part of the time. It shards that state across the N data-parallel ranks in three stages:
+
+- **Stage 1** shards the optimiser state (the 12 fp32 bytes). Each rank updates only its 1/N of the parameters, then the updated weights are all-gathered.
+- **Stage 2** also shards gradients: a reduce-scatter replaces the all-reduce, so each rank receives only the summed gradients for the parameters it owns.
+- **Stage 3** also shards the weights themselves. Before each layer's forward and backward, the ranks all-gather that layer's weights, use them, and free them.
+
+### Worked example: 70B parameters on 64 data-parallel ranks
+
+Using Ψ = 70 × 10⁹ parameters and the 16-byte breakdown above (model state only, no activations):
+
+| Configuration | Formula per GPU | Memory per GPU |
+|---|---|---|
+| Plain DP | 16Ψ | 1,120 GB |
+| ZeRO-1 | 4Ψ + 12Ψ/64 | 280 + 13.1 ≈ 293 GB |
+| ZeRO-2 | 2Ψ + 14Ψ/64 | 140 + 15.3 ≈ 155 GB |
+| ZeRO-3 | 16Ψ/64 | 17.5 GB |
+
+The communication price is modest. The ZeRO paper shows stages 1 and 2 move the same volume as DP (a reduce-scatter plus an all-gather is exactly an all-reduce), while stage 3 moves about 1.5× DP's volume because the weights are gathered for both forward and backward. PyTorch's **FSDP** (Fully Sharded Data Parallel; Zhao et al., VLDB 2023) is the PyTorch-native version: `FULL_SHARD` corresponds to ZeRO-3, `SHARD_GRAD_OP` to ZeRO-2, and `HYBRID_SHARD` shards within a node and replicates across nodes, so the frequent all-gathers stay on the fast intra-node links.
+
+ZeRO-3 does not shrink activations, and its per-layer all-gathers sit on the critical path, so at very large scale it is combined with the splits below.
+
+## Tensor parallelism
+
+<DepthStamp depth="deep" />
+
+<Term slug="tensor-parallelism">Tensor parallelism</Term> (TP) splits the individual weight matrices of each layer across GPUs, so all of them work on the same tokens at the same time. Megatron-LM (Shoeybi et al., 2019) gave the standard recipe for a transformer, chosen so each block needs only one synchronisation in forward:
+
+- **MLP block.** The MLP computes `Z = GeLU(X·A)·B`. Split A **by columns** across t GPUs: each GPU computes its own slice of `GeLU(X·Aᵢ)` with no communication, because GeLU acts element by element. Split B **by rows**: each GPU multiplies its slice and produces a partial Z. One **all-reduce** sums the partials.
+- **Attention block.** Split the Q, K and V projections by columns, which means **by heads**: each GPU computes attention for its own heads, entirely locally. Split the output projection by rows, and finish with one **all-reduce**.
+
+So each transformer layer costs **two all-reduces in forward and two in backward**. Each GPU holds 1/t of the layer's weights, and every GPU sees the full activations between blocks.
+
+<Figure caption="FIG. 14.1 · MEGATRON MLP SPLIT ACROSS TWO GPUS · ONE ALL-REDUCE PER BLOCK">
+  <Diagram label="Input X is replicated on GPU 0 and GPU 1. Each GPU multiplies X by its column slice of A, applies GeLU, multiplies by its row slice of B, and the two partial outputs are summed by an all-reduce to give Z on both GPUs." chart={`flowchart LR
+    X[X replicated on both GPUs] --> A0[GPU 0: X times A columns 1 to h]
+    X --> A1[GPU 1: X times A columns h to 2h]
+    A0 --> G0[GeLU locally]
+    A1 --> G1[GeLU locally]
+    G0 --> B0[times B rows 1 to h: partial Z0]
+    G1 --> B1[times B rows h to 2h: partial Z1]
+    B0 --> AR[All-reduce: Z = Z0 + Z1]
+    B1 --> AR`} />
+</Figure>
+
+### Why TP stays inside a node
+
+TP communication is **activation-sized and happens four times per layer**, on the critical path. Assume a layer with hidden size 8,192, a micro-batch of 4,096 tokens and bf16: each all-reduce is 4,096 × 8,192 × 2 bytes = **64 MiB**. With t = 8, each rank sends 2 × 7/8 × 64 MiB = 112 MiB per all-reduce.
+
+Labelled assumptions: about 450 GB/s per direction per GPU on an NVLink-class intra-node fabric (NVIDIA publishes 900 GB/s total NVLink bandwidth for H100 SXM), and 50 GB/s per direction between nodes.
+
+| Where the TP group lives | Time per all-reduce | 80 layers × 4 all-reduces |
+|---|---|---|
+| Inside one node (450 GB/s) | ≈ 0.26 ms | ≈ 84 ms |
+| Across nodes (50 GB/s) | ≈ 2.35 ms | ≈ 750 ms |
+
+Compare compute: training FLOPs are about 6 × parameters × tokens, so a 70B model on 4,096 tokens is 6 × 7 × 10¹⁰ × 4,096 ≈ 1.7 × 10¹⁵ FLOPs. Split over 8 GPUs at an assumed 400 TFLOP/s effective each, that is about **0.54 s**. Inside a node, TP communication is roughly 15% of compute and can partly overlap. Across nodes it would exceed the compute itself. Hence the rule from the Megatron papers: **TP degree up to the number of GPUs in a node, and no further.** TP is also capped by the model: you cannot split 8 KV heads across 16 GPUs without replicating them.
+
+## Pipeline parallelism
+
+<DepthStamp depth="deep" />
+
+<Term slug="pipeline-parallelism">Pipeline parallelism</Term> (PP) splits the model **by layers**: with p stages, stage 1 holds layers 1–20, stage 2 holds layers 21–40, and so on. Only boundary activations cross the wire, point to point, so PP is the natural split **across nodes**.
+
+The catch is idle time. A naive pipeline runs one batch through stage 1, then stage 2, and only one stage works at a time. GPipe (Huang et al., NeurIPS 2019) splits each batch into m **micro-batches** and flows them through the stages like an assembly line, then synchronises once per batch. The fill and drain still leave idle slots, the <Term slug="pipeline-bubble">pipeline bubble</Term>:
+
+```
+bubble fraction = (p − 1) / (m + p − 1)
+```
+
+### Worked example: the bubble with 8 stages
+
+| Stages p | Micro-batches m | Bubble fraction |
+|---|---|---|
+| 8 | 8 | 7/15 ≈ 47% |
+| 8 | 32 | 7/39 ≈ 18% |
+| 8 | 64 | 7/71 ≈ 10% |
+
+More micro-batches shrink the bubble, but GPipe keeps activations for all m micro-batches until the backward passes run, so memory grows with m. GPipe used activation recomputation (re-running forward during backward instead of storing activations) to cope. PipeDream (Narayanan et al., SOSP 2019) introduced the **1F1B** schedule: after a warm-up, each stage alternates one forward and one backward, so at most p micro-batches are in flight per stage. The synchronous variant (PipeDream-Flush) has the **same bubble as GPipe but bounded activation memory**, which is why it is the default in Megatron-style training. The 2021 Megatron paper adds an **interleaved** schedule: each GPU holds v smaller chunks of layers instead of one contiguous block, which divides the bubble by v at the cost of v times more point-to-point messages.
+
+Picture the 1F1B schedule as a staircase: stage 1 starts p forwards before its first backward arrives, stage p alternates from the start, and the empty steps at the top-left and bottom-right of the staircase are the bubble.
+
+PP has two more costs: the slowest stage sets the pace (and the first and last stages also hold the embedding and output layers), and the global batch must contain enough micro-batches to keep the bubble small.
+
+## Sequence and context parallelism
+
+<DepthStamp depth="awareness" />
+
+Activation memory grows with sequence length, and attention compute grows with its square. For long-context training, even one sequence can be too big for a GPU. **Sequence parallelism** in the Megatron sense (Korthikanti et al., 2022) shards the layer norm and dropout activations that TP leaves replicated along the sequence dimension, turning each all-reduce into a reduce-scatter plus an all-gather at no extra volume.
+
+<Term slug="context-parallelism">Context parallelism</Term> goes further and splits the sequence itself across GPUs for every operation, including attention. The difficulty is that each query must attend to every earlier key. **Ring Attention** (Liu, Zaharia and Abbeel, 2023) arranges the GPUs in a ring: each holds a block of queries, computes blockwise attention against the key/value block it currently holds (using the same running-softmax trick as FlashAttention), then passes that KV block to its neighbour while receiving the next one, overlapping communication with compute. DeepSpeed-Ulysses instead uses all-to-all to switch to head sharding for attention. Use either only when activations, not weights, are what does not fit.
+
+## Expert parallelism for mixture-of-experts
+
+<DepthStamp depth="tradeoffs" />
+
+A **mixture-of-experts** (MoE) layer replaces the single MLP with E smaller MLPs (experts) and a learned router that sends each token to the top k of them. GShard (Lepikhin et al., 2020) used top-2 routing; the Switch Transformer (Fedus, Zoph and Shazeer, 2021) used top-1. Parameters grow with E; compute per token grows only with k.
+
+<Term slug="expert-parallelism">Expert parallelism</Term> (EP) places different experts on different GPUs. Each MoE layer then needs **two all-to-all exchanges** in forward: dispatch (each token's hidden vector goes to the GPU that holds its chosen expert) and combine (the output comes back). Backward repeats them. Unlike ring all-reduce, all-to-all traffic does not stay flat: every rank talks to every other rank, and the volume scales with tokens × hidden size × k.
+
+Systems set an **expert capacity**: tokens per batch ÷ E × a capacity factor (for example 1.25). In the Switch Transformer, tokens that overflow an expert's capacity are dropped from that layer and carried forward only by the residual connection. An auxiliary load-balancing loss nudges the router toward even use.
+
+### Failure timeline: one hot expert
+
+Assumptions: 64 experts across 64 GPUs, top-1 routing, 8,192 tokens per GPU per step, capacity factor 1.25 (so each expert accepts 160 tokens per GPU's batch, 10,240 across all senders).
+
+| Step | What happens |
+|---|---|
+| 0 | Training on a mixed corpus; load is roughly even, under 2% of tokens dropped. |
+| 1,000 | The data mix shifts to a batch heavy in source code; the router sends 4× the average share of tokens to expert 17. |
+| 1,000 | Expert 17's GPU receives about 4× its capacity; three quarters of those tokens overflow and skip the expert entirely. |
+| 1,000–1,400 | Every other GPU waits at the combine all-to-all for GPU 17 to finish its (capped) work; step time rises. The dropped tokens quietly reduce learning signal for code. |
+| 1,400 | The load-balancing loss pulls the router back toward balance. Only per-expert token counts and drop-rate dashboards reveal it happened. |
+
+Raising the capacity factor drops fewer tokens but costs memory and compute padding on every expert, every step.
+
+## 3D parallelism, placement, and inference vs training
+
+<DepthStamp depth="tradeoffs" />
+
+Real jobs combine the strategies. **3D parallelism** (Narayanan et al., SC 2021) multiplies them: total GPUs = TP × PP × DP. The placement follows the bandwidth each one needs:
+
+1. **TP innermost**, inside a node: four activation-sized all-reduces per layer, on the critical path.
+2. **PP across nodes**: point-to-point activations at stage boundaries only.
+3. **DP outermost** (often ZeRO-1 or FSDP): one gradient all-reduce or reduce-scatter per step, overlapped with backward.
+
+### Worked example: 1,024 GPUs for a 70B model
+
+Assume 8 GPUs per node, 80 layers, and 80 GB per GPU. Pick TP = 8 (one node), so each GPU holds 1/8 of each layer. Pick PP = 4, so each stage holds 20 layers; with ZeRO-1 across DP, model state per GPU is roughly 16 × 70 × 10⁹ ÷ (8 × 4) ≈ 35 GB before optimiser sharding, leaving room for activations. Then DP = 1,024 ÷ (8 × 4) = **32**. With a global batch of 1,024 sequences, each DP replica processes 32 sequences per step; at micro-batch size 1, m = 32 and the bubble is 3/35 ≈ 9%.
+
+<Figure caption="FIG. 14.2 · 3D PARALLELISM · TP INSIDE A NODE, PP ACROSS NODES, DP ACROSS REPLICAS">
+  <Diagram label="Data-parallel replica 1 consists of four nodes in a pipeline, each node running one stage with 8-way tensor parallelism over NVLink. Replica 2 has the same structure. Matching stages of the two replicas exchange gradients over the network." chart={`flowchart LR
+    subgraph R1[DP replica 1]
+      direction LR
+      N1[Node 1: stage 1, TP=8 over NVLink] --> N2[Node 2: stage 2] --> N3[Node 3: stage 3] --> N4[Node 4: stage 4]
+    end
+    subgraph R2[DP replica 2]
+      direction LR
+      M1[Node 5: stage 1] --> M2[Node 6: stage 2] --> M3[Node 7: stage 3] --> M4[Node 8: stage 4]
+    end
+    N1 -. gradient reduce .- M1
+    N4 -. gradient reduce .- M4`} />
+</Figure>
+
+Inference flips the priorities: no gradients or optimiser state, and the goal is latency per token.
+
+| Concern | Training | Inference |
+|---|---|---|
+| Memory per parameter | About 16 bytes (Adam, mixed precision) | 2 bytes in bf16, 1 or less quantised |
+| Data parallelism | Replicas sync gradients every step | Replicas are independent; no sync at all |
+| Tensor parallelism | Inside a node, for memory and speed | Inside a node, mainly to cut per-token latency |
+| Pipeline parallelism | Standard across nodes | Raises throughput but adds a hop per token; used when a model will not fit in one node |
+| Expert parallelism | Standard for large MoE | Wide EP spreads experts so each GPU reads fewer weights per decode step |
+| Failure blast radius | One GPU stalls the whole job | One replica fails its in-flight requests |
+
+<TradeoffBox title="Choosing a split" items={[
+  { gain: "Data parallelism: simplest, one overlappable collective per step", cost: "Every GPU must hold the full model and optimiser state" },
+  { gain: "ZeRO-3 / FSDP: model state divided by the DP degree", cost: "Per-layer all-gathers on the critical path; about 1.5x DP's traffic" },
+  { gain: "Tensor parallelism: splits every layer's memory and compute", cost: "Four activation-sized all-reduces per layer; needs intra-node bandwidth" },
+  { gain: "Pipeline parallelism: light point-to-point traffic, scales across nodes", cost: "Bubble of (p − 1)/(m + p − 1); stage balancing; needs many micro-batches" },
+  { gain: "Expert parallelism: huge parameter counts at modest compute per token", cost: "All-to-all every MoE layer; load imbalance, dropped tokens, hot experts" }
+]} />
+
+<NotWhenBox title="When not to reach for it" items={[
+  "Do not use tensor parallelism across nodes: the all-reduces will cost more than the maths they split.",
+  "Do not add pipeline stages when the model already fits with ZeRO or FSDP: you pay the bubble for nothing.",
+  "Do not use ZeRO-3 for a model that fits comfortably with plain DP: you add all-gathers to every layer.",
+  "Do not add context parallelism for short sequences: activations are not your bottleneck.",
+  "Do not choose MoE to save serving cost if you lack the memory to hold every expert: total parameters, not active parameters, set the memory bill."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Ring all-reduce gets more expensive per GPU as you add GPUs." right="Bytes sent per rank are 2(N − 1)/N × S, which approaches 2S. Bandwidth cost is flat in N; only the number of sequential steps (latency) grows." />
+
+<Misconception wrong="ZeRO is a different kind of model parallelism." right="ZeRO is still data parallelism: every rank processes its own data with the full logical model. It only shards the state each rank stores, gathering weights just in time." />
+
+<Misconception wrong="More micro-batches always make pipelines faster." right="They shrink the bubble, but each micro-batch is smaller (less efficient kernels) and the global batch grows, which past the critical batch size wastes compute." />
+
+<Misconception wrong="An MoE model with 20B active parameters costs the same to serve as a 20B dense model." right="Compute per token is similar, but every expert must sit in GPU memory, and the all-to-all adds network time to every MoE layer." />
+
+## Interview angle
+
+<InterviewAngle title="GPU parallelism" questions={[
+  "A 70B model does not fit on one GPU for training. Walk me through how you would split it across 512 GPUs and why.",
+  "Why is tensor parallelism usually limited to 8 GPUs?",
+  "Derive the pipeline bubble fraction. How would you reduce it, and what does each option cost?",
+  "What exactly does ZeRO stage 3 shard, and what communication does it add?",
+  "Your MoE training job's step time doubled but throughput per expert looks fine. What do you check?"
+]}>
+Start from memory: 16 bytes per parameter tells you whether plain DP can work. Then place each split by bandwidth: tensor parallelism inside the NVLink domain because it does four activation all-reduces per layer, pipeline across nodes because it only sends boundary activations, data parallelism outermost because its one gradient collective overlaps with backward. Quote the formulas, ring all-reduce at 2(N − 1)/N × S and the bubble at (p − 1)/(m + p − 1), and work one number. Strong follow-ups: for TP limits, mention head count as well as bandwidth; for the bubble, name 1F1B (bounded memory, same bubble) and interleaving (smaller bubble, more messages); for MoE slowdowns, check the router's load balance, token drop rate and the slowest rank in the all-to-all.
+</InterviewAngle>
+
+## Practice
+
+1. A 13B model is trained with mixed-precision Adam on 128 data-parallel GPUs. Compute model-state memory per GPU for plain DP, ZeRO-1, ZeRO-2 and ZeRO-3, and say which first fits in 80 GB with 20 GB left for activations.
+2. With 16 pipeline stages, how many micro-batches do you need to keep the bubble under 10%? What happens to activation memory under GPipe versus 1F1B?
+3. Design a parallel layout for a 2,048-GPU job (8 GPUs per node) training a model with 96 layers and 96 attention heads. State TP, PP and DP degrees, the bubble fraction, and what you would change if the network between nodes were half as fast.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

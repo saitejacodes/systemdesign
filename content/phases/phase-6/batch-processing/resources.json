@@ -1,0 +1,42 @@
+[
+  {
+    "id": "mapreduce-paper",
+    "title": "MapReduce: Simplified Data Processing on Large Clusters",
+    "author": "Jeffrey Dean and Sanjay Ghemawat (OSDI 2004)",
+    "kind": "paper",
+    "url": "https://www.usenix.org/legacy/events/osdi04/tech/full_papers/dean/dean.pdf",
+    "why": "The original paper: the programming model, partitioning, combiners, re-execution on failure and backup tasks, with measurements.",
+    "topicIds": ["mapreduce-model", "shuffle-skew", "batch-fault-tolerance"],
+    "free": true
+  },
+  {
+    "id": "rdd-paper",
+    "title": "Resilient Distributed Datasets: A Fault-Tolerant Abstraction for In-Memory Cluster Computing",
+    "author": "Zaharia et al. (NSDI 2012)",
+    "kind": "paper",
+    "url": "https://www.usenix.org/conference/nsdi12/technical-sessions/presentation/zaharia",
+    "why": "The Spark paper: lineage-based recovery, narrow vs wide dependencies, and why in-memory reuse speeds up iterative jobs.",
+    "topicIds": ["spark"],
+    "free": true
+  },
+  {
+    "id": "questioning-lambda",
+    "title": "Questioning the Lambda Architecture",
+    "author": "Jay Kreps (O'Reilly Radar, 2014)",
+    "kind": "blog",
+    "url": "https://www.oreilly.com/radar/questioning-the-lambda-architecture/",
+    "why": "The essay that proposed the kappa architecture: one stream processing codebase, reprocessing by replaying a retained log.",
+    "topicIds": ["lambda-kappa"],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications (chapters on batch and stream processing)",
+    "author": "Martin Kleppmann (O'Reilly)",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "The best single explanation of MapReduce joins, skew handling, dataflow engines and how batch and stream processing relate.",
+    "topicIds": ["mapreduce-model", "shuffle-skew", "etl-elt", "lambda-kappa"],
+    "free": false
+  }
+]

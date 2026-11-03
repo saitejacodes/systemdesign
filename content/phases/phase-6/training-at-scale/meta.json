@@ -1,0 +1,21 @@
+{
+  "id": "p6-training-at-scale",
+  "phase": 6,
+  "slug": "training-at-scale",
+  "title": "Training at Scale",
+  "order": 18,
+  "week": 13,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "compute-budget", "title": "Compute budgets and scaling laws", "depth": "deep" },
+    { "id": "mfu", "title": "Model FLOPs utilisation", "depth": "deep" },
+    { "id": "failures-at-scale", "title": "Failure is the steady state", "depth": "deep" },
+    { "id": "checkpointing", "title": "Checkpointing frequency", "depth": "tradeoffs" },
+    { "id": "stragglers-data", "title": "Stragglers and data pipelines", "depth": "tradeoffs" },
+    { "id": "post-training", "title": "Post-training stages", "depth": "awareness" },
+    { "id": "training-vs-inference", "title": "How training and inference fleets differ", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p6-gpu-parallelism", "p6-llm-inference-internals", "p4-fault-tolerance"]
+}

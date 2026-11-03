@@ -1,0 +1,20 @@
+{
+  "id": "p6-agents",
+  "phase": 6,
+  "slug": "agents",
+  "title": "AI Agents",
+  "order": 12,
+  "week": 13,
+  "estimatedMinutes": 65,
+  "topics": [
+    { "id": "workflows-vs-agents", "title": "Workflows vs agents", "depth": "tradeoffs" },
+    { "id": "tool-calling-loop", "title": "The tool-calling loop", "depth": "deep" },
+    { "id": "agent-state", "title": "State: the transcript and beyond", "depth": "deep" },
+    { "id": "idempotent-tools", "title": "Idempotent tools", "depth": "deep" },
+    { "id": "agent-limits", "title": "Limits on steps, time and cost", "depth": "deep" },
+    { "id": "human-in-the-loop", "title": "Human-in-the-loop", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p6-ai-reliability", "p6-evals-guardrails", "p2-idempotency"]
+}

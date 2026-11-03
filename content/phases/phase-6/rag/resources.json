@@ -1,0 +1,42 @@
+[
+  {
+    "id": "rag-lewis-2020",
+    "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+    "author": "Lewis et al. (NeurIPS 2020)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2005.11401",
+    "why": "The paper that named RAG: a dense retriever over Wikipedia passages combined with a generator, and why retrieval makes knowledge updatable.",
+    "topicIds": ["embedding-retrieval", "context-citation"],
+    "free": true
+  },
+  {
+    "id": "rrf-cormack-2009",
+    "title": "Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods",
+    "author": "Cormack, Clarke and Büttcher (SIGIR 2009)",
+    "kind": "paper",
+    "url": "https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf",
+    "why": "A two-page paper with the 1 / (k + rank) formula behind most hybrid search fusion.",
+    "topicIds": ["hybrid-search"],
+    "free": true
+  },
+  {
+    "id": "lost-in-the-middle",
+    "title": "Lost in the Middle: How Language Models Use Long Contexts",
+    "author": "Liu et al. (2023)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2307.03172",
+    "why": "Evidence that position in the context matters, which shapes how many chunks to include and in what order.",
+    "topicIds": ["context-citation", "failure-modes"],
+    "free": true
+  },
+  {
+    "id": "anthropic-contextual-retrieval",
+    "title": "Introducing Contextual Retrieval",
+    "author": "Anthropic",
+    "kind": "blog",
+    "url": "https://www.anthropic.com/news/contextual-retrieval",
+    "why": "A practical walk-through of chunk context, hybrid BM25 plus embeddings, and reranking in one pipeline.",
+    "topicIds": ["ingestion-chunking", "hybrid-search", "reranking"],
+    "free": true
+  }
+]

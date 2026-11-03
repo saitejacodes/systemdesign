@@ -1,0 +1,187 @@
+[
+  {
+    "id": "batch-processing-q1",
+    "type": "single",
+    "prompt": "In MapReduce, how does the framework decide which reduce task receives a given intermediate key?",
+    "options": [
+      { "id": "a", "text": "A partitioning function, by default hash(key) mod R" },
+      { "id": "b", "text": "The master assigns each key to the least-loaded reducer" },
+      { "id": "c", "text": "Keys go to the reducer on the machine that mapped them" },
+      { "id": "d", "text": "Keys are sorted globally and cut into R equal key ranges" }
+    ],
+    "correct": ["a"],
+    "explanation": "Each map task splits its output into R regions with the partitioning function, hash(key) mod R by default, so every occurrence of a key reaches the same reducer. Dynamic least-loaded assignment would send the same key to different reducers and break grouping. Keys from one mapper go to all reducers, not a local one. Range partitioning is possible with a custom partitioner (used for total-order sorts) but is not the default.",
+    "topicId": "mapreduce-model",
+    "difficulty": 1
+  },
+  {
+    "id": "batch-processing-q2",
+    "type": "single",
+    "prompt": "Why must map and reduce functions be deterministic and free of outside side effects?",
+    "options": [
+      { "id": "a", "text": "So the framework can compile them into a single SQL query plan" },
+      { "id": "b", "text": "So any task can be re-run or duplicated with the same result" },
+      { "id": "c", "text": "So reducers can start before every map task has finished" },
+      { "id": "d", "text": "So intermediate data never needs to be written to local disk" }
+    ],
+    "correct": ["b"],
+    "explanation": "Failure recovery and backup tasks both run tasks more than once; determinism makes the re-run's output identical, and atomic commits keep one copy. MapReduce does not compile functions to SQL. Reducers must wait for all map output for their partition regardless of determinism. Map output is written to local disk anyway; determinism is what makes losing it recoverable.",
+    "topicId": "mapreduce-model",
+    "difficulty": 1
+  },
+  {
+    "id": "batch-processing-q3",
+    "type": "scenario",
+    "prompt": "Roughly how much data is shuffled with the combiner enabled?",
+    "scenario": "A job counts events per device. The input has 20 billion records, split across 5,000 map tasks. Each intermediate record (device_id, count) is 32 bytes. Each map task sees about 400,000 distinct devices.",
+    "options": [
+      { "id": "a", "text": "About 640 GB, since the combiner still emits one record per input" },
+      { "id": "b", "text": "About 64 GB: 5,000 tasks × 400,000 keys × 32 bytes each" },
+      { "id": "c", "text": "About 12.8 MB, since only one record per device crosses the wire" },
+      { "id": "d", "text": "About 20 GB, since the combiner removes all but 1 byte per record" }
+    ],
+    "correct": ["b"],
+    "explanation": "With a combiner each map task emits one record per distinct key it saw: 5,000 × 400,000 × 32 B = 64 GB. 640 GB (20 billion × 32 B) is the volume without a combiner. One record per device across the whole job would only happen after the reduce; the combiner works per map task, so the same device appears in many tasks' output. A combiner reduces the number of records, not the size of each one.",
+    "topicId": "shuffle-skew",
+    "difficulty": 2
+  },
+  {
+    "id": "batch-processing-q4",
+    "type": "single",
+    "prompt": "Which aggregation can safely use a combiner without changing the algorithm?",
+    "options": [
+      { "id": "a", "text": "The median order value per customer" },
+      { "id": "b", "text": "The maximum order value per customer" },
+      { "id": "c", "text": "The average order value, combined as averages" },
+      { "id": "d", "text": "The exact number of distinct products, as counts" }
+    ],
+    "correct": ["b"],
+    "explanation": "Max is associative and commutative, so the max of per-task maxima equals the overall max. A median can't be built from partial medians. Averaging averages is wrong when groups have different sizes; you must combine (sum, count) pairs instead. Summing per-task distinct counts double-counts products seen by more than one task.",
+    "topicId": "shuffle-skew",
+    "difficulty": 2
+  },
+  {
+    "id": "batch-processing-q5",
+    "type": "scenario",
+    "prompt": "What is the most effective fix?",
+    "scenario": "A Spark job joins 3 billion page views with a 150 MB table of page metadata by page_id. 199 of 200 join tasks finish in 6 minutes; one runs for 2 hours. The home page accounts for 8% of all views.",
+    "options": [
+      { "id": "a", "text": "Double the shuffle partitions to 400 so each task gets half as much data" },
+      { "id": "b", "text": "Broadcast the 150 MB metadata table and join on the map side, no shuffle" },
+      { "id": "c", "text": "Turn on speculative execution so a backup copy of the slow task is run" },
+      { "id": "d", "text": "Move the job onto larger machines so the slow task has more memory" }
+    ],
+    "correct": ["b"],
+    "explanation": "This is skew: the home page's 8% of views all hash to one task. Broadcasting the small table to every executor removes the shuffle, so no task receives all of one key. More partitions don't split a single key; the home page still lands in one partition. A speculative copy processes the same oversized partition just as slowly. Bigger machines may stop a crash but the hot task still does far more work than the others.",
+    "topicId": "shuffle-skew",
+    "difficulty": 3
+  },
+  {
+    "id": "batch-processing-q6",
+    "type": "single",
+    "prompt": "A MapReduce worker dies after finishing several map tasks. Why are those completed map tasks re-run?",
+    "options": [
+      { "id": "a", "text": "Their output was on that worker's local disk, which is now unreachable" },
+      { "id": "b", "text": "The master can't trust any output from a worker that later failed" },
+      { "id": "c", "text": "Map outputs are kept only in memory until every reducer is finished" },
+      { "id": "d", "text": "Re-running them rebalances the load across the workers still alive" }
+    ],
+    "correct": ["a"],
+    "explanation": "Map output is written to the mapper's local disk, not the distributed file system, so reducers can't fetch it once the machine is gone. Completed reduce tasks are not re-run because their output is already in the distributed file system. Trust is not the issue; reachability is. Map output is spilled to disk, not memory-only. Load balancing is a side effect, not the reason.",
+    "topicId": "batch-fault-tolerance",
+    "difficulty": 2
+  },
+  {
+    "id": "batch-processing-q7",
+    "type": "scenario",
+    "prompt": "Will enabling speculative execution help, and why?",
+    "scenario": "Two jobs each have one slow task. In job A, the slow task's machine has a failing disk; its input is the same size as every other task's. In job B, the slow reducer received 40 times more records than average because of one customer.",
+    "options": [
+      { "id": "a", "text": "It helps both jobs, since a backup copy always finishes first" },
+      { "id": "b", "text": "It helps job A only; job B's backup has the same oversized input" },
+      { "id": "c", "text": "It helps job B only; job A needs the faulty disk to be replaced" },
+      { "id": "d", "text": "It helps neither job, since backups only run once a task fails" }
+    ],
+    "correct": ["b"],
+    "explanation": "A backup task on a healthy machine overtakes a task slowed by bad hardware. In job B the slowness is in the data: a duplicate gets the same 40× partition and is just as slow. Backups don't always win; they win only when the original's environment is the problem. Job A is exactly the case speculation was designed for. Backup tasks run for in-progress tasks near the end of the job, not after failures.",
+    "topicId": "batch-fault-tolerance",
+    "difficulty": 2
+  },
+  {
+    "id": "batch-processing-q8",
+    "type": "scenario",
+    "prompt": "What is the root cause, and what is the right fix?",
+    "scenario": "A nightly job INSERTs rows for yesterday into a daily_orders table. Last night a node was pre-empted at 70% progress, Airflow retried the task, and it succeeded. Today yesterday's order count is 1.7 times the true figure.",
+    "options": [
+      { "id": "a", "text": "Airflow retried too fast; add a 10-minute retry delay to the task" },
+      { "id": "b", "text": "The job appends; write to staging and atomically replace the partition" },
+      { "id": "c", "text": "The node lost its data; replicate the table across availability zones" },
+      { "id": "d", "text": "The job read the wrong day; schedule it later so all orders have landed" }
+    ],
+    "correct": ["b"],
+    "explanation": "The first attempt wrote 70% of the rows, and the retry appended 100% more, giving 1.7×. Making the write idempotent by partition (stage, then INSERT OVERWRITE or delete-and-insert in one transaction) makes retries and backfills safe. A retry delay changes when duplicates are written, not whether. Nothing was lost; the problem is extra rows. A late-data issue would make the count too low, not 70% too high.",
+    "topicId": "etl-elt",
+    "difficulty": 2
+  },
+  {
+    "id": "batch-processing-q9",
+    "type": "multi",
+    "prompt": "Which are good reasons to prefer ELT over ETL? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Raw data is kept, so tables can be rebuilt when logic changes" },
+      { "id": "b", "text": "Transformations run as versioned SQL inside a scalable warehouse" },
+      { "id": "c", "text": "Personal data must be removed before it reaches central storage" },
+      { "id": "d", "text": "New questions can be answered from raw data nobody modelled yet" }
+    ],
+    "correct": ["a", "b", "d"],
+    "explanation": "ELT lands raw data first, so you can re-derive tables after a logic fix, run transformations as testable SQL (for example with dbt) on elastic warehouse compute, and explore fields nobody modelled. Removing personal data before it lands is a reason for ETL, or at least a transform step before loading, because ELT puts the raw data in the warehouse.",
+    "topicId": "etl-elt",
+    "difficulty": 2
+  },
+  {
+    "id": "batch-processing-q10",
+    "type": "single",
+    "prompt": "How does Spark recover a lost partition of an RDD?",
+    "options": [
+      { "id": "a", "text": "It reads a replica that it wrote to HDFS after every transformation" },
+      { "id": "b", "text": "It recomputes just that partition from its recorded lineage" },
+      { "id": "c", "text": "It restarts the whole application from the very first stage" },
+      { "id": "d", "text": "It restores the last checkpoint of the driver's in-memory state" }
+    ],
+    "correct": ["b"],
+    "explanation": "An RDD records the transformations that built it, so Spark recomputes only the lost partition from its parents. Writing every intermediate result to HDFS is what MapReduce chains did and what Spark avoids. Restarting the whole application would waste all completed work. Driver checkpoints are not how partition loss is handled; explicit RDD checkpointing exists only to truncate very long lineages.",
+    "topicId": "spark",
+    "difficulty": 1
+  },
+  {
+    "id": "batch-processing-q11",
+    "type": "scenario",
+    "prompt": "Which statement is the strongest argument in this discussion?",
+    "scenario": "A team runs a Storm speed layer and a nightly Hadoop batch layer for session metrics. The two disagree by a few percent every morning, and every logic change has to be made twice. Kafka keeps 7 days of events; the business needs metrics recomputed over 2 years when definitions change.",
+    "options": [
+      { "id": "a", "text": "Drop the batch layer now: kappa always needs only one system" },
+      { "id": "b", "text": "Use one unified engine for both paths so logic is written once" },
+      { "id": "c", "text": "Keep both layers: disagreement shows the batch layer is working" },
+      { "id": "d", "text": "Raise the Kafka retention to 2 years and replay at each change" }
+    ],
+    "correct": ["b"],
+    "explanation": "The pain is duplicated logic; the constraint is 2 years of history that Kafka doesn't hold. A unified engine (Beam, Flink or Spark) runs the same code over the stream and over historical files, removing the duplication without forcing 2-year replays through Kafka. Pure kappa ignores the missing history. Disagreement between layers is a bug, not a feature. Two years of retention plus a full replay on every change may be possible but is slow and costly, so it is not the strongest default here.",
+    "topicId": "lambda-kappa",
+    "difficulty": 3
+  },
+  {
+    "id": "batch-processing-q12",
+    "type": "single",
+    "prompt": "In Jay Kreps's kappa architecture, how do you deploy a change to the processing logic?",
+    "options": [
+      { "id": "a", "text": "Patch the batch layer and wait for the next nightly recompute" },
+      { "id": "b", "text": "Run a new job from the log's start into a new table, then switch" },
+      { "id": "c", "text": "Update the running job in place and keep its existing output" },
+      { "id": "d", "text": "Write a speed-layer fix and merge it in the serving layer" }
+    ],
+    "correct": ["b"],
+    "explanation": "Kreps's recipe is to start a second instance of the new job reading the log from the beginning into a new output table, cut readers over when it catches up, then delete the old job and table. A batch layer and a speed layer merged in a serving layer are the lambda architecture, which kappa removes. Updating in place leaves historical output computed with the old logic.",
+    "topicId": "lambda-kappa",
+    "difficulty": 1
+  }
+]

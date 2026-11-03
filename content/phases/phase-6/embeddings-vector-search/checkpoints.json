@@ -1,0 +1,8 @@
+[
+  { "id": "embeddings-vector-search-c1", "text": "I can explain what an embedding is and why vectors from two different models must never be compared.", "topicId": "embeddings" },
+  { "id": "embeddings-vector-search-c2", "text": "I can show why cosine, dot product and L2 give the same ranking for unit-length vectors.", "topicId": "similarity" },
+  { "id": "embeddings-vector-search-c3", "text": "I can size a vector index (vectors × dimensions × 4 bytes plus graph links) and say when brute force is good enough.", "topicId": "exact-vs-ann" },
+  { "id": "embeddings-vector-search-c4", "text": "I can describe how HNSW builds and searches its layers and what M, efConstruction and efSearch change.", "topicId": "hnsw" },
+  { "id": "embeddings-vector-search-c5", "text": "I can tune efSearch or nprobe against a brute-force ground truth and monitor recall@k over time.", "topicId": "recall-latency" },
+  { "id": "embeddings-vector-search-c6", "text": "I can explain why post-filtering starves selective filters and pick a fix: iterative scans, partitioning or exact search on the subset.", "topicId": "metadata-filtering" }
+]

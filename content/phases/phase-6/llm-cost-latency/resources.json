@@ -1,0 +1,42 @@
+[
+  {
+    "id": "frugalgpt",
+    "title": "FrugalGPT: How to Use Large Language Models While Reducing Cost and Improving Performance",
+    "author": "Chen, Zaharia and Zou (2023)",
+    "kind": "paper",
+    "url": "https://arxiv.org/abs/2305.05176",
+    "why": "The LLM cascade idea studied carefully: a scorer decides whether to accept a cheaper model's answer or escalate.",
+    "topicIds": ["model-routing", "cost-model"],
+    "free": true
+  },
+  {
+    "id": "anthropic-prompt-caching",
+    "title": "Prompt caching",
+    "author": "Anthropic",
+    "kind": "docs",
+    "url": "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching",
+    "why": "How cache breakpoints, prefix matching, cache lifetime and cached-token usage reporting work in one provider's API.",
+    "topicIds": ["prompt-caching", "token-budgets"],
+    "free": true
+  },
+  {
+    "id": "openai-rate-limits",
+    "title": "Rate limits",
+    "author": "OpenAI",
+    "kind": "docs",
+    "url": "https://platform.openai.com/docs/guides/rate-limits",
+    "why": "Requests-per-minute and tokens-per-minute limits, how max_tokens counts toward them, and backoff guidance for 429s.",
+    "topicIds": ["rate-limits"],
+    "free": true
+  },
+  {
+    "id": "gptcache",
+    "title": "GPTCache",
+    "author": "Zilliz",
+    "kind": "repo",
+    "url": "https://github.com/zilliztech/GPTCache",
+    "why": "An open-source semantic cache: read its embedding, similarity evaluation and eviction components to see where false hits come from.",
+    "topicIds": ["semantic-caching"],
+    "free": true
+  }
+]

@@ -1,0 +1,22 @@
+{
+  "id": "p6-gpu-parallelism",
+  "phase": 6,
+  "slug": "gpu-parallelism",
+  "title": "GPU Parallelism",
+  "order": 14,
+  "week": 13,
+  "estimatedMinutes": 80,
+  "topics": [
+    { "id": "collectives", "title": "Collective operations", "depth": "deep" },
+    { "id": "data-parallelism", "title": "Data parallelism", "depth": "deep" },
+    { "id": "zero-fsdp", "title": "ZeRO and FSDP: sharding the redundant state", "depth": "deep" },
+    { "id": "tensor-parallelism", "title": "Tensor parallelism", "depth": "deep" },
+    { "id": "pipeline-parallelism", "title": "Pipeline parallelism", "depth": "deep" },
+    { "id": "context-parallelism", "title": "Sequence and context parallelism", "depth": "awareness" },
+    { "id": "expert-parallelism", "title": "Expert parallelism for mixture-of-experts", "depth": "tradeoffs" },
+    { "id": "parallelism-placement", "title": "3D parallelism, placement, and inference vs training", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p6-llm-serving", "p6-llm-inference-internals"]
+}

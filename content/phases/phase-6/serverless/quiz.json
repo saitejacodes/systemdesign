@@ -1,0 +1,187 @@
+[
+  {
+    "id": "serverless-q1",
+    "type": "single",
+    "prompt": "In standard AWS Lambda, what happens when 10 requests for the same function arrive at exactly the same moment and only one idle execution environment exists?",
+    "options": [
+      { "id": "a", "text": "The idle environment runs all 10 handlers in parallel on separate threads" },
+      { "id": "b", "text": "One request uses the idle environment; the other 9 each get a new environment and a cold start" },
+      { "id": "c", "text": "The 9 extra requests queue inside the idle environment and run one after another" },
+      { "id": "d", "text": "All 10 are rejected with a 429 until 9 provisioned environments are configured" }
+    ],
+    "correct": ["b"],
+    "explanation": "A standard Lambda execution environment handles one invocation at a time, so concurrent requests beyond the idle pool each trigger a new environment and go through Init. The environment does not multiplex handlers across threads; that per-instance concurrency is a Cloud Run feature, not standard Lambda. Lambda does not queue synchronous requests inside an environment either. And throttling only happens at a concurrency limit, not because provisioned concurrency is missing; provisioned concurrency is an optional latency optimisation.",
+    "topicId": "faas-model",
+    "difficulty": 1
+  },
+  {
+    "id": "serverless-q2",
+    "type": "single",
+    "prompt": "Why do function authors create SDK clients and database connections outside the handler?",
+    "options": [
+      { "id": "a", "text": "Code outside the handler runs once per environment during Init and is reused by later warm invocations" },
+      { "id": "b", "text": "Code outside the handler is not billed, so expensive setup there is free of charge" },
+      { "id": "c", "text": "The platform shares objects created outside the handler across every environment of the function" },
+      { "id": "d", "text": "The handler is sandboxed and is not allowed to open network connections itself" }
+    ],
+    "correct": ["a"],
+    "explanation": "Init code runs once when the environment is created, and the environment is reused for later invocations, so a client built there is reused while the environment lives. Init time counts toward the cold start and is not a free compute loophole. Objects are never shared across environments; each environment is isolated. Handlers can open network connections freely; doing it on every call is simply wasteful.",
+    "topicId": "faas-model",
+    "difficulty": 1
+  },
+  {
+    "id": "serverless-q3",
+    "type": "scenario",
+    "prompt": "About how many concurrent execution environments does this function need at steady state?",
+    "scenario": "A function behind an API receives 2,500 requests a second. Each invocation takes 240 ms. Each environment handles one request at a time.",
+    "options": [
+      { "id": "a", "text": "About 240" },
+      { "id": "b", "text": "About 600" },
+      { "id": "c", "text": "About 2,500" },
+      { "id": "d", "text": "About 10,400" }
+    ],
+    "correct": ["b"],
+    "explanation": "Little's law: concurrency = arrival rate × duration = 2,500 × 0.24 s = 600. 240 confuses the duration in milliseconds with a count of environments. 2,500 would be true only if each request took a whole second. 10,400 comes from dividing the rate by the duration instead of multiplying.",
+    "topicId": "concurrency-limits",
+    "difficulty": 2
+  },
+  {
+    "id": "serverless-q4",
+    "type": "scenario",
+    "prompt": "Which explanation best fits what the team is seeing?",
+    "scenario": "A function normally runs about 30 warm environments. Traffic jumps 8× in one second. Cold starts take about 2 seconds. For several seconds the function's concurrency climbs far above the 240 environments the new traffic needs at steady state, the account quota is hit, and callers see 429 errors.",
+    "options": [
+      { "id": "a", "text": "A memory leak in the handler makes every invocation slower, which raises the concurrency the function needs" },
+      { "id": "b", "text": "During the 2-second Init window every new arrival holds its own environment, so demand overshoots steady state" },
+      { "id": "c", "text": "The provider's scaling rate is unlimited, so the platform has deliberately over-provisioned extra environments" },
+      { "id": "d", "text": "The handler's 2-second timeout is set too low, so invocations fail and are retried by the platform itself" }
+    ],
+    "correct": ["b"],
+    "explanation": "While new environments are initialising, none of them serve traffic, and each new request needs another environment. Concurrency during the spike is roughly arrival rate × (cold start + duration), far above steady state, which is what hits the quota. A memory leak would raise duration gradually, not cause a burst exactly at the traffic jump. Scaling rates are limited, not unlimited, and platforms do not over-provision on purpose. The scenario says cold starts take 2 seconds, not that the timeout is 2 seconds; and synchronous invocations are not retried by the platform.",
+    "topicId": "cold-starts",
+    "difficulty": 3
+  },
+  {
+    "id": "serverless-q5",
+    "type": "single",
+    "prompt": "What does a scheduled 'warming ping' every five minutes actually achieve?",
+    "options": [
+      { "id": "a", "text": "It keeps every environment the function will need during a spike initialised" },
+      { "id": "b", "text": "It keeps about one environment warm, so a spike still cold-starts most environments" },
+      { "id": "c", "text": "It reserves concurrency for the function so other functions cannot use the pool" },
+      { "id": "d", "text": "It resets the 15-minute invocation timer so long jobs are allowed to keep running" }
+    ],
+    "correct": ["b"],
+    "explanation": "One ping is one invocation, which keeps roughly one environment alive. Any concurrent demand beyond that still needs new environments with cold starts; provisioned concurrency or minimum instances is the real tool. A ping cannot pre-initialise many environments unless you send many concurrent pings, which is a fragile imitation of provisioned concurrency. Reserved concurrency is a configuration setting, not a side effect of invocations. The invocation limit applies to each call separately; a ping doesn't extend another call.",
+    "topicId": "cold-starts",
+    "difficulty": 1
+  },
+  {
+    "id": "serverless-q6",
+    "type": "multi",
+    "prompt": "Which changes reduce cold-start latency or how often users see it? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Provisioned concurrency sized to the expected ramp" },
+      { "id": "b", "text": "Trimming dependencies and lazy-loading rarely used modules" },
+      { "id": "c", "text": "Restoring from an initialised snapshot, such as Lambda SnapStart" },
+      { "id": "d", "text": "Raising the account's regional concurrency quota by request" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Provisioned concurrency keeps environments initialised ahead of demand. Smaller packages and less init work shorten each cold start. Snapshot restore skips most of Init. Raising the quota lets more environments exist, which prevents throttling, but every one of those new environments still cold-starts just as slowly.",
+    "topicId": "cold-starts",
+    "difficulty": 2
+  },
+  {
+    "id": "serverless-q7",
+    "type": "scenario",
+    "prompt": "What is the most effective fix?",
+    "scenario": "An order-processing function reads from an SQS queue and writes to a Postgres database that allows 300 connections. During a backlog the function scales to 900 environments, each opening one connection, and the database starts refusing connections.",
+    "options": [
+      { "id": "a", "text": "Raise Postgres max_connections to 900 so every environment gets its own connection" },
+      { "id": "b", "text": "Cap the function's reserved concurrency below 300 and route connections through a pooler" },
+      { "id": "c", "text": "Add provisioned concurrency of 900 so the environments are warm before the backlog arrives" },
+      { "id": "d", "text": "Increase the function's memory so each invocation finishes faster and holds fewer connections" }
+    ],
+    "correct": ["b"],
+    "explanation": "Reserved concurrency caps how many environments run, and a pooler such as RDS Proxy or PgBouncer multiplexes connections, so the database sees a bounded load while the queue absorbs the backlog. Raising max_connections to 900 trades refusals for memory pressure and contention on the database, and the next backlog may need more. Provisioned concurrency of 900 pre-creates the same 900 connections. More memory may shorten each invocation, but the poller will still scale up while the backlog exists and each environment still holds its connection.",
+    "topicId": "concurrency-limits",
+    "difficulty": 2
+  },
+  {
+    "id": "serverless-q8",
+    "type": "single",
+    "prompt": "In AWS Lambda, what happens to an asynchronous invocation (for example from an S3 event) that is throttled?",
+    "options": [
+      { "id": "a", "text": "The S3 upload that triggered it fails and the client sees an error" },
+      { "id": "b", "text": "Lambda drops the event immediately and records it in CloudWatch metrics" },
+      { "id": "c", "text": "Lambda keeps the event and retries it for up to 6 hours before giving up" },
+      { "id": "d", "text": "The event runs immediately in a reserved emergency concurrency pool" }
+    ],
+    "correct": ["c"],
+    "explanation": "For asynchronous invocations Lambda queues the event and retries throttled attempts for up to six hours, after which it can send it to a configured failure destination or dead-letter queue. The S3 upload already succeeded; async invocation decouples it from the function. Events are not dropped immediately on a throttle. There is no hidden emergency pool; concurrency limits apply to all invocations.",
+    "topicId": "concurrency-limits",
+    "difficulty": 2
+  },
+  {
+    "id": "serverless-q9",
+    "type": "scenario",
+    "prompt": "Using these illustrative prices, roughly what is the break-even average load versus the VMs?",
+    "scenario": "A function costs $0.00002 per GB-second plus $0.25 per million requests. It uses 1 GB and runs 100 ms per request. The alternative is two always-on VMs at $0.10 an hour each (730 hours a month), which can handle the load. A month has 2,628,000 seconds.",
+    "options": [
+      { "id": "a", "text": "About 3 requests a second" },
+      { "id": "b", "text": "About 25 requests a second" },
+      { "id": "c", "text": "About 250 requests a second" },
+      { "id": "d", "text": "About 2,500 requests a second" }
+    ],
+    "correct": ["b"],
+    "explanation": "Per request: 1 GB × 0.1 s × $0.00002 = $0.000002, plus $0.00000025 = $0.00000225. VMs: 2 × $0.10 × 730 = $146 a month. Break-even: $146 / $0.00000225 ≈ 64.9 million requests a month, ÷ 2,628,000 s ≈ 25 requests a second. About 3 is what you get by using a 1-second duration instead of 100 ms. About 250 and 2,500 come from losing one or two factors of ten in the GB-second arithmetic; at those loads the function bill is roughly 10× and 100× the VM bill.",
+    "topicId": "cost-at-scale",
+    "difficulty": 3
+  },
+  {
+    "id": "serverless-q10",
+    "type": "multi",
+    "prompt": "Which factors make the real serverless vs always-on comparison differ from a simple compute-price break-even? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Peak-to-average ratio, since fleets must be sized near peak" },
+      { "id": "b", "text": "Per-request fees from an API gateway and per-invocation logs" },
+      { "id": "c", "text": "Engineering time spent patching and running a server fleet" },
+      { "id": "d", "text": "The programming language's syntax used to write the handler" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Spiky traffic raises the effective cost of always-on fleets, which must cover the peak. Gateways, logging and data transfer add per-request costs that sit outside the function's GB-second price. Operating a fleet costs people time that never appears on the compute bill. Language syntax has no direct cost effect; what matters is duration and memory, which runtime choice can influence, but syntax itself is irrelevant.",
+    "topicId": "cost-at-scale",
+    "difficulty": 2
+  },
+  {
+    "id": "serverless-q11",
+    "type": "scenario",
+    "prompt": "Which workload is the poorest fit for standard FaaS?",
+    "scenario": "A team is choosing where to run four new workloads and wants to put as many as sensible on functions.",
+    "options": [
+      { "id": "a", "text": "A nightly 3-hour video transcoding job processed as one continuous run" },
+      { "id": "b", "text": "Resizing images uploaded to object storage, a few per minute on average" },
+      { "id": "c", "text": "A webhook receiver that gets bursts from a payment provider at month end" },
+      { "id": "d", "text": "A scheduled job that cleans up expired sessions every 15 minutes" }
+    ],
+    "correct": ["a"],
+    "explanation": "A 3-hour continuous run exceeds the per-invocation limit (15 minutes in Lambda), so it needs chunking with a workflow engine or a container or batch service. Image resizing on upload is the classic FaaS use: event-driven, short and bursty. Webhook bursts are exactly what scale-from-zero handles well, provided the handler is idempotent. A short scheduled cleanup is cheap and simple as a function.",
+    "topicId": "when-not-serverless",
+    "difficulty": 1
+  },
+  {
+    "id": "serverless-q12",
+    "type": "single",
+    "prompt": "A queue-triggered function occasionally processes the same message twice. What is the right response?",
+    "options": [
+      { "id": "a", "text": "Report a platform bug, since queue triggers promise exactly-once delivery" },
+      { "id": "b", "text": "Make the handler idempotent, for example with a conditional write on a key" },
+      { "id": "c", "text": "Set reserved concurrency to 1 so only one copy of the handler ever runs" },
+      { "id": "d", "text": "Turn on provisioned concurrency so environments stop being replaced mid-run" }
+    ],
+    "correct": ["b"],
+    "explanation": "Queue and asynchronous triggers deliver at least once, so duplicates are expected and the handler must make repeats harmless, typically by recording an idempotency key with a conditional write. Queue triggers do not promise exactly-once delivery. A concurrency of 1 slows everything down and still allows redelivery after a timeout or failure. Provisioned concurrency affects cold starts, not delivery semantics.",
+    "topicId": "faas-model",
+    "difficulty": 2
+  }
+]

@@ -1,0 +1,205 @@
+## Why it matters
+
+A cloud region is a cluster of data centres in one metropolitan area, and regions do fail: power, networking, a bad control-plane deploy or a regional dependency can take most services in one region down for hours, and public cloud status histories record several such events. Running in more than one region protects you from that, puts servers nearer to users on other continents, and is sometimes required by law when personal data must stay in a country. But it changes the problem completely. Within a region, a round trip between machines is about a millisecond; between continents it is tens to hundreds of milliseconds, set by the speed of light. You can no longer have every write be both fast and immediately agreed everywhere. Every multi-region design is an answer to one question: **when two regions disagree, or cannot talk, who wins and what does it cost?** This section covers the topologies, the latency arithmetic, conflict resolution, data residency and routing.
+
+<Callout type="analogy" title="Two bank branches and a flock of carrier pigeons">
+A bank has a branch in London and one in New York, each with its own paper ledger, kept in step by carrier pigeons that carry copies of every entry across the Atlantic. In **active-passive**, only London writes; New York copies the pigeons' notes and opens for business only if London burns down, losing whatever pigeons were still in the air (the RPO). In **active-active**, both branches take deposits and withdrawals. Most days that's fine. But if a storm grounds the pigeons (a network partition) and a couple withdraws £80 in London and £70 in New York from a shared £100 account, both clerks say yes, and the ledgers only meet again after the storm (a conflict). Somebody has to decide what the account really holds. And however well-trained the pigeons, they can't fly faster than the wind (the speed of light): a branch that waits for the other's agreement before every entry is always slow. Where it breaks down: real replication is continuous and automatic, and some data types (counters, sets) can be designed so the two ledgers merge correctly without a human deciding.
+</Callout>
+
+## Active-passive vs active-active
+
+<DepthStamp depth="deep" />
+
+There are two basic topologies, with variants in between.
+
+**<Term slug="active-passive">Active-passive</Term>** (also called primary-standby across regions). One region serves all writes, and usually all traffic. A second region holds asynchronously replicated data and either idle capacity (a <Term slug="warm-standby">warm standby</Term>) or just the data and a recipe to scale up (a <Term slug="pilot-light">pilot light</Term>). On a regional failure, you promote the standby database and shift traffic.
+
+- **Data loss on failover** is the replication lag at the moment of failure. That is the <Term slug="rpo">RPO</Term>. With asynchronous replication lagging by **1.5 seconds** at **2,000 writes a second**, about 1.5 × 2,000 = **3,000 acknowledged writes** are at risk.
+- **Time to recover** (the <Term slug="rto">RTO</Term>) is detection + decision + promotion + traffic shift, and in practice the human decision is often the longest part.
+- **Cost:** the standby is mostly idle, but it is simple: there is only ever one writer, so there are no write conflicts.
+
+**<Term slug="active-active">Active-active</Term>.** Every region serves live traffic. There are two very different flavours, and confusing them is a common interview mistake:
+
+1. **Active-active with partitioned ownership.** Each user, tenant or entity has a <Term slug="home-region">home region</Term> that is the only place its data is written. Every region serves traffic, but any given record has exactly one writer. A request that lands in the wrong region is forwarded to the home region for writes, and reads can be served locally from replicas. No write conflicts by construction.
+2. **Active-active with multi-writer data.** The same record can be written in any region (<Term slug="multi-leader">multi-leader</Term> replication), and the regions reconcile asynchronously. Writes are always local and fast, but concurrent writes to the same record conflict and must be resolved.
+
+### Failure timeline: an active-passive regional failover
+
+| Time | Event |
+|---|---|
+| 10:00:00 | The primary region starts failing; error rate climbs |
+| 10:01:30 | <Term slug="health-check">Health checks</Term> (30-second interval, 3 failures to trip) mark the region unhealthy; on-call is paged |
+| 10:04 | A human confirms it is a regional problem, not a bad deploy, and decides to fail over. Many teams keep a human in this step to avoid flapping between regions |
+| 10:05 | The standby database is promoted. Writes not yet replicated, about 3,000 in the example above, are lost or must be reconciled later |
+| 10:06 | DNS records are switched to the standby; their TTL is 60 seconds |
+| 10:07–10:15 | Most clients follow; some resolvers and long-lived connections keep hitting the old region for longer |
+| Later | The old region recovers. Failing back is its own project: its database has diverged and must be rebuilt from the new primary |
+
+### Capacity arithmetic
+
+Surviving the loss of one region means the remaining regions must carry its traffic. With N equal active-active regions, each can run at no more than (N − 1) / N of its capacity at peak: **50%** with two regions, **67%** with three, **75%** with four. Total provisioned capacity is N / (N − 1) times peak: 2× for two regions, 1.5× for three. That is why large active-active deployments tend to use three or more regions: the insurance gets cheaper per region. A full-size warm standby is also 2×, but its idle half does no useful work until disaster strikes. Systems that can keep working in a surviving region without needing a control plane in the failed one (<Term slug="static-stability">static stability</Term>) recover far more reliably, because pre-provisioned capacity doesn't depend on an autoscaler that might be degraded at exactly that moment.
+
+## Cross-region latency and synchronous writes
+
+<DepthStamp depth="deep" />
+
+The floor is physics. Light in fibre covers about 200 km per millisecond. Northern Virginia to Ireland is roughly 5,500 km, so a round trip cannot be faster than about 55 ms, and real routes add more. For the worked examples below, assume these round-trip times (measure your own; they vary by provider and path):
+
+| Region pair (assumed) | RTT |
+|---|---|
+| us-east ↔ us-west | 65 ms |
+| us-east ↔ eu-west | 75 ms |
+| us-west ↔ eu-west | 130 ms |
+
+### Worked example: the RTT budget for a synchronous write
+
+You want writes that survive the loss of any one region with zero data loss. That means a write must be durable in at least two regions before it is acknowledged: a consensus group (<Term slug="raft">Raft</Term> or <Term slug="paxos">Paxos</Term>) with one replica in each of the three regions, committing on a majority of two.
+
+- **Leader in us-east, client in us-east.** The leader needs one acknowledgement from the nearest follower: us-west at 65 ms. Commit latency ≈ **65 ms** plus local disk writes.
+- **Client in eu-west, same leader.** Client to leader 75 ms, plus the 65 ms commit: about **140 ms** per write.
+- **An API call that makes 4 sequential writes** from us-east: 4 × 65 = **260 ms**, which alone blows a 200 ms p99 budget.
+
+How real systems live with this:
+
+- **Batch or parallelise writes** inside one transaction so the request pays the cross-region round trip once, not four times.
+- **Place leaders near writers.** Google Spanner and CockroachDB let you choose where each piece of data's leader lives, so a European user's rows can be led from Europe and commit at European-majority latency, if the replica placement provides a nearby majority.
+- **Accept asynchronous replication** for data where a few seconds of loss on a regional disaster is tolerable, and use synchronous replication only for the records that justify the latency (payments, inventory).
+
+Spanner (Corbett et al., OSDI 2012) is the reference design for globally consistent writes. It replicates each data shard with Paxos across zones or regions and uses **<Term slug="truetime">TrueTime</Term>**, a clock API that returns an interval guaranteed to contain the real time, built on GPS receivers and atomic clocks. A transaction waits out the clock uncertainty before its commit becomes visible ("commit wait"), which lets Spanner give externally consistent (linearizable) transactions across the globe. It does not beat physics: a commit still needs a Paxos majority, so cross-region writes still pay cross-region round trips. What TrueTime buys is consistent timestamps without extra coordination for reads.
+
+This is the PACELC point from Phase 4 made concrete: even when there is no partition, multi-region systems choose between latency and consistency on every write.
+
+## Conflict resolution
+
+<DepthStamp depth="deep" />
+
+If more than one region can write the same record, two concurrent writes will eventually collide. There are four broad strategies, from crudest to most careful.
+
+### 1. Last writer wins
+
+<Term slug="last-write-wins">Last-writer-wins</Term> (LWW) attaches a timestamp to every write and keeps the one with the highest timestamp; the other is silently discarded. Amazon DynamoDB global tables, which replicate asynchronously between Regions, use last-writer-wins reconciliation for concurrent updates to the same item, and Apache Cassandra resolves conflicting writes per column by timestamp. LWW is simple and always converges, but it **loses data** whenever writes are truly concurrent, and with <Term slug="clock-skew">clock skew</Term> the "last" write may not even be the later one in real time. AWS has since added a multi-Region strong consistency mode for DynamoDB global tables, which, as the latency section predicts, pays a cross-region round trip on writes.
+
+### Failure timeline: a split-brain write conflict across regions
+
+A shared account holds **$100**. The application runs active-active with multi-writer data and LWW. The eu-west clock runs 2 seconds fast.
+
+| Time (real) | eu-west | us-east | Note |
+|---|---|---|---|
+| 10:00:00 | Balance 100 | Balance 100 | In sync |
+| 10:00:02 | | | A network partition cuts replication between the regions; both keep serving |
+| 10:00:05 | Alice withdraws 80: balance 20, stamped 10:00:07 (fast clock) | | Accepted locally |
+| 10:00:06 | | Bob withdraws 70: balance 30, stamped 10:00:06 | Accepted locally |
+| 10:00:40 | | | Partition heals; replication exchanges both writes |
+| 10:00:41 | Balance 20 | Balance 20 | LWW keeps the highest timestamp, Alice's, though Bob's write was later in real time |
+
+$150 left an account that held $100, the stored balance (20) matches neither real outcome, and Bob's update vanished without an error. This is <Term slug="split-brain">split-brain</Term> at the data level. Notice that no clock fix saves you: even with perfect clocks LWW would keep 30 and still lose a withdrawal.
+
+### 2. Merge with the application
+
+Keep both versions and let code decide. Amazon's Dynamo (SOSP 2007) used <Term slug="vector-clock">vector clocks</Term> to detect that two versions were concurrent rather than one superseding the other, and returned both "siblings" to the application to merge. The shopping cart merged by taking the union of items, with a known side effect described in the paper: deleted items could reappear after a merge. The lesson is that merges need explicit semantics for deletes, usually <Term slug="tombstone">tombstones</Term>.
+
+### 3. Use a data type that merges itself
+
+<Term slug="crdt">CRDTs</Term> (conflict-free replicated data types, formalised by Shapiro, Preguiça, Baquero and Zawirski in 2011) are designed so that concurrent updates merge to the same result in any order. The simplest is a <Term slug="g-counter">G-Counter</Term> (grow-only counter): each region increments only its own slot, the value is the sum of the slots, and merging takes the per-slot maximum.
+
+| Step | State in us-east [us, eu] | State in eu-west [us, eu] | Value seen |
+|---|---|---|---|
+| Start | [0, 0] | [0, 0] | 0 everywhere |
+| During a partition: 120 likes in us-east, 80 in eu-west | [120, 0] | [0, 80] | 120 in us-east, 80 in eu-west |
+| After merge (per-slot max) | [120, 80] | [120, 80] | 200 everywhere |
+
+No like is lost and no coordination was needed. Other CRDTs cover counters that go down (PN-Counters), sets with add-wins semantics (OR-Sets) and collaborative text. The limit is important: CRDTs guarantee **convergence, not invariants**. A ledger CRDT would record both withdrawals above correctly and converge to −50, but it cannot *prevent* the overdraft, because preventing it requires the two regions to agree before saying yes.
+
+### 4. Don't allow conflicts
+
+For data with invariants (balances, inventory, unique usernames), route all writes for a record to one place: a home region per user or entity, or a consensus-replicated database such as Spanner or CockroachDB. You pay the round trip when a user writes from far away, or when their home region is down until it is re-homed. This is what most money-moving systems do.
+
+A practical design mixes these: home-region ownership for accounts and orders, CRDT counters for likes and view counts, LWW only for fields where losing a concurrent edit is acceptable, such as a user's display theme.
+
+## Data residency
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="data-residency">Data residency</Term> is the requirement, from law, regulation or a customer contract, that certain data is stored and processed in a particular geography. Two related terms: <Term slug="data-sovereignty">data sovereignty</Term> means data is subject to the laws of the country where it is located, and data localisation laws go further and require some data to stay in-country. They are not the same, and the details are legal questions, not engineering ones. Three examples of how differently rules are written:
+
+- The EU's **GDPR** does not, in general, require personal data to be stored in the EU; it restricts *transfers* outside the European Economic Area unless there is an adequacy decision or another approved safeguard such as standard contractual clauses.
+- **Russia's** Federal Law 242-FZ (in force from 2015) requires personal data of Russian citizens to be collected and initially stored in databases located in Russia.
+- The **Reserve Bank of India**'s 2018 directive requires payment system data to be stored only in India.
+
+What residency means for architecture:
+
+- **Partition by jurisdiction.** Each user is assigned a home region inside their required geography, and their personal data is written and stored only there. This is the same home-region pattern as above, now driven by law rather than latency.
+- **Keep global services free of personal data.** A global directory that maps user to home region should hold only an opaque ID and the region, with names, emails and addresses kept in-region. <Term slug="pseudonymization">Pseudonymisation</Term> or <Term slug="data-tokenization">tokenisation</Term> lets analytics and search run globally on tokens.
+- **Everything is data.** Backups, logs, traces, search indexes, caches, support tools, data warehouses and third-party processors all count. Residency is usually broken by a log line or a backup bucket, not by the main database.
+- **Disaster recovery stays in-jurisdiction.** If EU data must stay in the EU, its standby must be in another EU region, not in us-east.
+- **Edge and CDN processing can cross borders** unless the platform restricts it, as the edge computing section noted.
+
+The cost is real: smaller cells with their own capacity headroom, features that must work without cross-region joins, and harder global analytics.
+
+## Latency-based routing
+
+<DepthStamp depth="tradeoffs" />
+
+Getting each user to the right region is the job of the routing layer. The main options:
+
+| Method | How it chooses | Failover speed | Caveat |
+|---|---|---|---|
+| <Term slug="geodns">GeoDNS</Term> | Returns different IPs based on the resolver's location | Bounded by DNS TTL and client caching | Location is the resolver's, not the user's |
+| <Term slug="latency-based-routing">Latency-based routing</Term> (Amazon Route 53) | Returns the region with the lowest measured latency from the resolver's network | Bounded by DNS TTL; combine with health checks | Same resolver-location limits; measured latency is a long-term average |
+| <Term slug="anycast">Anycast</Term> (AWS Global Accelerator, CDN front doors) | Same IP everywhere; the network routes to the nearest healthy edge, which forwards to a region | Seconds, no DNS change needed | Needs a provider that runs the anycast network |
+
+Two DNS details matter in interviews. First, DNS sees the **recursive resolver**, not the user; a user in Singapore using a public resolver whose nearest site is in another country can be steered wrongly. <Term slug="edns-client-subnet">EDNS Client Subnet</Term> (RFC 7871) lets resolvers pass a truncated client subnet to the authoritative server to fix this, where both sides support it. Second, TTLs are advisory: some clients and runtimes cache answers longer than told, and long-lived connections never re-resolve at all, so DNS failover always has a straggler tail.
+
+Routing must also agree with data ownership. Reads can go to the nearest region; writes for a home-region record must reach its home region, either by routing the user there (a cookie or token that names the home region) or by forwarding the write internally. And routing away from a failed region only works if the survivors have the headroom computed earlier; otherwise failover moves the outage instead of ending it.
+
+<TradeoffBox title="Multi-region choices" items={[
+  { gain: "Active-passive: one writer, no conflicts, simple to reason about", cost: "Idle standby capacity, data loss equal to replication lag, slow and risky failover" },
+  { gain: "Active-active with home regions: all regions busy, no conflicts", cost: "Remote users pay the round trip for writes; re-homing users on a regional failure is complex" },
+  { gain: "Multi-writer with LWW: local, fast writes everywhere", cost: "Concurrent updates are silently lost, and clock skew picks the wrong winner" },
+  { gain: "CRDTs: automatic, order-independent merges", cost: "Only for data that fits a CRDT type; cannot enforce invariants such as balance ≥ 0" },
+  { gain: "Synchronous consensus across regions: zero RPO and linearizable writes", cost: "Every write pays at least one cross-region round trip to a majority" }
+]} />
+
+<NotWhenBox title="Don't go multi-region when" items={[
+  "Multiple availability zones in one region already meet your availability target; most outages are zonal, and multi-AZ is far simpler.",
+  "Your team can't test failover regularly; an untested standby is a hope, not a plan.",
+  "Your data model needs strong invariants everywhere and you can't afford cross-region write latency.",
+  "Users are concentrated near one region and the motivation is latency; a CDN and edge caching may be enough.",
+  "The doubled infrastructure and operational cost outweighs the cost of the rare regional outage."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Active-active means every region can write every record." right="Often it means every region serves traffic while each record has one home region. Multi-writer data is a separate, harder choice that brings conflicts." />
+
+<Misconception wrong="Last-writer-wins resolves conflicts, so concurrent writes are handled." right="LWW makes replicas converge by throwing one write away. With clock skew, it may even discard the later write. It is only safe where losing a concurrent update is acceptable." />
+
+<Misconception wrong="CRDTs make multi-region writes safe for any data." right="CRDTs guarantee replicas converge, not that business rules hold. A balance can still go negative; invariants need a single writer or consensus." />
+
+<Misconception wrong="GDPR requires all EU personal data to be stored in the EU." right="GDPR restricts transfers outside the EEA unless safeguards apply. Some other laws, and many customer contracts, do require in-country storage. Ask legal for the actual rule." />
+
+## Interview angle
+
+<InterviewAngle title="Multi-region" questions={[
+  "Design a payments service that survives the loss of a whole region with no lost transactions. What is the write latency?",
+  "Two regions both accept writes and the link between them drops for a minute. What happens to a counter, a username and a bank balance?",
+  "How would you serve EU users whose personal data must not leave the EU, in a product with a global social graph?",
+  "Your failover runbook relies on DNS with a 60-second TTL. Why does traffic still hit the dead region ten minutes later?",
+  "How much extra capacity does a three-region active-active deployment need?"
+]}>
+Multi-region comes up as a reliability or global-latency follow-up, and interviewers listen for whether you separate the two goals and quantify both. For zero data loss, say it requires synchronous replication to another region, then do the arithmetic: a majority commit pays at least the RTT to the nearest other region, so place leaders near writers and batch writes. For a partition: a CRDT counter merges cleanly; a username needs a single owner (or consensus) to stay unique; a balance needs a home region because LWW loses money and CRDTs can't stop overdrafts. For residency: home regions per jurisdiction, a global directory with no PII, and remember logs, backups and DR. For DNS failover: resolvers and clients cache beyond TTL and long-lived connections never re-resolve; anycast front doors or client-side retry to another endpoint shorten the tail. For capacity: with N regions surviving one loss, each runs at most (N − 1)/N, so three regions need 1.5× peak.
+</InterviewAngle>
+
+## Practice
+
+1. Three regions have assumed RTTs of 70 ms (A–B), 90 ms (A–C) and 140 ms (B–C). With a consensus leader in A and majority commit, what is the minimum commit latency? What if the leader moves to C? Where should a European-heavy workload's leader go if C is in Europe?
+2. An async replica lags by 800 ms at peak and the primary takes 4,000 writes a second. What is the RPO in writes? Propose a design that brings it to zero for the 5% of writes that are payments only.
+3. Design data placement for a SaaS product with customers in the EU, the US and India, where each customer's data must stay in their jurisdiction, but your company wants global usage dashboards. List every place personal data could leak across borders.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

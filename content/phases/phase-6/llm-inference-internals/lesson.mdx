@@ -1,0 +1,235 @@
+## Why it matters
+
+The LLM serving section showed that prefill is fast, decode is slow, and the KV cache decides how many requests fit. This section opens the box and shows *why*, from first principles, so you can predict a model's speed on hardware you have never benchmarked. Two numbers do most of the work: a model does about **2 floating-point operations per parameter per token**, and a GPU can do a few hundred floating-point operations in the time it takes to fetch one byte from its memory. Put those side by side and you can explain why a GPU with twice the compute barely speeds up chat, why batching is the only way to make decode efficient, and why the same prompt at temperature 0 can still produce two different answers. In 2025 Thinking Machines Lab traced that last effect to kernels whose arithmetic changes with batch size, which changes with server load.
+
+<Callout type="analogy" title="The library forklift and the speed-reader">
+Picture a reader who can read a thousand pages a second, sitting across the street from a library (the GPU's memory) that holds the model's entire rulebook. To answer anything, a forklift must drive the *whole library* across the street past the reader, every time. Prefill is a customer who arrives with 2,000 questions at once: one forklift trip, and the reader answers all 2,000 as the shelves roll past. Decode is a customer who asks one question, waits for the answer, then asks the next one that depends on it: one full forklift trip per question, while the reader sits idle 99% of the time. Batching is collecting 64 customers' next questions before each trip. And sampling is the reader writing down a ranked list of possible answers and rolling a dice to pick one. Where it breaks down: a real GPU streams weights through small on-chip caches while computing, so loading and reading overlap; and each customer also has a personal notebook (their KV cache) that must ride on the forklift too, which the analogy undersells.
+</Callout>
+
+## The transformer forward pass, end to end
+
+<DepthStamp depth="deep" />
+
+A <Term slug="forward-pass">forward pass</Term> is one run of the model from input token IDs to a score for every possible next token. For a decoder-only model such as Llama 2 7B (published config: 32 layers, hidden size 4,096, 32 attention heads of dimension 128, MLP width 11,008, vocabulary 32,000), it goes like this:
+
+1. **Embedding lookup.** Each token ID selects one row of a 32,000 × 4,096 table. This is a memory read, not a matrix multiply. The result, one 4,096-number vector per token, is the *residual stream* that every later layer reads from and adds to.
+2. **32 identical blocks.** Each block does:
+   - **Normalise** the residual (Llama uses RMSNorm).
+   - **Self-attention.** Multiply by three weight matrices to get a query, key and value per token per head. Llama applies rotary position embeddings (RoPE) to queries and keys, which is how the model knows token order. Each query is compared with the keys of every earlier token (a causal mask hides later ones), the scores go through a softmax, and the result weights the values. An output matrix mixes the heads back to 4,096 numbers, which are **added** to the residual. The keys and values computed here are what the KV cache stores.
+   - **Normalise again, then the MLP.** Llama's SwiGLU MLP uses three matrices: two project 4,096 → 11,008 (one is passed through a SiLU gate and multiplied element-wise with the other) and one projects back 11,008 → 4,096. The output is again added to the residual.
+3. **Final norm and the LM head.** A 4,096 × 32,000 matrix turns the last position's residual into 32,000 <Term slug="logits">logits</Term>: unnormalised scores, one per vocabulary token. Engines usually compute them only for the last position.
+4. **Sampling** turns logits into one chosen token, which is appended and fed back in as the next input.
+
+<Figure caption="FIG. 6.13 · ONE DECODE STEP THROUGH A DECODER-ONLY TRANSFORMER">
+  <Diagram label="Flowchart: a token ID is embedded into the residual stream, passes through 32 blocks of norm, attention (reading and appending to the KV cache) and MLP with residual adds, then a final norm and LM head produce logits, and a sampler picks the next token which loops back as input." chart={`flowchart LR
+    T[Token ID] --> E[Embedding row: 4,096 numbers]
+    E --> B1[Block 1: norm, attention, add, norm, MLP, add]
+    KV[(KV cache: keys and values of all earlier tokens)] <--> B1
+    B1 --> BN[Blocks 2 to 32: same shape]
+    KV <--> BN
+    BN --> H[Final norm and LM head]
+    H --> L[32,000 logits]
+    L --> S[Sampler]
+    S -->|next token| T`} />
+</Figure>
+
+### Where the parameters live
+
+Counting the matrices is worth doing once, because it tells you what the forward pass spends its time on:
+
+| Component | Shape per layer | Parameters per layer | × 32 layers |
+|---|---|---|---|
+| Attention Q, K, V, O | 4 × (4,096 × 4,096) | 67.1 M | 2.15 B |
+| MLP gate, up, down | 3 × (4,096 × 11,008) | 135.3 M | 4.33 B |
+| Embedding table | 32,000 × 4,096 | | 0.13 B |
+| LM head | 4,096 × 32,000 | | 0.13 B |
+| **Total** | | | **≈ 6.74 B** |
+
+Two thirds of the weights are in the MLPs, which is why mixture-of-experts models (below) replace the MLP, not the attention, with many smaller experts.
+
+## FLOPs per token and the roofline model
+
+<DepthStamp depth="deep" />
+
+A matrix-vector multiply with a weight matrix of W entries costs W multiplications and W additions: **2 FLOPs per weight per token**. Since nearly all parameters sit in matrices that every token passes through, a forward pass costs:
+
+```
+FLOPs per token ≈ 2 × parameters  +  attention term
+attention term  ≈ 4 × layers × context length × hidden size   (QKᵀ scores + weighting the values)
+```
+
+Kaplan et al. (2020, "Scaling Laws for Neural Language Models") derive the same 2N leading term. For Llama 2 7B: 2 × 6.74 B ≈ **13.5 GFLOPs per token**. The attention term at a 4,096-token context is 4 × 32 × 4,096 × 4,096 ≈ 2.1 GFLOPs, so attention arithmetic is about 14% at full context and negligible for short prompts.
+
+FLOPs alone do not predict speed. The question is whether the GPU spends its time computing or waiting for data. <Term slug="arithmetic-intensity">Arithmetic intensity</Term> is the number of FLOPs a kernel performs per byte it moves to or from memory. The <Term slug="roofline-model">roofline model</Term> (Williams, Waterman and Patterson, *Communications of the ACM*, 2009) says attainable throughput is:
+
+```
+attainable FLOP/s = min( peak FLOP/s,  memory bandwidth × arithmetic intensity )
+ridge point       = peak FLOP/s ÷ memory bandwidth      (FLOPs per byte)
+```
+
+Below the ridge a kernel is **memory-bandwidth-bound**; above it, **compute-bound**.
+
+**Labelled assumptions for this section:** a GPU with **1,000 TFLOP/s** of dense 16-bit matrix throughput and **3.35 TB/s** of HBM bandwidth. These are round numbers in the range of published datasheet peaks for current datacenter GPUs, not benchmarks; real kernels reach a fraction of peak. The ridge point is 1,000 × 10¹² ÷ 3.35 × 10¹² ≈ **300 FLOPs per byte**.
+
+Now the key derivation. In fp16 each weight is 2 bytes. If a pass processes T tokens together, each weight is read once and used for T multiply-adds:
+
+```
+intensity of the weight matmuls ≈ (2 × T FLOPs) ÷ (2 bytes) = T FLOPs per byte
+```
+
+So the number of tokens processed per pass *is* the arithmetic intensity. With T ≈ 300 the GPU crosses the ridge. That one line explains most of LLM inference performance.
+
+## Why prefill is compute-bound and decode is bandwidth-bound
+
+<DepthStamp depth="deep" />
+
+**Prefill** pushes all prompt tokens through in one pass, so T is the prompt length. A 2,000-token prompt has intensity ≈ 2,000, well past the ridge of 300. **Decode** at batch size B processes B tokens per pass (one per sequence), so intensity ≈ B. At B = 1 that is 1 FLOP per byte, three hundred times below the ridge.
+
+### Worked example: Llama 2 7B on the assumed GPU
+
+Weights are 6.74 B × 2 bytes ≈ **13.5 GB**. Llama 2 7B's KV cache is 512 KiB per token (from the LLM serving section). Each pass is bounded below by the larger of compute time and memory time.
+
+| Pass | FLOPs | Bytes moved | Compute time | Memory time | Bound | Result |
+|---|---|---|---|---|---|---|
+| Prefill, 2,000 tokens | 2,000 × 13.5 G + attention ≈ 2.8 × 10¹³ | 13.5 GB weights + 1 GB KV written | 28 ms | 4.3 ms | **Compute** | ≈ 28 ms at peak; ≈ 56 ms at an assumed 50% utilisation |
+| Decode, batch 1, 1,000-token context | 13.5 G | 13.5 GB + 0.5 GB KV read | 0.014 ms | 4.2 ms | **Memory** | ≤ 240 tokens/s |
+| Decode, batch 64, 1,000-token contexts | 64 × 13.5 G ≈ 0.86 T | 13.5 GB + 64 × 0.52 GB = 47 GB | 0.9 ms | 14 ms | **Memory** | 64 ÷ 14 ms ≈ 4,600 tokens/s total, ≈ 71 per user |
+
+Three lessons fall out of the table:
+
+1. **Decode at batch 1 uses about 0.3% of the GPU's compute** (0.014 ms of maths in a 4.2 ms step). A GPU with double the FLOP/s but the same memory bandwidth would generate tokens no faster. For chat latency, read the bandwidth line of the datasheet first.
+2. **Batching amortises the weight reads, but not the KV reads.** Going from batch 1 to batch 64 multiplied throughput by about 19, not 64, because every sequence's KV cache must still be read every step, and each cached value is used by only one sequence (intensity about 1, whatever the batch size). At batch 64 the KV cache is 71% of the bytes moved. This is why grouped-query attention, which shares one KV head across several query heads, matters so much: it raises attention's intensity and shrinks the bytes.
+3. **A prefill chunk of a few hundred tokens already saturates compute.** Since the crossover is around T ≈ 300 under these assumptions, splitting a long prompt into chunks of several hundred tokens (chunked prefill) costs little efficiency, and those chunks can share a pass with decode tokens that would otherwise leave compute idle.
+
+Speculative decoding (a later section) exploits exactly this slack: if a pass costs the same for 1 token or 5, check 5 guesses per pass.
+
+### Failure timeline: the faster GPU that wasn't faster
+
+A team serving a 7B chat model reads that a new GPU generation offers roughly 2× the FLOP/s of their current one, with about 1.2× the memory bandwidth (labelled, illustrative ratios). They budget for halving TPOT.
+
+| Day | Event | Observation |
+|---|---|---|
+| 1 | Benchmarks prefill on the new GPU | TTFT for 4k-token prompts drops about 45%: prefill is compute-bound, so it tracks FLOP/s |
+| 2 | Benchmarks decode at batch 8 | TPOT improves only about 15–20%: decode tracks bandwidth |
+| 3 | Capacity plan assumed 2× decode throughput per GPU | Plan is short by roughly 40% of the GPUs needed at the same TPOT target |
+| 8 | Fix | Re-plan on bytes per step; enable a quantized (8-bit) KV cache and weights to cut bytes moved; evaluate quality on their own evals before rollout |
+
+## Sampling: from logits to a token
+
+<DepthStamp depth="deep" />
+
+Logits become probabilities through a softmax with a <Term slug="temperature-sampling">temperature</Term> T:
+
+```
+p(token i) = exp(zᵢ / T) ÷ Σⱼ exp(zⱼ / T)
+```
+
+Low temperature sharpens the distribution; high temperature flattens it. As T approaches 0, all probability goes to the top logit, which is <Term slug="greedy-decoding">greedy decoding</Term> (always take the argmax). Most APIs treat temperature 0 as greedy.
+
+### Worked example: four candidate tokens
+
+Logits z = [4.0, 3.0, 2.0, 0.0] for tokens A, B, C, D.
+
+| Temperature | p(A) | p(B) | p(C) | p(D) |
+|---|---|---|---|---|
+| 0.5 | 0.867 | 0.117 | 0.016 | 0.0003 |
+| 1.0 | 0.657 | 0.242 | 0.089 | 0.012 |
+| 2.0 | 0.474 | 0.288 | 0.174 | 0.064 |
+
+(At T = 1: e⁴ = 54.6, e³ = 20.1, e² = 7.39, e⁰ = 1, which sum to 83.1; 54.6 ÷ 83.1 = 0.657, and so on.)
+
+Truncation then removes the long tail before the random draw:
+
+- <Term slug="top-k-sampling">Top-k sampling</Term> keeps the k most likely tokens and renormalises. With k = 2 at T = 1, A and B become 0.73 and 0.27.
+- <Term slug="top-p-sampling">Top-p (nucleus) sampling</Term> (Holtzman et al., "The Curious Case of Neural Text Degeneration", ICLR 2020) keeps the *smallest* set of tokens whose probabilities sum to at least p. With p = 0.9 at T = 1: A alone is 0.657, A + B is 0.899, still short of 0.9, so C joins (0.988). Three tokens survive. Unlike top-k, the set adapts to confidence.
+- <Term slug="logit-bias">Logit bias</Term> adds a fixed amount to chosen tokens' logits before the softmax. A large negative bias effectively bans a token; a positive one favours it. OpenAI's API, for example, accepts biases from −100 to 100 per token ID. It works on token IDs, so it is tokenizer-specific and blunt.
+
+Implementations typically apply penalties and logit bias first, then temperature, then top-k and top-p, then draw a random number. A **seed** fixes that random number generator so the draw is repeatable. Note what a seed does *not* fix: the logits themselves. If anything upstream changes the logits by even one bit, the same seed can pick a different token. OpenAI's API describes its seed parameter as best-effort for this reason.
+
+**Why the same prompt gives different answers.** At T > 0 each token is a random draw, and divergence compounds: every later token is conditioned on every earlier one, so one different choice at token 40 sends the remaining 400 tokens down a different path.
+
+## Why temperature 0 can still drift
+
+<DepthStamp depth="tradeoffs" />
+
+Greedy decoding has no randomness, yet production endpoints at temperature 0 often return different completions for the same prompt. Two mechanisms explain most of it.
+
+**1. Floating-point addition is not associative.** In floating point, (a + b) + c need not equal a + (b + c), because each addition rounds. A blunt example in 64-bit floats: (10²⁰ − 10²⁰) + 1 = 1, but 10²⁰ + (−10²⁰ + 1) = 0, because −10²⁰ + 1 rounds back to −10²⁰. In 16-bit formats rounding is far coarser, so summing the same numbers in a different order routinely changes the last bits of a result. Matrix multiplies, attention and normalisation are all large sums, and a GPU kernel chooses how to split and order them for speed.
+
+**2. Kernels that are not batch-invariant.** The common explanation is "GPUs run threads concurrently, so the order of additions is random". Thinking Machines Lab's 2025 post argues this is mostly not the cause for the forward pass: the kernels typically used are deterministic run to run *for the same input shapes*. The real culprit is that they lack <Term slug="batch-invariance">batch invariance</Term>: the reduction strategy changes with the batch size. A matmul library picks different tile sizes or splits the reduction dimension ("split-K") for small batches; attention kernels split the KV sequence differently depending on how many queries are in flight and whether prefill is chunked; normalisation may split a reduction when the batch is small. Different strategy, different addition order, different last bits. Your request's batch size depends on how many *other* users the server is handling at that moment, so from your point of view the numerics are nondeterministic. A one-bit change in a logit only matters when the top two candidates are nearly tied, but over hundreds of tokens a near-tie eventually occurs, and from there the completions diverge.
+
+The post reports an experiment: 1,000 completions of the same prompt at temperature 0 on a large open model served with vLLM produced 80 distinct completions; with batch-invariant kernels for matmul, attention and RMSNorm, all 1,000 were identical. The fix keeps the reduction order fixed regardless of batch size (for example, splitting attention's KV dimension into fixed-*size* chunks rather than a fixed *number* of chunks), at a throughput cost.
+
+**Mixture-of-experts adds a discrete amplifier.** A mixture-of-experts (MoE) model replaces each MLP with many expert MLPs and a router that sends each token to its top-k experts (Switch Transformer used k = 1, GShard k = 2). In a dense model, a tiny numerical difference stays tiny until it reaches the final argmax. In an MoE model, a tiny difference in router scores can flip which expert wins a near-tie, and then the token is processed by entirely different weights. Some MoE implementations also cap how many tokens an expert accepts per batch (a *capacity factor*, used in GShard and Switch Transformer training); with a cap, whether your token gets its preferred expert depends on which other tokens share the batch.
+
+Other sources: different GPU types, tensor-parallel degrees or library versions; prefix caching serving KV computed in a different batch shape; and speculative decoding's multi-token verify passes.
+
+### Failure timeline: the golden-output test that flaked at lunchtime
+
+A team runs 500 regression prompts at temperature 0 against their self-hosted endpoint and compares outputs to stored "golden" strings. (Illustrative scenario.)
+
+| Time | Event | Result |
+|---|---|---|
+| 02:00 | Nightly run, endpoint nearly idle (batch size 1–2) | 500 of 500 match |
+| 12:30 | Same suite rerun after a prompt change, during peak chat traffic (batch size 40–90) | 23 mismatches; the prompt change is blamed and reverted |
+| 12:50 | Reverted prompt rerun, still at peak | 19 mismatches: the revert did not help |
+| 13:30 | Engineer diffs outputs | Every mismatch shares a prefix and diverges at a single near-tied token, then differs completely |
+| 14:00 | Root cause | Batch-dependent kernels at peak load; prompt change was innocent |
+| Fix | | Compare with semantic or rubric-based evals instead of exact strings; pin a dedicated low-traffic replica for exact-match tests, or use batch-invariant kernels where the engine supports them and the throughput cost is acceptable |
+
+<TradeoffBox title="Inference internals choices" items={[
+  { gain: "Larger decode batch: amortises weight reads, raises tokens/s per GPU", cost: "KV bytes grow with every sequence, so per-user speed falls and returns diminish" },
+  { gain: "Chunked prefill of a few hundred tokens: keeps decode flowing alongside long prompts", cost: "Slightly more total work and scheduler complexity; TTFT for the long prompt rises" },
+  { gain: "Low temperature or greedy: repeatable, focused answers", cost: "Repetitive, less diverse text; still not bit-exact under batching" },
+  { gain: "Top-p truncation: adapts to how confident each step is", cost: "One more knob that interacts with temperature; hard to tune per task" },
+  { gain: "Batch-invariant kernels: bit-identical outputs whatever the load", cost: "Lower throughput; fixed reduction strategies cannot pick the fastest tiling for each shape" }
+]} />
+
+<NotWhenBox title="When not to lean on this" items={[
+  "Do not pick GPUs for chat latency on FLOP/s alone: decode follows memory bandwidth.",
+  "Do not build tests that require bit-identical temperature-0 output from a shared, batched endpoint.",
+  "Do not use logit bias as a safety filter: it acts on token IDs, and the same word has many tokenizations.",
+  "Do not trust roofline estimates as benchmarks: they are lower bounds on time; measure real kernels."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A GPU with twice the FLOP/s generates tokens twice as fast." right="Decode at practical batch sizes is bound by memory bandwidth (weights plus KV cache read every step). FLOP/s mainly speeds up prefill." />
+
+<Misconception wrong="Temperature 0 with a fixed seed guarantees identical output." right="A seed fixes the random draw, not the logits. Batch-size-dependent kernels and floating-point rounding can change the logits, and a near-tie then flips the argmax." />
+
+<Misconception wrong="Batching 64 requests gives 64 times the throughput." right="It amortises weight reads only. Each sequence's KV cache is still read every step, so returns diminish as KV bytes come to dominate." />
+
+<Misconception wrong="Nondeterminism comes from random thread scheduling on the GPU." right="Typical forward-pass kernels are deterministic for a given shape. The main cause is that their reduction order depends on batch size, which depends on server load." />
+
+## Interview angle
+
+<InterviewAngle title="LLM inference internals" questions={[
+  "Estimate the FLOPs to generate one token with a 70B dense model, and the minimum time per token at batch 1 on a GPU with 3.35 TB/s of bandwidth.",
+  "Why does decode get so little benefit from a GPU with more compute? What would help instead?",
+  "Explain arithmetic intensity and where prefill and decode sit on a roofline.",
+  "A customer says temperature 0 gives different answers on different days. Explain the possible causes and what you would offer them.",
+  "How do top-k and top-p differ, and when would you pick each?"
+]}>
+Strong answers start with 2 × parameters FLOPs per token and bytes per weight, then put both phases on the roofline: tokens per pass equals arithmetic intensity for the weight matmuls, the ridge sits at a few hundred FLOPs per byte, prefill is above it and decode is far below. For the 70B question: about 140 GFLOPs per token and 140 GB of fp16 weights, so at least 140 ÷ 3,350 ≈ 42 ms per token on one GPU if it fit, which it does not, so you would shard it, which is the next section. For nondeterminism, name floating-point non-associativity, batch-variant kernels and MoE routing, and offer practical mitigations rather than promising bit-exactness.
+</InterviewAngle>
+
+## Practice
+
+1. A model has 13 B parameters in fp16. On the assumed GPU (1,000 TFLOP/s, 3.35 TB/s), compute the decode step time at batch 1 and batch 32, ignoring the KV cache. At what batch size do the weight matmuls cross the ridge point?
+2. With logits [2.0, 1.5, 0.5, −1.0], compute the probabilities at T = 1 and T = 0.7, then find the tokens that survive top-p = 0.9 at T = 1.
+3. You must give a compliance team reproducible outputs from a self-hosted model. List three sources of drift and, for each, one mitigation and its cost.
+
+## Try it
+
+Load the 7B model on one GPU and watch the roofline: prefill lands on the compute roof, decode on the bandwidth slope. Raise the batch and see decode throughput climb far less than the batch size, because every sequence's KV cache must also be read.
+
+<Simulator id="llm-inference" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
