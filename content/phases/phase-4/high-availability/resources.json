@@ -1,0 +1,42 @@
+[
+  {
+    "id": "sre-embracing-risk",
+    "title": "Site Reliability Engineering, chapter 3: Embracing Risk",
+    "author": "Google (Beyer, Jones, Petoff and Murphy, eds.)",
+    "kind": "free-book",
+    "url": "https://sre.google/sre-book/embracing-risk/",
+    "why": "Time-based vs request-based availability, why each extra nine costs more, and how to choose a target.",
+    "topicIds": ["nines", "availability-math"],
+    "free": true
+  },
+  {
+    "id": "aws-reliability-pillar",
+    "title": "AWS Well-Architected Framework: Reliability Pillar",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/welcome.html",
+    "why": "AWS's own guidance on redundancy, multi-AZ and multi-region design, with availability calculations for dependencies.",
+    "topicIds": ["redundancy", "active-modes", "multi-az-region", "availability-math"],
+    "free": true
+  },
+  {
+    "id": "aws-regions-azs",
+    "title": "AWS Global Infrastructure: Regions and Availability Zones",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://aws.amazon.com/about-aws/global-infrastructure/regions_az/",
+    "why": "How AWS defines an availability zone and a region, including separation distances and latency between zones.",
+    "topicIds": ["multi-az-region"],
+    "free": true
+  },
+  {
+    "id": "aws-s3-2017-summary",
+    "title": "Summary of the Amazon S3 Service Disruption in the Northern Virginia (US-EAST-1) Region",
+    "author": "Amazon Web Services",
+    "kind": "blog",
+    "url": "https://aws.amazon.com/message/41926/",
+    "why": "A short, candid post-event summary: one mistyped command, a region-wide outage and hidden dependencies on the failed service.",
+    "topicIds": ["multi-az-region", "availability-math"],
+    "free": true
+  }
+]

@@ -1,0 +1,234 @@
+## Why it matters
+
+"Which happened first?" is the most innocent question in computing and one of the hardest to answer across machines. Every server has its own clock, and those clocks disagree. Cassandra resolves conflicting writes by timestamp, so a node whose clock runs fast can silently win arguments it should lose. Cloudflare published a post-mortem of New Year's Day 2017 in which the leap second made a time difference in its DNS software come out negative, and the resulting panics caused DNS resolution failures for some customers. And Google built atomic clocks and GPS receivers into its data centres so that Spanner could put a hard bound on clock error. This section explains why physical clocks cannot be trusted to order events, and the logical clocks (Lamport, vector, hybrid) that distributed systems use instead.
+
+<Callout type="analogy" title="Pen pals on islands with broken watches">
+Four pen pals live on four islands and every one of their watches is wrong by a different amount. Dating letters by watch time is useless: a reply can carry an earlier time than the letter it answers. So they adopt a rule: every letter carries a page number, and whenever you receive a letter you jump your own page counter past it before writing anything else. Now a reply always has a higher number than the letter it answers (a Lamport clock). Better still, each letter carries a little scoreboard, "I have read 3 of Ana's letters, 1 of Ben's, 0 of Cy's", so anyone can tell whether one letter's writer had seen another, or whether two were written in ignorance of each other (a vector clock).
+
+Where the analogy breaks: pen pals can phone a lighthouse for the real time occasionally, and so can servers (NTP). That helps, but the call itself takes an unknown time, so the answer is never exact.
+</Callout>
+
+## Physical clocks, skew and drift
+
+<DepthStamp depth="deep" />
+
+A server keeps time with a quartz crystal oscillator. Two terms matter:
+
+- <Term slug="clock-drift">Clock drift</Term> is the rate at which a clock gains or loses time relative to true time. Quartz drift depends on the crystal and on temperature.
+- <Term slug="clock-skew">Clock skew</Term> (or offset) is the difference between two clocks' readings at the same instant. Drift creates skew; synchronisation reduces it.
+
+Google's Spanner paper assumes a worst-case drift of 200 microseconds per second (200 parts per million) when computing its error bounds. The arithmetic shows why synchronisation must be frequent:
+
+| Time since last sync | Worst-case error at 200 ppm |
+|---|---|
+| 1 second | 0.2 ms |
+| 30 seconds | 200 × 10⁻⁶ × 30 s = 6 ms |
+| 1 hour | 200 × 10⁻⁶ × 3,600 s = 720 ms |
+| 1 day | 200 × 10⁻⁶ × 86,400 s ≈ 17 s |
+
+### Two kinds of clock
+
+Operating systems expose two different clocks, and confusing them is a classic bug:
+
+- The **time-of-day clock** (wall clock), such as `System.currentTimeMillis()` or `CLOCK_REALTIME`, returns the date and time. It can **jump**: forwards or backwards when synchronisation corrects it, and oddly around leap seconds.
+- The <Term slug="monotonic-clock">monotonic clock</Term>, such as `System.nanoTime()` or `CLOCK_MONOTONIC`, only ever moves forward. Its absolute value is meaningless, but differences between two readings on the same machine are reliable.
+
+Rule: **measure durations (timeouts, latency, lease length) with the monotonic clock; use wall-clock time only for display and for coarse cross-machine reasoning.** A timeout computed as the difference of two wall-clock readings can come out negative or huge when the clock steps, which is exactly the kind of bug Cloudflare described.
+
+Neither clock tells you the order of events **on different machines**. A monotonic clock is only comparable to itself, and wall clocks on two servers differ by their skew.
+
+## What NTP can and cannot do
+
+<DepthStamp depth="tradeoffs" />
+
+The <Term slug="ntp">Network Time Protocol (NTP)</Term> synchronises a machine's clock with time servers. A client sends a request at its local time t0, the server stamps receipt t1 and reply t2, and the client receives the reply at t3. It estimates:
+
+- round-trip delay = (t3 − t0) − (t2 − t1)
+- offset = ((t1 − t0) + (t2 − t3)) / 2
+
+The offset formula **assumes the outbound and return trips take equal time.** If the request takes 5 ms and the reply takes 45 ms, the estimate is off by half the asymmetry, (45 − 5) / 2 = 20 ms, and NTP has no way to know. So NTP's accuracy is bounded by network delay and its variability: commonly within a few milliseconds on a good local network, and often tens of milliseconds over the public internet. Precision Time Protocol (PTP), with hardware timestamping in network cards, can reach microseconds inside a data centre; cloud providers now offer such services.
+
+What NTP does when it finds an error also matters:
+
+- Small offsets are **slewed**: the clock runs slightly fast or slow until it catches up, so time stays monotonic but is wrong for a while.
+- Large offsets are **stepped**: the clock jumps, possibly backwards. In the reference ntpd implementation, offsets over 128 ms are stepped by default.
+
+And NTP fails quietly. A firewall change that blocks UDP port 123, a misconfigured time server, or a virtual machine paused for live migration can leave a clock drifting for hours with nothing on fire. If you rely on timestamps, **monitor clock offset** like any other metric.
+
+The judgement call: NTP is good enough for log timestamps, certificate expiry, cache TTLs and "roughly when" questions. It is **not** good enough to decide which of two writes, a few milliseconds apart on different machines, came first.
+
+## Lamport clocks
+
+<DepthStamp depth="deep" />
+
+In his 1978 paper "Time, Clocks, and the Ordering of Events in a Distributed System", Leslie Lamport defined the <Term slug="happens-before">happens-before</Term> relation, written a → b:
+
+1. If a and b happen in the same process and a comes first, then a → b.
+2. If a is sending a message and b is receiving that message, then a → b.
+3. If a → b and b → c, then a → c.
+
+If neither a → b nor b → a, the events are **concurrent**: neither could have influenced the other. Happens-before is about potential causality, not wall-clock time.
+
+A <Term slug="lamport-clock">Lamport clock</Term> is a single counter per process:
+
+- Before each local event or send, increment the counter. Attach it to outgoing messages.
+- On receiving a message with timestamp t, set the counter to max(counter, t) + 1.
+
+<Figure caption="FIG. 5.1 · LAMPORT TIMESTAMPS ACROSS THREE PROCESSES">
+  <Diagram label="Sequence: P1 at counter 1 sends to P2. P2 had counter 0, receives and sets counter to max(0,1)+1 = 2. P2 does a local event at 3 and sends to P3. P3 had a local event at 1, receives and sets max(1,3)+1 = 4. Separately P1 does a local event at 2, which is concurrent with P2's events." chart={`sequenceDiagram
+    participant P1
+    participant P2
+    participant P3
+    Note over P1: event a, L=1
+    P1->>P2: send a (L=1)
+    Note over P3: event x, L=1
+    Note over P2: receive a, L=max(0,1)+1=2
+    Note over P2: event b, L=3
+    P2->>P3: send b (L=3)
+    Note over P1: event c, L=2
+    Note over P3: receive b, L=max(1,3)+1=4`} />
+</Figure>
+
+*Lamport timestamps: every causal chain increases, but P1's event c (L=2) and P3's event x (L=1) are concurrent despite different numbers.*
+
+The guarantee goes **one way only**:
+
+- If a → b, then L(a) is lower than L(b). (Causality is never contradicted.)
+- If L(a) is lower than L(b), you **cannot** conclude a → b. They may be concurrent.
+
+Breaking ties by process ID, ordering by the pair (counter, process ID), gives a **total order** that every node can compute identically and that respects causality. Lamport used this to build a mutual-exclusion algorithm, and the same idea, a logical number that only ever increases, reappears as Raft terms, Kafka's leader epochs and fencing tokens.
+
+What a Lamport clock does **not** give you: any way to detect concurrency, and any relation to real time. If a user writes on server A and then, after phoning a friend, the friend writes on server B, there was no message between the servers, so the friend's write may get the lower timestamp. Lamport called such outside channels "anomalous behaviour" and noted that only physical clocks can rule it out.
+
+## Vector clocks
+
+<DepthStamp depth="deep" />
+
+To **detect** concurrency, each event needs to carry what it has seen from everyone. A <Term slug="vector-clock">vector clock</Term>, introduced independently by Colin Fidge and Friedemann Mattern in 1988, is an array with one counter per process:
+
+- Before each local event or send, process i increments its own entry V[i].
+- On receive, take the element-wise maximum of the local and received vectors, then increment your own entry.
+
+Comparing two vectors V and W:
+
+- V ≤ W if every entry of V is ≤ the matching entry of W.
+- V → W (V happened before W) if V ≤ W and they differ.
+- If neither V ≤ W nor W ≤ V, the events are **concurrent**.
+
+Unlike Lamport clocks, this works in both directions: a → b **if and only if** V(a) is less than V(b) in this element-wise sense.
+
+### Worked example: three replicas
+
+Replicas A, B and C store a user's profile. Vectors are written [A, B, C].
+
+| Step | Event | Vector |
+|---|---|---|
+| 1 | A writes name = "Sam" | [1, 0, 0] |
+| 2 | B receives A's write | [1, 0, 0] stored |
+| 3 | B writes bio = "Hi" | [1, 1, 0] |
+| 4 | Meanwhile C, which has not seen anything, writes name = "Sammy" | [0, 0, 1] |
+
+Compare step 3 with step 1: [1, 0, 0] ≤ [1, 1, 0], so B's write happened after A's and can safely replace it. Compare step 3 with step 4: neither [1, 1, 0] ≤ [0, 0, 1] nor the reverse, so the writes are **concurrent**. The system must keep both versions (or merge them) instead of silently picking one. A merged write would carry [1, 1, 1] and supersede both.
+
+### The cost
+
+A vector has one entry per participant. With 3 replicas that is trivial; with millions of clients it is not. Dynamo-style stores therefore keep one entry per **server** coordinating the write, and Amazon's Dynamo paper describes truncating the oldest entry once a vector grows past a threshold (10 in their example), accepting that this can occasionally make causally ordered versions look concurrent. Riak later moved to dotted version vectors, a refinement that avoids false conflicts when many clients write through the same server.
+
+## Detecting and resolving concurrent updates
+
+<DepthStamp depth="tradeoffs" />
+
+There are two broad strategies when two writes to the same key collide.
+
+**Last-write-wins (LWW).** Attach a timestamp to each write and keep the highest. Cassandra does this per column, using a timestamp normally supplied by the coordinator or client. It is simple and needs no extra metadata, but it **discards** one write, and if the timestamps come from skewed clocks, it can discard the **newer** one.
+
+### Failure story: clock skew reorders writes under LWW
+
+Server S1's clock is 120 ms ahead of true time; S2's is accurate. A user changes their shipping address twice, 50 ms apart (a double-submit from a retrying mobile client), and two different app servers handle the requests.
+
+| True time | Event | Timestamp written |
+|---|---|---|
+| 10:00:00.000 | Request 1 hits S1: address = "Old Street" | 10:00:00.120 (S1 is 120 ms fast) |
+| 10:00:00.050 | Request 2 hits S2: address = "New Road" | 10:00:00.050 |
+| 10:00:00.060 | Replicas compare: 00.120 beats 00.050 | "Old Street" wins |
+| Next day | Parcel ships to Old Street | No error was ever logged |
+
+Any write within 120 ms after S1's write, from any server with an accurate clock, would be lost the same way. Nothing crashes; data just quietly disappears. Mitigations: route all writes for one key through one node (one clock, or better a sequence number), use conditional writes (compare-and-swap on a version), or detect concurrency instead of guessing.
+
+**Detect and keep siblings.** Use version vectors so the store can tell "newer" from "concurrent". When writes are concurrent, keep both as siblings and let the next reader or the application merge them. Riak (with sibling support enabled) returns all siblings to the client on read. Amazon's Dynamo paper describes the shopping-cart case: merging carts by union never loses an added item, but a **deleted** item can reappear, because a union cannot tell "removed" from "never added".
+
+**Merge automatically.** <Term slug="crdt">CRDTs</Term> (conflict-free replicated data types) are data structures, such as counters, sets and sequences for text, designed so that concurrent updates always merge to the same result whatever order replicas receive them in. They are how many collaborative editors avoid conflicts, at the cost of more metadata and a restricted set of operations.
+
+| Strategy | Detects concurrency? | Loses writes? | Who resolves |
+|---|---|---|---|
+| LWW with wall clocks | No | Yes, silently, possibly the newer one | Nobody |
+| Version vectors + siblings | Yes | No | Application on read |
+| CRDTs | Yes, merged automatically | No (by design of the type) | The data type |
+| Single leader per key | Avoids concurrency | No | Ordering at the leader |
+
+## Hybrid logical clocks and TrueTime
+
+<DepthStamp depth="awareness" />
+
+Logical clocks capture causality but say nothing about real time; physical clocks track real time but break causality. Two production techniques combine them.
+
+A <Term slug="hybrid-logical-clock">hybrid logical clock (HLC)</Term>, described by Kulkarni, Demirbas and colleagues in 2014, is a timestamp made of a physical part and a small logical counter. The physical part is the maximum of the local wall clock and any timestamp received; the counter breaks ties when the physical part has not advanced. HLC timestamps stay close to wall-clock time (so "as of 10:00" queries make sense), never go backwards, and respect happens-before like a Lamport clock. CockroachDB and YugabyteDB use HLCs. CockroachDB also enforces a configured maximum clock offset between nodes: a read that finds a value with a timestamp just above its own, inside that uncertainty window, cannot tell whether that value happened first, so the transaction restarts at a higher timestamp.
+
+**TrueTime** is Google Spanner's clock API. Instead of a single time, `TT.now()` returns an interval [earliest, latest] guaranteed to contain true time. Each data centre has time masters with GPS receivers and atomic clocks, and the uncertainty ε (half the interval) was typically between about 1 and 7 ms in the Spanner paper. Spanner then uses **commit wait**: after choosing a commit timestamp s, the leader waits until `TT.now().earliest` is past s before making the commit visible. Any transaction that starts afterwards must get a larger timestamp, so timestamp order matches real-time order (external consistency). The cost is visible: on average about 2ε of waiting per write, which is why Google invested in shrinking ε.
+
+<Callout type="tip" title="The staff-engineer question">
+Before adding any clock-based ordering, ask: what is the maximum skew, who monitors it, and what happens to correctness, not just latency, when it is exceeded? Spanner waits out its bound and CockroachDB restarts transactions inside its bound. LWW with plain NTP has no bound at all.
+</Callout>
+
+<TradeoffBox title="Ordering tools" items={[
+  { gain: "Wall clocks: free, human-readable, close to real time", cost: "Skew and jumps; cannot order nearby events across machines" },
+  { gain: "Lamport clocks: one integer, total order consistent with causality", cost: "Cannot detect concurrency; unrelated to real time" },
+  { gain: "Vector clocks: detect concurrency exactly", cost: "One entry per participant; siblings push merging onto the application" },
+  { gain: "HLC: causal order that stays near real time", cost: "Still needs a bounded clock offset; uncertainty causes restarts" },
+  { gain: "TrueTime: real-time order with a hard error bound", cost: "Special hardware, and every write waits out the uncertainty" }
+]} />
+
+<NotWhenBox title="When not to trust timestamps" items={[
+  "Resolving conflicting writes from different servers with last-write-wins on NTP time, unless losing a write is acceptable.",
+  "Measuring timeouts or lease lengths with the wall clock: use the monotonic clock.",
+  "Ordering events across machines for correctness, such as which bid won: use a sequencer, a single leader or logical clocks.",
+  "Assuming NTP is working because nothing has alerted: monitor clock offset."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="With NTP, server clocks are accurate enough to order writes." right="NTP error is bounded by network delay asymmetry: often milliseconds, sometimes far more, and clocks can step backwards. Writes milliseconds apart cannot be ordered by timestamps from different machines." />
+
+<Misconception wrong="If Lamport timestamp L(a) is lower than L(b), a happened before b." right="Only the converse holds: a → b implies L(a) is lower. Lower timestamps can belong to concurrent events. Vector clocks are needed to tell the difference." />
+
+<Misconception wrong="Last-write-wins keeps the most recent write." right="It keeps the write with the highest timestamp. With skewed clocks that can be the older write, and the loss is silent." />
+
+<Misconception wrong="Vector clocks resolve conflicts." right="They only detect them. Something else, the application, a merge function or a CRDT, must decide the result." />
+
+## Interview angle
+
+<InterviewAngle title="Time and ordering" questions={[
+  "Two users update the same document on different replicas at nearly the same time. How does your system decide what is stored?",
+  "Why not just use timestamps to order events?",
+  "What is the difference between a Lamport clock and a vector clock?",
+  "How does Spanner get externally consistent transactions, and what does it cost?",
+  "Your lease uses System.currentTimeMillis() to check expiry. What could go wrong?"
+]}>
+Lead with the core fact: there is no global clock, and skew between machines is real and unbounded unless you bound it. Then pick the tool for the question: monotonic clocks for durations, a single sequencer or leader when you need one order, Lamport clocks for a cheap causal total order, vector clocks when you must detect concurrent writes, and HLC or TrueTime when you need ordering close to real time. Name the LWW failure explicitly with numbers.
+
+The usual follow-up is "so how would you resolve the conflict once you detect it?" The strong answer depends on the data: merge sets by union (and know that deletes then need tombstones), use a CRDT for counters and collaborative text, surface both versions to the user for things like calendar edits, or avoid the conflict by routing each key's writes through one owner.
+</InterviewAngle>
+
+## Practice
+
+1. A clock drifts at 50 ppm and syncs every 64 seconds. What is its worst-case error just before a sync? How often must it sync to stay within 1 ms?
+2. Processes P and Q start with vectors [0, 0]. P writes, sends to Q, then writes again. Q writes once before and once after receiving. Write every vector and say which pairs of events are concurrent.
+3. Your team uses Cassandra with last-write-wins for a shopping cart. Describe how a user could lose an item, and propose two designs that would not.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

@@ -1,0 +1,20 @@
+{
+  "id": "p4-time-ordering",
+  "phase": 4,
+  "slug": "time-ordering",
+  "title": "Time, Clocks and Ordering",
+  "order": 5,
+  "week": 9,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "clock-skew", "title": "Physical clocks, skew and drift", "depth": "deep" },
+    { "id": "ntp-limits", "title": "What NTP can and cannot do", "depth": "tradeoffs" },
+    { "id": "lamport-clocks", "title": "Lamport clocks", "depth": "deep" },
+    { "id": "vector-clocks", "title": "Vector clocks", "depth": "deep" },
+    { "id": "concurrent-updates", "title": "Detecting and resolving concurrent updates", "depth": "tradeoffs" },
+    { "id": "hlc-truetime", "title": "Hybrid logical clocks and TrueTime", "depth": "awareness" }
+  ],
+  "simulatorIds": ["clocks"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p4-consistency-models", "p2-replication"]
+}

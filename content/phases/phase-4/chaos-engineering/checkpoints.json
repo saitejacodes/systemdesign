@@ -1,0 +1,7 @@
+[
+  { "id": "chaos-engineering-c1", "text": "I can explain the five principles of chaos engineering and how an experiment differs from a test or from randomly breaking things.", "topicId": "chaos-principles" },
+  { "id": "chaos-engineering-c2", "text": "I can limit an experiment's blast radius on traffic, scope and time, and write stop conditions that guard every bound in the hypothesis.", "topicId": "chaos-principles" },
+  { "id": "chaos-engineering-c3", "text": "I can write a falsifiable steady-state hypothesis with a business-level metric, an exact fault and a numeric tolerance.", "topicId": "steady-state-hypothesis" },
+  { "id": "chaos-engineering-c4", "text": "I can design a control-versus-experiment comparison and compute the user impact an experiment will cost.", "topicId": "steady-state-hypothesis" },
+  { "id": "chaos-engineering-c5", "text": "I can plan a game day with a scenario, roles, stop conditions and a blameless review, and say what it tests that automation does not.", "topicId": "game-days" }
+]

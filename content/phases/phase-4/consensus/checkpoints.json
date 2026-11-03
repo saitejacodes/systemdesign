@@ -1,0 +1,8 @@
+[
+  { "id": "consensus-c1", "text": "I can explain why consensus needs a majority and size a cluster for a given number of tolerated failures.", "topicId": "why-consensus" },
+  { "id": "consensus-c2", "text": "I can walk through a Raft leader election step by step, including terms, votes and split votes.", "topicId": "raft-election" },
+  { "id": "consensus-c3", "text": "I can explain when a Raft entry is committed and estimate commit latency from follower round trips.", "topicId": "raft-log" },
+  { "id": "consensus-c4", "text": "I can explain how the election restriction keeps committed entries safe and why leaders must confirm leadership before reads.", "topicId": "raft-safety" },
+  { "id": "consensus-c5", "text": "I can describe Paxos's two phases and how Multi-Paxos relates to Raft.", "topicId": "paxos" },
+  { "id": "consensus-c6", "text": "I can design leader election or a lock on etcd or ZooKeeper and say what data does not belong there.", "topicId": "coordination-services" }
+]

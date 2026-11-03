@@ -1,0 +1,18 @@
+[
+  { "id": "time-ordering-f1", "front": "Clock drift vs clock skew?", "back": "Drift: the rate a clock gains or loses time. Skew: the difference between two clocks at one instant. Drift causes skew.", "topicId": "clock-skew" },
+  { "id": "time-ordering-f2", "front": "Worst-case error at 200 ppm after 30 s without sync?", "back": "200 × 10⁻⁶ × 30 s = 6 ms. After a day: about 17 s.", "topicId": "clock-skew" },
+  { "id": "time-ordering-f3", "front": "Wall clock vs monotonic clock?", "back": "Wall clock: date and time, can jump backwards. Monotonic: only moves forward, use it for durations, timeouts and leases on one machine.", "topicId": "clock-skew" },
+  { "id": "time-ordering-f4", "front": "What limits NTP accuracy?", "back": "It assumes symmetric network paths. Asymmetric delay causes an error of half the asymmetry, undetectable from one exchange.", "topicId": "ntp-limits" },
+  { "id": "time-ordering-f5", "front": "NTP slew vs step?", "back": "Slew: run slightly fast or slow to correct small offsets (stays monotonic). Step: jump the clock, possibly backwards, for large offsets.", "topicId": "ntp-limits" },
+  { "id": "time-ordering-f6", "front": "Happens-before (a → b)?", "back": "Same process and a first; or a is a send and b its receive; or transitively through other events. Otherwise a and b are concurrent.", "topicId": "lamport-clocks" },
+  { "id": "time-ordering-f7", "front": "Lamport clock rules?", "back": "Increment before each event or send. On receive: counter = max(counter, received) + 1.", "topicId": "lamport-clocks" },
+  { "id": "time-ordering-f8", "front": "Lamport clock guarantee, precisely?", "back": "a → b implies L(a) is lower than L(b). The converse does not hold: lower timestamps may be concurrent.", "topicId": "lamport-clocks" },
+  { "id": "time-ordering-f9", "front": "How to get a total order from Lamport clocks?", "back": "Order by (counter, process ID). Consistent with causality and identical on every node.", "topicId": "lamport-clocks" },
+  { "id": "time-ordering-f10", "front": "Vector clock rules?", "back": "Increment your own entry on each event. On receive: element-wise max with the incoming vector, then increment your own entry.", "topicId": "vector-clocks" },
+  { "id": "time-ordering-f11", "front": "When are two vector clocks concurrent?", "back": "When neither is ≤ the other in every entry, e.g. [2,1,0] vs [1,1,1].", "topicId": "vector-clocks" },
+  { "id": "time-ordering-f12", "front": "Main cost of vector clocks?", "back": "One entry per participant, so they grow with writers. Dynamo truncated old entries; Riak moved to dotted version vectors.", "topicId": "vector-clocks" },
+  { "id": "time-ordering-f13", "front": "How does LWW lose the newer write?", "back": "A server with a fast clock stamps an older write with a later time, so it beats genuinely newer writes. Silently.", "topicId": "concurrent-updates" },
+  { "id": "time-ordering-f14", "front": "Three ways to handle concurrent writes without LWW?", "back": "Keep siblings via version vectors and merge on read; use CRDTs; route each key's writes through one owner.", "topicId": "concurrent-updates" },
+  { "id": "time-ordering-f15", "front": "Hybrid logical clock?", "back": "Physical time plus a logical counter: stays near wall-clock time, never goes backwards, respects causality. Used by CockroachDB.", "topicId": "hlc-truetime" },
+  { "id": "time-ordering-f16", "front": "TrueTime and commit wait?", "back": "TT.now() returns an interval of uncertainty ε. Spanner waits until the commit timestamp is surely past (about 2ε) before exposing a commit.", "topicId": "hlc-truetime" }
+]

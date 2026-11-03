@@ -1,0 +1,19 @@
+{
+  "id": "p4-disaster-recovery",
+  "phase": 4,
+  "slug": "disaster-recovery",
+  "title": "Disaster Recovery",
+  "order": 14,
+  "week": 10,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "rpo-rto", "title": "RPO and RTO", "depth": "deep" },
+    { "id": "backup-strategies", "title": "Backup strategies", "depth": "deep" },
+    { "id": "backup-vs-replication", "title": "Backup versus replication", "depth": "deep" },
+    { "id": "dr-tiers", "title": "DR tiers", "depth": "deep" },
+    { "id": "failover-practice", "title": "Practicing failover", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["availability-calculator"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p4-high-availability", "p4-fault-tolerance", "p2-replication"]
+}

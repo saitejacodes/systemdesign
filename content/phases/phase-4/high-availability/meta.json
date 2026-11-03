@@ -1,0 +1,19 @@
+{
+  "id": "p4-high-availability",
+  "phase": 4,
+  "slug": "high-availability",
+  "title": "High Availability",
+  "order": 9,
+  "week": 10,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "nines", "title": "Availability and the nines", "depth": "deep" },
+    { "id": "redundancy", "title": "Redundancy", "depth": "deep" },
+    { "id": "active-modes", "title": "Active-active vs active-passive", "depth": "deep" },
+    { "id": "multi-az-region", "title": "Multi-AZ and multi-region", "depth": "tradeoffs" },
+    { "id": "availability-math", "title": "Availability math", "depth": "deep" }
+  ],
+  "simulatorIds": ["availability-calculator"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-load-balancers", "p1-scaling", "p2-replication"]
+}

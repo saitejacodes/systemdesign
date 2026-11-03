@@ -1,0 +1,173 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "In two-phase commit, at what moment is the transaction actually committed?",
+    "options": [
+      { "id": "a", "text": "When the last participant votes YES during the prepare phase" },
+      { "id": "b", "text": "When the coordinator durably logs its COMMIT decision" },
+      { "id": "c", "text": "When every participant has acknowledged the COMMIT message" },
+      { "id": "d", "text": "When the first participant applies the commit and drops its locks" }
+    ],
+    "correct": ["b"],
+    "explanation": "The coordinator's durable decision record is the commit point: after it, the outcome is fixed and the coordinator retries until every participant commits. All YES votes only make commit possible (the coordinator could still crash before deciding and later abort). Acknowledgements and participants applying the commit happen after the decision and don't change it.",
+    "topicId": "two-phase-commit",
+    "difficulty": 2
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "What does a participant give up when it votes YES in 2PC?",
+    "options": [
+      { "id": "a", "text": "Its right to abort on its own; it must commit if told to, even after a crash" },
+      { "id": "b", "text": "Its locks, which it releases so other transactions can proceed meanwhile" },
+      { "id": "c", "text": "Its write-ahead log, which is handed over to the coordinator for replay" },
+      { "id": "d", "text": "Nothing yet; it can still abort freely until the COMMIT message arrives" }
+    ],
+    "correct": ["a"],
+    "explanation": "A YES vote is a promise to commit, so the participant has made its changes durable and must keep its locks until it learns the decision. Releasing locks would break isolation, the log stays with the participant, and being able to abort after YES would let one side commit while the other aborts.",
+    "topicId": "two-phase-commit",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "scenario",
+    "prompt": "What can the participants safely do?",
+    "scenario": "Two participants both voted YES on transaction 77. The coordinator then crashed, and nobody knows whether it logged a decision. The participants can reach each other but not the coordinator.",
+    "options": [
+      { "id": "a", "text": "Abort after a timeout, since an unacknowledged transaction is treated as failed" },
+      { "id": "b", "text": "Commit, because both voted YES and so the coordinator must have chosen COMMIT" },
+      { "id": "c", "text": "Wait holding their locks until the coordinator's decision can be recovered" },
+      { "id": "d", "text": "Elect one of themselves as new coordinator and let it make a fresh decision" }
+    ],
+    "correct": ["c"],
+    "explanation": "Since both voted YES and neither received a decision, only the coordinator knows: it may have logged COMMIT (and told nobody yet) or crashed before deciding (and will abort on recovery). Aborting or committing unilaterally could contradict its logged decision. A fresh election doesn't help, because the new coordinator can't know what the old one logged; that's why fixes replicate the decision log with consensus.",
+    "topicId": "coordinator-failure",
+    "difficulty": 3
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "What is the most effective fix?",
+    "scenario": "A team runs 2PC between two databases with a single coordinator process. Twice this quarter, the coordinator host died mid-transaction, and checkout rows stayed locked for 20 minutes until it was rebuilt.",
+    "options": [
+      { "id": "a", "text": "Switch to three-phase commit, which removes blocking on any real network" },
+      { "id": "b", "text": "Shorten participant lock timeouts so in-doubt rows are aborted in seconds" },
+      { "id": "c", "text": "Replicate the coordinator's decision log with consensus so a new one can finish" },
+      { "id": "d", "text": "Add a second coordinator that independently decides whenever the first is slow" }
+    ],
+    "correct": ["c"],
+    "explanation": "If the decision log is replicated (as Spanner does with Paxos groups), a replacement coordinator reads the decision and completes the transaction quickly. 3PC only avoids blocking under bounded delays, which real networks don't promise. Aborting in-doubt transactions on a timeout can contradict a logged COMMIT and break atomicity. Two independent coordinators could decide differently, which is split brain for transactions.",
+    "topicId": "coordinator-failure",
+    "difficulty": 3
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "2PC across two databases adds about 8 ms of lock holding to each transaction that touches a hot row. Roughly how many such transactions per second can update that row?",
+    "options": [
+      { "id": "a", "text": "About 8" },
+      { "id": "b", "text": "About 125" },
+      { "id": "c", "text": "About 500" },
+      { "id": "d", "text": "About 8,000" }
+    ],
+    "correct": ["b"],
+    "explanation": "Each transaction holds the row's lock for about 8 ms, so they run one after another: 1,000 ms / 8 ms ≈ 125 per second. 8 confuses the hold time with the rate, 500 would need a 2 ms hold (a single local commit), and 8,000 multiplies instead of dividing.",
+    "topicId": "two-phase-commit",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "single",
+    "prompt": "Which property does a saga NOT provide?",
+    "options": [
+      { "id": "a", "text": "Isolation: other requests can see intermediate states between steps" },
+      { "id": "b", "text": "Durability: each completed step survives crashes once it commits" },
+      { "id": "c", "text": "Eventual atomicity: all steps complete, or completed ones are undone" },
+      { "id": "d", "text": "Local consistency: each step is an ACID transaction in its service" }
+    ],
+    "correct": ["a"],
+    "explanation": "Each saga step commits immediately in its own service, so its effects are visible to others before the saga finishes: there is no isolation. Durability, eventual all-or-compensated atomicity and local ACID per step are exactly what sagas do provide.",
+    "topicId": "sagas",
+    "difficulty": 1
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "prompt": "What is the design flaw?",
+    "scenario": "An order saga runs: create order, send 'Order confirmed' email, reserve stock, charge card. When cards are declined, compensations release stock and cancel the order, but customers complain about confirmation emails for orders they never got.",
+    "options": [
+      { "id": "a", "text": "Compensations ran in the wrong order and should release stock before cancelling" },
+      { "id": "b", "text": "An irreversible step sits before the pivot; send the email after the charge" },
+      { "id": "c", "text": "Email delivery should join a 2PC transaction with the database so it rolls back" },
+      { "id": "d", "text": "The email step needs an idempotency key so it isn't sent more than once per order" }
+    ],
+    "correct": ["b"],
+    "explanation": "An email can't be unsent, so it must come after the pivot (the card charge), where steps only move forward. Compensation order isn't the cause. An email system can't prepare or roll back, so 2PC is impossible. Idempotency prevents duplicate emails but not a wrong one.",
+    "topicId": "sagas",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "multi",
+    "prompt": "Which are requirements for saga compensations? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "They must be idempotent" },
+      { "id": "b", "text": "They must be safe to retry" },
+      { "id": "c", "text": "They must restore exact bytes" },
+      { "id": "d", "text": "They must run inside 2PC" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "Compensations are triggered by messages that may be redelivered and may fail transiently, so they must be idempotent and retried until they succeed. They undo semantically (a refund, a cancellation), not by restoring the exact prior bytes, and the whole point of a saga is to avoid 2PC.",
+    "topicId": "sagas",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "scenario",
+    "prompt": "Which approach fits best?",
+    "scenario": "A loan application flow has nine steps across six services, with compensations for four of them. Support staff regularly need to answer 'where is application 3381 stuck, and why?'",
+    "options": [
+      { "id": "a", "text": "Choreography, since services that only share events stay the least coupled" },
+      { "id": "b", "text": "Orchestration with durable state, e.g. Temporal or AWS Step Functions" },
+      { "id": "c", "text": "A single 2PC transaction across all six services' databases at once" },
+      { "id": "d", "text": "Choreography plus nightly batch jobs that compensate anything left over" }
+    ],
+    "correct": ["b"],
+    "explanation": "A long flow with compensations and a need to inspect each instance's progress is the textbook case for orchestration: the orchestrator's durable state answers 'where is it?' directly. Choreography spreads the flow across handlers, making that question hard, and nightly clean-up leaves applications stuck for hours. 2PC across six services would hold locks across many steps and block on coordinator failure.",
+    "topicId": "saga-coordination",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "scenario",
+    "prompt": "What most likely went wrong?",
+    "scenario": "In a choreographed saga, the order service commits an order and then publishes OrderCreated to Kafka. After a deploy, a handful of orders are stuck in PENDING, and the payment service has no record of them.",
+    "options": [
+      { "id": "a", "text": "Kafka lost the messages; switch to a broker that offers exactly-once delivery" },
+      { "id": "b", "text": "The service crashed between commit and publish; use a transactional outbox" },
+      { "id": "c", "text": "The payment service handled them twice; add idempotency keys to its handler" },
+      { "id": "d", "text": "The saga needs 2PC between the order database and Kafka to be consistent" }
+    ],
+    "correct": ["b"],
+    "explanation": "A restart during deploy between the database commit and the publish loses the event, and the saga never advances. Writing the event to an outbox table in the same transaction, then relaying it, closes the gap. Blaming the broker misses the dual-write gap, duplicates would produce extra payments rather than none, and 2PC with Kafka isn't how this is solved in practice.",
+    "topicId": "saga-coordination",
+    "difficulty": 3
+  },
+  {
+    "id": "q11",
+    "type": "scenario",
+    "prompt": "What should you do first?",
+    "scenario": "Every time a wallet transfer happens, the 'balances' service and the 'ledger' service must both update, and the business forbids any moment where money appears in one but not the other. They are separate services with separate databases.",
+    "options": [
+      { "id": "a", "text": "Write a saga with a refund compensation if the ledger step happens to fail" },
+      { "id": "b", "text": "Put balances and ledger entries in one database and one local transaction" },
+      { "id": "c", "text": "Use choreography with an outbox so both services update within seconds" },
+      { "id": "d", "text": "Run nightly reconciliation that compares and repairs both services' data" }
+    ],
+    "correct": ["b"],
+    "explanation": "The requirement forbids intermediate states, which means it needs isolation; data that must always change atomically belongs in one service and one database. A saga or outbox-based choreography both expose intermediate states by design, and reconciliation repairs inconsistency after the fact rather than preventing it.",
+    "topicId": "avoiding-distributed-transactions",
+    "difficulty": 2
+  }
+]

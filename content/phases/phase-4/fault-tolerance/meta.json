@@ -1,0 +1,17 @@
+{
+  "id": "p4-fault-tolerance",
+  "phase": 4,
+  "slug": "fault-tolerance",
+  "title": "Fault Tolerance",
+  "order": 10,
+  "week": 10,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "spof-elimination", "title": "Eliminating single points of failure", "depth": "deep" },
+    { "id": "graceful-degradation", "title": "Graceful degradation", "depth": "deep" },
+    { "id": "static-stability", "title": "Static stability", "depth": "awareness" }
+  ],
+  "simulatorIds": ["availability-calculator"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p4-high-availability"]
+}

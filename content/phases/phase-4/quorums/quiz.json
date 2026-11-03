@@ -1,0 +1,173 @@
+[
+  {
+    "id": "quorums-q1",
+    "type": "scenario",
+    "prompt": "What is the write latency at W = 2, and how many replica failures can writes survive?",
+    "scenario": "A key has N = 3 replicas. They acknowledge writes in 3 ms, 9 ms and 60 ms.",
+    "options": [
+      { "id": "a", "text": "60 ms; writes survive one replica failure" },
+      { "id": "b", "text": "9 ms; writes survive one replica failure" },
+      { "id": "c", "text": "3 ms; writes survive two replica failures" },
+      { "id": "d", "text": "24 ms (the mean); writes survive no failures" }
+    ],
+    "correct": ["b"],
+    "explanation": "The coordinator returns after the second-fastest ack, 9 ms, and writes keep succeeding with N − W = 1 replica down. 60 ms would be W = 3, which survives no failures. 3 ms and two failures describe W = 1. Quorum latency is an order statistic, not an average.",
+    "topicId": "nrw",
+    "difficulty": 1
+  },
+  {
+    "id": "quorums-q2",
+    "type": "single",
+    "prompt": "Each of three replicas is independently up 99% of the time. Roughly how available are writes at W = 3?",
+    "options": [
+      { "id": "a", "text": "About 99.97%, better than a single replica" },
+      { "id": "b", "text": "About 99%, the same as a single replica" },
+      { "id": "c", "text": "About 97%, worse than a single replica" },
+      { "id": "d", "text": "About 99.9999%, since there are three copies" }
+    ],
+    "correct": ["c"],
+    "explanation": "W = 3 needs all three up: 0.99³ ≈ 0.9703. 99.97% is the W = 2 figure (at least 2 of 3 up). Equal to a single replica ignores that any of three can fail. 99.9999% is W = 1 (at least one up). Requiring every replica multiplies their failure chances.",
+    "topicId": "nrw",
+    "difficulty": 2
+  },
+  {
+    "id": "quorums-q3",
+    "type": "scenario",
+    "prompt": "How many replicas must respond, and does a write in DC1 at this level guarantee a read in DC2 at the same level sees it?",
+    "scenario": "A Cassandra keyspace has replication factor 3 in each of two data centres, DC1 and DC2. The team is choosing between QUORUM and LOCAL_QUORUM.",
+    "options": [
+      { "id": "a", "text": "QUORUM: 4 of 6 replicas, and yes, since 4 + 4 > 6" },
+      { "id": "b", "text": "QUORUM: 2 per DC, and yes, since each DC overlaps" },
+      { "id": "c", "text": "LOCAL_QUORUM: 4 of 6, and no, the DCs never sync" },
+      { "id": "d", "text": "LOCAL_QUORUM: 2 local, and yes, since 2 + 2 > 3" }
+    ],
+    "correct": ["a"],
+    "explanation": "QUORUM is ⌊(3 + 3) ÷ 2⌋ + 1 = 4 of all 6 replicas, and 4 + 4 > 6 guarantees overlap across data centres. Two per DC is EACH_QUORUM's rule, not QUORUM's. LOCAL_QUORUM is 2 in the local DC; the DCs do replicate, but asynchronously. A DC1 write and a DC2 read at LOCAL_QUORUM touch disjoint replicas, so 2 + 2 > 3 is the wrong comparison and there is no guarantee.",
+    "topicId": "nrw",
+    "difficulty": 3
+  },
+  {
+    "id": "quorums-q4",
+    "type": "single",
+    "prompt": "Why does R + W > N guarantee that a read contacts a replica holding the latest successful write?",
+    "options": [
+      { "id": "a", "text": "The coordinator always forwards reads to the replica that took the write" },
+      { "id": "b", "text": "Disjoint read and write sets would need more distinct replicas than exist" },
+      { "id": "c", "text": "Replicas synchronise before each read, so all of them are up to date" },
+      { "id": "d", "text": "A majority of replicas always agree on a value, so reads see that value" }
+    ],
+    "correct": ["b"],
+    "explanation": "If a read set of R and a write set of W were disjoint, the cluster would need R + W distinct replicas, more than N, so they must share one. Coordinators don't track which replica took the write. Replicas don't synchronise before reads. R and W need not be majorities, and replicas can disagree; the read picks the newest version it sees.",
+    "topicId": "overlap",
+    "difficulty": 1
+  },
+  {
+    "id": "quorums-q5",
+    "type": "scenario",
+    "prompt": "What best explains what the three clients saw?",
+    "scenario": "N = 3, W = 2, R = 2, with read repair done asynchronously. Client 1 writes seat = Maya; only replica A acks before the timeout, so client 1 is told the write failed. Client 2 then reads from A and B and sees Maya. Client 3 reads from B and C and sees the seat free.",
+    "options": [
+      { "id": "a", "text": "A bug, since R + W > N rules out any stale reads" },
+      { "id": "b", "text": "Expected: failed writes are kept, not rolled back" },
+      { "id": "c", "text": "A sign that client clocks were skewed by a lot" },
+      { "id": "d", "text": "A sloppy quorum must have accepted the write" }
+    ],
+    "correct": ["b"],
+    "explanation": "A write that reaches fewer than W replicas is reported as failed but isn't rolled back, so A keeps Maya and some reads see it while later ones don't: non-linearizable despite R + W > N. The overlap rule only covers successful writes, so this is not a bug. No timestamps conflict here, so skew isn't involved. A sloppy quorum would have counted a stand-in and reported success.",
+    "topicId": "overlap",
+    "difficulty": 3
+  },
+  {
+    "id": "quorums-q6",
+    "type": "multi",
+    "prompt": "Which can make a store with R + W > N return results that are not linearizable? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Two concurrent writes resolved by last-write-wins" },
+      { "id": "b", "text": "Writes counted on stand-in nodes in a sloppy quorum" },
+      { "id": "c", "text": "Choosing W = 3 and R = 1 with N = 3 for the key" },
+      { "id": "d", "text": "A replica rebuilt from a copy holding an old value" }
+    ],
+    "correct": ["a", "b", "d"],
+    "explanation": "Last-write-wins can drop one of two concurrent writes; sloppy quorums count acks outside the home replicas, so reads may miss them; and restoring a replica from a stale copy can leave fewer than W replicas holding the write. W = 3, R = 1 is a valid strict-quorum setting (4 > 3) and is not itself a cause.",
+    "topicId": "overlap",
+    "difficulty": 2
+  },
+  {
+    "id": "quorums-q7",
+    "type": "scenario",
+    "prompt": "Why did the read return the old value?",
+    "scenario": "Home replicas B and C for key K are partitioned from the coordinator. A write of K = v2 is acknowledged by home replica A and by stand-in node D, so W = 2 is met. Moments later a read with R = 2 reaches B and C and returns v1.",
+    "options": [
+      { "id": "a", "text": "R was set too low, since R = 3 always returns v2 here" },
+      { "id": "b", "text": "The write used a sloppy quorum, so overlap was lost" },
+      { "id": "c", "text": "B and C had a clock skew problem with their timestamps" },
+      { "id": "d", "text": "Read repair overwrote v2 on node A with the older v1" }
+    ],
+    "correct": ["b"],
+    "explanation": "D's ack counted toward W but D is not a home replica, so the write and read sets (A, D) and (B, C) don't overlap until hinted handoff delivers v2 to B. R = 3 would have caught A, but B and C could still be the only reachable home replicas, so 'always' is wrong. Clock skew doesn't matter: B and C never received v2. Read repair propagates the newest version, so it wouldn't overwrite v2 with v1.",
+    "topicId": "sloppy-quorums",
+    "difficulty": 2
+  },
+  {
+    "id": "quorums-q8",
+    "type": "single",
+    "prompt": "In Cassandra, which statement about hints is correct?",
+    "options": [
+      { "id": "a", "text": "Hints count toward every consistency level, which is how sloppy quorums work" },
+      { "id": "b", "text": "Hints are kept indefinitely, so repair is unnecessary after an outage" },
+      { "id": "c", "text": "Hints only count toward ANY; down past the hint window, a node needs repair" },
+      { "id": "d", "text": "Hints are kept by the client driver and replayed when its connection resumes" }
+    ],
+    "correct": ["c"],
+    "explanation": "Cassandra's coordinator stores hints for unreachable replicas; they satisfy only consistency level ANY, and are not kept for a node down longer than max_hint_window (3 hours by default), after which repair is needed. They don't count toward other levels, aren't kept forever, and live on the coordinator node, not in the client driver.",
+    "topicId": "sloppy-quorums",
+    "difficulty": 2
+  },
+  {
+    "id": "quorums-q9",
+    "type": "single",
+    "prompt": "Why is read repair not enough on its own to keep replicas consistent?",
+    "options": [
+      { "id": "a", "text": "It only runs at consistency level ALL" },
+      { "id": "b", "text": "It only repairs keys that are being read" },
+      { "id": "c", "text": "It copies the oldest version, not newest" },
+      { "id": "d", "text": "It can only repair replicas in one rack" }
+    ],
+    "correct": ["b"],
+    "explanation": "Read repair is triggered by reads, so cold keys stay stale indefinitely; anti-entropy covers them. It runs at levels above ONE, not only ALL. It writes the newest version to stale replicas, not the oldest. It has no rack restriction.",
+    "topicId": "read-repair",
+    "difficulty": 1
+  },
+  {
+    "id": "quorums-q10",
+    "type": "scenario",
+    "prompt": "About how much data must the replicas exchange to find the difference?",
+    "scenario": "Two replicas each hold 1,000,000 keys and differ in exactly one key. They use Merkle trees with 65,536 leaves (16 levels) and 16-byte hashes.",
+    "options": [
+      { "id": "a", "text": "16 MB: one hash for each of the keys" },
+      { "id": "b", "text": "1 MB: one hash for each of the leaves" },
+      { "id": "c", "text": "16 bytes: a single root hash compared" },
+      { "id": "d", "text": "About 512 bytes of hashes, then ~15 keys" }
+    ],
+    "correct": ["d"],
+    "explanation": "The replicas descend one path: two child hashes at each of 16 levels is 32 × 16 bytes = 512 bytes, then exchange the ~15 keys in the differing leaf. 16 MB is the no-tree approach. Sending every leaf hash (65,536 × 16 bytes ≈ 1 MB) ignores the tree's structure. A single root hash only tells them a difference exists, not where.",
+    "topicId": "anti-entropy",
+    "difficulty": 2
+  },
+  {
+    "id": "quorums-q11",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "A Cassandra cluster uses the default gc_grace_seconds. A node was down for two days last month and was brought back without running repair. Rows deleted during that outage have started reappearing in reads this week.",
+    "options": [
+      { "id": "a", "text": "Tombstones were purged before the node got them; it resurrected the rows" },
+      { "id": "b", "text": "The deletes ran at consistency level ONE, so they were never persisted" },
+      { "id": "c", "text": "Hinted handoff replayed the original inserts after the deletes were done" },
+      { "id": "d", "text": "Read repair always prefers live data over tombstones when it merges rows" }
+    ],
+    "correct": ["a"],
+    "explanation": "The returning node missed the tombstones (its outage exceeded the 3-hour hint window) and, without repair, still held the rows. After 10 days the other replicas purged their tombstones, so repair or read repair now copies the old rows back. A delete at ONE is still persisted on one replica. Hinted handoff delivers writes in their original order with timestamps, so it can't undo a later delete. Read repair resolves by timestamp; a newer tombstone wins over older data.",
+    "topicId": "anti-entropy",
+    "difficulty": 3
+  }
+]

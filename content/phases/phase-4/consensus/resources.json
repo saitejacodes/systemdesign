@@ -1,0 +1,42 @@
+[
+  {
+    "id": "raft-site",
+    "title": "The Raft Consensus Algorithm (paper, visualisation and implementations)",
+    "author": "Diego Ongaro and John Ousterhout",
+    "kind": "paper",
+    "url": "https://raft.github.io/",
+    "why": "The home of Raft: the original paper, an interactive cluster you can crash, and a list of implementations.",
+    "topicIds": ["raft-election", "raft-log", "raft-safety"],
+    "free": true
+  },
+  {
+    "id": "secret-lives-raft",
+    "title": "The Secret Lives of Data: Raft",
+    "author": "Ben Johnson",
+    "kind": "blog",
+    "url": "http://thesecretlivesofdata.com/raft/",
+    "why": "A step-by-step animated walkthrough of election and log replication; ideal before reading the paper.",
+    "topicIds": ["raft-election", "raft-log"],
+    "free": true
+  },
+  {
+    "id": "paxos-made-simple",
+    "title": "Paxos Made Simple",
+    "author": "Leslie Lamport",
+    "kind": "paper",
+    "url": "https://lamport.azurewebsites.net/pubs/paxos-simple.pdf",
+    "why": "Lamport's own short explanation of single-decree Paxos and how it extends to a replicated state machine.",
+    "topicIds": ["paxos", "why-consensus"],
+    "free": true
+  },
+  {
+    "id": "etcd-docs",
+    "title": "etcd documentation",
+    "author": "etcd authors",
+    "kind": "docs",
+    "url": "https://etcd.io/docs/",
+    "why": "Leases, watches, transactions and the election and lock APIs, plus guidance on cluster sizing.",
+    "topicIds": ["coordination-services"],
+    "free": true
+  }
+]

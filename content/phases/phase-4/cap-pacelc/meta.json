@@ -1,0 +1,19 @@
+{
+  "id": "p4-cap-pacelc",
+  "phase": 4,
+  "slug": "cap-pacelc",
+  "title": "CAP and PACELC",
+  "order": 1,
+  "week": 9,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "cap-precise", "title": "CAP stated precisely", "depth": "deep" },
+    { "id": "partitions", "title": "Partitions are not optional", "depth": "deep" },
+    { "id": "cp-vs-ap", "title": "CP and AP systems in practice", "depth": "deep" },
+    { "id": "pick-two-myth", "title": "Why \"pick 2 of 3\" misleads", "depth": "tradeoffs" },
+    { "id": "pacelc", "title": "PACELC: latency vs consistency", "depth": "deep" }
+  ],
+  "simulatorIds": ["cap"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p2-replication"]
+}

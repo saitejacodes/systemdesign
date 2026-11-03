@@ -1,0 +1,250 @@
+## Why it matters
+
+Inside one database, "debit Alice, credit Bob" is easy: wrap both in a transaction and they happen together or not at all. Split the system into services, an order service, a payment service and an inventory service, each with its own database, and that guarantee disappears. Now "place an order" touches three databases, a payment provider and an email system, and any of them can fail halfway. You end up with charged customers who have no order, or reserved stock that is never released. There are two classic answers: **two-phase commit**, which makes several databases commit atomically but can freeze when its coordinator dies, and **sagas**, which give up atomic isolation in exchange for availability and rely on undo steps. Knowing exactly what each one promises, and when to redesign so you need neither, is one of the clearest signals of seniority in a design interview.
+
+<Callout type="analogy" title="A wedding versus a holiday booking">
+Two-phase commit is a wedding. The officiant (coordinator) asks each partner "do you?" (prepare). Once both say "I do", neither may walk away, but they are not married until the officiant says "I now pronounce you" (commit). If the officiant faints right after the second "I do", the couple is stuck at the altar: they cannot leave, and they cannot declare themselves married, until the officiant comes round. A saga is booking a holiday yourself: book the flight, then the hotel, then the car. If the car is sold out, you cancel the hotel and the flight (compensations). Nobody is ever stuck waiting, but for a while you hold a flight to nowhere, and the airline may keep a cancellation fee.
+
+Where the analogy breaks: real participants in 2PC are not just waiting politely; they are holding database locks the whole time, blocking every other transaction that needs the same rows.
+</Callout>
+
+## Two-phase commit
+
+<DepthStamp depth="deep" />
+
+<Term slug="two-phase-commit">Two-phase commit (2PC)</Term> is a protocol that makes a transaction spanning several databases (participants) commit everywhere or nowhere. One node acts as the <Term slug="transaction-coordinator">transaction coordinator</Term>. Each participant first does its part of the work as an ordinary local transaction, without committing. Then:
+
+**Phase 1: prepare (voting).**
+
+1. The coordinator sends PREPARE to every participant.
+2. Each participant checks it can definitely commit (constraints satisfied, data written durably to its log, locks held) and replies YES, or replies NO and aborts.
+3. A YES is a **promise**: from now on the participant must commit if told to, even if it crashes and restarts. It may no longer abort on its own.
+
+**Phase 2: commit (decision).**
+
+4. If every participant voted YES, the coordinator writes COMMIT to its own durable log. **That write is the commit point**: the transaction is now committed, whatever happens next. If any vote was NO or timed out, the decision is ABORT.
+5. The coordinator sends the decision to every participant and keeps retrying until each acknowledges, through crashes and restarts if necessary.
+
+<Figure caption="FIG. 6.1 · TWO-PHASE COMMIT · THE COMMIT POINT IS THE COORDINATOR'S LOG WRITE">
+  <Diagram label="Sequence: the coordinator sends PREPARE to the orders database and the payments database. Each writes a prepare record, holds its locks and votes YES. The coordinator writes COMMIT to its log, which is the commit point, then sends COMMIT to both. Each commits, releases locks and acknowledges." chart={`sequenceDiagram
+    participant C as Coordinator
+    participant O as Orders DB
+    participant P as Payments DB
+    C->>O: PREPARE tx 77
+    C->>P: PREPARE tx 77
+    Note over O: write prepare record, keep locks
+    Note over P: write prepare record, keep locks
+    O-->>C: YES
+    P-->>C: YES
+    Note over C: log COMMIT tx 77 (commit point)
+    C->>O: COMMIT tx 77
+    C->>P: COMMIT tx 77
+    Note over O,P: commit, release locks
+    O-->>C: ack
+    P-->>C: ack`} />
+</Figure>
+
+*Two-phase commit: two irrevocable moments, a participant's YES and the coordinator's logged decision.*
+
+The correctness comes from those two "points of no return". A participant that voted YES has given up its right to abort; the coordinator, once it logs a decision, has given up its right to change it. Between them, there is exactly one outcome.
+
+### Where you meet it
+
+The X/Open XA standard defines a 2PC interface between a transaction manager and resource managers, and Java's JTA builds on it. MySQL (InnoDB) supports XA transactions, and PostgreSQL exposes the participant side as `PREPARE TRANSACTION` and `COMMIT PREPARED`. PostgreSQL's documentation is blunt that this is meant for external transaction managers rather than applications, and the feature is disabled by default (`max_prepared_transactions` is 0). Some distributed databases run 2PC internally across their own shards: Google Spanner runs 2PC across Paxos groups, and CockroachDB uses its own commit protocol across ranges.
+
+### Worked example: the cost when nothing fails
+
+An order touches two databases with a 1 ms round trip from the coordinator, and each durable log write (fsync) takes 2 ms.
+
+| Step | Time |
+|---|---|
+| PREPARE round trip, including each participant's fsync | 1 + 2 = 3 ms |
+| Coordinator logs COMMIT (fsync) | 2 ms |
+| COMMIT round trip, including each participant's fsync | 1 + 2 = 3 ms |
+| **Total, with locks held throughout** | **about 8 ms** |
+
+A single-database commit would be one 2 ms fsync. And the locks matter more than the latency: if one hot row, say a popular product's stock count, is part of every order, at most about 1,000 / 8 = **125 orders a second** can touch it, because each one holds the row's lock for 8 ms.
+
+## Coordinator failure and the blocking problem
+
+<DepthStamp depth="deep" />
+
+2PC is correct but **blocking**. Its weak spot is the window after a participant votes YES and before it learns the decision. In that window the participant is <Term slug="in-doubt-transaction">in doubt</Term>: it cannot commit (maybe someone voted NO) and cannot abort (maybe the coordinator already logged COMMIT and told someone else). It must keep its locks and wait.
+
+### Failure story: the coordinator dies after PREPARE
+
+| Time | Event |
+|---|---|
+| t = 0 ms | Coordinator sends PREPARE for tx 77 to Orders and Payments |
+| t = 3 ms | Both write prepare records and vote YES. Both hold row locks (the order row, the customer's balance row) |
+| t = 4 ms | Coordinator's machine loses power before writing a decision, or just after, nobody knows which |
+| t = 5 s | Orders' and Payments' timeouts fire. Neither may decide on its own: they ask the coordinator, which does not answer |
+| t = 5 s onwards | Every new transaction touching that customer's balance blocks on the lock, then times out. Checkout errors climb |
+| t = 20 min | Coordinator host is replaced, reads its log: no COMMIT record for tx 77, so it decides ABORT and tells both. Locks released |
+
+For 20 minutes, rows were frozen by a transaction that had already failed. If the coordinator's disk had been lost too, an operator would have had to decide by hand. XA calls such manual overrides **heuristic decisions**, and they can break atomicity: commit on one side, roll back on the other.
+
+Participants can sometimes help each other: if any participant voted NO, or already received the decision, the others can learn it from that participant. But if all voted YES and nobody heard the decision, only the coordinator knows, and nobody can safely guess.
+
+### Fixes, and their limits
+
+- **Make the coordinator highly available.** Replicate its decision log with consensus, so a new coordinator can read the decision and finish the job. This is what Spanner effectively does (each participant and the coordinator are Paxos-replicated groups), and it is the idea behind Gray and Lamport's "Paxos Commit". It removes the single point of failure but not the extra round trips or the lock holding.
+- **Three-phase commit (3PC)** adds a phase to avoid blocking, but it assumes bounded network delays and clock behaviour. With real networks that can delay messages arbitrarily, it cannot guarantee atomicity, so it is rarely used in practice.
+- **Keep transactions short and rare.** Use 2PC inside a single database product across its own shards, where the vendor engineered the coordinator, rather than across heterogeneous systems you operate yourself.
+
+What 2PC does **not** solve: anything that is not a transactional resource. An HTTP call to a payment provider, a Kafka message or an email cannot be "prepared" and later rolled back. That limitation alone rules out 2PC for most microservice workflows.
+
+## Sagas and compensating actions
+
+<DepthStamp depth="deep" />
+
+A <Term slug="saga">saga</Term>, from Hector Garcia-Molina and Kenneth Salem's 1987 paper "Sagas", replaces one big transaction with a sequence of local transactions T1, T2, … Tn, each committed immediately in its own service. For every step that might need undoing there is a <Term slug="compensating-transaction">compensating transaction</Term> C1, C2, … that semantically undoes it. The guarantee, as the paper states it, is that either the whole sequence T1 … Tn runs, or a prefix T1 … Tj runs followed by its compensations Cj … C1.
+
+Notice what that does and does **not** promise:
+
+- **Atomicity, eventually:** all steps happen, or the completed ones are compensated.
+- **No isolation:** each Ti commits on its own, so other transactions can see intermediate states, such as stock reserved for an order whose payment later fails.
+- **Compensation is semantic, not a rollback.** You cannot un-charge a card; you issue a refund. The original charge and the refund both appear on the customer's statement.
+
+### Worked example: placing an order
+
+| Step | Transaction | Compensation |
+|---|---|---|
+| T1 | Create order in state PENDING | C1: mark order CANCELLED |
+| T2 | Reserve 2 units of stock | C2: release the 2 units |
+| T3 | Charge card £40 (pivot) | none needed: later steps must succeed |
+| T4 | Mark order CONFIRMED | (retry until it succeeds) |
+| T5 | Send confirmation email | (retry until it succeeds) |
+
+If T3 fails because the card is declined, the saga runs C2 then C1: stock is released and the order is cancelled. The customer saw a PENDING order for a few seconds, which is honest and harmless.
+
+Step T3 is the <Term slug="pivot-transaction">pivot transaction</Term>: the go/no-go point. Steps before it must be **compensatable**; steps after it must be **retriable**, meaning they can be retried until they succeed, because there is no going back. Choosing the pivot is the main design decision in a saga.
+
+### Failure story: a compensation that cannot undo
+
+Suppose a developer put "send confirmation email" before the payment.
+
+| Time | Event |
+|---|---|
+| t = 0 ms | T1: order 912 created, PENDING |
+| t = 40 ms | T2: stock reserved |
+| t = 60 ms | Email sent: "Your order is confirmed!" |
+| t = 900 ms | T3: card declined |
+| t = 910 ms | C2: stock released. C1: order cancelled |
+| t = 912 ms | Compensation for the email? There is none. The best available is a second email: "Sorry, your order was cancelled" |
+
+The saga was "correct" and the customer was still misled. The lesson: put **irreversible side effects** (emails, shipping, calls to partners that cannot be cancelled) **after the pivot**, and model holds instead of final actions wherever you can, such as a card authorisation that is later captured, rather than an immediate charge.
+
+### Rules every saga step must follow
+
+- **Idempotent steps and compensations.** Messages are delivered at least once, so "release 2 units" must not release 4 when redelivered. Use an <Term slug="idempotency-key">idempotency key</Term> per saga step.
+- **Compensations must not fail permanently.** Retry them indefinitely with backoff, and alert a human if one is stuck.
+- **Compensations may run before the step they undo has finished**, for example if a timeout fired while the step was still in flight. "Release a reservation that does not exist" must be a harmless no-op.
+- **Handle the missing isolation deliberately.** A common countermeasure is a **semantic lock**: the PENDING state tells other operations "this order is mid-saga". For example, refuse to ship or modify a PENDING order.
+
+## Orchestration vs choreography
+
+<DepthStamp depth="tradeoffs" />
+
+Someone has to decide which step runs next. There are two styles.
+
+In <Term slug="saga-orchestration">orchestration</Term>, a central orchestrator tells each service what to do and records progress, like a conductor. In <Term slug="saga-choreography">choreography</Term>, there is no central brain: each service listens for events and reacts, publishing its own events in turn (OrderCreated → payment service charges → PaymentCompleted → inventory service reserves → …).
+
+<Figure caption="FIG. 6.2 · ORCHESTRATED SAGA WITH COMPENSATION">
+  <Diagram label="Sequence: the orchestrator tells the order service to create a pending order, the inventory service to reserve stock, and the payment service to charge. Payment replies declined. The orchestrator then tells inventory to release stock and the order service to cancel the order." chart={`sequenceDiagram
+    participant Or as Orchestrator
+    participant O as Order svc
+    participant I as Inventory svc
+    participant P as Payment svc
+    Or->>O: create order PENDING
+    O-->>Or: ok
+    Or->>I: reserve 2 units
+    I-->>Or: ok
+    Or->>P: charge 40 GBP
+    P-->>Or: declined
+    Note over Or: run compensations in reverse
+    Or->>I: release 2 units
+    I-->>Or: ok
+    Or->>O: cancel order
+    O-->>Or: ok`} />
+</Figure>
+
+*An orchestrated saga: the orchestrator's recorded state says exactly which compensations to run.*
+
+| | Orchestration | Choreography |
+|---|---|---|
+| Where the flow lives | One place, readable as code or a state machine | Spread across services' event handlers |
+| Seeing "where is order 912?" | Query the orchestrator | Reconstruct from events and logs |
+| Coupling | Orchestrator knows every service | Services know only events |
+| Adding a step | Change the orchestrator | Add a subscriber, and hope nothing depends on order |
+| Risk | Orchestrator becomes a bottleneck or a god service | Cyclic, hard-to-follow event chains |
+| Good fit | Multi-step business processes with compensations | Short flows with two or three loosely coupled reactions |
+
+Tools for orchestration persist the saga's state for you. **Temporal** runs workflows written as ordinary code and records every step in an event history, so a crashed worker can replay the history and resume where it left off. **AWS Step Functions** describes workflows as state machines in JSON (the Amazon States Language) with built-in Retry and Catch, which map naturally onto steps and compensations. Camunda does the same with BPMN models.
+
+Choreography has its own requirement: a service must update its database **and** publish its event atomically, or a crash between the two loses the event and the saga stalls. The standard fix is the <Term slug="transactional-outbox">transactional outbox</Term>: write the event into an outbox table in the same local transaction, and relay it to the broker afterwards.
+
+## When to avoid distributed transactions
+
+<DepthStamp depth="tradeoffs" />
+
+The best distributed transaction is the one you design away. Before reaching for 2PC or a saga, a staff engineer asks:
+
+1. **Do these really belong in separate databases?** If two pieces of data must change atomically all the time, that is strong evidence they belong to the same service and the same database. Redrawing a boundary is often cheaper than coordinating across it.
+2. **Can one local transaction plus an outbox do it?** Commit the state change and an event together, and let other services react eventually. Most "transactions" are really "do this, then make sure that follows".
+3. **Can you reserve instead of commit?** Card authorisations, seat holds with an expiry, and stock reservations turn an all-or-nothing problem into "hold, then confirm or let it expire".
+4. **Can you reconcile instead of prevent?** Payment systems commonly run reconciliation jobs that compare their records with the provider's and fix discrepancies. Detecting and repairing a rare inconsistency can be far cheaper than preventing it on every request.
+5. **Can the database do it for you?** Distributed SQL databases (Spanner, CockroachDB, YugabyteDB) give you multi-shard ACID transactions with an engineered, replicated coordinator, so the 2PC risk is the vendor's problem, not yours.
+
+<TradeoffBox title="2PC vs sagas" items={[
+  { gain: "2PC: true atomicity and isolation across databases", cost: "Locks held across round trips; blocks when the coordinator fails" },
+  { gain: "2PC inside one distributed database: ACID with no app code", cost: "Higher write latency; only works within that product" },
+  { gain: "Saga: every step commits locally, no cross-service locks", cost: "No isolation: others see intermediate states" },
+  { gain: "Saga: works across HTTP APIs, queues and third parties", cost: "You must write, test and make idempotent every compensation" },
+  { gain: "Orchestration: flow visible and debuggable in one place", cost: "A central component every flow depends on" }
+]} />
+
+<NotWhenBox title="When not to use these" items={[
+  "2PC across microservices or third-party APIs: they cannot prepare, and a stuck coordinator freezes your rows.",
+  "A saga when the steps could live in one database: use a local ACID transaction.",
+  "A saga where intermediate states are unacceptable, such as two transfers both reading a balance before either debit: you need isolation, so co-locate the data.",
+  "Choreography for a ten-step flow with compensations: nobody will be able to say where an order is stuck."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A saga is a distributed ACID transaction." right="A saga gives eventual atomicity (all steps or compensations) but no isolation. Other requests can see and act on intermediate states." />
+
+<Misconception wrong="Compensation is a rollback." right="It is a new, forward action that semantically undoes an earlier one: a refund, a cancellation, an apology email. The original effect stays in history and some effects cannot be undone." />
+
+<Misconception wrong="2PC fails safe: if the coordinator dies, participants just abort." right="Participants that voted YES must not abort on their own. They block, holding locks, until the decision is recovered." />
+
+<Misconception wrong="Adding a retry fixes a stuck saga step." right="Retries only help if the step is idempotent and the failure is transient. A permanently failing forward step needs compensation; a failing compensation needs a human." />
+
+## Interview angle
+
+<InterviewAngle title="Distributed transactions" questions={[
+  "An order needs payment, inventory and shipping, each owned by a different service. How do you keep them consistent?",
+  "Why not use two-phase commit across the services?",
+  "What happens if the saga orchestrator crashes halfway?",
+  "Payment succeeded but inventory reservation failed. Walk me through what happens.",
+  "Orchestration or choreography for this flow, and why?"
+]}>
+Start by questioning the boundary: does this need to be atomic, and could it live in one database? If not, propose a saga: list the steps, mark the pivot, give each pre-pivot step a compensation, and put irreversible side effects after the pivot. Say how you handle the missing isolation (a PENDING state as a semantic lock) and duplicates (idempotency keys). Explain why not 2PC: heterogeneous services can't prepare, and a coordinator failure blocks with locks held.
+
+The follow-up is almost always "what if the orchestrator crashes?" The strong answer: the orchestrator's state is durable (a database row per saga, or a Temporal or Step Functions history), so a restarted orchestrator resumes from the last recorded step and re-sends it, which is safe because every step is idempotent. Then add how you'd see stuck sagas: an alert on sagas older than a few minutes in a non-final state.
+</InterviewAngle>
+
+## Practice
+
+1. A 2PC transaction spans three databases with 2 ms round trips and 3 ms fsyncs. Estimate commit latency and the maximum rate at which transactions can update one shared hot row.
+2. Design a saga for booking a flight, a hotel and a car. Mark the pivot, give every compensation, and say which steps must be retriable. What does a customer see if the car step fails?
+3. A choreographed saga occasionally leaves orders PENDING forever. List three possible causes and the fix for each.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

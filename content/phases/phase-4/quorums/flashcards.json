@@ -1,0 +1,18 @@
+[
+  { "id": "quorums-f1", "front": "N, R, W?", "back": "N replicas per key; a write succeeds after W acks; a read waits for R responses and returns the newest version.", "topicId": "nrw" },
+  { "id": "quorums-f2", "front": "Failures tolerated by N, R, W?", "back": "Writes survive N − W dead replicas; reads survive N − R.", "topicId": "nrw" },
+  { "id": "quorums-f3", "front": "Quorum read latency?", "back": "The R-th fastest replica's response time (writes: the W-th fastest ack).", "topicId": "nrw" },
+  { "id": "quorums-f4", "front": "Three 99% replicas: P(2 of 3 up) vs P(3 of 3 up)?", "back": "0.999702 vs 0.970299. Requiring all replicas is worse than one node.", "topicId": "nrw" },
+  { "id": "quorums-f5", "front": "Cassandra QUORUM with two DCs at RF 3?", "back": "⌊6 ÷ 2⌋ + 1 = 4 replicas, so it crosses the WAN. LOCAL_QUORUM needs 2 in the local DC.", "topicId": "nrw" },
+  { "id": "quorums-f6", "front": "Why does R + W > N guarantee overlap?", "back": "Pigeonhole: disjoint read and write sets would need W + R distinct replicas, more than N exist.", "topicId": "overlap" },
+  { "id": "quorums-f7", "front": "Gifford's second condition, W > N ÷ 2?", "back": "Makes any two write quorums overlap, so two conflicting writes can't both succeed on disjoint replicas.", "topicId": "overlap" },
+  { "id": "quorums-f8", "front": "Does R + W > N give linearizability?", "back": "No. Concurrent writes, partially failed writes, restores from stale copies and sloppy quorums all break it.", "topicId": "overlap" },
+  { "id": "quorums-f9", "front": "A QUORUM write fails. Was the data written?", "back": "Possibly, on the replicas that acked. It can later become visible, so retries must be idempotent.", "topicId": "overlap" },
+  { "id": "quorums-f10", "front": "Sloppy quorum?", "back": "When home replicas are unreachable, writes go to the next healthy nodes on the preference list and count toward W.", "topicId": "sloppy-quorums" },
+  { "id": "quorums-f11", "front": "Hinted handoff?", "back": "A stand-in stores the write with a hint naming its home replica and forwards it when that replica returns.", "topicId": "sloppy-quorums" },
+  { "id": "quorums-f12", "front": "Do Cassandra hints count toward consistency level?", "back": "No, except for ANY. Hints are kept only for nodes down less than max_hint_window (3 hours by default).", "topicId": "sloppy-quorums" },
+  { "id": "quorums-f13", "front": "Read repair?", "back": "On a read, the coordinator writes the newest version back to replicas that returned older ones.", "topicId": "read-repair" },
+  { "id": "quorums-f14", "front": "Read repair's blind spot?", "back": "Data nobody reads is never repaired; that needs anti-entropy.", "topicId": "read-repair" },
+  { "id": "quorums-f15", "front": "Merkle tree in anti-entropy?", "back": "Leaves hash key ranges, parents hash children. Compare roots, descend only where hashes differ.", "topicId": "anti-entropy" },
+  { "id": "quorums-f16", "front": "Why must Cassandra repair run within gc_grace_seconds?", "back": "Otherwise tombstones are purged before every replica has them, and a stale replica resurrects deleted rows.", "topicId": "anti-entropy" }
+]

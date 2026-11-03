@@ -1,0 +1,18 @@
+[
+  { "id": "high-availability-f1", "front": "Downtime per year at 99.9%, 99.99%, 99.999%?", "back": "8.76 hours, 52.6 minutes, 5.26 minutes.", "topicId": "nines" },
+  { "id": "high-availability-f2", "front": "Downtime per 30-day month at 99.9% and 99.99%?", "back": "43.2 minutes and 4.32 minutes.", "topicId": "nines" },
+  { "id": "high-availability-f3", "front": "Time-based vs request-based availability?", "back": "Uptime ÷ total time, vs successful requests ÷ valid requests. Request-based counts partial outages partially.", "topicId": "nines" },
+  { "id": "high-availability-f4", "front": "Availability from MTBF and MTTR?", "back": "MTBF ÷ (MTBF + MTTR). Faster recovery is often the cheapest gain.", "topicId": "nines" },
+  { "id": "high-availability-f5", "front": "Three conditions for redundancy to work?", "back": "Spare capacity for the survivors, failure detection, and a way to shift work.", "topicId": "redundancy" },
+  { "id": "high-availability-f6", "front": "N+1, N+2, 2N?", "back": "One spare beyond peak need; two spares (survive a failure during maintenance); a full duplicate.", "topicId": "redundancy" },
+  { "id": "high-availability-f7", "front": "Capacity to survive losing one of Z zones?", "back": "Each zone needs peak ÷ (Z − 1). Total: 2× peak for 2 zones, 1.5× for 3, 1.33× for 4.", "topicId": "redundancy" },
+  { "id": "high-availability-f8", "front": "Active-passive?", "back": "One copy serves; a standby (hot, warm or cold) is promoted on failure. Simple writes, slower and rarely tested failover.", "topicId": "active-modes" },
+  { "id": "high-availability-f9", "front": "Active-active?", "back": "All copies serve; a failed one is removed from rotation. Proven daily, but needs headroom and, for data, conflict handling.", "topicId": "active-modes" },
+  { "id": "high-availability-f10", "front": "Why do apps stay broken after a DNS-based database failover?", "back": "They cache the old DNS answer or keep dead pooled connections.", "topicId": "active-modes" },
+  { "id": "high-availability-f11", "front": "Availability zone (AWS)?", "back": "One or more data centres with independent power and networking, within about 100 km of the region's other zones, single-digit ms apart.", "topicId": "multi-az-region" },
+  { "id": "high-availability-f12", "front": "Minimum NY–London round trip in fibre?", "back": "2 × 5,600 km ÷ 200,000 km/s ≈ 56 ms; real routes are longer.", "topicId": "multi-az-region" },
+  { "id": "high-availability-f13", "front": "What does multi-region force on data?", "back": "Usually async replication (possible data loss on failover) and a write-ownership or conflict-resolution model.", "topicId": "multi-az-region" },
+  { "id": "high-availability-f14", "front": "Series availability?", "back": "Multiply: A1 × A2 × … × An. Always below the weakest link.", "topicId": "availability-math" },
+  { "id": "high-availability-f15", "front": "Parallel availability?", "back": "1 − (1 − A1)(1 − A2)…(1 − An), only if failures are independent.", "topicId": "availability-math" },
+  { "id": "high-availability-f16", "front": "Where the parallel formula lies?", "back": "Correlated failures: shared rack, AZ, build, dependency or config; failover machinery in series; overload cascades.", "topicId": "availability-math" }
+]

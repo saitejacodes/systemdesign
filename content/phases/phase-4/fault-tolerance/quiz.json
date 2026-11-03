@@ -1,0 +1,331 @@
+[
+  {
+    "id": "fault-tolerance-q1",
+    "type": "single",
+    "prompt": "What is the difference between a fault and a failure?",
+    "options": [
+      {
+        "id": "a",
+        "text": "A fault is one component deviating from its spec; a failure is the system as a whole no longer serving users"
+      },
+      {
+        "id": "b",
+        "text": "A fault is caused by hardware such as disks or power; a failure is caused by software bugs and bad deploys"
+      },
+      {
+        "id": "c",
+        "text": "A fault is a transient error that clears by itself; a failure is a permanent error that needs a human to fix"
+      },
+      {
+        "id": "d",
+        "text": "They are synonyms; reliability engineers use the two words interchangeably for any kind of broken component"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "A fault is a component misbehaving; a failure is the user-visible loss of service. Fault tolerance stops the first from becoming the second. The hardware/software split is a way to classify faults, not the fault/failure distinction. Transient versus permanent is about duration, and both faults and failures can be either. Treating them as synonyms loses exactly the distinction that lets you say 'the cache is broken but checkout is fine'.",
+    "topicId": "spof-elimination",
+    "difficulty": 1
+  },
+  {
+    "id": "fault-tolerance-q2",
+    "type": "scenario",
+    "prompt": "What is the most likely reason redundancy did not help?",
+    "scenario": "A service runs 12 stateless instances across 3 Availability Zones behind a managed load balancer. At 14:02 a new feature-flag config is pushed to all instances at once. Within 20 seconds every instance is crash-looping.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Three zones are too few; the service needed a fourth zone so at least one could keep serving"
+      },
+      {
+        "id": "b",
+        "text": "The copies were not independent: one config push reached all of them at once, a correlated failure"
+      },
+      {
+        "id": "c",
+        "text": "The load balancer was a single point of failure and should have been replaced by a pair of DNS round robin records"
+      },
+      {
+        "id": "d",
+        "text": "Twelve instances is N+0; the team should have run N+2 so two spares could absorb the crashes"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The same bad config reached every copy simultaneously, so all twelve failed together: a correlated software failure. Staged rollouts (one host, one zone, then the rest) with automatic rollback are the fix. A fourth zone would have received the same push. The load balancer was healthy; it had no healthy backends to send to. Spare instances run the same config, so N+2 would have crashed too.",
+    "topicId": "spof-elimination",
+    "difficulty": 2
+  },
+  {
+    "id": "fault-tolerance-q3",
+    "type": "scenario",
+    "prompt": "Roughly how available is the page in each design?",
+    "scenario": "A product page calls five services, each 99.9% available. Design A treats all five as critical. Design B keeps catalog and pricing critical and gives reviews, recommendations and stock count a fallback that never fails.",
+    "options": [
+      {
+        "id": "a",
+        "text": "A ≈ 99.9% and B ≈ 99.9%, because the page is only as weak as its weakest single service"
+      },
+      {
+        "id": "b",
+        "text": "A ≈ 99.5% and B ≈ 99.8%, because only the services on the critical path multiply together"
+      },
+      {
+        "id": "c",
+        "text": "A ≈ 99.5% and B ≈ 99.5%, because the page still calls all five services in both designs"
+      },
+      {
+        "id": "d",
+        "text": "A ≈ 95.0% and B ≈ 98.0%, because each service subtracts one percent of availability from the page"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Critical dependencies in series multiply: 0.999⁵ ≈ 0.995 and 0.999² ≈ 0.998, about 216 versus 86 minutes of failure a month. The weakest-link answer ignores that independent failures add up across five services. Calling a service is not the same as depending on it: in B a failed optional call still produces a page. Subtracting a percent per service confuses 99.9% with 99%.",
+    "topicId": "graceful-degradation",
+    "difficulty": 2
+  },
+  {
+    "id": "fault-tolerance-q4",
+    "type": "scenario",
+    "prompt": "Which behaviour is most defensible for each check when its service is down?",
+    "scenario": "Your checkout calls two internal services before charging the card: a per-user rate limiter and the authentication service that validates the session token. Both are occasionally unavailable for a minute or two.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Fail closed on both, because any check that cannot run should block the request to stay safe"
+      },
+      {
+        "id": "b",
+        "text": "Fail open on both, because staying available always matters more than one minute of missed checks"
+      },
+      {
+        "id": "c",
+        "text": "Fail open on the rate limiter and fail closed on authentication, judged by the harm of a wrong yes"
+      },
+      {
+        "id": "d",
+        "text": "Fail closed on the rate limiter and fail open on authentication, since sessions were checked at login"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Letting a few extra requests through for a minute costs little, so a rate limiter usually fails open. Letting unauthenticated users charge cards or act as someone else cannot be undone, so authentication fails closed. Failing closed on both blocks every checkout whenever the rate limiter blips. Failing open on both treats a security check like a convenience. The reversed option gets both judgements backwards: a session token must be validated on each request precisely because it can be stolen or revoked.",
+    "topicId": "graceful-degradation",
+    "difficulty": 2
+  },
+  {
+    "id": "fault-tolerance-q5",
+    "type": "scenario",
+    "prompt": "What is the main risk in this design?",
+    "scenario": "2,000 app servers read feature flags from a Redis cluster on every request, about 50 reads a second each. If Redis fails, the code falls back to reading the flags table from the primary Postgres database, which normally handles about 200 queries a second from an admin tool and the order service.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Flags read from Postgres may be a few seconds staler than the copies held in Redis"
+      },
+      {
+        "id": "b",
+        "text": "Redis has no persistence, so every flag value will be lost permanently when it fails"
+      },
+      {
+        "id": "c",
+        "text": "The fallback sends about 100,000 reads a second to a database sized for a few hundred"
+      },
+      {
+        "id": "d",
+        "text": "Postgres cannot serve feature flags well because they are key-value data, not relational rows"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "2,000 × 50 = 100,000 reads a second land on a database sized for about 200, taking down the order service too: the fallback turns a cache fault into an orders outage. Keeping a local copy on each server, refreshed in the background, avoids this. Postgres is the source of truth, so it is fresher, not staler. The flags live in Postgres, so nothing is lost when the cache fails. Key-value data fits fine in a relational table.",
+    "topicId": "graceful-degradation",
+    "difficulty": 3
+  },
+  {
+    "id": "fault-tolerance-q6",
+    "type": "multi",
+    "prompt": "Which of these are graceful degradation rather than failure? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Showing a bestsellers list when personalised recommendations time out"
+      },
+      {
+        "id": "b",
+        "text": "Accepting the order and queueing the receipt email while email is down"
+      },
+      {
+        "id": "c",
+        "text": "Returning a friendly 503 page with a retry button when reviews are down"
+      },
+      {
+        "id": "d",
+        "text": "Going read-only with a banner when the primary database is unavailable"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "d"
+    ],
+    "explanation": "Bestsellers, queued emails and read-only mode all keep the core job working with reduced quality. A friendly 503 page is still a failure: the user cannot do anything, and an optional dependency (reviews) has been treated as critical. The page should render without the reviews block instead.",
+    "topicId": "graceful-degradation",
+    "difficulty": 1
+  },
+  {
+    "id": "fault-tolerance-q7",
+    "type": "scenario",
+    "prompt": "How many instances should you run to be statically stable against the loss of one zone?",
+    "scenario": "A service needs 600 instances at peak and runs evenly across 4 Availability Zones.",
+    "options": [
+      {
+        "id": "a",
+        "text": "600, with autoscaling set to add instances in the surviving zones"
+      },
+      {
+        "id": "b",
+        "text": "750, which is 25% extra capacity spread over the four zones"
+      },
+      {
+        "id": "c",
+        "text": "800, which is 200 per zone so any three still total 600"
+      },
+      {
+        "id": "d",
+        "text": "900, which is 50% extra so that any zone can be lost safely"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "After losing one zone, three must carry 600, so each zone needs 200 and four zones need 800 (one third extra, the 1 ÷ (N − 1) rule). 600 plus autoscaling depends on the control plane during the outage, which is what static stability avoids. 750 leaves 562 after losing a zone. 900 is the 3-zone answer; with 4 zones it over-provisions.",
+    "topicId": "static-stability",
+    "difficulty": 2
+  },
+  {
+    "id": "fault-tolerance-q8",
+    "type": "single",
+    "prompt": "Why does static stability avoid relying on the control plane during an outage?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Control planes are more complex, less exercised, and heavily loaded or impaired during large events"
+      },
+      {
+        "id": "b",
+        "text": "Control planes are billed per API call, so calling them during an outage is very expensive"
+      },
+      {
+        "id": "c",
+        "text": "Control planes only run in one region, so they are always unreachable during a zone outage"
+      },
+      {
+        "id": "d",
+        "text": "Control planes are only eventually consistent, so any change made there may be lost if a zone fails mid-update"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Launching instances or changing routes is complex control-plane work, and during a big event many customers attempt it at once, so it may be slow or failing exactly when you need it. Cost per call is not the concern. Control planes are not inherently single-region or always unreachable. Eventual consistency does not mean changes are lost.",
+    "topicId": "static-stability",
+    "difficulty": 2
+  },
+  {
+    "id": "fault-tolerance-q9",
+    "type": "scenario",
+    "prompt": "Why did the request take down all eight instances?",
+    "scenario": "A client sends a request with a huge JSON body. Instance 1 runs out of memory and crashes. The load balancer, configured to retry on connection resets, resends it to instance 2, which crashes, and so on until all eight are down.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Eight instances is too few; with sixteen the request would eventually stop being retried"
+      },
+      {
+        "id": "b",
+        "text": "The instances shared one cause, the input, so retries spread the fault instead of avoiding it"
+      },
+      {
+        "id": "c",
+        "text": "The health check interval was too long; a faster check would have kept instances healthy"
+      },
+      {
+        "id": "d",
+        "text": "The instances were all in one zone; spreading them across zones would have contained it"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A query of death is a correlated failure: every copy fails on the same input, and load-balancer retries carry it to each one. Input size limits and capped retries are the defences. More instances just means more crashes. Faster health checks detect the crashes sooner but do not prevent them. Zones protect against power and network events, not against a poison request that every zone receives.",
+    "topicId": "spof-elimination",
+    "difficulty": 2
+  },
+  {
+    "id": "fault-tolerance-q10",
+    "type": "single",
+    "prompt": "A service needs 6 instances for peak and deploys several times a day, one instance at a time. Why might it run 8 instead of 7?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Load balancers need an even number of backends to split traffic evenly"
+      },
+      {
+        "id": "b",
+        "text": "One spare covers the instance out for deploy, one covers an unplanned crash"
+      },
+      {
+        "id": "c",
+        "text": "Consensus requires a majority, and 8 tolerates more failures than 7 does"
+      },
+      {
+        "id": "d",
+        "text": "The seventh and eighth instances act as hot standbys for the database tier"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "With N+1 a crash during a deploy leaves N−1, so N+2 reserves a slot for maintenance and one for failure, at about 33% extra cost. Load balancers handle odd counts fine. Stateless app servers do not run consensus, and with consensus 8 tolerates no more failures than 7 (both tolerate 3). App instances are not database standbys.",
+    "topicId": "spof-elimination",
+    "difficulty": 1
+  },
+  {
+    "id": "fault-tolerance-q11",
+    "type": "multi",
+    "prompt": "Which practices make a service more statically stable? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Keep serving the last known good config if the config service is unreachable"
+      },
+      {
+        "id": "b",
+        "text": "Cache credentials and DNS answers with sensible lifetimes on each host"
+      },
+      {
+        "id": "c",
+        "text": "Scale out aggressively the moment a zone's health checks start failing"
+      },
+      {
+        "id": "d",
+        "text": "Pre-provision enough capacity that losing one zone needs no new instances"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "d"
+    ],
+    "explanation": "Last known good config, cached credentials and DNS, and pre-provisioned capacity all keep the data plane working with no changes during a failure. Scaling out in response to a zone failure is a control-plane reaction: useful as a bonus, but it is exactly the dependency static stability is designed not to need.",
+    "topicId": "static-stability",
+    "difficulty": 2
+  }
+]

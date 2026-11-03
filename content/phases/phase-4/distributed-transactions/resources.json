@@ -1,0 +1,42 @@
+[
+  {
+    "id": "microservices-saga",
+    "title": "Pattern: Saga",
+    "author": "Chris Richardson",
+    "kind": "blog",
+    "url": "https://microservices.io/patterns/data/saga.html",
+    "why": "Orchestration vs choreography with worked examples, and links to the transactional outbox pattern.",
+    "topicIds": ["sagas", "saga-coordination"],
+    "free": true
+  },
+  {
+    "id": "pg-prepare-transaction",
+    "title": "PostgreSQL: PREPARE TRANSACTION",
+    "author": "PostgreSQL Global Development Group",
+    "kind": "docs",
+    "url": "https://www.postgresql.org/docs/current/sql-prepare-transaction.html",
+    "why": "The participant side of 2PC in a real database, including the warnings about long-lived prepared transactions holding locks.",
+    "topicIds": ["two-phase-commit", "coordinator-failure"],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 9 explains 2PC, in-doubt transactions, XA and why coordinator failure is so painful.",
+    "topicIds": ["two-phase-commit", "coordinator-failure", "avoiding-distributed-transactions"],
+    "free": false
+  },
+  {
+    "id": "temporal-docs",
+    "title": "Temporal documentation",
+    "author": "Temporal Technologies",
+    "kind": "docs",
+    "url": "https://docs.temporal.io/",
+    "why": "Durable-execution workflows: how an orchestrator survives crashes by replaying its event history.",
+    "topicIds": ["saga-coordination"],
+    "free": true
+  }
+]

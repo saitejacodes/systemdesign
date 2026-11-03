@@ -1,0 +1,8 @@
+[
+  { "id": "distributed-locks-c1", "text": "I can classify a lock as efficiency or correctness and say what each failure costs, and when a CAS write or single owner removes the need for a lock.", "topicId": "why-locks" },
+  { "id": "distributed-locks-c2", "text": "I can explain why a lease can expire while its holder still believes it holds the lock, and size a TTL and renewal interval.", "topicId": "leases" },
+  { "id": "distributed-locks-c3", "text": "I can draw the GC-pause timeline with and without fencing tokens and say exactly what fencing does and does not guarantee.", "topicId": "fencing" },
+  { "id": "distributed-locks-c4", "text": "I can write a correct single-node Redis lock with token-checked release and explain how failover loses it.", "topicId": "redis-locks" },
+  { "id": "distributed-locks-c5", "text": "I can summarise both sides of the Redlock debate fairly in a few sentences each.", "topicId": "redis-locks" },
+  { "id": "distributed-locks-c6", "text": "I can describe the ZooKeeper ephemeral-sequential lock recipe and etcd's lease-based lock, and name the fencing token each provides.", "topicId": "coordination-locks" }
+]

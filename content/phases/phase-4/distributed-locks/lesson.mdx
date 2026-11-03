@@ -1,0 +1,252 @@
+## Why it matters
+
+Inside one database, a row lock is reliable because one process, the database, decides who holds it and can see every holder. A distributed lock tries to give the same guarantee to processes on different machines that share no memory, talk over a network that delays and drops messages, and can freeze at any moment for a garbage-collection pause, a VM migration or a swap storm. "Only one worker may process this file", "only one node may be the scheduler", "only one payment run per night": these are everywhere, and the obvious implementation, a key in Redis with an expiry, works on almost every day and fails in ways that corrupt data on the bad ones. Google built Chubby, its lock service, around exactly these problems, and in 2016 Martin Kleppmann and Redis creator Salvatore Sanfilippo (antirez) had a public, detailed disagreement about whether Redis's Redlock algorithm is safe. This section explains leases, why a lease alone is not enough, what fencing tokens add, and how to choose between Redis, ZooKeeper and etcd without picking a side blindly.
+
+<Callout type="analogy" title="The hotel room with a numbered key card">
+Imagine a hotel where a room key card works only until checkout time (a **lease**), so a guest who vanishes doesn't keep the room forever. A guest falls asleep in the lobby past checkout (a GC pause). The front desk, seeing the time has passed, gives the room to a new guest with a new card. The sleeper wakes up, still holding a card, and walks back in: two guests, one room. Now give the door lock a memory. Every card the desk issues carries a number that only goes up, and the door remembers the highest number it has seen. The new guest's card is number 34; once it has opened the door, the door rejects card 33 forever. That is a **fencing token**: the protected resource, not the lock, refuses the stale holder.
+
+Where the analogy breaks down: a real door would also stop the sleeper before the new guest arrives if it knew the time. In computers, the resource usually doesn't know about leases at all, and if the resource can't remember and compare numbers (an email provider, a payment API you don't control), fencing is impossible and you must fall back on idempotency.
+</Callout>
+
+## Efficiency locks vs correctness locks
+
+<DepthStamp depth="tradeoffs" />
+
+Kleppmann's most useful idea in this debate is to ask **what happens if the lock fails** and two processes both think they hold it:
+
+- **Efficiency lock:** the lock only saves duplicated work. Two workers both regenerate the same report or both send the same nightly digest. Annoying, slightly costly, not catastrophic. A simple, fast lock that is right 99.99% of the time is the correct engineering choice.
+- **Correctness lock:** two holders corrupt data or break an invariant. Two nodes both write the same file and interleave bytes, two schedulers both charge the same customer, two leaders both accept writes. Here "almost always right" is not good enough: you need a lock built on consensus **and** fencing at the resource.
+
+Decide which kind you have before choosing an implementation. Many teams build an elaborate lock for an efficiency problem, or, more dangerously, a simple Redis lock for a correctness problem.
+
+And ask whether you need a lock at all. A <Term slug="compare-and-set">compare-and-set</Term> (CAS) write, which only succeeds if the current value or version still matches what the writer last read (`UPDATE accounts SET balance = 90, version = 8 WHERE id = 1 AND version = 7`, or a DynamoDB condition expression), gives mutual exclusion on one record with no lock service. Giving each key a single owner (one Kafka partition consumer, one shard leader) removes contention by design. Distributed locks are for critical sections that span things no single CAS can cover.
+
+## Leases
+
+<DepthStamp depth="deep" />
+
+A lock with no expiry is a hazard: if the holder crashes, the lock is held forever. So distributed locks are almost always <Term slug="lease">leases</Term>: a lock granted for a limited time, which the holder must renew before it expires. The idea comes from Gray and Cheriton's 1989 paper on leases for distributed file caches. If the holder dies, the lease simply runs out and someone else can take it, with no failure detector needed.
+
+A lease is a promise **about time**, and that is its weakness. The lock service promises "nobody else will get this for 10 seconds". The holder believes "I have it for 10 seconds from when I asked". But the holder's belief is only as good as its ability to notice time passing, and a process can stop noticing at any moment. A <Term slug="process-pause">process pause</Term> is any interval in which a running program makes no progress while believing no time has passed: a stop-the-world garbage collection, a VM being live-migrated or suspended, the OS swapping the process to disk, a laptop lid closing, `SIGSTOP`. Pauses of many seconds are rare but documented in production JVMs with large heaps.
+
+### Worked example: a lease that expires mid-thought
+
+A worker takes a 10-second lease and renews it every 3 seconds. Its code is, in effect:
+
+```
+if lock.acquire("invoice-run", ttl=10s):
+    rows = load_unbilled_invoices()
+    # ...pause can hit here...
+    storage.write(charge_batch(rows))
+    lock.release()
+```
+
+There is no line where the worker can safely check "do I still hold the lease?", because a pause can strike **between the check and the write**. Checking `lock.is_held()` right before `storage.write` only narrows the window; it cannot close it. Renewal doesn't help either: a paused process can't renew. This is not a bug in a particular library; it is a property of using time to grant exclusivity to a process that can't feel time pass.
+
+Practical lease sizing still matters. A TTL much longer than the work (say 60 seconds for a 2-second job) means a crashed holder blocks everyone for a minute. A TTL shorter than normal work plus pauses means the lease expires during healthy runs. Renew at a third of the TTL or so, and treat a failed renewal as "stop now".
+
+## Fencing tokens and the GC-pause race
+
+<DepthStamp depth="deep" />
+
+Here is the failure Kleppmann described, with numbers. Client 1 and client 2 both want to write `file.dat` in a storage service. The lock service grants 10-second leases.
+
+| Time | Client 1 | Lock service | Client 2 | Storage |
+|---|---|---|---|---|
+| t = 0 s | Acquires lease (expires t = 10 s) | Holder: client 1 | | |
+| t = 1 s | Reads file, computes update; stop-the-world GC begins | | | |
+| t = 10 s | (paused) | Lease expires | | |
+| t = 11 s | (paused) | Holder: client 2 | Acquires lease | |
+| t = 12 s | (paused) | | Writes new version | file = client 2's data |
+| t = 16 s | GC ends; client 1 resumes, still "holding" the lock | | | |
+| t = 16 s | Writes its stale update | | | **file = client 1's stale data** |
+
+Every component behaved correctly. The lock service gave the lock to one client at a time; client 1 simply didn't know its lease was gone. Client 2's work is silently overwritten.
+
+A <Term slug="fencing-token">fencing token</Term> fixes this by moving the final check to the only component that sees both writes: the storage. Every time the lock service grants the lock, it also returns a number that strictly increases with each grant. Clients send the token with every write, and the storage rejects any write whose token is lower than the highest it has already accepted.
+
+<Figure caption="FIG. 8.1 · FENCING · THE STORAGE REJECTS THE PAUSED CLIENT">
+  <Diagram label="Sequence diagram: client 1 gets token 33 and pauses; its lease expires; client 2 gets token 34 and writes; storage records 34; client 1 resumes and writes with token 33; storage rejects it because 33 is less than 34." chart={`sequenceDiagram
+    participant C1 as Client 1
+    participant L as Lock service
+    participant C2 as Client 2
+    participant S as Storage
+    C1->>L: acquire
+    L-->>C1: OK, token 33
+    Note over C1: GC pause begins
+    Note over L: lease expires
+    C2->>L: acquire
+    L-->>C2: OK, token 34
+    C2->>S: write(data, token 34)
+    S-->>C2: OK (highest seen = 34)
+    Note over C1: GC pause ends
+    C1->>S: write(stale, token 33)
+    S-->>C1: REJECTED (33 is below 34)`} />
+</Figure>
+
+*Fencing: the lock decides who should write; the storage enforces it.*
+
+The same scenario with fencing:
+
+| Time | Event | Storage's highest token | Outcome |
+|---|---|---|---|
+| t = 0 s | Client 1 acquires, token 33 | 0 | |
+| t = 11 s | Client 2 acquires, token 34 | 0 | |
+| t = 12 s | Client 2 writes with 34 | 34 | Accepted |
+| t = 16 s | Client 1 writes with 33 | 34 | **Rejected**; client 1 learns it lost the lock |
+
+What fencing does and does **not** promise:
+
+- It guarantees the storage never accepts a write from an older lock holder **after** it has accepted one from a newer holder.
+- It does **not** stop client 1 writing if it resumes before client 2 has written anything. In that window token 33 is still the highest seen, so client 1's write is accepted, which is fine: no newer holder has acted yet, so nothing is overwritten.
+- It requires the resource to **cooperate**: store the highest token and compare atomically with the write. A database can do this with a CAS on a token column; an object store with conditional writes can approximate it. An external API that doesn't know about your tokens cannot be fenced.
+- The token must be **monotonic**. A random value (like a Redis lock's unique token) proves identity but cannot be ordered, so the storage can't tell old from new.
+
+Fencing is not new. Google's Chubby paper calls the same idea a **sequencer**: a lock holder can request one and pass it to servers, which check it before acting. Chubby also offers a cruder fallback, a **lock-delay**: if a holder fails without releasing, the server refuses to grant the lock to anyone else for a configurable period (up to a minute), giving a slow former holder time to finish or give up.
+
+## Redis locks and the Redlock debate
+
+<DepthStamp depth="tradeoffs" />
+
+### A single Redis instance
+
+The standard single-node Redis lock is:
+
+```
+SET lock:invoice-run <random-token> NX PX 10000
+```
+
+`NX` means "only if the key doesn't exist", `PX 10000` sets a 10-second expiry, and the random token identifies this holder. Release must delete the key **only if it still holds your token**, atomically, with a Lua script:
+
+```
+if redis.call("get", KEYS[1]) == ARGV[1] then
+  return redis.call("del", KEYS[1])
+else
+  return 0
+end
+```
+
+Without the check, a holder whose lease expired would delete the next holder's lock. This lock is fast and simple, and it is a fine **efficiency** lock. Its limits for correctness:
+
+- It is a lease with no fencing token: the GC-pause race above applies unchanged.
+- **Failover loses locks.** Redis replication is asynchronous. If the primary acknowledges the `SET`, then crashes before replicating it, and a replica is promoted, the lock is gone and a second client can acquire it:
+
+| Time | Event |
+|---|---|
+| t = 0 ms | Client A: `SET lock NX PX 10000` on primary; primary replies OK |
+| t = 1 ms | Primary crashes before the write reaches the replica |
+| t = 3,000 ms | Sentinel promotes the replica; it has no `lock` key |
+| t = 3,010 ms | Client B: `SET lock NX` succeeds. **A and B both hold the lock** |
+
+### Redlock
+
+<Term slug="redlock">Redlock</Term> is antirez's algorithm for a lock that survives the loss of individual Redis nodes without relying on replication. It uses N independent Redis primaries (5 in the description), with no replication between them:
+
+1. Record the start time.
+2. Try `SET key token NX PX ttl` on all 5 nodes in turn, with a short per-node timeout.
+3. The lock is acquired if a majority (at least 3) said OK **and** the total time spent is less than the TTL.
+4. The remaining validity is the TTL minus the time spent acquiring, minus an allowance for clock drift. With a 10,000 ms TTL, 120 ms spent acquiring and a 1% drift allowance (100 ms), about 9,780 ms of validity remain.
+5. If acquisition fails, release on all nodes.
+
+**Kleppmann's critique** (*How to do distributed locking*, 2016), in brief:
+
+- For efficiency, Redlock is overkill: a single Redis node is simpler and good enough.
+- For correctness, it is unsafe because it depends on **timing assumptions**: bounded network delay, bounded process pauses and bounded clock error. Distributed algorithms that are safe in an asynchronous model (like Raft or ZooKeeper's protocol) never depend on timing for safety, only for liveness.
+- He gives a concrete scenario: client 1 acquires the lock on nodes A, B and C; the clock on node C **jumps forward** (for example an NTP step), so C expires the key early; client 2 then acquires on C, D and E. Both believe they hold a majority.
+- Redlock produces no fencing token, so the GC-pause race can't be caught by the resource.
+
+**Antirez's reply** (*Is Redlock safe?*, 2016), in brief:
+
+- Redlock assumes clocks **advance at roughly the same rate**, not that they are synchronised; that is a reasonable assumption in practice if operators configure systems so clocks are not stepped by large amounts.
+- Redlock already measures elapsed time after acquiring, so delays **during** acquisition (including pauses) are detected and the lock is treated as invalid.
+- A pause **after** acquisition breaks every lease-based lock with automatic release, ZooKeeper's included, so it is not a Redlock-specific flaw.
+- If the resource can do fencing with a linearizable check, you arguably don't need a distributed lock for correctness at all; and Redlock's random token can serve as a check-and-set value if the resource supports it.
+
+A fair summary: both are right about different things. Antirez is right that the pause-after-acquire problem is universal and needs fencing everywhere. Kleppmann is right that Redlock's safety rests on clock and timing assumptions that consensus-based systems don't need, and that it offers no monotonic token. For an efficiency lock, a single Redis node is the pragmatic choice. For a correctness lock, most practitioners follow Kleppmann's advice: a consensus-backed lock **plus** fencing at the resource.
+
+## ZooKeeper and etcd locks
+
+<DepthStamp depth="tradeoffs" />
+
+ZooKeeper and etcd are coordination services that replicate their state with a consensus protocol (ZooKeeper's Zab, etcd's Raft) across, typically, 3 or 5 nodes. A write is acknowledged only once a majority has it, so a single node failure cannot lose a granted lock the way Redis failover can. Both give you a natural fencing token.
+
+### The ZooKeeper lock recipe
+
+ZooKeeper clients hold a **session** kept alive by heartbeats. An <Term slug="ephemeral-node">ephemeral node</Term> is a znode that ZooKeeper deletes automatically when the session that created it ends. The documented lock recipe:
+
+1. Create an ephemeral, **sequential** node under the lock path, such as `/locks/invoice/lock-0000000042`. ZooKeeper appends an increasing sequence number.
+2. List the children. If yours has the lowest number, you hold the lock.
+3. Otherwise, set a watch on the node **just below yours** (not on the whole directory) and wait. Watching only your predecessor avoids a herd effect where every waiter wakes up on each release.
+4. Release by deleting your node, or let the session expire and ZooKeeper deletes it for you.
+
+The sequence number, or the node's creation transaction ID (`czxid`), increases with each acquisition and can be used as a fencing token.
+
+### etcd
+
+etcd attaches keys to a **lease** with a TTL, which the client keeps alive with periodic keep-alive messages; when the lease expires, every key attached to it is deleted. Its lock (the `concurrency` package's `Mutex` in the Go client, or the `Lock` API and `etcdctl lock`) creates a key under a prefix bound to the caller's lease, and the caller with the lowest **create revision** holds the lock, the others waiting for earlier keys to be deleted. etcd's revision is a single cluster-wide counter that increases with every change, so the lock key's revision is a ready-made fencing token, and etcd transactions can make a write to etcd itself conditional on still owning the lock key.
+
+### What consensus does and does not fix
+
+| Problem | Single Redis | Redlock | ZooKeeper / etcd |
+|---|---|---|---|
+| Lock lost on node failover | Yes (async replication) | Tolerates minority node loss | No: majority-replicated |
+| Safety depends on clock behaviour | TTL on one node | Yes, across nodes | No for the lock state; session or lease timeouts still use time |
+| Monotonic fencing token | No | No | Yes (sequence, zxid, revision) |
+| Holder paused past its expiry | Two holders | Two holders | Two holders: fencing still required |
+| Latency to acquire | Sub-millisecond | Several round trips | A consensus write, typically milliseconds |
+
+The last full row is the point people miss: a paused ZooKeeper client whose session expires is in exactly the same position as a paused Redis client. Consensus makes the **lock service** correct; only fencing makes the **resource** safe.
+
+<TradeoffBox title="Distributed lock tradeoffs" items={[
+  { gain: "Single Redis lock: sub-millisecond, trivial to run", cost: "Lost on failover; no fencing token; efficiency use only" },
+  { gain: "Redlock: survives loss of a minority of Redis nodes", cost: "Safety depends on timing and clock assumptions; no fencing token" },
+  { gain: "ZooKeeper / etcd: consensus-backed state and monotonic tokens", cost: "Another cluster to operate; slower acquire; still needs fencing" },
+  { gain: "Fencing tokens: safe even with long pauses", cost: "The resource must store and compare tokens atomically" },
+  { gain: "No lock (CAS, single owner per key): nothing to expire", cost: "Only covers one record or a partitioned design" }
+]} />
+
+<NotWhenBox title="When not to use a distributed lock" items={[
+  "One record is the whole critical section: use a conditional write or optimistic locking.",
+  "The work is idempotent: let duplicates happen and deduplicate.",
+  "Ordering per key: route each key to one owner (a partition, a shard leader) instead of locking.",
+  "Correctness matters but the resource can't check a token: a lock alone can't make it safe; design for idempotency.",
+  "Holding a lock across slow external calls or user think-time: the lease will expire under you."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="If my lock service is built on consensus, two clients can never act as the holder." right="Consensus keeps the lock service's state correct. A client paused past its lease still believes it holds the lock; only fencing at the resource stops its stale write." />
+
+<Misconception wrong="Checking that I still hold the lock right before writing makes it safe." right="A pause can strike between the check and the write. Checking narrows the window but never closes it." />
+
+<Misconception wrong="The random value in a Redis lock is a fencing token." right="It identifies the holder for safe release, but it isn't ordered, so a storage service can't tell an older holder from a newer one." />
+
+<Misconception wrong="Redlock is simply broken." right="It is debated. Its critics show safety depends on timing and clock assumptions and it lacks fencing; its author argues those assumptions are practical. Both agree a pause after acquiring affects every lease-based lock." />
+
+## Interview angle
+
+<InterviewAngle title="Distributed locks" questions={[
+  "How would you make sure only one instance of a scheduled job runs at a time across 20 servers?",
+  "Your lock has a 30-second TTL. What happens if the holder pauses for 40 seconds?",
+  "What is a fencing token and who checks it?",
+  "Would you use Redis or ZooKeeper for this lock? Why?",
+  "Can you avoid the lock entirely?"
+]}>
+Distributed locks come up inside job schedulers, leader election, inventory and payment designs. The strong opening is to classify the lock: efficiency or correctness. For efficiency, a single Redis `SET NX PX` with token-checked release is fine, and saying so shows judgement. For correctness, name the GC-pause race, show the timeline, and add fencing tokens checked by the resource, issued by a consensus-backed service (etcd or ZooKeeper).
+
+The follow-up that separates candidates is "and if the resource can't check a token?" A weak answer adds more lock machinery. A strong one says no lock can make that safe, then designs for it: make the operation idempotent with an idempotency key the external service honours, or restructure so one owner per key performs it. The next probe is usually Redlock: summarise both sides in two sentences each rather than declaring a winner.
+</InterviewAngle>
+
+## Practice
+
+1. A nightly billing job runs on 12 servers and must charge each customer exactly once. Design the locking, the lease TTL and renewal, the fencing check in the billing table, and what a worker does when its renewal fails.
+2. Redraw the Redis failover timeline with Redlock across 5 independent nodes. Which single failure no longer causes two holders? Then draw the clock-jump scenario that still does.
+3. Replace a distributed lock with a design that needs none: a counter of remaining concert tickets decremented by 50 API servers. Write the conditional update and explain what happens under contention.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

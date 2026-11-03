@@ -1,0 +1,8 @@
+[
+  { "id": "quorums-c1", "text": "I can derive failures tolerated (N − W, N − R), latency (W-th and R-th fastest replica) and availability with binomial math for any N, R, W.", "topicId": "nrw" },
+  { "id": "quorums-c2", "text": "I can compute Cassandra's QUORUM and LOCAL_QUORUM sizes for a multi-data-centre keyspace and say which cross the WAN.", "topicId": "nrw" },
+  { "id": "quorums-c3", "text": "I can prove R + W > N with the pigeonhole argument and give a timeline where it still returns a non-linearizable result.", "topicId": "overlap" },
+  { "id": "quorums-c4", "text": "I can explain how a sloppy quorum breaks overlap and how hinted handoff restores the data later.", "topicId": "sloppy-quorums" },
+  { "id": "quorums-c5", "text": "I can describe digest-based read repair and why it never fixes data nobody reads.", "topicId": "read-repair" },
+  { "id": "quorums-c6", "text": "I can explain Merkle-tree anti-entropy and why repair must run within gc_grace_seconds to stop deleted rows coming back.", "topicId": "anti-entropy" }
+]

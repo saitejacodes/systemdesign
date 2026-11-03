@@ -1,0 +1,328 @@
+[
+  {
+    "id": "cap-pacelc-q1",
+    "type": "single",
+    "prompt": "In the Gilbert and Lynch proof of CAP, what does \"consistency\" mean?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Transactions never violate application invariants like non-negative balances"
+      },
+      {
+        "id": "b",
+        "text": "All replicas converge to the same value once writes stop arriving"
+      },
+      {
+        "id": "c",
+        "text": "Operations appear atomic, as on one copy, ordered by real time"
+      },
+      {
+        "id": "d",
+        "text": "Each client sees its own writes and never moves back in time"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "CAP's C is linearizability: the system acts like a single copy and every operation takes effect at one instant between its start and end, respecting real-time order. Invariants such as non-negative balances are ACID's C. Converging once writes stop is eventual consistency, much weaker. Seeing your own writes and never going backwards are session guarantees (read-your-writes, monotonic reads), also weaker than linearizability.",
+    "topicId": "cap-precise",
+    "difficulty": 1
+  },
+  {
+    "id": "cap-pacelc-q2",
+    "type": "single",
+    "prompt": "Which statement about CAP's definition of availability is accurate?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It requires a response within the service's agreed latency SLO"
+      },
+      {
+        "id": "b",
+        "text": "It is met if the majority side of a partition keeps serving everyone"
+      },
+      {
+        "id": "c",
+        "text": "It means a 99.99% success rate measured over a calendar month"
+      },
+      {
+        "id": "d",
+        "text": "Every non-failing node must eventually return a non-error reply"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "Gilbert and Lynch define availability as every request to a non-failing node eventually getting a non-error response, with no deadline. There is no latency bound, so an SLO is not part of it. Serving only from the majority side fails the definition because minority-side nodes are non-failing yet refuse. A monthly success percentage is the SLA sense of availability, which CAP does not use.",
+    "topicId": "cap-precise",
+    "difficulty": 2
+  },
+  {
+    "id": "cap-pacelc-q3",
+    "type": "scenario",
+    "prompt": "What is the most accurate description of what happened?",
+    "scenario": "A three-node cluster runs on a single rack. One node enters a 40-second garbage-collection pause. The other two stop receiving its heartbeats, conclude it has failed, and elect a new leader. Nobody touched the network.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Not a partition: the network was healthy, so CAP does not apply here"
+      },
+      {
+        "id": "b",
+        "text": "Effectively a partition: peers can't tell a paused node from a cut-off one"
+      },
+      {
+        "id": "c",
+        "text": "A Byzantine fault, because the paused node was sending wrong messages"
+      },
+      {
+        "id": "d",
+        "text": "A clock-skew bug that only happens if NTP is misconfigured on the node"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "From the outside, a node that cannot reply for 40 seconds is indistinguishable from one whose network link is cut, so the cluster must make the same C-or-A timeout decision. Saying CAP doesn't apply because the cables were fine is the common misconception. A Byzantine fault means arbitrary or malicious messages, but the node sent nothing. Clock skew is unrelated: the pause stops the process regardless of what time it thinks it is.",
+    "topicId": "partitions",
+    "difficulty": 2
+  },
+  {
+    "id": "cap-pacelc-q4",
+    "type": "single",
+    "prompt": "Why is a \"CA\" distributed database not a meaningful design choice?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Partitions happen regardless; you only pick C or A when they do"
+      },
+      {
+        "id": "b",
+        "text": "Being consistent and available at once is impossible even on a healthy network"
+      },
+      {
+        "id": "c",
+        "text": "CA systems exist but only when every replica uses synchronous disks"
+      },
+      {
+        "id": "d",
+        "text": "Because the theorem says partition tolerance is always the cheapest letter"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "You cannot decide that the network won't partition; you can only decide what each operation does when it does. On a healthy network a system can be both consistent and available, so the claim that it's always impossible overstates CAP. Synchronous disks don't stop network partitions. CAP says nothing about which property is cheapest.",
+    "topicId": "partitions",
+    "difficulty": 1
+  },
+  {
+    "id": "cap-pacelc-q5",
+    "type": "scenario",
+    "prompt": "What do clients connected to the two isolated nodes see?",
+    "scenario": "A five-node etcd cluster is split by a network fault into a group of three nodes and a group of two. Clients on both sides keep sending writes and default (linearizable) reads.",
+    "options": [
+      {
+        "id": "a",
+        "text": "They keep working, then their writes are merged when the network heals"
+      },
+      {
+        "id": "b",
+        "text": "Reads succeed with stale data and only the writes return errors"
+      },
+      {
+        "id": "c",
+        "text": "Writes and linearizable reads fail or time out; the three-node side works"
+      },
+      {
+        "id": "d",
+        "text": "Both sides elect a leader, so the cluster runs in split brain until healed"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "etcd commits through Raft, which needs a majority (3 of 5). The two-node side cannot commit writes, and default reads use a read index that also needs a majority, so both fail. Merging after the partition is AP behaviour etcd doesn't do. Stale reads would need the serializable read option, not the default. Split brain cannot occur because two nodes cannot win a 3-vote election.",
+    "topicId": "cp-vs-ap",
+    "difficulty": 2
+  },
+  {
+    "id": "cap-pacelc-q6",
+    "type": "scenario",
+    "prompt": "Which change prevents this stale read?",
+    "scenario": "Leader A is cut off from B and C. After the election timeout, B becomes leader and commits balance = 50. A client still routed to A reads the balance and A answers 100 from its local state.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Have A confirm with a majority that it is still leader before reading"
+      },
+      {
+        "id": "b",
+        "text": "Make A replicate writes to every follower synchronously before acking"
+      },
+      {
+        "id": "c",
+        "text": "Shorten the election timeout so that B is elected faster than before"
+      },
+      {
+        "id": "d",
+        "text": "Have the client retry the read three times and take the newest result"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "The bug is that A trusts its own title. A read index makes the leader confirm leadership with a majority before answering, which A cannot do, so the read fails instead of lying. Synchronous replication protects writes, but A is not handling writes here. A faster election makes the window start sooner, it doesn't close it. Retries all reach A and return the same stale 100.",
+    "topicId": "cp-vs-ap",
+    "difficulty": 3
+  },
+  {
+    "id": "cap-pacelc-q7",
+    "type": "multi",
+    "prompt": "Which statements about labelling systems CP or AP are accurate? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Cassandra's behaviour depends on the consistency level of each query"
+      },
+      {
+        "id": "b",
+        "text": "DynamoDB lets a read request strong consistency per call"
+      },
+      {
+        "id": "c",
+        "text": "A CP-labelled store returns only fresh data from every node"
+      },
+      {
+        "id": "d",
+        "text": "Snapshot isolation counts as consistency in the CAP sense"
+      }
+    ],
+    "correct": [
+      "a",
+      "b"
+    ],
+    "explanation": "Cassandra lets each query pick a level such as ONE or QUORUM, and DynamoDB's ConsistentRead flag picks strong reads per request, so the choice is per operation. CP labels do not promise fresh reads from every node: ZooKeeper followers can serve stale reads unless you call sync first. Snapshot isolation is not linearizability, so it is not CAP's C.",
+    "topicId": "pick-two-myth",
+    "difficulty": 2
+  },
+  {
+    "id": "cap-pacelc-q8",
+    "type": "single",
+    "prompt": "What does the \"ELC\" half of PACELC describe?",
+    "options": [
+      {
+        "id": "a",
+        "text": "How a system recovers and reconciles data after a partition ends"
+      },
+      {
+        "id": "b",
+        "text": "The latency vs consistency trade-off while the network is healthy"
+      },
+      {
+        "id": "c",
+        "text": "Whether eventual consistency is used for log compaction and cleanup"
+      },
+      {
+        "id": "d",
+        "text": "The choice between electing leaders and using leaderless quorums"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "PACELC reads: if Partition, Availability or Consistency; Else, Latency or Consistency. The Else branch is normal operation, where coordinated answers cost round trips. Post-partition recovery matters but is not what ELC stands for. Log compaction and leader election are unrelated readings of the letters.",
+    "topicId": "pacelc",
+    "difficulty": 1
+  },
+  {
+    "id": "cap-pacelc-q9",
+    "type": "scenario",
+    "prompt": "Roughly how much latency do the consistent reads add to each page?",
+    "scenario": "A service in Ireland reads from a leader in Virginia with an 80 ms round trip. Each page makes 6 sequential linearizable reads that must go to the leader. Local follower reads would take about 1 ms each.",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 80 ms, since the reads can share one round trip"
+      },
+      {
+        "id": "b",
+        "text": "About 13 ms, since only the first read crosses the ocean"
+      },
+      {
+        "id": "c",
+        "text": "About 474 ms more than reading from local followers"
+      },
+      {
+        "id": "d",
+        "text": "About 960 ms, since each read needs two round trips"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Six sequential reads at 80 ms is 480 ms, versus 6 × 1 ms = 6 ms locally: about 474 ms extra per page, with no partition anywhere. Sharing one round trip would require batching, but the reads are sequential. Nothing makes later reads local. A single linearizable read is one round trip to the leader (plus its quorum check, which here is assumed included), not two from Ireland.",
+    "topicId": "pacelc",
+    "difficulty": 2
+  },
+  {
+    "id": "cap-pacelc-q10",
+    "type": "scenario",
+    "prompt": "Which design best matches the requirements?",
+    "scenario": "A global ticketing site sells seats for concerts. It also shows each event's \"people interested\" counter and a recommendations feed. A cross-region link will occasionally fail for minutes at a time.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Make everything AP and resolve oversold seats by refunding later"
+      },
+      {
+        "id": "b",
+        "text": "Make everything CP so all data has one, simple consistency story"
+      },
+      {
+        "id": "c",
+        "text": "Run it in one region only, which makes the whole system CA"
+      },
+      {
+        "id": "d",
+        "text": "CP for seat sales, AP for counters and the recommendations feed"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "Selling the same seat twice is real harm, so seat inventory should refuse during a partition; a stale interest counter or feed harms nobody, so those should stay available and low latency. All-AP oversells seats. All-CP makes counters and feeds fail and pay cross-region latency for no benefit. One region removes the cross-region link but makes the region a single point of failure; it is not CA in any useful sense.",
+    "topicId": "cp-vs-ap",
+    "difficulty": 2
+  },
+  {
+    "id": "cap-pacelc-q11",
+    "type": "multi",
+    "prompt": "Which of these are fair PACELC classifications from Abadi's paper (default settings)? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Cassandra as PA/EL"
+      },
+      {
+        "id": "b",
+        "text": "VoltDB/H-Store as PC/EC"
+      },
+      {
+        "id": "c",
+        "text": "Riak as PC/EC, like VoltDB"
+      },
+      {
+        "id": "d",
+        "text": "Dynamo as PC/EL, like PNUTS"
+      }
+    ],
+    "correct": [
+      "a",
+      "b"
+    ],
+    "explanation": "Abadi classified Dynamo, Cassandra and Riak as PA/EL by default (available under partition, low latency otherwise), and fully consistent systems such as VoltDB/H-Store as PC/EC. Riak is a Dynamo-style store, so PC/EC is wrong. Dynamo stays writable during partitions, so it is PA, not PC; PC/EL was his example for Yahoo's PNUTS.",
+    "topicId": "pacelc",
+    "difficulty": 3
+  }
+]

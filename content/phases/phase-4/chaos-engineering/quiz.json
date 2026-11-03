@@ -1,0 +1,330 @@
+[
+  {
+    "id": "chaos-engineering-q1",
+    "type": "single",
+    "prompt": "What makes a chaos experiment different from simply breaking things in production?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It always uses random faults, so that engineers cannot prepare for them in advance"
+      },
+      {
+        "id": "b",
+        "text": "A measurable hypothesis, a limited blast radius and a way to stop it immediately"
+      },
+      {
+        "id": "c",
+        "text": "It is run only in staging, so that real users are never affected by the faults"
+      },
+      {
+        "id": "d",
+        "text": "It must cover an entire region, since smaller faults reveal nothing new to learn"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The discipline is the control: a falsifiable steady-state hypothesis, a small blast radius and stop conditions. Randomness is optional; many experiments target one specific fault. The principles favour production, because staging differs in traffic, data and configuration. Starting at region scale is exactly how experiments become outages; start small and expand.",
+    "topicId": "chaos-principles",
+    "difficulty": 1
+  },
+  {
+    "id": "chaos-engineering-q2",
+    "type": "scenario",
+    "prompt": "Which steady-state metric is best for the hypothesis?",
+    "scenario": "A food-delivery company wants to test whether its ordering flow survives losing one of three instances of its restaurant-menu service.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Average CPU utilisation across the remaining menu-service instances"
+      },
+      {
+        "id": "b",
+        "text": "Successfully placed orders per minute, compared with a control group"
+      },
+      {
+        "id": "c",
+        "text": "Number of healthy menu-service instances reported by the balancer"
+      },
+      {
+        "id": "d",
+        "text": "Memory used by each menu-service instance while the fault is active"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The steady state should reflect user value: orders placed is what the business cares about, and a control group separates the fault's effect from normal variation. CPU and memory describe internals; they can look fine while orders fail. The healthy-instance count will drop by one by design, so it tells you nothing about whether users are still served.",
+    "topicId": "steady-state-hypothesis",
+    "difficulty": 1
+  },
+  {
+    "id": "chaos-engineering-q3",
+    "type": "scenario",
+    "prompt": "What should the team do before running this experiment?",
+    "scenario": "A team plans a chaos experiment terminating its single primary Postgres instance in production. Everyone already knows there is no automated failover and a manual promotion takes about 40 minutes.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Run it at 1% of traffic, since a small blast radius makes any fault acceptable"
+      },
+      {
+        "id": "b",
+        "text": "Run it as planned, since confirming a known weakness has value for leadership"
+      },
+      {
+        "id": "c",
+        "text": "Fix the known weakness first, then run the experiment to verify the failover"
+      },
+      {
+        "id": "d",
+        "text": "Run it in staging only, because databases should never be part of experiments"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Experiments probe uncertainty; a known 40-minute outage is not uncertain. Fix it (automated failover), then experiment to confirm the fix. Traffic slicing cannot shrink the impact of killing the one primary every request shares, so the blast radius is 100% regardless. Causing a known outage to prove a point to leadership is self-harm, not an experiment. Databases can and should be tested once failover exists; staging-only experiments miss production differences.",
+    "topicId": "chaos-principles",
+    "difficulty": 2
+  },
+  {
+    "id": "chaos-engineering-q4",
+    "type": "multi",
+    "prompt": "Which measures limit an experiment's blast radius? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Route a small percentage of traffic through the fault"
+      },
+      {
+        "id": "b",
+        "text": "Scope the fault to one instance before one zone"
+      },
+      {
+        "id": "c",
+        "text": "Attach a stop condition on the guard metrics"
+      },
+      {
+        "id": "d",
+        "text": "Run outside working hours so fewer engineers notice"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "Traffic share, fault scope and automatic stop conditions all limit how far an experiment can spread and how long it lasts. Running outside working hours does the opposite: the owning team is not at their desks to notice and respond, so experiments are best run when they are.",
+    "topicId": "chaos-principles",
+    "difficulty": 2
+  },
+  {
+    "id": "chaos-engineering-q5",
+    "type": "scenario",
+    "prompt": "What went wrong with the experiment design?",
+    "scenario": "Hypothesis: 'If we add 300 ms latency to the pricing service, checkout success stays above 99.5% and p99 stays below 1 s.' The stop condition was set only on checkout success. During the run, success stayed at 99.7% but p99 rose to 4 s for twelve minutes before anyone noticed.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The latency should have been 3 s, since 300 ms is too small to reveal anything"
+      },
+      {
+        "id": "b",
+        "text": "The hypothesis was wrong to include latency, since only errors matter to users"
+      },
+      {
+        "id": "c",
+        "text": "Checkout success is the wrong steady-state metric for a store's checkout flow"
+      },
+      {
+        "id": "d",
+        "text": "Stop conditions must guard every bound in the hypothesis, including p99 latency"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "The hypothesis had two bounds but only one was guarded, so a broken latency bound ran unchecked. 300 ms is realistic and clearly revealed a weakness, so it was not too small. Slow checkouts drive users away even when they succeed, so latency belongs in the hypothesis. Checkout success is a good user-value metric; the flaw was the missing guard, not the metric.",
+    "topicId": "steady-state-hypothesis",
+    "difficulty": 2
+  },
+  {
+    "id": "chaos-engineering-q6",
+    "type": "single",
+    "prompt": "Why compare an experiment group against a simultaneous control group rather than against the same metric an hour earlier?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Traffic and behaviour change over time, so only a simultaneous comparison isolates the fault"
+      },
+      {
+        "id": "b",
+        "text": "Metrics from an hour ago are deleted by most monitoring systems before they can be read"
+      },
+      {
+        "id": "c",
+        "text": "The control group absorbs the fault's errors, which keeps the experiment group healthy"
+      },
+      {
+        "id": "d",
+        "text": "A control group doubles the blast radius, which makes the experiment's results certain"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Traffic patterns shift minute to minute, so a before-and-after difference could be the time of day; equal slices at the same time differ only by the fault. Monitoring keeps far more than an hour of history. The control group receives no fault at all; it does not absorb anything. It does add traffic to the experiment, but it exists to provide a fair baseline, not to make results certain by enlarging impact.",
+    "topicId": "steady-state-hypothesis",
+    "difficulty": 2
+  },
+  {
+    "id": "chaos-engineering-q7",
+    "type": "scenario",
+    "prompt": "Roughly how many extra failed requests will this experiment cost?",
+    "scenario": "A service handles 30,000 requests a second. The experiment sends 1% of traffic to the experiment group for 5 minutes. Baseline success is 99.9%; during the fault the experiment group's success falls to 99.4%.",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 4,500"
+      },
+      {
+        "id": "b",
+        "text": "About 45,000"
+      },
+      {
+        "id": "c",
+        "text": "About 450"
+      },
+      {
+        "id": "d",
+        "text": "About 540"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Experiment traffic is 1% of 30,000 = 300 requests a second, × 300 s = 90,000 requests. The extra failure rate is 99.9% − 99.4% = 0.5 points, so 90,000 × 0.005 = 450 extra failures. 4,500 treats the slice as 10% of traffic. 45,000 applies the drop to all traffic, as if there were no blast-radius limit. 540 counts every failure in the group (0.6% of 90,000) rather than only the extra ones the fault caused.",
+    "topicId": "steady-state-hypothesis",
+    "difficulty": 2
+  },
+  {
+    "id": "chaos-engineering-q8",
+    "type": "single",
+    "prompt": "An experiment rejects its hypothesis: the experiment group's errors rose 2 points before the stop condition rolled the fault back. What is the best next step?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Stop running chaos experiments, since this one caused real user errors"
+      },
+      {
+        "id": "b",
+        "text": "Rerun it at 10% of traffic to make sure that the result is not a fluke"
+      },
+      {
+        "id": "c",
+        "text": "Find the mechanism, fix it, then rerun the same experiment to verify"
+      },
+      {
+        "id": "d",
+        "text": "Widen the tolerance to 3 points so that the hypothesis passes next time"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "A rejected hypothesis is the experiment working: it found a weakness cheaply. The value comes from fixing the cause and proving the fix by rerunning. Stopping experiments throws away the finding and leaves the weakness for a real outage. Rerunning at ten times the blast radius on a known weakness multiplies harm; the control group already showed causation. Widening the tolerance hides the problem instead of fixing it.",
+    "topicId": "steady-state-hypothesis",
+    "difficulty": 2
+  },
+  {
+    "id": "chaos-engineering-q9",
+    "type": "scenario",
+    "prompt": "Which practice best addresses what went wrong here?",
+    "scenario": "Automated chaos experiments show the payment service survives a database failover in 30 seconds. Yet in a real failover at night the outage lasted 50 minutes: the alert paged a retired rotation, the runbook link was dead, and the responder did not know who could approve a traffic shift.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Run the automated database-failover experiment more often, for example hourly"
+      },
+      {
+        "id": "b",
+        "text": "Hold a game day that rehearses the incident response with the real on-call team"
+      },
+      {
+        "id": "c",
+        "text": "Raise the stop condition thresholds so automated experiments run a little longer"
+      },
+      {
+        "id": "d",
+        "text": "Move the automated experiments from production into a staging environment"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The software recovered; the people and process did not. Game days exercise paging, runbooks, roles and escalation as well as the system. Running the automated experiment more often keeps testing the part that already works. Longer experiments change nothing about paging or runbooks. Moving to staging makes the software test less realistic and still never tests the humans.",
+    "topicId": "game-days",
+    "difficulty": 2
+  },
+  {
+    "id": "chaos-engineering-q10",
+    "type": "single",
+    "prompt": "What is Google's 'Wheel of Misfortune'?",
+    "options": [
+      {
+        "id": "a",
+        "text": "A tool that randomly picks which production service to break each week"
+      },
+      {
+        "id": "b",
+        "text": "A role-play where a newer on-call engineer works through a past incident"
+      },
+      {
+        "id": "c",
+        "text": "A ranking of the services that caused the most outages in the quarter"
+      },
+      {
+        "id": "d",
+        "text": "A scheduled region evacuation that Google runs across all of its products"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The SRE book describes it as a role-play: an experienced engineer plays the system, revealing what dashboards show as a trainee asks questions about a past incident. It injects no real faults, so it is not a random breakage tool. It is a training exercise, not an outage ranking. Google's large-scale disaster tests are the separate DiRT programme.",
+    "topicId": "game-days",
+    "difficulty": 1
+  },
+  {
+    "id": "chaos-engineering-q11",
+    "type": "multi",
+    "prompt": "Which of these does chaos engineering NOT give you on its own? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Proof that no untested weakness remains"
+      },
+      {
+        "id": "b",
+        "text": "Resilience, without anyone fixing findings"
+      },
+      {
+        "id": "c",
+        "text": "Recovery from a bad data migration"
+      },
+      {
+        "id": "d",
+        "text": "Evidence about the faults you chose to test"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "Experiments only cover the faults you inject, so they cannot prove the absence of other weaknesses; resilience comes from the fixes, not the experiments; and logical damage like a bad migration needs backups and DR drills rather than fault injection. Evidence about the chosen faults is exactly what chaos engineering does provide.",
+    "topicId": "chaos-principles",
+    "difficulty": 3
+  }
+]

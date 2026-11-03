@@ -1,0 +1,42 @@
+[
+  {
+    "id": "principles-of-chaos",
+    "title": "Principles of Chaos Engineering",
+    "author": "principlesofchaos.org contributors",
+    "kind": "docs",
+    "url": "https://principlesofchaos.org/",
+    "why": "The short, canonical statement of the discipline: steady state, real-world events, production, automation and blast radius.",
+    "topicIds": ["chaos-principles", "steady-state-hypothesis"],
+    "free": true
+  },
+  {
+    "id": "aws-fis",
+    "title": "AWS Fault Injection Service User Guide",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/fis/latest/userguide/what-is.html",
+    "why": "A managed experiment platform showing concretely how targets, actions and CloudWatch-based stop conditions fit together.",
+    "topicIds": ["chaos-principles", "steady-state-hypothesis"],
+    "free": true
+  },
+  {
+    "id": "netflix-chaosmonkey",
+    "title": "Chaos Monkey",
+    "author": "Netflix",
+    "kind": "repo",
+    "url": "https://github.com/Netflix/chaosmonkey",
+    "why": "The tool that started the practice; its documentation shows how termination is scheduled and scoped in real deployments.",
+    "topicIds": ["chaos-principles"],
+    "free": true
+  },
+  {
+    "id": "sre-book-oncall-training",
+    "title": "Site Reliability Engineering, chapter 28: Accelerating SREs to On-Call and Beyond",
+    "author": "Google (Beyer, Jones, Petoff, Murphy, eds.)",
+    "kind": "free-book",
+    "url": "https://sre.google/sre-book/accelerating-sre-on-call/",
+    "why": "Describes the Wheel of Misfortune and disaster role-playing, the low-cost, people-focused end of game days.",
+    "topicIds": ["game-days"],
+    "free": true
+  }
+]

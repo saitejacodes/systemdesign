@@ -1,0 +1,171 @@
+[
+  {
+    "id": "q1",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "A service computes request latency as `endTime - startTime` using `System.currentTimeMillis()`. Once a day or so, dashboards show a request that took −340 ms.",
+    "options": [
+      { "id": "a", "text": "The wall clock was stepped backwards by NTP mid-request; use a monotonic clock" },
+      { "id": "b", "text": "The request was handled by two servers whose clocks are 340 ms apart from each other" },
+      { "id": "c", "text": "Integer overflow in the millisecond counter; switch the field to a 64-bit long" },
+      { "id": "d", "text": "The JVM's garbage collector paused the thread and rewound its clock afterwards" }
+    ],
+    "correct": ["a"],
+    "explanation": "Both readings came from one machine's time-of-day clock, which can jump backwards when NTP steps it; durations should use a monotonic clock such as System.nanoTime(). Two servers aren't involved in a single local measurement. currentTimeMillis already returns a 64-bit long that won't overflow for millions of years. GC pauses delay threads but never move a clock backwards.",
+    "topicId": "clock-skew",
+    "difficulty": 2
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "A server's clock drifts at worst 200 ppm and syncs every 30 seconds. What is its worst-case error just before a sync?",
+    "options": [
+      { "id": "a", "text": "0.2 ms" },
+      { "id": "b", "text": "6 ms" },
+      { "id": "c", "text": "60 ms" },
+      { "id": "d", "text": "200 ms" }
+    ],
+    "correct": ["b"],
+    "explanation": "200 × 10⁻⁶ × 30 s = 0.006 s = 6 ms. 0.2 ms is the drift after one second, 60 ms would be 300 seconds without a sync, and 200 ms confuses the ppm figure with milliseconds.",
+    "topicId": "clock-skew",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "NTP measures a round trip of 50 ms, but the request actually took 5 ms and the reply 45 ms. What happens to the offset estimate?",
+    "options": [
+      { "id": "a", "text": "It is exact, because NTP subtracts the full round-trip delay" },
+      { "id": "b", "text": "It is off by 20 ms, half the 40 ms asymmetry between the legs" },
+      { "id": "c", "text": "It is off by 50 ms, the whole round trip, as NTP can't split it" },
+      { "id": "d", "text": "NTP detects asymmetric paths and discards the sample entirely" }
+    ],
+    "correct": ["b"],
+    "explanation": "NTP's offset formula assumes both legs take half the round trip (25 ms each). The true legs differ by 40 ms, so the estimate is off by half of that, 20 ms. Subtracting total delay doesn't reveal the split, the error is half the asymmetry rather than the whole round trip, and NTP has no way to detect asymmetry from one exchange.",
+    "topicId": "ntp-limits",
+    "difficulty": 3
+  },
+  {
+    "id": "q4",
+    "type": "single",
+    "prompt": "Events a and b have Lamport timestamps L(a) = 4 and L(b) = 7. What can you conclude?",
+    "options": [
+      { "id": "a", "text": "a happened before b, since its timestamp is lower" },
+      { "id": "b", "text": "b cannot have happened before a; they may be concurrent" },
+      { "id": "c", "text": "a and b are definitely concurrent with each other" },
+      { "id": "d", "text": "b happened about three milliseconds after event a" }
+    ],
+    "correct": ["b"],
+    "explanation": "If b → a then L(b) would be lower than L(a), which it isn't, so b did not happen before a. But a lower Lamport timestamp doesn't prove a → b; they may be concurrent. They aren't definitely concurrent either, and Lamport counters have no relation to milliseconds.",
+    "topicId": "lamport-clocks",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "A process's Lamport counter is 5. It receives a message stamped 9. What is its counter after the receive event?",
+    "options": [
+      { "id": "a", "text": "6" },
+      { "id": "b", "text": "9" },
+      { "id": "c", "text": "10" },
+      { "id": "d", "text": "14" }
+    ],
+    "correct": ["c"],
+    "explanation": "max(5, 9) + 1 = 10. 6 ignores the message's timestamp, 9 takes the max but forgets that the receive is itself an event, and 14 wrongly adds the two counters.",
+    "topicId": "lamport-clocks",
+    "difficulty": 1
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "How do these two versions relate?",
+    "scenario": "A key has two versions stored on different replicas. Version X carries vector clock [A:2, B:1, C:0]; version Y carries [A:1, B:1, C:1].",
+    "options": [
+      { "id": "a", "text": "X is newer, because its total of counters is equal and A's entry is larger" },
+      { "id": "b", "text": "Y is newer, because it has seen a write from C that X has not yet seen" },
+      { "id": "c", "text": "They are concurrent: neither vector is ≤ the other in every entry" },
+      { "id": "d", "text": "They are identical histories, since both counter totals add up to 3" }
+    ],
+    "correct": ["c"],
+    "explanation": "X has a larger A entry and Y a larger C entry, so neither dominates: the writes were concurrent and must be kept as siblings or merged. Comparing sums or a single entry is the classic mistake; vector order requires every entry to be ≤. Equal sums say nothing about equal histories.",
+    "topicId": "vector-clocks",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "multi",
+    "prompt": "Which are real costs or limits of vector clocks? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Size grows with the number of writers" },
+      { "id": "b", "text": "Conflicts are detected but not resolved" },
+      { "id": "c", "text": "They need tightly synchronized clocks" },
+      { "id": "d", "text": "They cannot spot concurrent writes at all" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "One entry per participant makes vectors grow (Dynamo truncated old entries, and Riak moved to dotted version vectors), and detecting a conflict still leaves the application or a CRDT to merge it. Vector clocks are purely logical, so they need no clock synchronisation, and detecting concurrency is precisely what they do well.",
+    "topicId": "vector-clocks",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "prompt": "What went wrong?",
+    "scenario": "A store resolves conflicts with last-write-wins on server timestamps. Server S1's clock is 200 ms fast. A user saves a draft via S1, then 80 ms later clicks Publish, handled by S2. After replication, the published version is gone and the draft remains.",
+    "options": [
+      { "id": "a", "text": "Replication lag: S2's write had not reached the replica yet when the read came in" },
+      { "id": "b", "text": "S1's skewed timestamp outranked the later write, so LWW silently discarded it" },
+      { "id": "c", "text": "A network partition made S2 roll back its write after failing to reach a quorum" },
+      { "id": "d", "text": "Vector clocks marked the two writes concurrent, so the store chose one at random" }
+    ],
+    "correct": ["b"],
+    "explanation": "S1 stamped the draft about 200 ms ahead, so it carries a later timestamp than the publish 80 ms after it, and LWW keeps the highest timestamp. The loss is permanent, not lag that would catch up. Nothing in the scenario involves a quorum failure, and an LWW store isn't using vector clocks; if it were, it would keep both as siblings rather than pick at random.",
+    "topicId": "concurrent-updates",
+    "difficulty": 3
+  },
+  {
+    "id": "q9",
+    "type": "scenario",
+    "prompt": "Which approach keeps every added item without relying on clocks?",
+    "scenario": "A shopping cart is replicated across regions and users may add items from two devices at once. Product says a cart must never lose an added item; showing a removed item again occasionally is tolerable.",
+    "options": [
+      { "id": "a", "text": "Last-write-wins on the whole cart, with clocks synced by NTP every minute" },
+      { "id": "b", "text": "Version vectors with siblings, merged on read by taking the union of items" },
+      { "id": "c", "text": "Lamport timestamps on each cart write, keeping the highest-stamped cart" },
+      { "id": "d", "text": "Reject the second device's write whenever the cart version has changed" }
+    ],
+    "correct": ["b"],
+    "explanation": "Version vectors detect concurrent cart writes and a union merge keeps every add; the known cost is that a removed item can reappear, which product accepts (this is the Dynamo cart design). LWW on whole carts discards one device's adds. Lamport timestamps give an order but can't detect concurrency, so keeping the highest still drops one cart. Rejecting writes avoids loss but fails the user's action, which isn't what was asked.",
+    "topicId": "concurrent-updates",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "Why does Spanner wait before making a commit visible (commit wait)?",
+    "options": [
+      { "id": "a", "text": "So later transactions get larger timestamps, given clock uncertainty" },
+      { "id": "b", "text": "So that every Paxos replica has fsynced the transaction to its disk" },
+      { "id": "c", "text": "So the GPS receivers can recalibrate the atomic clocks between writes" },
+      { "id": "d", "text": "To batch commits together and amortize the cost of each Paxos round" }
+    ],
+    "correct": ["a"],
+    "explanation": "TrueTime returns an interval; waiting until the earliest possible current time is past the commit timestamp guarantees any transaction starting afterwards gets a larger timestamp, giving external consistency. Replication to a Paxos majority is a separate step, clock calibration doesn't depend on commits, and the wait exists for ordering, not batching.",
+    "topicId": "hlc-truetime",
+    "difficulty": 2
+  },
+  {
+    "id": "q11",
+    "type": "single",
+    "prompt": "What does a hybrid logical clock (HLC) provide that a plain Lamport clock does not?",
+    "options": [
+      { "id": "a", "text": "Detection of concurrent events, the way a full vector clock does" },
+      { "id": "b", "text": "Timestamps that stay close to wall-clock time while respecting causality" },
+      { "id": "c", "text": "Immunity to clock skew, so no maximum offset needs to be configured" },
+      { "id": "d", "text": "Exact real-time order for all events, matching Spanner's TrueTime" }
+    ],
+    "correct": ["b"],
+    "explanation": "An HLC combines the wall clock with a logical counter, so timestamps track real time closely and never contradict happens-before. It is still a single scalar, so it can't detect concurrency like a vector clock. Systems using it (such as CockroachDB) still rely on a configured maximum offset, and it gives no hard real-time guarantee the way TrueTime's commit wait does.",
+    "topicId": "hlc-truetime",
+    "difficulty": 2
+  }
+]

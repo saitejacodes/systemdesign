@@ -1,0 +1,42 @@
+[
+  {
+    "id": "fowler-circuit-breaker",
+    "title": "CircuitBreaker",
+    "author": "Martin Fowler",
+    "kind": "blog",
+    "url": "https://martinfowler.com/bliki/CircuitBreaker.html",
+    "why": "A short, clear walkthrough of the pattern with code, including the half-open reset and why breakers should be monitored.",
+    "topicIds": ["breaker-states", "fallbacks"],
+    "free": true
+  },
+  {
+    "id": "release-it",
+    "title": "Release It! Design and Deploy Production-Ready Software (2nd edition)",
+    "author": "Michael T. Nygard (Pragmatic Bookshelf)",
+    "kind": "book",
+    "url": "https://pragprog.com/titles/mnee2/release-it-second-edition/",
+    "why": "The book that popularised circuit breakers, alongside timeouts, bulkheads and fail fast, told through real production failures.",
+    "topicIds": ["breaker-states", "breaker-thresholds", "fallbacks"],
+    "free": false
+  },
+  {
+    "id": "resilience4j-circuitbreaker",
+    "title": "Resilience4j CircuitBreaker",
+    "author": "Resilience4j documentation",
+    "kind": "docs",
+    "url": "https://resilience4j.readme.io/docs/circuitbreaker",
+    "why": "The exact meaning and defaults of failure-rate and slow-call thresholds, count- and time-based windows, minimum calls and half-open trials.",
+    "topicIds": ["breaker-thresholds", "breaker-states"],
+    "free": true
+  },
+  {
+    "id": "envoy-outlier-detection",
+    "title": "Outlier detection",
+    "author": "Envoy documentation",
+    "kind": "docs",
+    "url": "https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/outlier",
+    "why": "How a proxy ejects individual bad hosts (for example after consecutive 5xx responses) instead of cutting off a whole service.",
+    "topicIds": ["breaker-thresholds"],
+    "free": true
+  }
+]

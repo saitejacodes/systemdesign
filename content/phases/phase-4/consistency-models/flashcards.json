@@ -1,0 +1,18 @@
+[
+  { "id": "consistency-models-f1", "front": "Consistency model?", "back": "A contract defining which values a read may return given the history of writes. Stronger = fewer outcomes, more coordination.", "topicId": "linearizability" },
+  { "id": "consistency-models-f2", "front": "Linearizability (Herlihy & Wing)?", "back": "Each operation appears to take effect atomically at one point between invocation and response, in real-time order. Acts like one copy.", "topicId": "linearizability" },
+  { "id": "consistency-models-f3", "front": "Linearizability vs serializability?", "back": "Linearizability: single objects, real-time order. Serializability: multi-object transactions in some serial order. Both together = strict serializability.", "topicId": "linearizability" },
+  { "id": "consistency-models-f4", "front": "etcd default reads vs serializable reads?", "back": "Default reads are linearizable (leader confirms with a quorum). Serializable reads come from the local member and may be stale.", "topicId": "linearizability" },
+  { "id": "consistency-models-f5", "front": "Which operations need linearizability?", "back": "Check-then-act: uniqueness checks, locks, leader election, inventory decrements.", "topicId": "linearizability" },
+  { "id": "consistency-models-f6", "front": "Sequential consistency (Lamport 1979)?", "back": "All operations appear in one total order that respects each process's program order, but not real time.", "topicId": "sequential" },
+  { "id": "consistency-models-f7", "front": "How to get an up-to-date ZooKeeper read?", "back": "Call sync before the read; plain reads come from the connected server and may lag.", "topicId": "sequential" },
+  { "id": "consistency-models-f8", "front": "Causal consistency?", "back": "Causally related operations appear in the same order everywhere; concurrent ones may appear in any order.", "topicId": "causal" },
+  { "id": "consistency-models-f9", "front": "Why is causal consistency attractive?", "back": "It prevents reply-before-question anomalies yet can stay available during partitions.", "topicId": "causal" },
+  { "id": "consistency-models-f10", "front": "Eventual consistency (Vogels)?", "back": "If no new updates are made, eventually all reads return the last updated value. No time bound, no promise about interim reads.", "topicId": "eventual" },
+  { "id": "consistency-models-f11", "front": "How does last-write-wins lose data?", "back": "Concurrent writes to one key: only the higher timestamp survives, and clock skew can make the later write lose.", "topicId": "eventual" },
+  { "id": "consistency-models-f12", "front": "The four session guarantees (Terry et al., 1994)?", "back": "Read-your-writes, monotonic reads, monotonic writes, writes-follow-reads.", "topicId": "session-guarantees" },
+  { "id": "consistency-models-f13", "front": "Monotonic reads without leader reads?", "back": "Pin the session to one replica, or track the highest version seen and only read from replicas at least that far along.", "topicId": "session-guarantees" },
+  { "id": "consistency-models-f14", "front": "DynamoDB read cost, strong vs eventual?", "back": "Per 4 KB: 1 RCU strongly consistent, 0.5 RCU eventually consistent. Strong reads aren't available on global secondary indexes.", "topicId": "choosing-a-model" },
+  { "id": "consistency-models-f15", "front": "Cosmos DB's five levels?", "back": "Strong, Bounded staleness, Session (default), Consistent prefix, Eventual.", "topicId": "choosing-a-model" },
+  { "id": "consistency-models-f16", "front": "S3 consistency today?", "back": "Strong read-after-write consistency for objects, since December 2020.", "topicId": "choosing-a-model" }
+]

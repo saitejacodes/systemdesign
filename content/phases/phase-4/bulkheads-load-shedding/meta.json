@@ -1,0 +1,17 @@
+{
+  "id": "p4-bulkheads-load-shedding",
+  "phase": 4,
+  "slug": "bulkheads-load-shedding",
+  "title": "Bulkheads and Load Shedding",
+  "order": 13,
+  "week": 10,
+  "estimatedMinutes": 65,
+  "topics": [
+    { "id": "bulkheads", "title": "Bulkheads: isolating thread pools and connections", "depth": "deep" },
+    { "id": "load-shedding", "title": "Priority-based load shedding", "depth": "deep" },
+    { "id": "admission-control", "title": "Admission control", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["retry-storm"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p4-timeouts-retries", "p4-circuit-breakers", "p2-connection-pooling", "p2-rate-limiting"]
+}

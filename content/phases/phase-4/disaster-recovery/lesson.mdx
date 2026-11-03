@@ -1,0 +1,240 @@
+## Why it matters
+
+High availability handles the failures you expect: a server dies, a zone loses power, and redundancy carries on. Disaster recovery handles the ones that redundancy cannot: a whole region is unreachable, a bad migration deletes a table, ransomware encrypts your volumes, or an engineer runs a command on the wrong host. On 31 January 2017, an engineer at GitLab trying to fix a struggling database replica deleted the data directory on the **primary** instead. GitLab then discovered, live and in public, that its regular database dumps had not been producing usable backups and that other safeguards it believed in were not set up as assumed. It recovered from a copy that happened to have been taken about six hours earlier for a staging environment, so roughly six hours of database changes were lost. GitLab published a detailed, blameless postmortem, and its lesson is the theme of this section: **a backup you have never restored is a hope, not a plan.**
+
+<Callout type="analogy" title="The mirror house">
+Imagine your home and everything in it. **RPO** is how old your newest copy of your belongings is: if your last photo of the bookshelf was taken a week ago, a fire costs you a week of new books. **RTO** is how long until you are sleeping in a bed again. The four DR tiers are four ways to own a second home. *Backup and restore*: you keep photos and blueprints in a bank vault and rebuild from scratch (cheap, slow). *Pilot light*: an empty spare house with the gas and water on and your furniture in a storage unit next door that a mover keeps up to date; you just carry it in and switch the heating up. *Warm standby*: a small furnished flat you could move into tonight, then extend. *Active-active*: your family already lives in two houses, half in each.
+
+Now the twist that maps onto replication: suppose the spare house is a **mirror house** where anything that happens in one instantly happens in the other. A burst pipe in your house? The mirror stays dry, because it has its own pipes (hardware failure: replication saves you). Someone throws your bookshelf on the bonfire? The mirror's bookshelf burns at the same moment (a DROP TABLE: replication copies it). Only the photos in the vault, taken *before* the bonfire, bring the books back. Where the analogy breaks down: a real house cannot be restored to "exactly 14:02:09 yesterday", but a database with archived logs can.
+</Callout>
+
+## RPO and RTO
+
+<DepthStamp depth="deep" />
+
+Every DR design starts with two numbers, agreed with the business, per system:
+
+- <Term slug="rpo">Recovery point objective (RPO)</Term>: the maximum amount of data, measured in time, you can afford to lose. An RPO of 15 minutes means that after a disaster you must be able to recover everything up to at most 15 minutes before it.
+- <Term slug="rto">Recovery time objective (RTO)</Term>: the maximum time from the start of the disaster until the service is working again.
+
+They are independent. A nightly backup kept on fast local disks might restore in 20 minutes (good RTO) but lose up to 24 hours of data (bad RPO). An asynchronously replicated database in another region might lose only a few seconds (good RPO) but take two hours to fail over because nobody has practised it (bad RTO). They are also *objectives*, not measurements: the numbers that matter are the ones you actually achieved in your last drill.
+
+### Turning RPO and RTO into money
+
+Set the targets from the cost of loss, not from what sounds impressive. An online shop takes **300 orders a minute** at an average of **$40**.
+
+- RPO of 60 minutes: up to 300 × 60 = **18,000 orders** might vanish from the database. Payment providers may still hold the charges, so the real cost is reconciliation, refunds and lost trust, not just $720,000 of order value.
+- RTO of 4 hours: roughly 300 × 240 = **72,000 orders** not taken, some of which come back later and some of which go to competitors.
+
+Halving RTO from four hours to two might cost a standby environment running all year. That is worth it for the shop's checkout; it is probably not worth it for the internal reporting dashboard, whose RTO can be a day. **Different systems get different targets**, and the DR plan tiers them.
+
+### Worked example: a restore that misses its RTO
+
+A team's runbook promises an RTO of **2 hours** for its 4 TB Postgres database. Backups are a nightly base backup to object storage plus continuously archived write-ahead log. Nobody has done a full restore since the database was 400 GB. At 15:00 the primary's volume is corrupted. Assume (as an illustrative planning figure, measure your own) restores read from object storage at about **250 MB/s** and log replay runs about 3× faster than the original writes.
+
+| Time | Step | Arithmetic |
+|---|---|---|
+| 15:00 | Corruption detected; incident declared | |
+| 15:25 | Decision to restore (25 minutes spent hoping it was transient) | |
+| 15:40 | New instance provisioned; restore starts | |
+| 20:06 | Base backup copied | 4,000,000 MB ÷ 250 MB/s = 16,000 s ≈ 4.4 h |
+| 20:06 | Log replay starts: 15 hours of changes since last night's backup | 15 h ÷ 3 = 5 h |
+| 01:06 | Database consistent; application reconnected and verified | |
+| 01:30 | Service restored: **10.5 hours**, against a 2-hour RTO | |
+
+Nothing was broken; the backups were fine. The plan simply never measured how long a restore of today's data takes. Fixes are all about time: more frequent base backups (less log to replay), storage snapshots that restore lazily, a standby that is already restored, and a quarterly drill that records the real number.
+
+## Backup strategies
+
+<DepthStamp depth="deep" />
+
+A backup is a copy of data, kept separately from the system that uses it, from which a past state can be restored. The design questions are what kind of copy, how often, where it lives and how long it is kept.
+
+### Full, incremental and differential
+
+| Type | What each run copies | Restore needs | Trade-off |
+|---|---|---|---|
+| Full | Everything | One backup | Slow and large each run; simplest restore |
+| Incremental | Changes since the last backup of any kind | Last full plus every incremental since | Smallest, fastest runs; longest restore chain, and one bad link breaks it |
+| Differential | Changes since the last full | Last full plus the latest differential | Runs grow through the week; restore is two steps |
+
+Storage snapshots (EBS snapshots on AWS, for example) are incremental at the block level but present each snapshot as a full image, which gives you the cheap storage of incrementals with a one-step restore.
+
+### Logical versus physical, and point-in-time recovery
+
+A **logical** backup (`pg_dump`, `mysqldump`) exports rows as SQL or a portable format. It is portable across versions and lets you restore one table, but it is slow for large databases and captures one instant only. A **physical** backup copies the database files themselves and is far faster to restore.
+
+<Term slug="point-in-time-recovery">Point-in-time recovery (PITR)</Term> combines a physical base backup with a continuous archive of the database's change log (the write-ahead log in Postgres, the binary log in MySQL). To recover, you restore the base backup and replay the log **up to a chosen moment**, such as one second before a bad statement ran. PITR is what turns an RPO of "since last night" into an RPO of seconds or minutes, and it is how managed services such as Amazon RDS offer restore-to-any-time within a retention window.
+
+### Where backups live: 3-2-1 and immutability
+
+The widely used **3-2-1 rule**: keep at least **3** copies of the data, on **2** different kinds of storage, with **1** copy off-site. In cloud terms, "off-site" means a different region and, ideally, a different account with separate credentials, because the failure you are protecting against might be an attacker or a script with admin rights to the primary account.
+
+An <Term slug="immutable-backup">immutable backup</Term> cannot be modified or deleted until its retention period ends, even by an administrator. Amazon S3 Object Lock in compliance mode and AWS Backup Vault Lock are examples. Immutability is the defence against ransomware and against "the cleanup script deleted the backups too". Encrypt backups, but keep the keys recoverable separately: a backup whose decryption key lived only in the destroyed region is not a backup.
+
+### Retention
+
+Keep enough history to notice slow problems. Corruption or a buggy job may go unnoticed for weeks, and if you only keep seven daily backups, all seven are already bad. A common scheme keeps daily backups for a couple of weeks, weekly ones for a few months and monthly ones for a year or more (sometimes called grandfather-father-son). Regulation may require longer, and privacy law may require the opposite (deleting a user's data eventually means deleting it from backups too, or expiring those backups).
+
+## Backup versus replication
+
+<DepthStamp depth="deep" />
+
+Replication keeps a live copy of the current state; a backup keeps past states. They protect against different things, and confusing them is one of the most expensive mistakes in operations.
+
+| Threat | Replication helps? | Backup helps? |
+|---|---|---|
+| Primary server or disk dies | Yes: promote a replica in seconds to minutes | Yes, but slower |
+| Zone or region outage | Yes, if the replica is in another zone or region | Yes, if the backup is stored there |
+| Accidental DELETE or DROP TABLE | **No**: the replica applies it within milliseconds | Yes: restore to just before it |
+| Application bug writing bad data for days | **No** | Yes, if retention covers the bug's lifetime |
+| Ransomware or a compromised admin account | **No**: encrypted or deleted data replicates too | Yes, if immutable and in a separate account |
+
+### Worked example: the replica that faithfully copied the mistake
+
+An orders database has a synchronous standby in a second zone and an asynchronous replica in another region. A migration script meant for staging runs against production.
+
+| Time | Event |
+|---|---|
+| 14:02:09.900 | Last good order committed |
+| 14:02:10.000 | `DROP TABLE orders;` commits on the primary |
+| 14:02:10.004 | Synchronous standby applies the drop (that is what synchronous means) |
+| 14:02:10.180 | Cross-region async replica applies the drop |
+| 14:03:30 | Alerts: checkout returning errors |
+| 14:06 | Someone proposes failing over to the replica. Every replica has no orders table either |
+| 14:10 | Decision: PITR from last night's base backup, replaying the log to 14:02:09.900 |
+
+With PITR the RPO is a fraction of a second: everything up to 14:02:09.900 comes back. The RTO is the restore time from the previous worked example, measured in hours. A <Term slug="delayed-replica">delayed replica</Term> sits between the two: a replica that deliberately applies changes a fixed time behind the primary (MySQL's `SOURCE_DELAY`, Postgres's `recovery_min_apply_delay`). With a one-hour delay, the team stops replay on the delayed replica at 14:06, rolls it forward to 14:02:09.900 and promotes it, recovering in minutes instead of hours. It costs one more server and does nothing if nobody notices within the hour.
+
+Replication also sets a floor on RPO for disasters it *does* cover. With asynchronous cross-region replication, the RPO for a region loss equals the <Term slug="replication-lag">replication lag</Term> at the moment of failure: if lag was 2 seconds, about 2 seconds of committed writes are gone. Synchronous replication across regions gives an RPO near zero but adds the inter-region round trip (often tens of milliseconds) to every commit.
+
+## DR tiers
+
+<DepthStamp depth="deep" />
+
+The AWS whitepaper *Disaster Recovery of Workloads on AWS* names four strategies, ordered by cost and speed. The names are now used well beyond AWS.
+
+<Figure caption="FIG. 14.1 · DR TIERS · WHAT IS RUNNING IN THE RECOVERY REGION">
+  <Diagram label="Four DR tiers from cheapest to most expensive. Backup and restore keeps only backups in the recovery region. Pilot light adds live replicated data with compute switched off. Warm standby runs a scaled-down full copy. Active-active runs full capacity serving traffic in both regions." chart={`flowchart LR
+    A[Backup and restore: backups only] --> B[Pilot light: live data replica, compute off]
+    B --> C[Warm standby: small full stack running]
+    C --> D[Active-active: full stack serving traffic]`} />
+</Figure>
+
+*Moving right buys lower RPO and RTO with more infrastructure running all the time.*
+
+| Tier | In the recovery region before disaster | Typical RPO | Typical RTO | Illustrative standing cost vs primary |
+|---|---|---|---|---|
+| Backup and restore | Backups and infrastructure-as-code templates | Hours (time since last backup) | Hours to a day | ~5–10% (storage only) |
+| <Term slug="pilot-light">Pilot light</Term> | Data replicated live; servers defined but off or at zero | Seconds to minutes | Tens of minutes | ~10–20% |
+| <Term slug="warm-standby">Warm standby</Term> | Full stack running at reduced size | Seconds to minutes | Minutes | ~30–60% |
+| Multi-site active-active | Full stack serving real traffic | Near zero to seconds | Near zero (shift traffic) | ~100% or more |
+
+The cost column is an illustrative order of magnitude, not a quote; real numbers depend on data volume and how much compute the standby keeps. The RPO and RTO ranges follow the whitepaper's descriptions.
+
+What each tier does **not** buy you:
+
+- **Backup and restore** recovers anything, including deleted data, but slowly. It is the only tier that also fixes logical corruption, which is why every other tier still keeps backups.
+- **Pilot light** is fast for data but needs compute to scale from zero during the worst hour of your year, exactly when everyone else in that region may be scaling too. Check capacity and account quotas in advance.
+- **Warm standby** can take traffic immediately but at reduced capacity; it must scale out before it can carry full load.
+- **Active-active** removes failover time for region loss but forces you to solve multi-region writes (conflicts, or one write region per record), and it replicates mistakes everywhere instantly. It is a high-availability design that happens to cover regional disasters, not a substitute for backups.
+
+## Practicing failover
+
+<DepthStamp depth="tradeoffs" />
+
+An untested DR plan contains errors you will discover during the disaster. Testing is what converts the RTO in the document into an RTO you have measured.
+
+### Worked example: the first regional failover drill
+
+A team with a warm standby in a second region runs its first planned drill on a Tuesday morning, failing a 5% traffic slice and then everything.
+
+| Time | Event | Finding |
+|---|---|---|
+| t = 0 | Drill starts; runbook opened | Runbook references a dashboard deleted last quarter |
+| t = 6 min | Database replica promoted in the standby region | Works as documented |
+| t = 9 min | DNS record switched to the standby load balancer | TTL is 3,600 s, so some clients keep using the old region for up to an hour |
+| t = 15 min | Standby services fail to start | They fetch secrets from a secrets store in the primary region: a hidden dependency |
+| t = 40 min | Secrets replicated manually; services start | Standby must scale from 4 to 40 instances; account quota allows 20 |
+| t = 70 min | Quota raised; full traffic served from the standby | Measured RTO about 70 minutes against a 15-minute target |
+| t = 3 h | Failback started | Writes taken in the standby must be replicated back before the old primary is promoted again |
+
+Every finding was cheap to fix on a Tuesday and would have been agonising at 3 a.m. during a real outage. That is the point of the drill.
+
+<Figure caption="FIG. 14.2 · REGIONAL FAILOVER · THE STEPS A DRILL MUST EXERCISE">
+  <Diagram label="The on-call engineer declares the disaster, fences the old primary so it cannot accept writes, promotes the standby database, scales the standby compute, shifts traffic, verifies with synthetic checks, and later fails back." chart={`sequenceDiagram
+    participant O as On-call
+    participant P as Primary region
+    participant S as Standby region
+    participant D as DNS or traffic manager
+    O->>O: Declare disaster, open runbook
+    O->>P: Fence old primary (block writes)
+    O->>S: Promote replica database
+    O->>S: Scale compute to full size
+    O->>D: Shift traffic to standby
+    D-->>O: Traffic moving (bounded by TTL)
+    O->>S: Run synthetic checks, verify data
+    Note over P,S: Later, failback: replicate standby writes back, then reverse the steps`} />
+</Figure>
+
+### What a good DR practice looks like
+
+- **A runbook** with exact commands, owners and decision points, stored somewhere that survives the disaster (not only in the wiki hosted in the failed region).
+- **Fencing the old primary** before promoting the new one, so a region that comes back cannot accept writes and cause <Term slug="split-brain">split brain</Term>.
+- **Low DNS TTLs** (or a global traffic manager or anycast) for records you plan to move, set well before you need them.
+- **Hidden dependencies** hunted down: secrets, container images, identity providers, feature flag services and CI systems that live only in the primary region.
+- <Term slug="failback">Failback</Term> **planned too**: returning to the original region is a second failover, with its own data-reconciliation step.
+- **Restore tests on a schedule**: automatically restore a recent backup into a scratch environment, run integrity checks and record how long it took. This catches both broken backups (GitLab) and slow restores (the 10.5-hour example).
+- **Escalating drills**: start with tabletop walkthroughs, then a single service, then a planned region evacuation, and only then unannounced exercises. Google has written about its long-running DiRT (Disaster Recovery Testing) programme in this spirit.
+
+<TradeoffBox title="Disaster recovery choices" items={[
+  { gain: "Backup and restore: cheapest, and recovers from deletion, corruption and ransomware", cost: "RTO of hours; restore time grows with data size and must be re-measured" },
+  { gain: "PITR: RPO of seconds for logical mistakes", cost: "Log archive to store and replay; replay time adds to RTO" },
+  { gain: "Pilot light or warm standby: RTO of minutes for region loss", cost: "Standing cost and drift: the standby rots unless it is exercised" },
+  { gain: "Active-active: near-zero RTO for region loss", cost: "Roughly double the infrastructure plus multi-region write complexity; replicates mistakes instantly" },
+  { gain: "Delayed replica: minutes-scale recovery from a recent bad write", cost: "Another server; useless once the delay has passed" },
+  { gain: "Immutable, cross-account backups: survive attackers and runaway scripts", cost: "Deletion for privacy or cost must wait for retention to expire" }
+]} />
+
+<NotWhenBox title="When not to buy a higher tier" items={[
+  "Internal tools whose users can wait a day: backup and restore with a tested runbook is enough.",
+  "Data that can be rebuilt from a source of truth (caches, search indexes, derived tables): back up the source, not the copy.",
+  "Active-active for a single-region user base with modest revenue at risk: the standing cost and write conflicts outweigh the hours saved.",
+  "A warm standby nobody will ever drill: an untested standby gives false confidence and still costs money."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="We have replicas in three zones, so we don't need backups." right="Replicas copy deletes, corruption and ransomware within milliseconds. Only a backup preserves a past state you can return to." />
+
+<Misconception wrong="Our backup job runs nightly and reports success, so we can recover." right="A job can succeed while producing unusable output. Only a scheduled, measured restore proves that the backup is usable and shows how long recovery really takes." />
+
+<Misconception wrong="Active-active means we have disaster recovery covered." right="Active-active covers losing a region. It does nothing for a bad migration or ransomware, which hit every region at once." />
+
+<Misconception wrong="RPO and RTO are set by the infrastructure team." right="They are business decisions about the cost of lost data and downtime per system; engineering then picks the cheapest tier that meets them and proves it with drills." />
+
+## Interview angle
+
+<InterviewAngle title="Disaster recovery" questions={[
+  "What are your RPO and RTO for this system, and how did you choose them?",
+  "Your database has synchronous replicas in three zones. An engineer drops the users table. How do you recover, and how much data do you lose?",
+  "Compare pilot light and warm standby for a payments service. Which would you pick and why?",
+  "How would you know your DR plan works before you need it?",
+  "Your primary region is back after a failover. What happens next?"
+]}>
+DR usually appears at the end of a design ("what if the region goes away?") or as a follow-up to replication. Strong answers separate the threats first: hardware and region loss (replication and standby tiers) versus logical damage (backups, PITR, delayed replicas, immutability). Then put numbers on RPO and RTO per component, pick a tier per component, and state the cost. The follow-up that separates seniors from juniors is the second question: a strong answer says immediately that the replicas already dropped the table too, reaches for PITR or a delayed replica, and gives the resulting RPO (seconds) and RTO (restore time, which must have been measured). For the last question, mention fencing, data written during the failover that must be reconciled, and that failback is a second failover deserving its own drill.
+</InterviewAngle>
+
+## Practice
+
+1. A 2 TB database is backed up nightly at 01:00 with continuous log archiving. Restores read at 200 MB/s and log replay runs 4× faster than real time. A bad delete happens at 19:00. Compute the RPO with and without PITR, and the RTO if the delete is noticed at 19:30.
+2. Pick a DR tier for each of these and justify it in one sentence: a payments ledger, a product-recommendation model store, a marketing site, and an internal HR tool.
+3. Write the first eight lines of a failover runbook for a service with a warm standby, including the fencing step and what you check before declaring success.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

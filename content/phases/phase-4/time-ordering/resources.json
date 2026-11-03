@@ -1,0 +1,32 @@
+[
+  {
+    "id": "lamport-1978",
+    "title": "Time, Clocks, and the Ordering of Events in a Distributed System",
+    "author": "Leslie Lamport",
+    "kind": "paper",
+    "url": "https://lamport.azurewebsites.net/pubs/time-clocks.pdf",
+    "why": "The paper that defined happens-before and logical clocks; short and readable.",
+    "topicIds": ["lamport-clocks"],
+    "free": true
+  },
+  {
+    "id": "cloudflare-leap-second",
+    "title": "How and why the leap second affected Cloudflare DNS",
+    "author": "Cloudflare",
+    "kind": "blog",
+    "url": "https://blog.cloudflare.com/how-and-why-the-leap-second-affected-cloudflare-dns/",
+    "why": "A real outage caused by treating wall-clock time as if it could never go backwards.",
+    "topicIds": ["clock-skew", "ntp-limits"],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 8 on unreliable clocks and chapter 5 on detecting concurrent writes with version vectors.",
+    "topicIds": ["clock-skew", "vector-clocks", "concurrent-updates", "hlc-truetime"],
+    "free": false
+  }
+]

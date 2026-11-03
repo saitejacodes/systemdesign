@@ -36,10 +36,40 @@
     "sectionId": "p1-load-balancers"
   },
   {
+    "term": "Adaptive concurrency limit",
+    "slug": "concurrency-limit",
+    "definition": "A cap on in-flight requests that adjusts itself from observed latency, raising the limit while latency is stable and cutting it when latency rises, much like TCP congestion control.",
+    "sectionId": "p4-bulkheads-load-shedding"
+  },
+  {
+    "term": "Adaptive throttling",
+    "slug": "adaptive-throttling",
+    "definition": "Client-side load shedding in which each client rejects a growing share of its own requests as the backend's acceptance rate falls, as described in Google's SRE book.",
+    "sectionId": "p4-circuit-breakers"
+  },
+  {
+    "term": "Admission control",
+    "slug": "admission-control",
+    "definition": "The decision at a service's entry point whether to accept a new request, based on the server's own state such as in-flight count, queue wait or utilisation.",
+    "sectionId": "p4-bulkheads-load-shedding"
+  },
+  {
+    "term": "Anti-entropy",
+    "slug": "anti-entropy",
+    "definition": "A background process that compares replicas and copies over missing or outdated data, whether or not anyone reads it.",
+    "sectionId": "p4-quorums"
+  },
+  {
     "term": "Anycast",
     "slug": "anycast",
     "definition": "Announcing the same IP address from many locations so the network routes each user to the nearest one.",
     "sectionId": "p1-dns"
+  },
+  {
+    "term": "AP system",
+    "slug": "ap-system",
+    "definition": "Shorthand for a system that keeps answering on every side of a network partition and reconciles diverging data afterwards.",
+    "sectionId": "p4-cap-pacelc"
   },
   {
     "term": "API gateway",
@@ -72,6 +102,12 @@
     "sectionId": "p1-dns"
   },
   {
+    "term": "Auto-increment key",
+    "slug": "auto-increment",
+    "definition": "An integer primary key assigned by the database from a counter or sequence on each insert. Small and ordered on one node, but tied to one counter and gapped by rollbacks.",
+    "sectionId": "p4-id-generation"
+  },
+  {
     "term": "Autoscaling",
     "slug": "autoscaling",
     "definition": "Automatically adding or removing instances based on a metric such as CPU, request rate or queue depth.",
@@ -82,6 +118,12 @@
     "slug": "availability",
     "definition": "The fraction of time a service works correctly, often written in nines (99.9% is three nines).",
     "sectionId": "p1-estimation"
+  },
+  {
+    "term": "Availability zone",
+    "slug": "availability-zone",
+    "definition": "One or more data centres in a cloud region with independent power and networking, close enough to other zones for low-latency links but far enough to fail independently.",
+    "sectionId": "p4-high-availability"
   },
   {
     "term": "B-tree",
@@ -120,6 +162,12 @@
     "sectionId": "p3-kafka-vs-queues"
   },
   {
+    "term": "Blast radius",
+    "slug": "blast-radius",
+    "definition": "How much of a system and its users a failure or experiment can affect, limited by traffic share, scope and duration.",
+    "sectionId": "p4-chaos-engineering"
+  },
+  {
     "term": "Block storage",
     "slug": "block-storage",
     "definition": "Storage presented as a raw disk of numbered blocks, mounted by one machine.",
@@ -142,6 +190,12 @@
     "slug": "buffer-pool",
     "definition": "The area of RAM where a database keeps recently used data pages, such as shared_buffers in PostgreSQL or the InnoDB buffer pool in MySQL.",
     "sectionId": "p3-cache-layers"
+  },
+  {
+    "term": "Bulkhead",
+    "slug": "bulkhead",
+    "definition": "A resilience pattern that splits a limited resource such as threads, connections or servers into separate pools, so exhausting one pool cannot exhaust the others.",
+    "sectionId": "p4-bulkheads-load-shedding"
   },
   {
     "term": "Cache",
@@ -222,6 +276,18 @@
     "sectionId": "p1-http"
   },
   {
+    "term": "CAP theorem",
+    "slug": "cap-theorem",
+    "definition": "The result (Brewer's conjecture, proved by Gilbert and Lynch in 2002) that when a network partition occurs, a replicated system cannot guarantee both linearizable consistency and a response from every non-failing node.",
+    "sectionId": "p4-cap-pacelc"
+  },
+  {
+    "term": "Causal consistency",
+    "slug": "causal-consistency",
+    "definition": "A consistency model in which operations that are causally related are seen by every node in the same order, while concurrent operations may be seen in different orders.",
+    "sectionId": "p4-consistency-models"
+  },
+  {
     "term": "CDN (content delivery network)",
     "slug": "cdn",
     "definition": "A network of servers in many locations that caches content close to users and serves it on behalf of an origin.",
@@ -252,16 +318,40 @@
     "sectionId": "p2-olap-vs-oltp"
   },
   {
+    "term": "Chaos engineering",
+    "slug": "chaos-engineering",
+    "definition": "The discipline of running controlled experiments on a system, usually in production, to build confidence that it withstands real-world failures.",
+    "sectionId": "p4-chaos-engineering"
+  },
+  {
     "term": "Cipher suite",
     "slug": "cipher-suite",
     "definition": "The named set of algorithms a TLS connection uses for key exchange, encryption and integrity.",
     "sectionId": "p1-tls"
   },
   {
+    "term": "Circuit breaker",
+    "slug": "circuit-breaker",
+    "definition": "A wrapper around calls to a dependency that stops calling it when its failure rate crosses a threshold, failing fast for a while and then testing recovery with a few trial calls.",
+    "sectionId": "p4-circuit-breakers"
+  },
+  {
     "term": "Client",
     "slug": "client",
     "definition": "A program that starts a request: a browser, a mobile app, another service or a scheduled job.",
     "sectionId": "p1-client-server"
+  },
+  {
+    "term": "Clock drift",
+    "slug": "clock-drift",
+    "definition": "The rate at which a clock gains or loses time relative to true time, often given in parts per million. Drift is why clocks need regular synchronisation.",
+    "sectionId": "p4-time-ordering"
+  },
+  {
+    "term": "Clock skew",
+    "slug": "clock-skew",
+    "definition": "The difference between two clocks' readings at the same instant. Skew between servers makes timestamps from different machines unreliable for ordering events.",
+    "sectionId": "p4-time-ordering"
   },
   {
     "term": "CNAME record",
@@ -282,10 +372,28 @@
     "sectionId": "p3-event-driven"
   },
   {
+    "term": "Commit index",
+    "slug": "commit-index",
+    "definition": "The highest Raft log position known to be stored on a majority. Entries at or below it are permanent and appear in every future leader's log.",
+    "sectionId": "p4-consensus"
+  },
+  {
     "term": "Commit log",
     "slug": "commit-log",
     "definition": "An append-only, ordered sequence of records on disk where each record has a position number; a Kafka partition is a commit log.",
     "sectionId": "p3-kafka-vs-queues"
+  },
+  {
+    "term": "Compare-and-set",
+    "slug": "compare-and-set",
+    "definition": "An atomic write that succeeds only if the current value or version still matches what the writer expects, giving mutual exclusion on one record without a lock.",
+    "sectionId": "p4-distributed-locks"
+  },
+  {
+    "term": "Compensating transaction",
+    "slug": "compensating-transaction",
+    "definition": "A forward action that semantically undoes an earlier saga step, such as a refund for a charge or a release for a reservation. The original effect stays in history.",
+    "sectionId": "p4-distributed-transactions"
   },
   {
     "term": "Competing consumers",
@@ -324,6 +432,18 @@
     "sectionId": "p1-realtime"
   },
   {
+    "term": "Consensus",
+    "slug": "consensus",
+    "definition": "The problem of getting several machines to agree on one value or sequence of values, so that once decided it never changes and every node learns the same decision, despite crashes and lost messages.",
+    "sectionId": "p4-consensus"
+  },
+  {
+    "term": "Consistency model",
+    "slug": "consistency-model",
+    "definition": "A contract between a data store and its clients that defines which values a read may return given the history of writes.",
+    "sectionId": "p4-consistency-models"
+  },
+  {
     "term": "Consistent hashing",
     "slug": "consistent-hashing",
     "definition": "Mapping keys and servers onto a ring so adding or removing a server moves only a small share of keys.",
@@ -348,6 +468,12 @@
     "sectionId": "p3-delivery-semantics"
   },
   {
+    "term": "Control plane",
+    "slug": "control-plane",
+    "definition": "The part of a system that changes it, such as launching instances, scaling groups and updating routes or configuration.",
+    "sectionId": "p4-fault-tolerance"
+  },
+  {
     "term": "Conway's law",
     "slug": "conways-law",
     "definition": "The observation that systems tend to mirror the communication structure of the organisation that builds them.",
@@ -360,10 +486,22 @@
     "sectionId": "p3-redis"
   },
   {
+    "term": "Correlated failure",
+    "slug": "correlated-failure",
+    "definition": "A single cause, such as a bad deploy, a poison request or a zone outage, taking out many supposedly redundant copies at the same time.",
+    "sectionId": "p4-fault-tolerance"
+  },
+  {
     "term": "Covering index",
     "slug": "covering-index",
     "definition": "An index that contains every column a query needs, so the table itself is not read.",
     "sectionId": "p2-indexing"
+  },
+  {
+    "term": "CP system",
+    "slug": "cp-system",
+    "definition": "Shorthand for a system that, during a network partition, refuses some requests rather than risk returning inconsistent data.",
+    "sectionId": "p4-cap-pacelc"
   },
   {
     "term": "CQRS",
@@ -372,10 +510,22 @@
     "sectionId": "p3-event-driven"
   },
   {
+    "term": "CRDT",
+    "slug": "crdt",
+    "definition": "A conflict-free replicated data type: a data structure, such as a counter, set or text sequence, designed so concurrent updates on different replicas always merge to the same result.",
+    "sectionId": "p4-time-ordering"
+  },
+  {
     "term": "Data lake",
     "slug": "data-lake",
     "definition": "Raw data files of any kind kept cheaply in object storage for many engines to query.",
     "sectionId": "p2-olap-vs-oltp"
+  },
+  {
+    "term": "Data plane",
+    "slug": "data-plane",
+    "definition": "The part of a system that serves each request, such as running instances, load balancers forwarding traffic and databases answering queries.",
+    "sectionId": "p4-fault-tolerance"
   },
   {
     "term": "Data warehouse",
@@ -414,6 +564,12 @@
     "sectionId": "p2-grpc"
   },
   {
+    "term": "Deadline propagation",
+    "slug": "deadline-propagation",
+    "definition": "Passing a request's absolute deadline, or its remaining time, to every downstream call so each hop uses only what is left and stops when it expires. gRPC does this with the grpc-timeout header.",
+    "sectionId": "p4-timeouts-retries"
+  },
+  {
     "term": "Deadlock",
     "slug": "deadlock",
     "definition": "A state where transactions each hold a lock the other needs, so none can proceed.",
@@ -424,6 +580,12 @@
     "slug": "delayed-double-delete",
     "definition": "Deleting a cache key after a database update and again after a short delay, to remove any stale value a slow concurrent reader wrote back.",
     "sectionId": "p3-invalidation"
+  },
+  {
+    "term": "Delayed replica",
+    "slug": "delayed-replica",
+    "definition": "A replica that deliberately applies changes a fixed time behind the primary, so a recent mistake can be stopped before it reaches the replica.",
+    "sectionId": "p4-disaster-recovery"
   },
   {
     "term": "Denormalisation",
@@ -486,10 +648,22 @@
     "sectionId": "p2-search"
   },
   {
+    "term": "Election timeout",
+    "slug": "election-timeout",
+    "definition": "How long a Raft follower waits without hearing from a leader before becoming a candidate. It is randomised (the Raft paper's example is 150 to 300 ms) so split votes are rare.",
+    "sectionId": "p4-consensus"
+  },
+  {
     "term": "Envoy",
     "slug": "envoy",
     "definition": "An open-source L7 proxy built for service-to-service traffic, commonly used as a sidecar in service meshes.",
     "sectionId": "p1-reverse-proxy"
+  },
+  {
+    "term": "Ephemeral node",
+    "slug": "ephemeral-node",
+    "definition": "A ZooKeeper znode that is deleted automatically when the client session that created it ends. Lock and leader-election recipes rely on it.",
+    "sectionId": "p4-distributed-locks"
   },
   {
     "term": "ETag",
@@ -522,6 +696,12 @@
     "sectionId": "p3-event-driven"
   },
   {
+    "term": "Eventual consistency",
+    "slug": "eventual-consistency",
+    "definition": "A guarantee that if no new updates are made to an object, all replicas eventually return the same last value. It promises nothing about timing or what reads return meanwhile.",
+    "sectionId": "p4-consistency-models"
+  },
+  {
     "term": "Eviction policy",
     "slug": "eviction-policy",
     "definition": "The rule a full cache uses to choose which entry to remove to make room for a new one, such as LRU or LFU.",
@@ -546,6 +726,42 @@
     "sectionId": "p3-failure-handling"
   },
   {
+    "term": "Fail closed",
+    "slug": "fail-closed",
+    "definition": "Treating an unavailable check as if it failed and rejecting the request. Suits checks like authentication where a wrong yes causes harm.",
+    "sectionId": "p4-fault-tolerance"
+  },
+  {
+    "term": "Fail fast",
+    "slug": "fail-fast",
+    "definition": "Rejecting a request immediately when it is known it cannot succeed, instead of waiting for a timeout, so resources are freed and the caller can react at once.",
+    "sectionId": "p4-circuit-breakers"
+  },
+  {
+    "term": "Fail open",
+    "slug": "fail-open",
+    "definition": "Treating an unavailable check as if it passed and letting the request through. Suits checks like rate limiters where a wrong yes is cheap.",
+    "sectionId": "p4-fault-tolerance"
+  },
+  {
+    "term": "Failback",
+    "slug": "failback",
+    "definition": "Returning service to the original site after a failover, which requires copying back the writes made during the failover and is itself a second failover.",
+    "sectionId": "p4-disaster-recovery"
+  },
+  {
+    "term": "Failover",
+    "slug": "failover",
+    "definition": "Shifting work from a failed component to a redundant one, for example promoting a standby database and redirecting clients to it.",
+    "sectionId": "p4-high-availability"
+  },
+  {
+    "term": "Fallback",
+    "slug": "fallback",
+    "definition": "The planned alternative response when a dependency is unavailable, such as a cached value, a default, a degraded page, deferred work or a clear error.",
+    "sectionId": "p4-circuit-breakers"
+  },
+  {
     "term": "Fan-out",
     "slug": "fan-out",
     "definition": "One request triggering many parallel sub-requests, often waiting for all of them to answer.",
@@ -556,6 +772,24 @@
     "slug": "fan-out-amplification",
     "definition": "The effect where rare slow responses on each backend become common for requests that wait on many backends.",
     "sectionId": "p1-latency-throughput"
+  },
+  {
+    "term": "Fault injection",
+    "slug": "fault-injection",
+    "definition": "Deliberately introducing a failure, such as killing a process, adding latency or returning errors, to observe how a system responds.",
+    "sectionId": "p4-chaos-engineering"
+  },
+  {
+    "term": "Fault tolerance",
+    "slug": "fault-tolerance",
+    "definition": "The ability of a system to keep providing its service, possibly in a reduced form, while some of its components have failed.",
+    "sectionId": "p4-fault-tolerance"
+  },
+  {
+    "term": "Fencing token",
+    "slug": "fencing-token",
+    "definition": "A number that increases with every lock grant and is sent with each write. The protected resource rejects writes carrying a lower token than one it has already accepted.",
+    "sectionId": "p4-distributed-locks"
   },
   {
     "term": "Flow control",
@@ -582,16 +816,40 @@
     "sectionId": "p1-tls"
   },
   {
+    "term": "Full jitter",
+    "slug": "full-jitter",
+    "definition": "A retry delay drawn uniformly between zero and the capped exponential backoff: sleep = random_between(0, min(cap, base × 2^attempt)).",
+    "sectionId": "p4-timeouts-retries"
+  },
+  {
     "term": "Full-duplex",
     "slug": "full-duplex",
     "definition": "Both sides can send at the same time, independently.",
     "sectionId": "p1-realtime"
   },
   {
+    "term": "Game day",
+    "slug": "game-day",
+    "definition": "A scheduled exercise in which a team triggers a failure scenario and practises responding, testing people, runbooks and paging as well as software.",
+    "sectionId": "p4-chaos-engineering"
+  },
+  {
     "term": "GeoDNS",
     "slug": "geodns",
     "definition": "DNS that returns different answers depending on where the resolver appears to be, steering users to a nearby region.",
     "sectionId": "p1-dns"
+  },
+  {
+    "term": "Goodput",
+    "slug": "goodput",
+    "definition": "The rate of successful responses delivered within the client's deadline. Under overload, throughput can stay high while goodput falls towards zero.",
+    "sectionId": "p4-bulkheads-load-shedding"
+  },
+  {
+    "term": "Graceful degradation",
+    "slug": "graceful-degradation",
+    "definition": "Keeping a system's core function working with reduced quality when an optional dependency fails, instead of failing the whole request.",
+    "sectionId": "p4-fault-tolerance"
   },
   {
     "term": "Graph database",
@@ -616,6 +874,18 @@
     "slug": "half-duplex",
     "definition": "Data flows in only one direction at a time; SSE is effectively one-way, server to client.",
     "sectionId": "p1-realtime"
+  },
+  {
+    "term": "Half-open state",
+    "slug": "half-open-state",
+    "definition": "The circuit breaker state after the open wait, in which a limited number of trial calls are let through to decide whether to close or reopen.",
+    "sectionId": "p4-circuit-breakers"
+  },
+  {
+    "term": "Happens-before",
+    "slug": "happens-before",
+    "definition": "Lamport's relation a → b: a precedes b in the same process, or a sends a message that b receives, or a chain of these links them. Events not related either way are concurrent.",
+    "sectionId": "p4-time-ordering"
   },
   {
     "term": "Hash slot",
@@ -648,6 +918,24 @@
     "sectionId": "p1-realtime"
   },
   {
+    "term": "Hedged request",
+    "slug": "hedged-request",
+    "definition": "Sending a second copy of a slow, idempotent request to another replica after about the p95 latency and using whichever answer arrives first, to cut tail latency.",
+    "sectionId": "p4-timeouts-retries"
+  },
+  {
+    "term": "High availability",
+    "slug": "high-availability",
+    "definition": "Designing a system to keep serving while individual components fail, through redundancy plus fast detection and failover.",
+    "sectionId": "p4-high-availability"
+  },
+  {
+    "term": "Hinted handoff",
+    "slug": "hinted-handoff",
+    "definition": "Storing a write meant for an unreachable replica, together with a hint naming that replica, and forwarding it when the replica comes back.",
+    "sectionId": "p4-quorums"
+  },
+  {
     "term": "Horizontal scaling",
     "slug": "horizontal-scaling",
     "definition": "Adding capacity by running more machines or copies of a service, rather than making one machine bigger.",
@@ -676,6 +964,12 @@
     "slug": "http2",
     "definition": "The 2015 revision of HTTP with binary framing, header compression and many concurrent streams over one connection.",
     "sectionId": "p2-grpc"
+  },
+  {
+    "term": "Hybrid logical clock (HLC)",
+    "slug": "hybrid-logical-clock",
+    "definition": "A timestamp combining wall-clock time with a logical counter, so it stays close to real time, never goes backwards and respects happens-before. Used by CockroachDB and YugabyteDB.",
+    "sectionId": "p4-time-ordering"
   },
   {
     "term": "HyperLogLog",
@@ -714,6 +1008,18 @@
     "sectionId": "p3-delivery-semantics"
   },
   {
+    "term": "Immutable backup",
+    "slug": "immutable-backup",
+    "definition": "A backup that cannot be changed or deleted until its retention period ends, even by an administrator, protecting it from ransomware and runaway scripts.",
+    "sectionId": "p4-disaster-recovery"
+  },
+  {
+    "term": "In-doubt transaction",
+    "slug": "in-doubt-transaction",
+    "definition": "A 2PC participant's transaction after it voted YES but before it learned the decision. It can neither commit nor abort on its own and must keep its locks.",
+    "sectionId": "p4-distributed-transactions"
+  },
+  {
     "term": "In-process cache",
     "slug": "in-process-cache",
     "definition": "A cache that lives in the application's own memory, giving nanosecond lookups but a separate, independently expiring copy on every server.",
@@ -750,6 +1056,12 @@
     "sectionId": "p1-client-server"
   },
   {
+    "term": "K-sortable ID",
+    "slug": "k-sortable",
+    "definition": "An ID that is roughly ordered by creation time: sorting by ID gives creation order except for IDs made close together on different machines.",
+    "sectionId": "p4-id-generation"
+  },
+  {
     "term": "Keep-alive",
     "slug": "keep-alive",
     "definition": "Reusing one TCP connection for several HTTP requests instead of opening a new one each time.",
@@ -772,6 +1084,12 @@
     "slug": "l7-load-balancing",
     "definition": "Balancing on application data such as the URL path, headers or cookies, which requires parsing HTTP.",
     "sectionId": "p1-load-balancers"
+  },
+  {
+    "term": "Lamport clock",
+    "slug": "lamport-clock",
+    "definition": "A per-process counter incremented on each event and set to max(local, received) + 1 on receive. If a happens before b, a's timestamp is lower, but not the other way round.",
+    "sectionId": "p4-time-ordering"
   },
   {
     "term": "Latency",
@@ -798,6 +1116,12 @@
     "sectionId": "p2-rate-limiting"
   },
   {
+    "term": "Lease",
+    "slug": "lease",
+    "definition": "A lock or right granted for a limited time that the holder must renew. If the holder dies, the lease expires and someone else can take over.",
+    "sectionId": "p4-distributed-locks"
+  },
+  {
     "term": "Least connections",
     "slug": "least-connections",
     "definition": "A balancing method that sends each new request to the server with the fewest active connections.",
@@ -808,6 +1132,12 @@
     "slug": "lfu",
     "definition": "An eviction policy that removes the entry with the lowest access count, usually with counts that decay over time.",
     "sectionId": "p3-eviction"
+  },
+  {
+    "term": "Linearizability",
+    "slug": "linearizability",
+    "definition": "A consistency model in which every operation appears to take effect atomically at one instant between its start and end, in real-time order, as if there were a single copy of the data.",
+    "sectionId": "p4-cap-pacelc"
   },
   {
     "term": "Little's Law",
@@ -826,6 +1156,12 @@
     "slug": "load-leveling",
     "definition": "Using a queue to absorb bursts of work so a downstream service processes at a steady rate it can handle.",
     "sectionId": "p3-queues-vs-pubsub"
+  },
+  {
+    "term": "Load shedding",
+    "slug": "load-shedding",
+    "definition": "Deliberately rejecting some requests when a server is overloaded so it can keep serving the rest within their deadlines.",
+    "sectionId": "p4-bulkheads-load-shedding"
   },
   {
     "term": "Lock",
@@ -870,6 +1206,12 @@
     "sectionId": "p3-eviction"
   },
   {
+    "term": "Merkle tree",
+    "slug": "merkle-tree",
+    "definition": "A tree of hashes in which each leaf hashes a range of data and each parent hashes its children, so two replicas can find differences by comparing only the branches whose hashes differ.",
+    "sectionId": "p4-quorums"
+  },
+  {
     "term": "Message acknowledgement",
     "slug": "message-ack",
     "definition": "A signal from a consumer telling the broker it has finished processing a message, so the broker can stop redelivering it.",
@@ -894,6 +1236,12 @@
     "sectionId": "p3-queues-vs-pubsub"
   },
   {
+    "term": "Metastable failure",
+    "slug": "metastable-failure",
+    "definition": "A failure that persists after its trigger is removed because a feedback loop, often retries, keeps load above the system's capacity.",
+    "sectionId": "p4-timeouts-retries"
+  },
+  {
     "term": "Microservice",
     "slug": "microservice",
     "definition": "A separately deployable service that owns one business capability and its data, and talks to other services over the network.",
@@ -910,6 +1258,12 @@
     "slug": "monolith",
     "definition": "An application built and deployed as one unit. It can still run as many identical copies behind a load balancer.",
     "sectionId": "p1-monolith-vs-microservices"
+  },
+  {
+    "term": "Monotonic clock",
+    "slug": "monotonic-clock",
+    "definition": "A clock that only moves forward, such as CLOCK_MONOTONIC or System.nanoTime(). Use it to measure durations on one machine; its absolute value is meaningless.",
+    "sectionId": "p4-time-ordering"
   },
   {
     "term": "Monotonic reads",
@@ -954,16 +1308,40 @@
     "sectionId": "p2-graphql"
   },
   {
+    "term": "N+1 redundancy",
+    "slug": "n-plus-one-redundancy",
+    "definition": "Provisioning one spare instance beyond the N needed for peak load, so any single failure still leaves enough capacity.",
+    "sectionId": "p4-high-availability"
+  },
+  {
     "term": "Negative caching",
     "slug": "negative-caching",
     "definition": "Caching a 'not found' result, usually with a short TTL, so repeated lookups of a missing item don't reach the database.",
     "sectionId": "p3-cache-failures"
   },
   {
+    "term": "Network partition",
+    "slug": "network-partition",
+    "definition": "A failure in which some nodes cannot exchange messages with others, though each may still be running. To the nodes it looks the same as a slow or paused peer.",
+    "sectionId": "p4-cap-pacelc"
+  },
+  {
+    "term": "Network Time Protocol (NTP)",
+    "slug": "ntp",
+    "definition": "A protocol that synchronises a machine's clock with time servers by estimating offset from request and reply timestamps. Its accuracy is limited by network delay and path asymmetry.",
+    "sectionId": "p4-time-ordering"
+  },
+  {
     "term": "nginx",
     "slug": "nginx",
     "definition": "A widely used event-driven web server and reverse proxy.",
     "sectionId": "p1-reverse-proxy"
+  },
+  {
+    "term": "Nines",
+    "slug": "nines",
+    "definition": "Shorthand for availability percentages: three nines is 99.9% (about 8.76 hours of downtime a year), four nines 99.99% (about 52.6 minutes).",
+    "sectionId": "p4-high-availability"
   },
   {
     "term": "Normalisation",
@@ -1014,6 +1392,24 @@
     "sectionId": "p3-cdn"
   },
   {
+    "term": "Outlier detection",
+    "slug": "outlier-detection",
+    "definition": "Per-host health tracking in a load balancer or proxy that temporarily ejects an individual misbehaving replica, for example after consecutive 5xx responses, while the healthy ones keep serving.",
+    "sectionId": "p4-circuit-breakers"
+  },
+  {
+    "term": "PACELC",
+    "slug": "pacelc",
+    "definition": "Daniel Abadi's extension of CAP: if there is a Partition, choose Availability or Consistency; Else, choose Latency or Consistency.",
+    "sectionId": "p4-cap-pacelc"
+  },
+  {
+    "term": "Page split",
+    "slug": "page-split",
+    "definition": "What a B-tree does when an insert lands in a full page: it splits the page in two, each half-empty. Random keys cause frequent splits and a larger, less cache-friendly index.",
+    "sectionId": "p4-id-generation"
+  },
+  {
     "term": "Partition (topic partition)",
     "slug": "topic-partition",
     "definition": "One independent, ordered, append-only log within a topic. Partitions are the unit of storage, consumer parallelism and ordering in Kafka.",
@@ -1024,6 +1420,12 @@
     "slug": "partition-key",
     "definition": "A value attached to a message that is hashed to choose its partition, so all messages with the same key go to the same partition and stay in order.",
     "sectionId": "p3-partitioning-ordering"
+  },
+  {
+    "term": "Paxos",
+    "slug": "paxos",
+    "definition": "Leslie Lamport's consensus algorithm, which decides a value in two majority phases (prepare/promise, then accept/accepted). Multi-Paxos, with a stable leader, underpins systems such as Google's Chubby and Spanner.",
+    "sectionId": "p4-consensus"
   },
   {
     "term": "Peak factor",
@@ -1056,10 +1458,28 @@
     "sectionId": "p2-connection-pooling"
   },
   {
+    "term": "Pilot light",
+    "slug": "pilot-light",
+    "definition": "A disaster recovery tier where data is replicated live to a recovery region but application servers are switched off or at zero until a disaster.",
+    "sectionId": "p4-disaster-recovery"
+  },
+  {
+    "term": "Pivot transaction",
+    "slug": "pivot-transaction",
+    "definition": "The go/no-go step of a saga. Steps before it must be compensatable; steps after it must be retriable until they succeed.",
+    "sectionId": "p4-distributed-transactions"
+  },
+  {
     "term": "Point of presence (PoP)",
     "slug": "point-of-presence",
     "definition": "A CDN data centre located near users, from which cached content is served.",
     "sectionId": "p3-cdn"
+  },
+  {
+    "term": "Point-in-time recovery (PITR)",
+    "slug": "point-in-time-recovery",
+    "definition": "Restoring a physical base backup and replaying the archived change log up to a chosen moment, such as just before a bad statement ran.",
+    "sectionId": "p4-disaster-recovery"
   },
   {
     "term": "Poison message",
@@ -1102,6 +1522,12 @@
     "slug": "probabilistic-early-expiration",
     "definition": "Each reader randomly decides to refresh a cached value before it expires, with the chance rising as expiry approaches, so one reader usually refreshes it without locks. XFetch is the best-known algorithm.",
     "sectionId": "p3-cache-failures"
+  },
+  {
+    "term": "Process pause",
+    "slug": "process-pause",
+    "definition": "An interval in which a running program makes no progress without knowing time passed, such as a stop-the-world garbage collection, VM migration or swapping.",
+    "sectionId": "p4-distributed-locks"
   },
   {
     "term": "Projection",
@@ -1152,6 +1578,24 @@
     "sectionId": "p1-http"
   },
   {
+    "term": "Quorum",
+    "slug": "quorum",
+    "definition": "A minimum set of replicas that must take part for an operation to count, such as W replicas acknowledging a write or R replicas answering a read. A majority quorum is more than half of the nodes.",
+    "sectionId": "p4-quorums"
+  },
+  {
+    "term": "Raft",
+    "slug": "raft",
+    "definition": "A consensus algorithm (Ongaro and Ousterhout, 2014) built around a single elected leader that replicates a log and commits entries once a majority stores them. Used by etcd, Consul, CockroachDB and Kafka's KRaft.",
+    "sectionId": "p4-consensus"
+  },
+  {
+    "term": "Raft term",
+    "slug": "raft-term",
+    "definition": "A numbered period in Raft that starts with an election and has at most one leader. Nodes reject messages from lower terms and step down when they see a higher one.",
+    "sectionId": "p4-consensus"
+  },
+  {
     "term": "Rate limiter",
     "slug": "rate-limiter",
     "definition": "A component that caps how many requests a client can make in a period and rejects or delays the rest.",
@@ -1162,6 +1606,12 @@
     "slug": "rdb-snapshot",
     "definition": "A Redis point-in-time dump of the whole dataset to a compact file, written by a forked child process.",
     "sectionId": "p3-redis"
+  },
+  {
+    "term": "Read repair",
+    "slug": "read-repair",
+    "definition": "Fixing stale replicas during a read by writing the newest version seen back to the replicas that returned older ones.",
+    "sectionId": "p4-quorums"
   },
   {
     "term": "Read-through cache",
@@ -1188,6 +1638,18 @@
     "sectionId": "p3-partitioning-ordering"
   },
   {
+    "term": "Recovery point objective (RPO)",
+    "slug": "rpo",
+    "definition": "The maximum amount of data, measured in time, that a system can afford to lose in a disaster.",
+    "sectionId": "p4-disaster-recovery"
+  },
+  {
+    "term": "Recovery time objective (RTO)",
+    "slug": "rto",
+    "definition": "The maximum acceptable time from the start of a disaster until the service is working again.",
+    "sectionId": "p4-disaster-recovery"
+  },
+  {
     "term": "Recursive resolver",
     "slug": "recursive-resolver",
     "definition": "The DNS server (often your ISP's, or 8.8.8.8 or 1.1.1.1) that chases a lookup through root, TLD and authoritative servers and caches the answer.",
@@ -1200,10 +1662,22 @@
     "sectionId": "p3-redis"
   },
   {
+    "term": "Redlock",
+    "slug": "redlock",
+    "definition": "A distributed lock algorithm by Redis's author that acquires the same key on a majority of independent Redis nodes within the lock's TTL. Its safety under clock and timing faults is debated.",
+    "sectionId": "p4-distributed-locks"
+  },
+  {
     "term": "Redrive",
     "slug": "redrive",
     "definition": "Moving messages from a dead-letter queue back to their source queue to be processed again, usually after the underlying bug is fixed.",
     "sectionId": "p3-failure-handling"
+  },
+  {
+    "term": "Redundancy",
+    "slug": "redundancy",
+    "definition": "Running more instances of a component than the load needs, so the service survives losing some. It only works with spare capacity, failure detection and a way to shift work.",
+    "sectionId": "p4-high-availability"
   },
   {
     "term": "Relational database",
@@ -1224,6 +1698,18 @@
     "sectionId": "p1-scaling"
   },
   {
+    "term": "Replicated state machine",
+    "slug": "replicated-state-machine",
+    "definition": "A design where every node starts in the same state and applies the same commands in the same order, so all nodes end in the same state. Consensus is used to agree on the command order.",
+    "sectionId": "p4-consensus"
+  },
+  {
+    "term": "Replication factor",
+    "slug": "replication-factor",
+    "definition": "The number of replicas (N) that store each piece of data.",
+    "sectionId": "p4-quorums"
+  },
+  {
     "term": "Replication lag",
     "slug": "replication-lag",
     "definition": "The delay between a write on the leader and that write appearing on a follower.",
@@ -1234,6 +1720,12 @@
     "slug": "request-coalescing",
     "definition": "Merging concurrent requests for the same key so only one fetch runs and the others share its result. Also called request collapsing.",
     "sectionId": "p3-cache-failures"
+  },
+  {
+    "term": "Request criticality",
+    "slug": "request-criticality",
+    "definition": "A priority label attached to each request, such as CRITICAL or SHEDDABLE, that tells overloaded servers which requests to reject first.",
+    "sectionId": "p4-bulkheads-load-shedding"
   },
   {
     "term": "Request/response",
@@ -1258,6 +1750,18 @@
     "slug": "rest",
     "definition": "An architectural style for web APIs: resources with URIs, acted on with standard HTTP methods, exchanging representations such as JSON.",
     "sectionId": "p2-rest"
+  },
+  {
+    "term": "Retry amplification",
+    "slug": "retry-amplification",
+    "definition": "The multiplication of load when several layers each retry: k attempts at each of L layers send up to k^L calls to the bottom service.",
+    "sectionId": "p4-timeouts-retries"
+  },
+  {
+    "term": "Retry budget",
+    "slug": "retry-budget",
+    "definition": "A cap on retries as a fraction of normal requests (for example 10%), so worst-case load stays near 1.1 times normal however many calls fail.",
+    "sectionId": "p4-timeouts-retries"
   },
   {
     "term": "Retry storm",
@@ -1302,6 +1806,24 @@
     "sectionId": "p1-http"
   },
   {
+    "term": "Saga",
+    "slug": "saga",
+    "definition": "A sequence of local transactions, each with a compensating action, that either all complete or have the completed ones undone. It gives up isolation in exchange for avoiding distributed locks.",
+    "sectionId": "p4-distributed-transactions"
+  },
+  {
+    "term": "Saga choreography",
+    "slug": "saga-choreography",
+    "definition": "Running a saga without a central coordinator: each service reacts to other services' events and publishes its own, so the flow emerges from the subscriptions.",
+    "sectionId": "p4-distributed-transactions"
+  },
+  {
+    "term": "Saga orchestration",
+    "slug": "saga-orchestration",
+    "definition": "Running a saga from a central orchestrator that tells each service which step to perform and durably records progress, for example with Temporal or AWS Step Functions.",
+    "sectionId": "p4-distributed-transactions"
+  },
+  {
     "term": "Sentinel node",
     "slug": "sentinel-node",
     "definition": "A dummy node at the start or end of a linked list that is never removed, so insert and unlink code never has to handle empty-list edge cases.",
@@ -1312,6 +1834,12 @@
     "slug": "sequence-number",
     "definition": "A counter on every TCP segment that marks its position in the byte stream, so the receiver can reorder and detect gaps.",
     "sectionId": "p1-tcp-udp"
+  },
+  {
+    "term": "Sequential consistency",
+    "slug": "sequential-consistency",
+    "definition": "A consistency model (Lamport, 1979) in which all operations appear in one total order that respects each client's own order, but not necessarily real time.",
+    "sectionId": "p4-consistency-models"
   },
   {
     "term": "Server",
@@ -1336,6 +1864,12 @@
     "slug": "session",
     "definition": "Data that ties a series of requests to one user, such as login status or a cart, usually found by a session id in a cookie.",
     "sectionId": "p1-client-server"
+  },
+  {
+    "term": "Session guarantees",
+    "slug": "session-guarantees",
+    "definition": "Four per-client guarantees defined for the Bayou system: read-your-writes, monotonic reads, monotonic writes and writes-follow-reads.",
+    "sectionId": "p4-consistency-models"
   },
   {
     "term": "Shard key",
@@ -1372,6 +1906,24 @@
     "slug": "sliding-window",
     "definition": "The amount of unacknowledged data a sender may have in flight; it slides forward as ACKs arrive.",
     "sectionId": "p1-tcp-udp"
+  },
+  {
+    "term": "Sloppy quorum",
+    "slug": "sloppy-quorum",
+    "definition": "A quorum that may count acknowledgements from stand-in nodes outside a key's home replicas when those are unreachable, trading the read-write overlap guarantee for write availability.",
+    "sectionId": "p4-quorums"
+  },
+  {
+    "term": "Slow-call rate",
+    "slug": "slow-call-rate",
+    "definition": "The share of calls in a breaker's window that took longer than a set duration. A high slow-call rate can trip a breaker before calls start failing outright.",
+    "sectionId": "p4-circuit-breakers"
+  },
+  {
+    "term": "Snowflake ID",
+    "slug": "snowflake-id",
+    "definition": "A 64-bit ID packing a millisecond timestamp, a machine ID and a per-millisecond sequence, introduced by Twitter. Any generator can mint roughly time-ordered IDs locally.",
+    "sectionId": "p4-id-generation"
   },
   {
     "term": "Sorted set",
@@ -1422,10 +1974,22 @@
     "sectionId": "p3-partitioning-ordering"
   },
   {
+    "term": "Static stability",
+    "slug": "static-stability",
+    "definition": "A design in which a system keeps working through a dependency failure without having to make any changes in response, for example by pre-provisioning capacity. The term is used by AWS.",
+    "sectionId": "p4-fault-tolerance"
+  },
+  {
     "term": "Status code",
     "slug": "status-code",
     "definition": "A three-digit number in an HTTP response stating the result, grouped 2xx success, 3xx redirect, 4xx client error, 5xx server error.",
     "sectionId": "p1-http"
+  },
+  {
+    "term": "Steady-state hypothesis",
+    "slug": "steady-state-hypothesis",
+    "definition": "A measurable claim that a business-level metric will stay within stated bounds while a specific fault is injected; the experiment tries to disprove it.",
+    "sectionId": "p4-chaos-engineering"
   },
   {
     "term": "Sticky connection",
@@ -1438,6 +2002,12 @@
     "slug": "sticky-session",
     "definition": "Load balancer routing that sends each user back to the same server, usually because their session lives in that server's memory.",
     "sectionId": "p1-client-server"
+  },
+  {
+    "term": "Stop condition",
+    "slug": "stop-condition",
+    "definition": "An automatic rule that halts a chaos experiment and removes the fault when a guard metric crosses a threshold.",
+    "sectionId": "p4-chaos-engineering"
   },
   {
     "term": "Strangler fig pattern",
@@ -1494,10 +2064,28 @@
     "sectionId": "p1-latency-throughput"
   },
   {
+    "term": "Ticket server",
+    "slug": "ticket-server",
+    "definition": "A dedicated service whose only job is to hand out unique, increasing integer IDs to other servers, often in blocks so callers rarely need a round trip.",
+    "sectionId": "p4-id-generation"
+  },
+  {
     "term": "Time-series database",
     "slug": "time-series-database",
     "definition": "A database optimised for timestamped data that is mostly appended and queried by time range.",
     "sectionId": "p2-olap-vs-oltp"
+  },
+  {
+    "term": "Timeout",
+    "slug": "timeout",
+    "definition": "The longest a caller will wait for an operation before giving up and treating it as failed. It says nothing about whether the operation actually happened.",
+    "sectionId": "p4-timeouts-retries"
+  },
+  {
+    "term": "Timeout budget",
+    "slug": "timeout-budget",
+    "definition": "The user's total allowed wait treated as one budget that every hop in a call chain spends from, instead of independent per-hop timeouts.",
+    "sectionId": "p4-timeouts-retries"
   },
   {
     "term": "TLD nameserver",
@@ -1542,10 +2130,22 @@
     "sectionId": "p2-search"
   },
   {
+    "term": "Tombstone",
+    "slug": "tombstone",
+    "definition": "A marker written in place of deleted data that records the deletion, so that replicas which missed the delete do not bring the data back. Tombstones are purged after a grace period.",
+    "sectionId": "p4-quorums"
+  },
+  {
     "term": "Transaction",
     "slug": "transaction",
     "definition": "A group of reads and writes that the database treats as one unit.",
     "sectionId": "p2-transactions"
+  },
+  {
+    "term": "Transaction coordinator",
+    "slug": "transaction-coordinator",
+    "definition": "The node that runs two-phase commit: it sends PREPARE, collects votes, durably logs the commit or abort decision and delivers it to participants.",
+    "sectionId": "p4-distributed-transactions"
   },
   {
     "term": "Transactional outbox",
@@ -1558,6 +2158,12 @@
     "slug": "trie",
     "definition": "A tree that stores strings by their characters, so strings sharing a prefix share a path.",
     "sectionId": "p2-search"
+  },
+  {
+    "term": "Trip threshold",
+    "slug": "trip-threshold",
+    "definition": "The condition that moves a circuit breaker from closed to open, such as a failure rate above 50% over the window or a number of consecutive failures.",
+    "sectionId": "p4-circuit-breakers"
   },
   {
     "term": "TTL",
@@ -1576,6 +2182,12 @@
     "slug": "twelve-factor-app",
     "definition": "A set of guidelines for building cloud services, written at Heroku; factor VI says app processes should be stateless and share nothing.",
     "sectionId": "p1-client-server"
+  },
+  {
+    "term": "Two-phase commit (2PC)",
+    "slug": "two-phase-commit",
+    "definition": "A protocol that commits a transaction across several databases atomically: a coordinator collects prepare votes, logs a decision and tells every participant to commit or abort.",
+    "sectionId": "p4-distributed-transactions"
   },
   {
     "term": "TXT record",
@@ -1602,10 +2214,28 @@
     "sectionId": "p1-latency-throughput"
   },
   {
+    "term": "UUID",
+    "slug": "uuid",
+    "definition": "A 128-bit universally unique identifier that any machine can generate without coordination. A few bits mark its version, which decides how the rest are filled (random in v4, timestamp plus random in v7).",
+    "sectionId": "p4-id-generation"
+  },
+  {
+    "term": "UUIDv7",
+    "slug": "uuidv7",
+    "definition": "A UUID version defined in RFC 9562 whose first 48 bits are a Unix timestamp in milliseconds, followed by random bits. It sorts by creation time, which keeps B-tree inserts at the right edge of the index.",
+    "sectionId": "p4-id-generation"
+  },
+  {
     "term": "Vary header",
     "slug": "vary-header",
     "definition": "An HTTP response header listing which request headers change the response, so caches store a separate copy for each value.",
     "sectionId": "p3-cdn"
+  },
+  {
+    "term": "Vector clock",
+    "slug": "vector-clock",
+    "definition": "An array of counters, one per process, attached to events. Comparing two vectors entry by entry shows whether one event happened before the other or whether they were concurrent.",
+    "sectionId": "p4-time-ordering"
   },
   {
     "term": "Versioned key",
@@ -1636,6 +2266,12 @@
     "slug": "visibility-timeout",
     "definition": "In Amazon SQS, how long a received message is hidden from other consumers; if it isn't deleted before the timeout ends, it becomes visible and is delivered again.",
     "sectionId": "p3-delivery-semantics"
+  },
+  {
+    "term": "Warm standby",
+    "slug": "warm-standby",
+    "definition": "A disaster recovery tier where a scaled-down but fully working copy of the stack runs in a recovery region, ready to take traffic and scale up.",
+    "sectionId": "p4-disaster-recovery"
   },
   {
     "term": "WebSocket",

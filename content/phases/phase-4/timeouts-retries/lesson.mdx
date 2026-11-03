@@ -1,0 +1,266 @@
+## Why it matters
+
+Most distributed outages are not caused by a server dying cleanly. A dead server returns an error in a millisecond and you move on. The killers are the servers that are *slow*: they accept your connection and then say nothing. Without a timeout, every caller waits, every waiting caller holds a thread and a connection, and soon the caller is out of threads too. Retries are the other half of the story. A well-placed retry hides a brief blip from users; a badly placed one multiplies load on a service that is already struggling and keeps it down long after the original problem is gone. Marc Brooker's AWS Builders' Library article "Timeouts, retries, and backoff with jitter" describes Amazon's approach, and Google's SRE book treats retries as a recurring cause of cascading failures. This section teaches how to set timeouts, how to share one time budget across a chain of services, and how to retry without starting a storm.
+
+<Callout type="analogy" title="The radio phone-in contest">
+A radio station says "caller ten wins a car". If you call and sit on hold with no limit, you might wait all night while the station is off air: that is a call **without a timeout**. Hang up after two minutes and you have a timeout. If you hit redial the instant you hear a busy tone, and so do 10,000 other listeners, the switchboard never recovers: that is retrying **without backoff**. If everyone waits exactly 30 seconds before redialling, all 10,000 calls arrive together again: backoff **without jitter**. Waiting a random time between 0 and 30 seconds spreads the calls out: **jitter**. If the phone company allows redials to be at most one in ten of all calls, the switchboard can never be flooded by redials: a **retry budget**. And if you got through, gave your details and the line dropped before you heard "you're entered", redialling might enter you twice unless the station checks your listener number: **idempotency**.
+
+Where it breaks down: a busy phone line tells you it is busy instantly. A slow server often tells you nothing at all, which is why the timeout comes first.
+</Callout>
+
+## Always set timeouts
+
+<DepthStamp depth="deep" />
+
+A <Term slug="timeout">timeout</Term> is the longest a caller will wait for an operation before giving up and treating it as failed. Every network call needs one, because the defaults are often "wait forever" or close to it:
+
+- Python's `requests` library has no timeout unless you pass `timeout=`.
+- Go's `http.Client` has a zero `Timeout` by default, which means no limit.
+- On Linux, a TCP connect to a host that silently drops packets gives up only after the SYN retries are exhausted: with the default `tcp_syn_retries` of 6 that is about 127 seconds (1 + 2 + 4 + 8 + 16 + 32 + 64).
+
+Set at least two: a **connect timeout** (how long to establish the TCP or TLS connection, usually short, tens to a few hundred milliseconds inside a data centre) and a **request timeout** (how long to wait for the whole response).
+
+### Failure story: one hung dependency eats the thread pool
+
+An order service handles **200 requests a second** with a pool of **200 worker threads**. Each request normally calls an inventory service that answers in 20 ms. The inventory service's client has a **30-second** timeout. At t = 0 the inventory service's database locks up, and its requests hang.
+
+| Time | Event | Busy order-service threads |
+|---|---|---|
+| t = 0 ms | Inventory starts hanging; normal concurrency is 200 × 0.02 s = 4 threads | 4 |
+| t = 500 ms | 100 requests have arrived and are all waiting on inventory | about 100 |
+| t = 1,000 ms | 200 requests waiting; the pool is full | 200 |
+| t = 1,001 ms onward | New requests queue or are rejected, including ones that never touch inventory (order history, health checks) | 200 |
+| t = 30 s | The first calls finally time out, but new ones have already taken their place | 200 |
+
+By <Term slug="littles-law">Little's law</Term>, threads in use = arrival rate × time each request holds a thread. With a 30-second timeout that is 200 × 30 = **6,000** threads needed, against 200 available. One slow dependency has taken down the whole order service, including features that do not use it. A **300 ms** timeout caps the need at 200 × 0.3 = **60** threads: the inventory calls fail, but the order service lives.
+
+### How long should a timeout be?
+
+Too long and you get the story above. Too short and you fail requests that would have succeeded, and those failures turn into retries that add load. Brooker's article describes the usual method: measure the downstream's latency distribution and pick an acceptable **false-timeout rate**, then set the timeout at that percentile.
+
+- Inventory latency: p50 = 20 ms, p99 = 80 ms, p99.9 = 250 ms.
+- Accept about 0.1% of good calls timing out: set the timeout near p99.9, say **300 ms** with a little padding.
+- Re-check after big changes; a timeout that was p99.9 last year may be p95 today.
+
+Measure from the *caller's* side, because that includes network and queueing time the server's own metrics miss.
+
+## Timeout budgets across hops
+
+<DepthStamp depth="deep" />
+
+Real requests cross several services. A user waits on an API gateway, which calls an order service, which calls inventory, which queries a database. Each hop has its own timeout, and they interact. A <Term slug="timeout-budget">timeout budget</Term> treats the user's total wait as one budget that all the hops share.
+
+### Failure story: the budget is spent, the work goes on
+
+The gateway gives each request **1,000 ms**. The order service calls inventory with its own fixed **1,000 ms** timeout and retries once. Inventory is having a bad minute and takes 1.2 s per call.
+
+| Time | Gateway | Order service | Inventory |
+|---|---|---|---|
+| t = 0 ms | Receives request, starts 1,000 ms timer | Receives request | |
+| t = 300 ms | | Finishes its own work, calls inventory (timer 1,000 ms) | Starts a 1.2 s query |
+| t = 1,000 ms | Times out, returns 504 to the user | Still waiting | Still working |
+| t = 1,300 ms | | Inventory call times out, retries (another 1,000 ms) | First query abandoned, second starts |
+| t = 2,300 ms | | Second call times out, returns error to nobody | Second query abandoned |
+
+From t = 1,000 ms onward, every millisecond of work in the order service and inventory is wasted: nobody is waiting for the answer. Under load, that wasted work is what keeps inventory slow.
+
+### Deadline propagation
+
+The fix is <Term slug="deadline-propagation">deadline propagation</Term>: the first service sets an absolute <Term slug="deadline">deadline</Term> ("this request must finish by 12:00:00.950") and passes the remaining time along with every downstream call. Each service checks it:
+
+- Before calling downstream, compute remaining = deadline − now − a small safety margin. Use that as the call's timeout.
+- If the remaining time is less than the downstream normally needs, **fail fast** instead of starting work that cannot finish.
+- When the deadline passes, cancel in-flight work, including database queries if your driver supports it.
+
+gRPC builds this in: a client sets a deadline, gRPC sends the remaining time in the `grpc-timeout` header, and in Go the server sees it as the request `context` deadline, which it can pass to its own outgoing calls. In HTTP you have to carry it yourself, usually in a custom header.
+
+<Figure caption="FIG. 11.1 · DEADLINE PROPAGATION · EACH HOP SPENDS FROM ONE BUDGET">
+  <Diagram label="The gateway sets a 1,000 ms budget. The order service spends 300 ms and passes 650 ms to inventory after a 50 ms margin. Inventory spends 200 ms and passes 400 ms to the database. If the remaining budget is too small, a hop fails fast instead of calling downstream." chart={`sequenceDiagram
+    participant G as Gateway
+    participant O as Order service
+    participant I as Inventory
+    participant D as Database
+    G->>O: request, deadline in 1000 ms
+    Note over O: own work 300 ms
+    O->>I: call, remaining 650 ms (50 ms margin)
+    Note over I: own work 200 ms
+    I->>D: query, timeout 400 ms (50 ms margin)
+    D-->>I: rows after 120 ms
+    I-->>O: response
+    O-->>G: response at about 650 ms
+    Note over O,I: if remaining is under 50 ms, return an error now`} />
+</Figure>
+
+*Each hop passes on what is left of one budget, so no hop keeps working after the user has given up.*
+
+### Fitting retries inside the budget
+
+Retries must also fit. Suppose the order service has **650 ms** left for inventory, whose p99.9 is 250 ms:
+
+- Per-attempt timeout 250 ms, one retry after a jittered pause of up to 100 ms: worst case 250 + 100 + 250 = **600 ms**, inside 650.
+- Two retries would need up to 250 × 3 = 750 ms of attempts plus pauses of up to 100 + 200 ms, about 1,050 ms: over budget, so the second retry should not happen. A good client checks the remaining deadline before each attempt rather than counting attempts blindly.
+
+## Exponential backoff with full jitter
+
+<DepthStamp depth="deep" />
+
+The failure handling section introduced <Term slug="exponential-backoff">exponential backoff</Term> and <Term slug="jitter">jitter</Term> for message consumers. The same rules apply to request/response calls, and they are worth stating exactly, as Brooker did in his AWS Architecture Blog post "Exponential Backoff And Jitter". With `base` the first delay, `cap` the maximum, and `attempt` counting from 0:
+
+```text
+No jitter:           sleep = min(cap, base * 2^attempt)
+Full jitter:         sleep = random_between(0, min(cap, base * 2^attempt))
+Equal jitter:        temp  = min(cap, base * 2^attempt)
+                     sleep = temp / 2 + random_between(0, temp / 2)
+Decorrelated jitter: sleep = min(cap, random_between(base, previous_sleep * 3))
+```
+
+<Term slug="full-jitter">Full jitter</Term> picks uniformly from the whole window, so the average wait is half the plain backoff and the retries are spread as widely as possible. In Brooker's simulation of many clients contending for one resource, plain exponential backoff with no jitter did clearly worst; full jitter and decorrelated jitter both did well, with full jitter doing the least total work. Equal jitter keeps a guaranteed minimum wait at the cost of slightly more clustering.
+
+### Worked example
+
+`base = 100 ms`, `cap = 5 s`, full jitter:
+
+| Attempt | Window: min(cap, base × 2^attempt) | Sleep drawn from | Average sleep |
+|---|---|---|---|
+| 0 | 100 ms | 0–100 ms | 50 ms |
+| 1 | 200 ms | 0–200 ms | 100 ms |
+| 2 | 400 ms | 0–400 ms | 200 ms |
+| 3 | 800 ms | 0–800 ms | 400 ms |
+| 6 | 5,000 ms (6,400 capped) | 0–5,000 ms | 2,500 ms |
+
+If 10,000 clients fail at the same instant and all make attempt 3, plain backoff sends all 10,000 at t + 800 ms; full jitter spreads them over 800 ms, about **12,500 a second** on average instead of one spike of 10,000 in the same millisecond. That flattening is what gives a recovering service room to breathe.
+
+### When not to retry at all
+
+Backoff decides *when*; judgement decides *whether*. Do not retry:
+
+- **Errors that will repeat:** `400`, `401`, `403`, `404`, validation failures. They fail the same way every time.
+- **Explicit overload signals,** unless you honour them: a `429` or `503` with `Retry-After` means wait at least that long. Retrying an overloaded service sooner makes the overload worse.
+- **When the deadline cannot fit another attempt** (see above).
+- **Non-idempotent operations** without an idempotency key (see the last topic).
+- **At every layer.** Retry at one layer, usually the one closest to the failing call or the one nearest the user, and let the others fail fast.
+
+## Retry budgets and retry storms
+
+<DepthStamp depth="deep" />
+
+A <Term slug="retry-storm">retry storm</Term> is what happens when retries add so much load to a struggling service that it cannot recover. Two mechanisms drive it: retries per layer multiply, and retries rise exactly when the service is weakest.
+
+### Failure story: three layers, 27 times the load
+
+A mobile app, an API gateway and a backend service each make **up to 3 attempts** on failure. The backend calls a database that is now failing every query.
+
+| Layer | Attempts per incoming request | Calls reaching the database per user tap |
+|---|---|---|
+| App | 3 | |
+| Gateway | 3 for each app attempt | |
+| Backend | 3 for each gateway attempt | 3 × 3 × 3 = **27** |
+
+This is <Term slug="retry-amplification">retry amplification</Term>: attempts per layer multiply, so with *L* layers each making *k* attempts the bottom service sees *k^L* times the load. Five layers at 3 attempts would be 3⁵ = **243** times. The database was failing because it was overloaded; now it receives 27 times as many queries.
+
+### Failure story: the feedback loop
+
+Even one layer can do it. A service has capacity for **1,200 requests a second** and normally receives **1,000**. A bad deploy makes half of all requests fail for a minute. Clients retry failed calls up to 3 more times. If each attempt fails with probability *p*, the expected attempts per request are 1 + p + p² + p³:
+
+| Time | Failure rate p | Attempts per request | Load (req/s) | Versus capacity 1,200 |
+|---|---|---|---|---|
+| t = 0 s | 0% | 1.0 | 1,000 | fine |
+| t = 5 s | 50% (bad deploy) | 1 + 0.5 + 0.25 + 0.125 = 1.875 | 1,875 | overloaded |
+| t = 15 s | 80% (overload now adds failures) | 1 + 0.8 + 0.64 + 0.512 ≈ 2.95 | 2,950 | far over |
+| t = 60 s | Deploy rolled back, but overload keeps p near 100% | 4.0 | 4,000 | still far over |
+
+The deploy is fixed, yet the service stays down, because the retries alone exceed its capacity. Researchers call a state like this a <Term slug="metastable-failure">metastable failure</Term> (Bronson and others, "Metastable Failures in Distributed Systems", HotOS 2021): the trigger is gone but a self-sustaining loop keeps the system broken until load is cut, for example by turning clients away or restarting with traffic drained.
+
+### Retry budgets
+
+A <Term slug="retry-budget">retry budget</Term> limits retries to a fraction of normal traffic rather than a fixed count per request. Google's SRE book chapter "Handling Overload" describes both limits together: a per-request cap of three attempts, and a per-client budget that keeps retries under about **10%** of requests. With the budget in the feedback-loop example, the worst case is 1,000 × 1.1 = **1,100** requests a second, below capacity, so the service can recover once the deploy is rolled back.
+
+Real implementations:
+
+- **Token bucket in the client.** Each successful call adds a fraction of a token (say 0.1), each retry spends one. When errors pile up the bucket drains and retries stop, while first attempts continue. AWS SDKs' standard retry mode uses a client-side retry quota in this spirit.
+- **Envoy** supports a retry budget on a cluster: retries may be at most a configured percentage of active requests, so a sidecar proxy can enforce it for every service in a mesh.
+- **Server pushback.** The server returns a signal such as `429` with `Retry-After`, or gRPC's `RESOURCE_EXHAUSTED`, and well-behaved clients slow down.
+
+### Hedged requests
+
+Retries react to failure; a <Term slug="hedged-request">hedged request</Term> attacks slow tail latency instead. Send the request, and if no answer arrives by roughly the p95 latency, send a second copy to another replica and use whichever answers first. Dean and Barroso describe the technique in "The Tail at Scale" (Communications of the ACM, 2013). Because only the slowest few percent of requests are hedged, the extra load is small, but the operation must be safe to run twice, and hedging should be switched off when the service is overloaded.
+
+## Idempotency as a prerequisite
+
+<DepthStamp depth="tradeoffs" />
+
+A timeout tells you only that you stopped waiting. The server may have done nothing, done all of it, or still be doing it. So every retry after a timeout is a bet that running the operation again is safe. That is only true for **idempotent** operations: ones where doing it twice has the same effect as doing it once (see the idempotency section in Phase 2).
+
+### Failure story: the double charge
+
+| Time | Client | Payment service |
+|---|---|---|
+| t = 0 ms | `POST /charges` for $50 with a 2,000 ms timeout | Receives it, calls the card network |
+| t = 2,000 ms | Times out, schedules a retry | Still waiting on the card network |
+| t = 2,100 ms | | Card charged $50, commits, sends 201 to a closed connection |
+| t = 2,150 ms | Retry: `POST /charges` for $50 | Charges the card again |
+| Result | Customer sees two $50 charges | |
+
+The fix is an <Term slug="idempotency-key">idempotency key</Term>: the client generates a unique key per logical operation and sends the *same* key on every retry. The server stores the key with the result; a repeat with a known key returns the stored result instead of charging again. Stripe's API works this way with its `Idempotency-Key` header. Two details matter: the key must be stored atomically with the effect (in the same transaction), and a retry that arrives while the first attempt is still running must wait or be rejected, not run in parallel.
+
+What is safe to retry without extra work:
+
+| Operation | Safe to retry? |
+|---|---|
+| GET, HEAD, and HTTP PUT or DELETE implemented as specified | Yes: idempotent by definition |
+| "Set balance to 100" | Yes: same end state |
+| "Add 10 to balance", "send email", POST create | Only with an idempotency key or a deduplicating consumer |
+| A call whose side effects reach an external system that does not deduplicate | Retry the call only if the external system accepts a key; otherwise reconcile instead |
+
+<TradeoffBox title="Timeouts and retries" items={[
+  { gain: "Short timeouts free threads and connections fast", cost: "More false timeouts on good-but-slow calls, each a possible retry" },
+  { gain: "Deadline propagation stops wasted work after the user gives up", cost: "Every service and library must read, pass on and honour the deadline" },
+  { gain: "Retries hide brief transient failures from users", cost: "They multiply load during real outages unless budgeted" },
+  { gain: "Full jitter spreads retries and lets a service recover", cost: "Individual callers sometimes wait longer than plain backoff would make them" },
+  { gain: "A 10% retry budget caps worst-case load at 1.1×", cost: "During a real outage most failures are not retried and reach the user" },
+  { gain: "Hedged requests cut tail latency", cost: "Some duplicate work, and only safe for idempotent reads" }
+]} />
+
+<NotWhenBox title="When not to retry" items={[
+  "Client errors such as 400, 401, 403 or 404: they fail identically every time.",
+  "Non-idempotent writes without an idempotency key: a timed-out attempt may already have succeeded.",
+  "When the remaining deadline cannot fit another attempt: fail fast and let the caller decide.",
+  "At every layer of a deep call chain: retry at one layer and let the others fail fast.",
+  "When the server is signalling overload, except after the Retry-After it asked for."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Longer timeouts are safer because they give slow requests a chance to finish." right="Long timeouts make callers hold threads and connections for longer, so one slow dependency exhausts the caller's resources. Set timeouts from the downstream's latency percentiles." />
+
+<Misconception wrong="Exponential backoff alone prevents retry storms." right="Without jitter, clients that failed together retry together. Without a budget, retries still multiply across layers. Backoff, jitter and a retry budget work as a set." />
+
+<Misconception wrong="A timeout means the operation did not happen." right="A timeout means you stopped waiting. The server may have completed the work, so retrying a non-idempotent call can do it twice." />
+
+<Misconception wrong="Retrying at every layer makes the system more reliable." right="Retries multiply: three layers of three attempts is 27 calls at the bottom. Retry at one layer and give the others short timeouts and no retries." />
+
+## Interview angle
+
+<InterviewAngle title="Timeouts and retries" questions={[
+  "What timeout would you set on this call, and how did you pick the number?",
+  "The user's request has a 1-second budget and crosses four services. How do you set the timeouts?",
+  "A downstream recovers from an outage and immediately falls over again. What is happening?",
+  "Is it safe to retry this payment call after a timeout?",
+  "How would you stop retries from making an outage worse?"
+]}>
+Expect this as a follow-up to any design with service-to-service calls: "what happens when this call is slow?" A strong answer names a number and its source (near the downstream's p99.9, measured client-side), propagates a deadline instead of fixed per-hop timeouts, retries only idempotent operations at one layer with capped exponential backoff and full jitter, and caps total retries with a budget around 10%. The common next question is "what if the payment call times out?" The strong answer: the outcome is unknown, so retry only with an idempotency key stored atomically with the charge, and reconcile anything still unknown later rather than guessing.
+</InterviewAngle>
+
+## Practice
+
+1. A downstream has p50 = 15 ms, p99 = 60 ms, p99.9 = 400 ms. You accept 0.1% false timeouts. What timeout do you set, and how many threads does a service at 500 requests a second need for these calls in the worst case?
+2. A request crosses four layers and each retries up to 2 extra times (3 attempts). How many calls reach the bottom service when it is failing every call? What changes with a 10% retry budget at each layer?
+3. Write the full-jitter sleep values (ranges and averages) for attempts 0 to 5 with base 50 ms and cap 2 s, then decide how many attempts fit inside an 800 ms remaining deadline with 150 ms per-attempt timeouts.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

@@ -1,0 +1,331 @@
+[
+  {
+    "id": "circuit-breakers-q1",
+    "type": "single",
+    "prompt": "In which breaker state do calls pass through to the dependency normally?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Open, because the circuit to the dependency is open for traffic"
+      },
+      {
+        "id": "b",
+        "text": "Closed, because a closed circuit lets current, and calls, flow"
+      },
+      {
+        "id": "c",
+        "text": "Half-open, because that is the default state of a new breaker"
+      },
+      {
+        "id": "d",
+        "text": "Tripped, which is the name for the healthy state in Resilience4j"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "As in an electrical circuit, closed means the path is complete and calls flow; open means calls are blocked and fail fast. Reading 'open' as 'open for traffic' is the most common mix-up. Half-open is the trial state after an open period, not the default. 'Tripped' is informal for moving to open, not a healthy state.",
+    "topicId": "breaker-states",
+    "difficulty": 1
+  },
+  {
+    "id": "circuit-breakers-q2",
+    "type": "scenario",
+    "prompt": "What is the most likely cause, and the fix?",
+    "scenario": "A team's home-grown breaker opens after failures and, 30 seconds later, closes and sends full traffic again. After a crash, their search service needs about 2 minutes of gentle load to warm its caches. Graphs show the breaker opening and closing every 30 seconds for 20 minutes.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The wait is too short; raise it to 10 minutes so the service has enough time to recover alone"
+      },
+      {
+        "id": "b",
+        "text": "The threshold is too low; raise it to 90% so the breaker stops tripping on a cold service"
+      },
+      {
+        "id": "c",
+        "text": "There is no half-open state, so full load hits a cold service; add a few trial calls first"
+      },
+      {
+        "id": "d",
+        "text": "The breaker should be removed, since search must stay available even when it is degraded"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Without half-open, every close sends full load at a service that can only take a fraction of it, so it fails and the breaker reopens: flapping. A few trial calls, then a gradual return, let it warm up. A 10-minute wait just lengthens each outage period and still ends in a full-load spike, because the cold cache only warms under load. A 90% threshold would keep sending traffic to a failing service. Removing the breaker leaves callers waiting on timeouts while search stays overloaded.",
+    "topicId": "breaker-states",
+    "difficulty": 2
+  },
+  {
+    "id": "circuit-breakers-q3",
+    "type": "scenario",
+    "prompt": "Why does the breaker take so long to open?",
+    "scenario": "A service calls a dependency with a 30-second timeout and a breaker set to open at a 50% failure rate over the last 100 calls. The dependency starts accepting connections and never replying. The breaker stays closed for over 30 seconds, and the caller's thread pool is exhausted.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The window of 100 calls is too large; with 10 calls it would have opened in milliseconds"
+      },
+      {
+        "id": "b",
+        "text": "A hanging call has no outcome until it times out, so nothing is recorded for 30 seconds"
+      },
+      {
+        "id": "c",
+        "text": "Breakers only count 5xx responses, and a hanging connection never returns a status code"
+      },
+      {
+        "id": "d",
+        "text": "The 50% threshold is too high; at 10% it would have tripped long before the 30 s mark"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A breaker learns from completed calls. A call that hangs completes only when it times out, so with a 30 s timeout the first failure is recorded at 30 s; the timeout bounds how fast the breaker can react. A smaller window or a lower threshold changes nothing while zero failures have been recorded. Breakers can and should count timeouts as failures; the problem is when they happen, not whether they count.",
+    "topicId": "breaker-thresholds",
+    "difficulty": 2
+  },
+  {
+    "id": "circuit-breakers-q4",
+    "type": "scenario",
+    "prompt": "What should happen, and which tool fits?",
+    "scenario": "A pricing service has 10 replicas behind your service mesh. One replica has a corrupted disk and returns 500 for every request. The other nine are healthy. Your service-wide breaker opens at a 50% failure rate.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Lower the breaker threshold to 5% so it opens and protects users from the bad replica"
+      },
+      {
+        "id": "b",
+        "text": "Leave it; a 10% error rate is acceptable and the breaker is behaving exactly as designed"
+      },
+      {
+        "id": "c",
+        "text": "Eject the bad replica with per-host outlier detection; the service-wide breaker should stay closed"
+      },
+      {
+        "id": "d",
+        "text": "Retry every failed call on another replica, which fixes the problem without any further configuration at all"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "About 10% of calls fail, which correctly does not trip a 50% breaker, and tripping would cut off nine healthy replicas. Outlier detection (for example Envoy ejecting a host after consecutive 5xx responses) removes just the bad one. A 5% threshold would make the breaker block all of pricing. Accepting 10% errors ignores an easy fix. Retrying on another replica helps individual calls but keeps sending one in ten requests to the broken replica and adds retry load; it complements ejection rather than replacing it.",
+    "topicId": "breaker-thresholds",
+    "difficulty": 3
+  },
+  {
+    "id": "circuit-breakers-q5",
+    "type": "multi",
+    "prompt": "Which outcomes should usually count as failures for a breaker? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "A call that hits the client's timeout"
+      },
+      {
+        "id": "b",
+        "text": "A 503 Service Unavailable response"
+      },
+      {
+        "id": "c",
+        "text": "A 400 Bad Request caused by bad input"
+      },
+      {
+        "id": "d",
+        "text": "A connection refused by the dependency"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "d"
+    ],
+    "explanation": "Timeouts, 503s and refused connections all say the dependency is unhealthy. A 400 says the caller sent bad input; counting it would let one buggy client cut everyone off from a healthy service. Libraries such as Resilience4j let you list recorded and ignored exceptions for this reason.",
+    "topicId": "breaker-thresholds",
+    "difficulty": 1
+  },
+  {
+    "id": "circuit-breakers-q6",
+    "type": "scenario",
+    "prompt": "What is the best way to combine retries with this breaker?",
+    "scenario": "A client makes up to 3 attempts with jittered backoff and also wraps the dependency in a circuit breaker. The dependency goes down and the breaker opens.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Retry outside the breaker so each attempt is recorded, and never retry a breaker-open rejection"
+      },
+      {
+        "id": "b",
+        "text": "Retry inside the breaker so it sees one outcome per request, and keep retrying calls while the breaker is open"
+      },
+      {
+        "id": "c",
+        "text": "Disable the breaker whenever retries are on, because the two always conflict with each other"
+      },
+      {
+        "id": "d",
+        "text": "Retry breaker-open rejections with a longer backoff, so calls resume as soon as it closes"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Wrapping retries around the breaker means each attempt is counted and an open breaker stops the retries immediately. Retrying inside the breaker hides individual failures, and retrying while open just spins. The two work well together when ordered correctly. Retrying a rejection is pointless work: the breaker's own half-open trial is how traffic resumes.",
+    "topicId": "breaker-states",
+    "difficulty": 2
+  },
+  {
+    "id": "circuit-breakers-q7",
+    "type": "scenario",
+    "prompt": "With these settings, roughly when does the breaker open?",
+    "scenario": "An instance calls a dependency at 300 requests a second with a 1-second timeout. The breaker uses a count-based window of the last 100 calls and a 50% failure-rate threshold. At t = 0 the dependency starts hanging.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Around t = 0.2 s, after about 50 calls have been made to the dependency"
+      },
+      {
+        "id": "b",
+        "text": "Around t = 1.2 s, after about 50 timeouts have been recorded as failures"
+      },
+      {
+        "id": "c",
+        "text": "Around t = 10 s, after the old successes have aged out of the window"
+      },
+      {
+        "id": "d",
+        "text": "Around t = 0.33 s, after all 100 calls in the window have been made"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Failures start being recorded at t = 1 s, when the first calls time out. At 300 a second, 50 failures take about 0.17 s, so the last 100 calls are half failures at about t = 1.2 s. Counting calls made rather than failures recorded gives the 0.2 s and 0.33 s answers, but a hanging call records nothing. Ageing out by time describes a time-based window, not a count-based one.",
+    "topicId": "breaker-thresholds",
+    "difficulty": 3
+  },
+  {
+    "id": "circuit-breakers-q8",
+    "type": "scenario",
+    "prompt": "What is the most important lesson from this incident?",
+    "scenario": "A currency service's certificate expired on Friday evening. The breaker opened and the fallback returned a hard-coded exchange rate from two years ago. Error rates looked perfect all weekend. On Monday finance found thousands of orders priced below cost.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Breakers should never be used for financial services, since an open breaker always risks serving wrong data"
+      },
+      {
+        "id": "b",
+        "text": "The breaker's wait duration was too long; a 5-second wait would have reclosed it sooner"
+      },
+      {
+        "id": "c",
+        "text": "The fallback needed bounded staleness and an alert on breaker state, not just error rate"
+      },
+      {
+        "id": "d",
+        "text": "The fallback should have retried the currency service until it succeeded once more"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "The fallback silently served data far too stale for prices, and nothing alerted because user-facing errors stayed low. Serving the last rate for a bounded time, then failing closed, plus paging on 'breaker open for more than 5 minutes', fixes both. Breakers are fine for financial services with the right fallback. A shorter wait would not help: the expired certificate kept every trial failing. Retrying an expired certificate cannot succeed and just adds load.",
+    "topicId": "fallbacks",
+    "difficulty": 2
+  },
+  {
+    "id": "circuit-breakers-q9",
+    "type": "single",
+    "prompt": "For which dependency is failing fast with a clear error usually the best fallback?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Product recommendations on the home page"
+      },
+      {
+        "id": "b",
+        "text": "Card authorisation during checkout"
+      },
+      {
+        "id": "c",
+        "text": "The reviews block on a product page"
+      },
+      {
+        "id": "d",
+        "text": "A weekly analytics event for marketing"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "There is no safe guess for a card authorisation: inventing an approval loses money and inventing a decline is wrong too, so an honest 'payments are temporarily unavailable' is best. Recommendations can fall back to bestsellers, reviews can be hidden, and an analytics event can be queued for later.",
+    "topicId": "fallbacks",
+    "difficulty": 1
+  },
+  {
+    "id": "circuit-breakers-q10",
+    "type": "single",
+    "prompt": "What does Envoy mean by circuit breaking?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Tracking each upstream's failure rate and blocking it when the rate passes 50%"
+      },
+      {
+        "id": "b",
+        "text": "Limits on connections, pending requests, requests and retries to an upstream cluster"
+      },
+      {
+        "id": "c",
+        "text": "Ejecting single hosts from a cluster after they return consecutive 5xx responses"
+      },
+      {
+        "id": "d",
+        "text": "Closing idle TCP connections to upstreams after a configured keep-alive period"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Envoy's circuit breaking is a set of concurrency limits per upstream cluster; requests beyond them fail fast. A failure-rate state machine is the application pattern (as in Resilience4j), not Envoy's feature of that name. Ejecting bad hosts is Envoy's separate outlier detection. Closing idle connections is connection management, unrelated to breaking.",
+    "topicId": "breaker-thresholds",
+    "difficulty": 2
+  },
+  {
+    "id": "circuit-breakers-q11",
+    "type": "multi",
+    "prompt": "Which fallbacks add essentially no load to other systems during an outage? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Serving a precomputed bestsellers list baked into each instance"
+      },
+      {
+        "id": "b",
+        "text": "Hiding the reviews block and rendering the rest of the page"
+      },
+      {
+        "id": "c",
+        "text": "Querying the primary database directly when the cache fails"
+      },
+      {
+        "id": "d",
+        "text": "Returning the last value held in the instance's local memory"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "d"
+    ],
+    "explanation": "Precomputed data, local memory and simply doing less cost nothing elsewhere. Falling back from a cache to the primary database sends the cache's whole read load to a system that was never sized for it, which can turn a cache outage into a database outage.",
+    "topicId": "fallbacks",
+    "difficulty": 2
+  }
+]

@@ -1,0 +1,173 @@
+[
+  {
+    "id": "high-availability-q1",
+    "type": "single",
+    "prompt": "A service promises 99.95% availability per 30-day month. Roughly how much downtime does that allow each month?",
+    "options": [
+      { "id": "a", "text": "About 4.4 minutes" },
+      { "id": "b", "text": "About 21.6 minutes" },
+      { "id": "c", "text": "About 43.2 minutes" },
+      { "id": "d", "text": "About 4.38 hours" }
+    ],
+    "correct": ["b"],
+    "explanation": "A 30-day month is 43,200 minutes; 0.0005 × 43,200 = 21.6 minutes. About 4.3 minutes is the monthly budget for 99.99%. 43.2 minutes is 99.9% per month. 4.38 hours is 99.95% over a whole year, not a month.",
+    "topicId": "nines",
+    "difficulty": 1
+  },
+  {
+    "id": "high-availability-q2",
+    "type": "scenario",
+    "prompt": "Which change improves availability the most?",
+    "scenario": "A stateful service fails about once a month (MTBF ≈ 720 h). Today an engineer is paged and restores it by hand in about 60 minutes. You can either buy hardware that fails half as often, or automate recovery so it takes 5 minutes.",
+    "options": [
+      { "id": "a", "text": "Hardware failing half as often: about 99.93%, double the MTBF" },
+      { "id": "b", "text": "Neither; MTBF and MTTR both have to improve to gain a full nine" },
+      { "id": "c", "text": "Automated 5-minute recovery: about 99.99% from a 12× lower MTTR" },
+      { "id": "d", "text": "They're equal, as availability depends on how often failures happen" }
+    ],
+    "correct": ["c"],
+    "explanation": "Availability = MTBF ÷ (MTBF + MTTR). Today: 720 ÷ 721 ≈ 99.86%. Halving failures: 1,440 ÷ 1,441 ≈ 99.93%. Five-minute recovery: 720 ÷ 720.083 ≈ 99.988%. Cutting MTTR twelvefold beats doubling MTBF, so recovery speed is the bigger lever here. Option a's number is right but it is the smaller gain. One change alone is enough to gain most of a nine, and availability depends on both frequency and duration, not frequency alone.",
+    "topicId": "nines",
+    "difficulty": 2
+  },
+  {
+    "id": "high-availability-q3",
+    "type": "scenario",
+    "prompt": "What is wrong with this setup?",
+    "scenario": "Two app servers sit behind a load balancer. At peak each runs at 75% CPU. The team says the tier is redundant because either server can fail without an outage.",
+    "options": [
+      { "id": "a", "text": "Nothing; two servers in parallel always make the tier redundant" },
+      { "id": "b", "text": "A survivor would need 150% of its capacity, so the failure cascades" },
+      { "id": "c", "text": "The load balancer should be active-passive rather than active-active" },
+      { "id": "d", "text": "The servers should be in the same rack so failover is faster" }
+    ],
+    "correct": ["b"],
+    "explanation": "If one server fails at peak, the other must carry both servers' load: 2 × 75% = 150% of its capacity, so it overloads and likely fails too. Redundancy requires spare capacity, which here means each server below about 50% at peak (or a third server). Two servers are not redundant just by existing. The load balancer's mode doesn't change the survivor's load. Same-rack placement adds correlated failure and doesn't speed anything up.",
+    "topicId": "redundancy",
+    "difficulty": 2
+  },
+  {
+    "id": "high-availability-q4",
+    "type": "single",
+    "prompt": "A service needs 60,000 requests/s at peak and must survive the loss of any one of 3 zones. How much total capacity should be provisioned?",
+    "options": [
+      { "id": "a", "text": "60,000/s, spread as 20,000/s per zone" },
+      { "id": "b", "text": "120,000/s, as 40,000/s in each zone" },
+      { "id": "c", "text": "90,000/s, as 30,000/s in each zone" },
+      { "id": "d", "text": "180,000/s, as 60,000/s in each zone" }
+    ],
+    "correct": ["c"],
+    "explanation": "After losing one zone, the two survivors must carry 60,000/s, so each needs 30,000/s; three zones × 30,000 = 90,000/s, or 1.5× peak. 20,000 per zone has no headroom. 40,000 per zone (2× peak) over-provisions: 2× peak is the answer for two zones, where one survivor carries everything. 60,000 per zone would survive losing two zones, which is more than required.",
+    "topicId": "redundancy",
+    "difficulty": 2
+  },
+  {
+    "id": "high-availability-q5",
+    "type": "scenario",
+    "prompt": "What is the most likely reason the failover took so long?",
+    "scenario": "An RDS-style Multi-AZ database failed over to its standby in about 90 seconds, but the Java application kept erroring for another 20 minutes until it was restarted. Monitoring shows the new primary was healthy throughout.",
+    "options": [
+      { "id": "a", "text": "The standby used asynchronous replication and had to replay a backlog" },
+      { "id": "b", "text": "Failover across AZs always needs a full restart of the app tier to work" },
+      { "id": "c", "text": "The app cached the old DNS answer or kept dead pooled connections open" },
+      { "id": "d", "text": "The load balancer health checks were configured with too long an interval" }
+    ],
+    "correct": ["c"],
+    "explanation": "Failover of this kind repoints a DNS name to the new primary. A client that caches DNS results indefinitely, or a connection pool holding dead connections, keeps trying the old address until restarted. The new primary was healthy, so a replication backlog isn't the cause, and Multi-AZ standbys are synchronous. Apps don't inherently need restarting; that's a symptom of the caching. Load balancer checks govern the web tier, not the app's database connections.",
+    "topicId": "active-modes",
+    "difficulty": 3
+  },
+  {
+    "id": "high-availability-q6",
+    "type": "single",
+    "prompt": "What is the strongest argument for active-active over active-passive for a stateless tier?",
+    "options": [
+      { "id": "a", "text": "It needs less total capacity, since no copy ever sits idle waiting" },
+      { "id": "b", "text": "It removes write conflicts because every copy serves the same data" },
+      { "id": "c", "text": "The backup path carries real traffic daily, so it is known to work" },
+      { "id": "d", "text": "It makes failure detection unnecessary because nothing is promoted" }
+    ],
+    "correct": ["c"],
+    "explanation": "In active-active every copy is exercised constantly, so the path you rely on during a failure is proven, unlike a standby used only on the worst day. Total capacity is not lower: each copy still needs headroom to absorb the others' share. Write conflicts are a problem active-active introduces for stateful data, not one it removes. You still need health checks to stop routing to a failed copy.",
+    "topicId": "active-modes",
+    "difficulty": 2
+  },
+  {
+    "id": "high-availability-q7",
+    "type": "scenario",
+    "prompt": "What is the main consequence of this request?",
+    "scenario": "A product team based in Virginia asks for synchronous database replication between us-east (Virginia) and eu-west (Ireland) so that a regional outage loses no data. Writes currently take 4 ms.",
+    "options": [
+      { "id": "a", "text": "Every write waits a transatlantic round trip, tens of ms at best" },
+      { "id": "b", "text": "Nothing changes, because cloud backbones make regions feel local" },
+      { "id": "c", "text": "Writes go faster, as the load splits between two regions evenly" },
+      { "id": "d", "text": "It removes the need for any failover plan, since both are primary" }
+    ],
+    "correct": ["a"],
+    "explanation": "Synchronous replication means each commit waits for the other region to confirm. Light in fibre covers about 200,000 km/s, so several thousand kilometres of ocean add tens of milliseconds per round trip, a large multiple of 4 ms. No backbone beats physics. Synchronous replication adds work to every write rather than splitting it. A synchronously replicated standby still needs a failover plan to promote it and redirect clients.",
+    "topicId": "multi-az-region",
+    "difficulty": 2
+  },
+  {
+    "id": "high-availability-q8",
+    "type": "multi",
+    "prompt": "Which events does a well-built multi-AZ deployment within one region protect against? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "A power failure in one data centre" },
+      { "id": "b", "text": "A fibre cut isolating a single zone" },
+      { "id": "c", "text": "A region-wide control-plane outage" },
+      { "id": "d", "text": "A bad config pushed to every zone" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "Zones are physically separate data centres with independent power and networking, so losing power or connectivity in one is exactly what multi-AZ survives. A region-wide outage takes all zones in the region down together; that needs multi-region. A bad config deployed everywhere is a correlated software failure that no amount of zone redundancy prevents; staggered rollouts do.",
+    "topicId": "multi-az-region",
+    "difficulty": 2
+  },
+  {
+    "id": "high-availability-q9",
+    "type": "scenario",
+    "prompt": "What is the availability of this path, and roughly how much downtime per year?",
+    "scenario": "A request passes through three single components in series: a load balancer at 99.99%, an app server at 99.95% and a database at 99.9%.",
+    "options": [
+      { "id": "a", "text": "99.9%, since the chain is as good as its weakest link: about 8.8 hours" },
+      { "id": "b", "text": "About 99.84%, roughly 14 hours of downtime in a year" },
+      { "id": "c", "text": "About 99.99%, since redundant layers protect each other: 53 minutes" },
+      { "id": "d", "text": "About 99.95%, the average of the three components: about 4.4 hours" }
+    ],
+    "correct": ["b"],
+    "explanation": "In series, availabilities multiply: 0.9999 × 0.9995 × 0.999 ≈ 0.9984, and 0.0016 × 8,760 h ≈ 14 hours. A chain is always worse than its weakest link, not equal to it. Components in a chain don't protect each other; only parallel copies do. Averaging availabilities has no meaning for a request that needs all three.",
+    "topicId": "availability-math",
+    "difficulty": 1
+  },
+  {
+    "id": "high-availability-q10",
+    "type": "scenario",
+    "prompt": "Why is the real availability far below the computed 99.9999%?",
+    "scenario": "Two database replicas, each 99.9% available, were computed to give 1 − 0.001² = 99.9999%. In the last year the pair was down for 7 hours: once when the shared storage array failed, once when a schema migration broke both, and once when failover hung.",
+    "options": [
+      { "id": "a", "text": "The formula is right; seven hours in a year is just bad luck" },
+      { "id": "b", "text": "Each replica's 99.9% figure was measured wrongly at the start" },
+      { "id": "c", "text": "The formula assumes independence and ignores failover itself" },
+      { "id": "d", "text": "Parallel copies only help when there are three or more of them" }
+    ],
+    "correct": ["c"],
+    "explanation": "The parallel formula holds only for independent failures. Shared storage and a shared migration are correlated failures that take both copies down at once, and the failover mechanism is itself in series with the pair. Seven hours against a predicted 32 seconds is not bad luck. Mis-measured per-replica figures don't explain failures that hit both together. Two independent copies do help; there is no three-copy threshold.",
+    "topicId": "availability-math",
+    "difficulty": 3
+  },
+  {
+    "id": "high-availability-q11",
+    "type": "single",
+    "prompt": "Two app servers at 99.5% each sit in different AZs, each AZ 99.9% available, failures independent. What is the pair's availability?",
+    "options": [
+      { "id": "a", "text": "About 99.996%" },
+      { "id": "b", "text": "About 99.898%" },
+      { "id": "c", "text": "About 99.9975%" },
+      { "id": "d", "text": "About 99.4%" }
+    ],
+    "correct": ["a"],
+    "explanation": "Each server-plus-AZ is in series: 0.995 × 0.999 ≈ 0.994. Two independent copies in parallel: 1 − (1 − 0.994)² ≈ 1 − 0.006² ≈ 99.996%. 99.898% is what you'd get with both servers in the same AZ, capped by that one zone. 99.9975% (1 − 0.005²) ignores the AZs entirely. 99.4% is a single server-plus-AZ with no redundancy.",
+    "topicId": "availability-math",
+    "difficulty": 3
+  }
+]

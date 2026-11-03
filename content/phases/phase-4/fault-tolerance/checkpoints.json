@@ -1,0 +1,8 @@
+[
+  { "id": "fault-tolerance-c1", "text": "I can walk a request path hop by hop and name every single point of failure, including config, certificates and people.", "topicId": "spof-elimination" },
+  { "id": "fault-tolerance-c2", "text": "I can explain why redundant copies that share a zone, a deploy, an input or a dependency still fail together, and how to make them independent.", "topicId": "spof-elimination" },
+  { "id": "fault-tolerance-c3", "text": "I can classify each dependency of a request as critical or optional and compute how much availability degradation buys (for example 0.999⁵ versus 0.999²).", "topicId": "graceful-degradation" },
+  { "id": "fault-tolerance-c4", "text": "I can decide whether a check should fail open or fail closed and justify it by the cost of a wrong yes versus a wrong no.", "topicId": "graceful-degradation" },
+  { "id": "fault-tolerance-c5", "text": "I can spot a fallback that would overload a different system and replace it with one that does less or runs on the normal path.", "topicId": "graceful-degradation" },
+  { "id": "fault-tolerance-c6", "text": "I can size statically stable capacity across N zones (1 ÷ (N − 1) extra) and explain why it avoids depending on the control plane during an outage.", "topicId": "static-stability" }
+]

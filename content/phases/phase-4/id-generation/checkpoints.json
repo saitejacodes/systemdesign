@@ -1,0 +1,8 @@
+[
+  { "id": "id-generation-c1", "text": "I can explain why random UUIDv4 primary keys degrade B-tree inserts as a table grows, and how UUIDv7's layout fixes it.", "topicId": "uuid" },
+  { "id": "id-generation-c2", "text": "I can list what breaks when an auto-increment key meets sharding, offline clients or public URLs.", "topicId": "auto-increment" },
+  { "id": "id-generation-c3", "text": "I can size a ticket server's range allocation for a given ID rate and state what each block size costs.", "topicId": "ticket-servers" },
+  { "id": "id-generation-c4", "text": "I can design a 64-bit Snowflake layout for given fleet size, throughput and lifetime, showing the arithmetic.", "topicId": "snowflake" },
+  { "id": "id-generation-c5", "text": "I can walk through a clock moving backwards under Snowflake and choose a defence (wait, refuse, max(now, last), slewing NTP).", "topicId": "snowflake" },
+  { "id": "id-generation-c6", "text": "I can pick between sortable and random IDs for a given storage engine and privacy requirement.", "topicId": "sortability" }
+]

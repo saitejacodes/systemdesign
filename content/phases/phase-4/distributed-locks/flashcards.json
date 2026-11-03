@@ -1,0 +1,19 @@
+[
+  { "id": "distributed-locks-f1", "front": "Efficiency lock vs correctness lock?", "back": "Efficiency: two holders only waste work. Correctness: two holders corrupt data; needs consensus plus fencing.", "topicId": "why-locks" },
+  { "id": "distributed-locks-f2", "front": "Mutual exclusion on one row without a lock service?", "back": "A conditional (compare-and-set) write: UPDATE ... WHERE version = 7, or a DynamoDB condition expression.", "topicId": "why-locks" },
+  { "id": "distributed-locks-f3", "front": "Lease?", "back": "A lock granted for a limited time that the holder must renew; it frees itself if the holder dies.", "topicId": "leases" },
+  { "id": "distributed-locks-f4", "front": "Process pause?", "back": "A stretch where a program makes no progress but doesn't know time passed: GC, VM migration, swapping, SIGSTOP.", "topicId": "leases" },
+  { "id": "distributed-locks-f5", "front": "Why can't 'check I still hold the lock' be made safe?", "back": "A pause can strike between the check and the write.", "topicId": "leases" },
+  { "id": "distributed-locks-f6", "front": "Lease renewal rule of thumb?", "back": "Renew at about a third of the TTL; if a renewal fails, stop work.", "topicId": "leases" },
+  { "id": "distributed-locks-f7", "front": "Fencing token?", "back": "A number that increases with every lock grant; the resource rejects writes with a lower token than it has seen.", "topicId": "fencing" },
+  { "id": "distributed-locks-f8", "front": "Who checks a fencing token?", "back": "The protected resource (storage), atomically with the write. Not the lock service, not the client.", "topicId": "fencing" },
+  { "id": "distributed-locks-f9", "front": "Chubby's name for a fencing token?", "back": "A sequencer. Chubby also has lock-delay: a failed holder's lock can't be re-granted for a period.", "topicId": "fencing" },
+  { "id": "distributed-locks-f10", "front": "Single-node Redis lock?", "back": "SET key <random token> NX PX ttl; release with a Lua compare-and-delete on the token.", "topicId": "redis-locks" },
+  { "id": "distributed-locks-f11", "front": "How does Redis failover lose a lock?", "back": "Replication is async: the primary acks the SET, dies before replicating, and the promoted replica has no key.", "topicId": "redis-locks" },
+  { "id": "distributed-locks-f12", "front": "Redlock in one line?", "back": "SET NX PX on 5 independent Redis primaries; held if 3+ succeed within the TTL, validity = TTL − elapsed − drift.", "topicId": "redis-locks" },
+  { "id": "distributed-locks-f13", "front": "Kleppmann on Redlock?", "back": "Overkill for efficiency; unsafe for correctness because safety depends on timing and clocks, and there is no fencing token.", "topicId": "redis-locks" },
+  { "id": "distributed-locks-f14", "front": "Antirez on Redlock?", "back": "Assumes clocks tick at similar rates, not synced; detects delays during acquire; pause-after-acquire hurts every auto-expiring lock.", "topicId": "redis-locks" },
+  { "id": "distributed-locks-f15", "front": "ZooKeeper lock recipe?", "back": "Create ephemeral sequential node; lowest number holds; others watch only their predecessor.", "topicId": "coordination-locks" },
+  { "id": "distributed-locks-f16", "front": "Fencing token in ZooKeeper / etcd?", "back": "ZooKeeper: the node's sequence number or czxid. etcd: the lock key's create revision.", "topicId": "coordination-locks" },
+  { "id": "distributed-locks-f17", "front": "Does consensus remove the need for fencing?", "back": "No. It keeps lock state correct, but a paused client past its lease still thinks it holds the lock.", "topicId": "coordination-locks" }
+]

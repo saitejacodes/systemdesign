@@ -93,3 +93,10 @@
 - Embedded in all 13 Phase 3 lessons under a new "Try it" heading; the six caching sections share S-10, each with its own thing to try. Each new route is in the Playwright smoke test.
 - Quiz rebalance across all 43 sections: distractors are now specific misconceptions of similar length, so the correct answer can't be spotted by length (separate commit).
 - Verify: open /simulators/cache, run "Survive a cache flush", fail it, turn on the rebuild lock, pass it; open /simulators/redis-playground and type `SET session:1 alice EX 30`, then fast-forward. `pnpm test` (252 unit tests), `pnpm test:e2e`.
+
+## Prompt 12 · Phase 4 content
+- All 15 Phase 4 sections (weeks 9–10). Distributed systems: CAP and PACELC, consistency models, quorums, consensus and Raft, time and ordering, distributed transactions (2PC, sagas), ID generation, distributed locks. Reliability: high availability, fault tolerance, timeouts and retries, circuit breakers, bulkheads and load shedding, disaster recovery, chaos engineering.
+- About 44,000 lesson words, 167 quiz questions, 244 flashcards, 106 new glossary terms (388 total), 51 resources. Written to a higher bar: definitions from the primary sources (Gilbert & Lynch, Herlihy & Wing, the Raft and Spanner papers, Lamport, Sagas 1987, RFC 9562, the AWS Builders' Library, the SRE book); a millisecond-by-millisecond failure timeline for each key idea; worked arithmetic (Snowflake bits, birthday-bound collisions, nines to downtime, series/parallel availability, quorum overlap, 27× retry amplification, Little's law pool sizing); one analogy per section with where it breaks down; interview follow-ups with strong answers.
+- Fair treatment where the field disagrees: "pick 2 of 3", Redlock (Kleppmann vs antirez).
+- Simulator ids (cap, quorum, raft, clocks, saga, snowflake, retry-storm, circuit-breaker, availability-calculator) are in meta.json and show as cards until Prompt 13 builds them.
+- Verify: open /phase/4 and any section; `pnpm test` (content checks), `pnpm test:e2e` (all 15 routes; the plan test now checks week 11 for "Coming soon").

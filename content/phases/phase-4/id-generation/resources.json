@@ -1,0 +1,42 @@
+[
+  {
+    "id": "rfc-9562",
+    "title": "RFC 9562: Universally Unique IDentifiers (UUIDs)",
+    "author": "Davis, Peabody and Leach (IETF)",
+    "kind": "docs",
+    "url": "https://www.rfc-editor.org/rfc/rfc9562",
+    "why": "The standard itself: exact bit layouts of v4 and v7, the monotonic-counter options and the security considerations.",
+    "topicIds": ["uuid", "sortability"],
+    "free": true
+  },
+  {
+    "id": "twitter-snowflake",
+    "title": "Snowflake (archived source and README)",
+    "author": "Twitter",
+    "kind": "repo",
+    "url": "https://github.com/twitter-archive/snowflake",
+    "why": "The original 41/10/12-bit generator, including how it treats a clock that moves backwards.",
+    "topicIds": ["snowflake"],
+    "free": true
+  },
+  {
+    "id": "flickr-ticket-servers",
+    "title": "Ticket Servers: Distributed Unique Primary Keys on the Cheap",
+    "author": "Flickr Engineering",
+    "kind": "blog",
+    "url": "https://code.flickr.net/2010/02/08/ticket-servers-distributed-unique-primary-keys-on-the-cheap/",
+    "why": "A short, practical account of the two-server odd/even ticket scheme and why Flickr chose it over UUIDs.",
+    "topicIds": ["ticket-servers", "auto-increment"],
+    "free": true
+  },
+  {
+    "id": "spanner-schema-design",
+    "title": "Spanner: Schema design best practices",
+    "author": "Google Cloud",
+    "kind": "docs",
+    "url": "https://cloud.google.com/spanner/docs/schema-design",
+    "why": "Why monotonically increasing keys create hot spots in a range-partitioned database, and the alternatives Google recommends.",
+    "topicIds": ["sortability"],
+    "free": true
+  }
+]

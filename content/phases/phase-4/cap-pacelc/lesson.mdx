@@ -1,0 +1,200 @@
+## Why it matters
+
+The moment your data lives on more than one machine, the network between those machines becomes part of your database, and networks fail. A switch reboots, a cross-region link drops packets for ninety seconds, a garbage-collection pause makes one node look dead to the others. When that happens, every replicated system has to answer one awkward question for every request it receives: "I can't talk to my peers right now. Do I answer anyway, possibly with stale or conflicting data, or do I refuse?" The CAP theorem is the formal version of that question, and PACELC extends it to the 99.9% of the time when the network is fine but every coordinated answer still costs a round trip. Eric Brewer, who first posed CAP, wrote a 2012 retrospective (*CAP Twelve Years Later*) arguing that the popular "pick two of three" slogan had done real harm by making the trade-off sound like a one-time menu choice. This section states the theorem precisely, shows what CP and AP systems actually do during a partition, and explains why the latency trade-off you pay every day usually matters more than the partition trade-off you pay rarely.
+
+<Callout type="analogy" title="Two wedding planners on two islands">
+A couple hires a wedding planning firm with two offices, one on each of two islands, connected by a single radio. Both offices take bookings for the same chapel. One stormy afternoon the radio dies (a partition). A customer walks into the east office and asks, "Is Saturday at 3pm free?" The planner has two options. She can say "I can't confirm until the radio is back, please wait" (consistent, but not available). Or she can book the slot from her own copy of the calendar and hope the west office didn't book it too (available, but possibly inconsistent: two brides, one chapel). There is no third option where she answers immediately *and* is certain. That is CAP. Now the storm passes and the radio works. She could still radio the other office before every booking, which takes a minute each time, or book locally and sync later, which is instant but occasionally wrong. That everyday choice, with no storm at all, is the "ELC" in PACELC.
+
+Where the analogy breaks down: the planner *knows* the radio is dead. A real node never knows; it only sees that a reply is late, and must guess whether the other office burned down, is busy, or is unreachable.
+</Callout>
+
+## CAP stated precisely
+
+<DepthStamp depth="deep" />
+
+The <Term slug="cap-theorem">CAP theorem</Term> was presented by Eric Brewer as a conjecture in a 2000 keynote and proved by Seth Gilbert and Nancy Lynch in 2002. The proof uses narrow, specific definitions, and most confusion about CAP comes from using looser everyday meanings of the three letters.
+
+- **C, consistency**, means <Term slug="linearizability">linearizability</Term>: the system behaves as if there were a single copy of the data, and every operation takes effect atomically at some instant between its start and its end. Once any read has returned a value, every later read (in real time) must return that value or a newer one. This is *not* the "C" in ACID, which is about application invariants such as "balances never go negative".
+- **A, availability**, means every request received by a non-failing node must eventually get a non-error response. Note what this does *not* say: there is no deadline. A response that takes ten minutes still counts. And it applies to *every* non-failing node, including one stuck on the small side of a partition. This is a much stricter idea than the "99.99% uptime" kind of <Term slug="availability">availability</Term> used in SLAs.
+- **P, partition tolerance**, means the system keeps behaving according to its specification even when the network drops or delays an arbitrary number of messages between nodes.
+
+With those definitions, the theorem says: **in a system where a <Term slug="network-partition">network partition</Term> can occur, you cannot guarantee both linearizable consistency and availability during that partition.** The proof is short. Put two replicas, G1 and G2, on opposite sides of a partition. A client writes `x = 1` to G1. Another client then reads `x` from G2. To be available, G2 must answer. It cannot have heard about the write, because no messages cross the partition, so it answers with the old value, which violates linearizability. To be linearizable, G2 would have to wait or refuse, which violates availability.
+
+<Figure caption="FIG. 1.1 · THE CAP PROOF IN ONE PICTURE · G2 MUST CHOOSE">
+  <Diagram label="Client 1 writes x=1 to G1. Replication to G2 is lost in the partition. Client 2 reads x from G2, which must either answer with the stale value 0 or refuse." chart={`sequenceDiagram
+    participant C1 as Client 1
+    participant G1 as Replica G1
+    participant G2 as Replica G2
+    participant C2 as Client 2
+    C1->>G1: write x = 1
+    G1--xG2: replicate x = 1 (lost in partition)
+    G1-->>C1: ok
+    C2->>G2: read x
+    Note over G2: Option A answer x = 0 (stale)
+    Note over G2: Option C wait or return an error
+    G2-->>C2: x = 0, or error`} />
+</Figure>
+
+*The whole theorem in one exchange: G2 cannot both answer and know about a write it never received.*
+
+Two things follow from the precise statement. First, CAP only says something about behaviour **during a partition**. When the network is healthy, a system can be both linearizable and available. Second, it is a statement about one specific consistency model and one specific (very strong) availability definition. A system that is "not CAP-available" may still have excellent real-world uptime, and a system that is "not CAP-consistent" may still offer useful weaker guarantees such as read-your-writes.
+
+## Partitions are not optional
+
+<DepthStamp depth="deep" />
+
+The "pick two of three" framing suggests you might choose C and A and simply skip P, building a "CA" system. For anything that runs on more than one machine over a real network, that choice does not exist. You don't get to decide whether the network partitions; you only get to decide what your system does when it does.
+
+What counts as a partition is broader than "someone cut a fibre cable":
+
+- A misconfigured switch or firewall rule that drops traffic between two racks or availability zones.
+- A node in a long garbage-collection pause or swap storm. From the outside, a node that cannot respond for 30 seconds is indistinguishable from a node that is cut off.
+- Asymmetric failures, where A can reach B but B cannot reach A.
+- A saturated network link where messages are not lost but delayed past every timeout.
+
+The last point is subtle and important. A node cannot tell the difference between "my peer is dead", "my peer is slow" and "the network between us is broken". It only sees that a reply has not arrived. Every distributed system therefore turns a partition into a **timeout decision**: after waiting some period, give up on hearing from the peer and decide whether to proceed alone (favouring A) or refuse (favouring C).
+
+So the real design question is never "C, A or P?" but **"when a partition happens, does this operation favour consistency or availability?"** A single-node database is "CA" only in the trivial sense that it has no network between replicas; it is also unavailable whenever that one node is down.
+
+### Worked example: the cost of a partition
+
+An online store runs a shopping-cart service on three replicas, one per availability zone, handling **9,000 requests a second** spread evenly across zones. A faulty switch isolates zone C from zones A and B for **90 seconds**.
+
+| Design | Zones A and B (6,000 req/s) | Zone C (3,000 req/s) | Outcome after 90 s |
+|---|---|---|---|
+| CP: writes need a majority (2 of 3) | Keep working: A and B form a majority | Every write fails: C alone is a minority | 3,000 × 90 = **270,000 failed requests**, zero conflicting carts |
+| AP: every zone accepts writes locally | Keep working | Keep working on its own copy | Zero failed requests, but every cart edited on both sides needs **merging** when the link heals |
+
+Neither row is free. The CP design turned a switch failure into a quarter of a million errors for customers in one zone (in practice, a load balancer that notices the failures would route them to A and B, shrinking the damage). The AP design served everyone, but a customer who removed an item in zone C while a stale tab in zone A added a different one now has a cart that someone, somewhere, must reconcile. Amazon's Dynamo paper famously chose the AP side for the cart and merged conflicting versions, accepting that a deleted item could occasionally reappear.
+
+## CP and AP systems in practice
+
+<DepthStamp depth="deep" />
+
+When people label systems, a <Term slug="cp-system">CP system</Term> is one that, during a partition, refuses some requests rather than risk returning inconsistent data, and an <Term slug="ap-system">AP system</Term> is one that keeps answering on every side of the partition and reconciles later.
+
+**CP behaviour.** Consensus-based coordination services are the textbook case. etcd and ZooKeeper replicate every write through a majority of their nodes (Raft and the Zab protocol respectively). In a five-node etcd cluster split 3 / 2, the three-node side elects or keeps a leader and continues; the two-node side cannot commit writes and, by default, refuses linearizable reads. HBase serves each region from exactly one region server, so a region is unavailable while its server is unreachable and being reassigned. Google's Spanner is CP: Brewer's 2017 paper on Spanner argues it is "effectively CA" only in the sense that Google's private network makes partitions so rare that users almost never see the C-over-A choice being made.
+
+**AP behaviour.** Dynamo-style databases are the textbook case. Cassandra and Riak, configured to write and read from a single replica, let every side of a partition keep accepting writes and use mechanisms such as last-write-wins timestamps or sibling versions to resolve conflicts afterwards. DNS is AP in spirit: resolvers keep serving cached records when the authoritative server is unreachable, and changes propagate eventually. CouchDB's multi-master replication is designed for devices that are offline for hours.
+
+### Failure story: the deposed leader that still answers reads
+
+Being "CP" is a property of every code path, not of the protocol's name. Here is how a consensus-backed store can still serve a stale read. Three nodes A, B and C; A is the leader; the election timeout is 1,000 ms (etcd's default).
+
+| Time | Event | State of the data |
+|---|---|---|
+| t = 0 ms | A switch fault isolates A from B and C. A still believes it is leader. | balance = 100 everywhere |
+| t = 1,000 ms | B hears no heartbeats, times out, and wins an election with C's vote (2 of 3). | B leads a new term |
+| t = 1,050 ms | Client 1 sets balance = 50 through B. B and C commit it: a majority. | B, C: 50. A: 100 |
+| t = 1,080 ms | Client 2, still routed to A, reads the balance. A answers from local memory. | Client 2 sees **100** |
+
+Client 2's read started *after* client 1's write finished, yet returned the old value: a linearizability violation in a system everyone calls CP. The fix is that a leader must not trust its own title for reads. etcd's linearizable reads use a "read index": before answering, the leader confirms with a majority that it is still leader, which costs a round trip. A then cannot reach a majority, so the read fails instead. Systems that skip that round trip rely on a time-based leader lease, which is only safe if clocks and pauses are bounded. The cheap read and the correct read differ by exactly one quorum round trip, which is PACELC in miniature.
+
+The table below is a summary of default behaviour, not a permanent label.
+
+| System | During a partition, by default | Can be moved toward |
+|---|---|---|
+| etcd, ZooKeeper | Minority side refuses writes (CP) | ZooKeeper reads on a minority node can return stale data |
+| Spanner | Minority side refuses (CP) | Stale reads at a chosen timestamp are available |
+| Cassandra | Depends on the consistency level per query | CL `ONE` acts AP; CL `QUORUM` on both read and write acts CP-ish |
+| DynamoDB | Eventually consistent reads by default | `ConsistentRead=true` for strongly consistent reads |
+| MongoDB replica set | Minority side cannot accept writes | Reads from secondaries with a relaxed read concern stay available |
+
+Notice the right-hand column. Many modern databases make the choice **per operation**, not per system. That is the first big hint that "is X a CP or AP database?" is often the wrong question.
+
+## Why "pick 2 of 3" misleads
+
+<DepthStamp depth="tradeoffs" />
+
+The triangle diagram with C, A and P at the corners has been drawn on a lot of whiteboards. It misleads in four ways.
+
+1. **P is not a choice.** As above, partitions happen to you. The only real choice is between C and A *when* P occurs, so the honest version is "pick one of two, during a partition".
+2. **It is not all or nothing.** A system can be linearizable for writes to account balances and eventually consistent for the "recently viewed" list. It can refuse writes during a partition but still serve possibly stale reads. Brewer's own 2012 retrospective stresses that designers should manage partitions explicitly: detect them, enter a limited mode of operation, and run recovery when they heal, rather than treating CAP as a static label.
+3. **The definitions are narrower than people assume.** Because CAP's "C" is linearizability, a system that offers snapshot isolation or causal consistency is technically "not C", yet those are strong, useful guarantees. Because CAP's "A" requires every non-failing node to respond, a system that stays up for 99.99% of users by routing them to the majority side is still "not A". Martin Kleppmann's 2015 essay *Please stop calling databases CP or AP* makes this argument in detail: many popular databases are neither CP nor AP under the strict definitions.
+4. **It ignores latency.** CAP says nothing about how slow a system is when the network is healthy. Yet the cost of coordination, paid on every single request, usually matters far more to users than the rare partition. That gap is what PACELC fills.
+
+There is a fair counterpoint. Plenty of experienced engineers still use "CP" and "AP" as convenient shorthand for "prefers refusing over diverging" versus "prefers diverging over refusing", and in a design discussion that shorthand is useful. The disagreement is about precision, not about whether the trade-off is real. In interviews, using the shorthand is fine as long as you can say exactly what the system does to a request on the minority side.
+
+## PACELC: latency vs consistency
+
+<DepthStamp depth="deep" />
+
+<Term slug="pacelc">PACELC</Term>, proposed by Daniel Abadi (in a 2010 blog post, then a 2012 *IEEE Computer* article), reads as: **if** there is a **P**artition, choose between **A**vailability and **C**onsistency; **E**lse (normal operation), choose between **L**atency and **C**onsistency.
+
+The "else" half is the everyday one. To give a linearizable answer, a replicated system has to coordinate: a write must reach a majority (or all replicas) before it is acknowledged, and a read must confirm it is not stale, usually by checking with a leader or a quorum. Coordination means waiting for round trips. Skipping coordination, by answering from the nearest replica, is faster but can be stale.
+
+Abadi's paper classified several systems this way, using their default settings:
+
+| Class | Meaning | Examples from Abadi's paper |
+|---|---|---|
+| PA/EL | Partition: stay available. Normal: favour low latency | Dynamo, Cassandra, Riak |
+| PC/EC | Always pay for consistency | VoltDB/H-Store, Megastore |
+| PA/EC | Available under partition, consistent otherwise | MongoDB (as configured at the time) |
+| PC/EL | Consistent under partition, low latency otherwise | Yahoo's PNUTS |
+
+The lower two rows show combinations that CAP alone cannot even describe.
+
+### Worked example: paying for C on every write
+
+A user profile service is replicated across three regions: Virginia, Ireland and Frankfurt. Round-trip times between Virginia and the European regions are around 75–90 ms; Ireland to Frankfurt is about 25 ms. The leader is in Virginia.
+
+| Write policy | What the write waits for | Added latency per write | Stale reads possible? |
+|---|---|---|---|
+| Async replication (EL) | Local disk in Virginia only | ~1–2 ms | Yes, in Europe, for tens of milliseconds or more |
+| Majority quorum (EC) | Virginia plus one European region | ~75–90 ms | No, if reads also go through a quorum or the leader |
+| All replicas (EC, strictest) | Virginia, Ireland and Frankfurt | ~90 ms, and any one slow region stalls every write | No |
+
+If the service handles writes at a modest rate, 80 ms extra may be acceptable. If a single page load triggers ten sequential linearizable reads from Europe to a Virginia leader, that is ten cross-Atlantic round trips, close to a second, on every page view, *with no partition anywhere*. That is why read-heavy global products often choose EL for most data and reserve EC for the small set of operations, such as payments, usernames and inventory decrements, where a stale answer causes real harm.
+
+<TradeoffBox title="Choosing C or A (and C or L)" items={[
+  { gain: "CP: no conflicting writes, no stale reads, simpler application logic", cost: "Minority-side clients see errors during a partition; writes pay a quorum round trip" },
+  { gain: "AP: every reachable node keeps answering through a partition", cost: "Conflicts must be detected and merged; users can see stale or reordered data" },
+  { gain: "EC: reads always reflect the latest acknowledged write", cost: "Every request pays coordination latency, often a cross-region round trip" },
+  { gain: "EL: answers come from the nearest replica in a millisecond or two", cost: "Reads can be stale even when nothing is broken" },
+  { gain: "Per-operation choice: strong where it matters, fast elsewhere", cost: "More to reason about; each API must document its guarantee" }
+]} />
+
+<NotWhenBox title="When CAP is the wrong lens" items={[
+  "Single-node systems: there is no replica to disagree with, so the question does not arise; plan for node failure instead.",
+  "Choosing between two specific databases: compare their actual per-operation guarantees and failure behaviour, not their CP or AP label.",
+  "Performance tuning on a healthy network: that is the PACELC else-branch, latency vs consistency, not CAP.",
+  "Data that is immutable once written (logs, images keyed by hash): there is nothing to be inconsistent about, so serve any copy."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="You can pick consistency and availability and give up partition tolerance." right="Partitions happen whether you plan for them or not. The only choice is what each operation does during one: refuse (C) or answer with possibly stale data (A)." />
+
+<Misconception wrong="CAP's C is the same as the C in ACID." right="CAP's C is linearizability, a property of replicated reads and writes. ACID's C is about application invariants, such as no negative balances, and is mostly the application's job." />
+
+<Misconception wrong="An AP system is always eventually consistent and a CP system is always slow." right="Labels describe partition behaviour only. Latency on a healthy network is the separate PACELC else-branch, and many systems let you choose per query." />
+
+<Misconception wrong="If a database is labelled CP it will never return stale data." right="Defaults vary by operation. ZooKeeper, for example, can serve reads from a follower that is behind; you need a sync call first for an up-to-date read." />
+
+## Interview angle
+
+<InterviewAngle title="CAP and PACELC" questions={[
+  "Is Cassandra CP or AP? What changes if every query uses QUORUM?",
+  "Your shopping cart runs in three regions and the link to one region drops. Walk me through what users in each region see under a CP and an AP design.",
+  "Why is a CA distributed system not a real option?",
+  "When there is no partition, why would you still choose eventual consistency?",
+  "Which operations in a ticket-booking system must be CP, and which can be AP?"
+]}>
+Interviewers rarely want a definition recited. They want to hear you apply it. State CAP precisely in one sentence (during a partition, choose linearizable consistency or availability), say that partitions are not optional, then go operation by operation: which requests must refuse rather than diverge (payments, unique usernames, seat inventory), and which can answer stale and merge later (likes, carts, feeds). Bring in PACELC unprompted: point out that the trade-off you pay every day is latency, then estimate it with real round-trip numbers. Strong candidates also mention what happens when the partition heals: conflict detection, merging, and reconciliation.
+
+The usual next follow-up is "so is Cassandra CP or AP?" The strong answer: neither label is fixed. With `QUORUM` reads and writes, a minority-side client gets an error rather than stale data (CP-like behaviour, though last-write-wins conflict resolution still means it is not linearizable); with `ONE`, every side answers (AP-like). Then say which consistency level you would pick for each operation in the design and why.
+</InterviewAngle>
+
+## Practice
+
+1. A three-node etcd cluster is split 2 / 1. For each side, state whether it can accept writes and serve linearizable reads, and explain why using the majority rule.
+2. A social app has posts, likes, follower counts and direct-message read receipts. Classify each as needing C or tolerating A during a partition, and justify each choice with what a user would see if you chose wrong.
+3. A service in Singapore reads from a leader in Oregon with a 170 ms round trip. A page makes four sequential consistent reads. Calculate the added latency per page, then propose a design that keeps strong consistency only where it is needed.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

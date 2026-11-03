@@ -1,0 +1,173 @@
+[
+  {
+    "id": "id-generation-q1",
+    "type": "scenario",
+    "prompt": "What is the most likely cause of the slowdown?",
+    "scenario": "A MySQL (InnoDB) table uses random UUIDv4 primary keys. Inserts were fast at 10 million rows. At 800 million rows the primary index is far larger than the buffer pool, insert latency has tripled and disk reads during inserts have climbed sharply. The insert rate has not changed.",
+    "options": [
+      { "id": "a", "text": "Each insert lands on a random leaf page, so most need a cold page read and many split pages" },
+      { "id": "b", "text": "UUID collisions are now frequent, so many inserts fail and are retried by the application" },
+      { "id": "c", "text": "Comparing 16-byte keys costs far more CPU than 8-byte keys, which dominates insert time" },
+      { "id": "d", "text": "The auto-increment lock is contended because InnoDB serialises every UUID insert on it" }
+    ],
+    "correct": ["a"],
+    "explanation": "Random keys scatter inserts across the whole B-tree. Once the index no longer fits in memory, most inserts first read a cold page from disk, and full pages split, leaving half-empty pages; that matches rising disk reads at a constant insert rate. Collisions are astronomically unlikely (about 2.7 × 10^18 IDs for a 50% chance). Key-comparison CPU is a small constant factor and would not explain disk reads. There is no auto-increment lock on a table whose key is a UUID.",
+    "topicId": "uuid",
+    "difficulty": 2
+  },
+  {
+    "id": "id-generation-q2",
+    "type": "single",
+    "prompt": "Which statement about UUIDv7 (RFC 9562) is accurate?",
+    "options": [
+      { "id": "a", "text": "It is 64 bits long, so it fits in a BIGINT column like a Snowflake ID" },
+      { "id": "b", "text": "Its leading 48 bits are a Unix millisecond timestamp, so later IDs sort later" },
+      { "id": "c", "text": "It needs a central coordinator to keep IDs ordered across all machines" },
+      { "id": "d", "text": "Its 122 random bits make it exactly as unguessable as UUIDv4 values" }
+    ],
+    "correct": ["b"],
+    "explanation": "UUIDv7 puts a 48-bit Unix timestamp in milliseconds in the most significant bits, then version bits and 74 bits of randomness (optionally partly a counter), so IDs sort by creation time. It is 128 bits, not 64. It needs no coordinator; any machine with a reasonable clock can mint one. It has 74 random bits, not 122, and it reveals creation time, so it is less opaque than v4.",
+    "topicId": "uuid",
+    "difficulty": 1
+  },
+  {
+    "id": "id-generation-q3",
+    "type": "scenario",
+    "prompt": "What is the best response?",
+    "scenario": "A product manager notices that a competitor's public order URLs (/orders/1048213) climbed by about 9,000 between two orders placed a week apart. Your own service exposes auto-increment order IDs in URLs the same way.",
+    "options": [
+      { "id": "a", "text": "Keep the auto-increment, but add a random starting offset so the numbers look bigger" },
+      { "id": "b", "text": "Switch the internal primary key to UUIDv7 because v7 hides when an order was created" },
+      { "id": "c", "text": "Expose an opaque random public ID and keep the integer key internal if you want it" },
+      { "id": "d", "text": "Switch to a ticket server with two odd/even servers, which hides the order volume" }
+    ],
+    "correct": ["c"],
+    "explanation": "Sequential public IDs leak volume (the German tank problem). Exposing a separate random identifier, such as a UUIDv4 or a random token, hides it while you keep a compact internal key. A starting offset only hides the absolute number; the difference between two IDs still reveals volume. UUIDv7 does the opposite of hiding creation time: it encodes it to the millisecond. A two-server ticket scheme still produces increasing integers, so differences still reveal volume.",
+    "topicId": "auto-increment",
+    "difficulty": 2
+  },
+  {
+    "id": "id-generation-q4",
+    "type": "single",
+    "prompt": "A PostgreSQL sequence shows IDs 101, 102, 104 in the orders table, with 103 missing. What is the most likely explanation?",
+    "options": [
+      { "id": "a", "text": "The order with ID 103 was committed and later lost by a replication failover" },
+      { "id": "b", "text": "An insert took 103 and then rolled back; sequences don't return used values" },
+      { "id": "c", "text": "The sequence has a bug and should be reset with setval to close the gap" },
+      { "id": "d", "text": "Two transactions both received 103 and the database dropped one of them" }
+    ],
+    "correct": ["b"],
+    "explanation": "Sequences are deliberately non-transactional so they never block: a rolled-back or failed insert still consumes its number, leaving a gap. Gaps alone are not evidence of data loss, so jumping to a failover theory is premature. Resetting the sequence risks re-issuing IDs that exist. A sequence never hands the same value to two transactions.",
+    "topicId": "auto-increment",
+    "difficulty": 1
+  },
+  {
+    "id": "id-generation-q5",
+    "type": "scenario",
+    "prompt": "Roughly how many requests per second reach the ticket server, and how long can each app server keep inserting if it goes down just after a refill?",
+    "scenario": "50 application servers create a combined 25,000 rows a second, evenly. Each server fetches IDs from a ticket server in blocks of 5,000.",
+    "options": [
+      { "id": "a", "text": "25,000 requests/s; zero seconds, since each insert needs a fresh round trip" },
+      { "id": "b", "text": "500 requests/s; about one second of IDs before each server runs out" },
+      { "id": "c", "text": "5 requests/s; about 10 seconds of IDs left in each server's block" },
+      { "id": "d", "text": "50 requests/s; about 100 seconds of IDs since blocks are shared" }
+    ],
+    "correct": ["c"],
+    "explanation": "Each server uses 25,000 / 50 = 500 IDs a second, so a block of 5,000 lasts 10 seconds; 50 servers each refilling every 10 s is 5 requests a second, and a fresh block covers 10 seconds of outage. 25,000/s is the per-ID round-trip design that blocks avoid. 500/s and 1 second would mean blocks of 50. Blocks are per server, not shared, so 100 seconds is wrong.",
+    "topicId": "ticket-servers",
+    "difficulty": 2
+  },
+  {
+    "id": "id-generation-q6",
+    "type": "single",
+    "prompt": "With Twitter's Snowflake layout (41 timestamp bits in ms, 10 machine bits, 12 sequence bits), what are the per-machine rate and the lifetime?",
+    "options": [
+      { "id": "a", "text": "4,096 IDs per ms per machine, about 69.7 years from the epoch" },
+      { "id": "b", "text": "1,024 IDs per ms per machine, about 136 years from the epoch" },
+      { "id": "c", "text": "4,096 IDs per second per machine, about 69.7 years from 1970" },
+      { "id": "d", "text": "4,096 IDs per ms per machine, about 584 million years in total" }
+    ],
+    "correct": ["a"],
+    "explanation": "12 sequence bits give 2^12 = 4,096 IDs per millisecond per machine (about 4.1 million a second); 41 bits of milliseconds give 2^41 ms ≈ 69.7 years from the custom epoch. 1,024 is the machine count (10 bits), not the per-ms rate. The sequence resets each millisecond, not each second, and the epoch is custom (November 2010 for Twitter), which is the whole point of not counting from 1970. 584 million years is roughly what a full 64-bit millisecond counter would give, not 41 bits.",
+    "topicId": "snowflake",
+    "difficulty": 1
+  },
+  {
+    "id": "id-generation-q7",
+    "type": "scenario",
+    "prompt": "What went wrong?",
+    "scenario": "A home-grown Snowflake generator issues ID (t=5,000 ms, machine 3, seq 0). Two milliseconds later NTP steps the clock back 3 ms. Shortly after, the generator issues (t=5,000 ms, machine 3, seq 0) again and the insert fails with a duplicate key error. The generator resets the sequence whenever the timestamp differs from the last one.",
+    "options": [
+      { "id": "a", "text": "Machine IDs must be shared, so another node also claimed number 3" },
+      { "id": "b", "text": "The 12-bit sequence overflowed and wrapped around to zero again" },
+      { "id": "c", "text": "It reused a past timestamp because it never checked for clock regression" },
+      { "id": "d", "text": "NTP adds jitter, so IDs from one millisecond always repeat at least once" }
+    ],
+    "correct": ["c"],
+    "explanation": "After the step back, the clock passed through 5,000 ms a second time. Because the timestamp differed from the last one used, the generator reset the sequence to 0 and re-minted the same ID. The fix is to remember the last timestamp and wait, refuse, or use max(now, last) when time goes backwards. A shared machine ID would cause duplicates without any clock event, and the scenario shows one machine. Overflow happens only beyond 4,096 IDs in one millisecond, and the generator waits for the next millisecond rather than wrapping. NTP adjustments do not make repeats inevitable; correct generators never repeat.",
+    "topicId": "snowflake",
+    "difficulty": 3
+  },
+  {
+    "id": "id-generation-q8",
+    "type": "multi",
+    "prompt": "Which are sound ways to handle a Snowflake generator's clock moving backwards? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Wait until the clock passes the last timestamp used" },
+      { "id": "b", "text": "Refuse to generate and alert if the jump is large" },
+      { "id": "c", "text": "Keep issuing with max(now, last timestamp) and the sequence" },
+      { "id": "d", "text": "Reset the sequence to zero and carry on with the new time" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Waiting, refusing (Twitter's original behaviour) and never letting the timestamp go backwards all preserve uniqueness, with different costs: latency, an outage for that generator, or IDs drifting ahead of real time. Resetting the sequence and trusting the earlier time is exactly the bug that re-issues IDs already used.",
+    "topicId": "snowflake",
+    "difficulty": 2
+  },
+  {
+    "id": "id-generation-q9",
+    "type": "scenario",
+    "prompt": "Which primary key choice is best for this table?",
+    "scenario": "You are designing a high-write events table in Google Cloud Spanner, which splits data across servers by contiguous key ranges. The team proposes Snowflake IDs so that events sort by time.",
+    "options": [
+      { "id": "a", "text": "Snowflake IDs; time-ordered keys keep every insert on one warm, cached range" },
+      { "id": "b", "text": "UUIDv4 (or a bit-reversed sequence), and index the timestamp separately" },
+      { "id": "c", "text": "UUIDv7; its random tail spreads concurrent inserts evenly across servers" },
+      { "id": "d", "text": "A single auto-increment sequence, so that the event order is exact" }
+    ],
+    "correct": ["b"],
+    "explanation": "In a range-partitioned store, monotonically increasing keys send every new insert to whichever server owns the newest range, creating a hot spot; Spanner's documentation warns against it and suggests UUIDv4 or bit-reversed sequences. Keeping all inserts on one range is the problem, not a benefit. UUIDv7's random bits come after the timestamp, so it is still monotonic at the front and hits the same hot range. A single sequence has the same hot-spot problem plus a central counter.",
+    "topicId": "sortability",
+    "difficulty": 3
+  },
+  {
+    "id": "id-generation-q10",
+    "type": "scenario",
+    "prompt": "What is the cause and fix?",
+    "scenario": "A web dashboard displays tweet-style Snowflake IDs fetched as JSON numbers. Users report that clicking a post sometimes opens a different post whose ID differs only in the last digits.",
+    "options": [
+      { "id": "a", "text": "Snowflake IDs collide across machines; add more machine-ID bits" },
+      { "id": "b", "text": "JavaScript numbers lose precision above 2^53; send IDs as strings" },
+      { "id": "c", "text": "The epoch is too old; IDs overflow and wrap, so reset the epoch" },
+      { "id": "d", "text": "JSON can't hold integers; encode every ID in base64 before sending" }
+    ],
+    "correct": ["b"],
+    "explanation": "JavaScript numbers are 64-bit floats, exact only up to 2^53 − 1. Snowflake IDs are larger, so parsing them as numbers rounds the low digits and points at a neighbouring ID; this is why Twitter added id_str and Discord sends IDs as strings. Collisions would not show a pattern of nearby IDs. A 41-bit timestamp lasts about 69 years, so overflow is not the issue. JSON numbers can hold integers; the precision loss is in the client parser, and strings fix it without base64.",
+    "topicId": "sortability",
+    "difficulty": 2
+  },
+  {
+    "id": "id-generation-q11",
+    "type": "single",
+    "prompt": "Which requirement most clearly rules out UUIDv7 in favour of UUIDv4?",
+    "options": [
+      { "id": "a", "text": "IDs are created on many services with no shared coordinator" },
+      { "id": "b", "text": "The table is stored in a single-node PostgreSQL B-tree index" },
+      { "id": "c", "text": "Public IDs must not reveal when the object was created" },
+      { "id": "d", "text": "The application needs cursor pagination by newest first" }
+    ],
+    "correct": ["c"],
+    "explanation": "UUIDv7 encodes creation time to the millisecond in its first 48 bits, so it fails a requirement to hide creation time; v4 is fully random. Both versions need no coordinator. A single-node B-tree actually favours v7 for insert locality. Newest-first pagination by key also favours v7, because v7 sorts by time and v4 does not.",
+    "topicId": "uuid",
+    "difficulty": 2
+  }
+]

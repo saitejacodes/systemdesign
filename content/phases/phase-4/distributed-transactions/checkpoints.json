@@ -1,0 +1,7 @@
+[
+  { "id": "distributed-transactions-c1", "text": "I can walk through both phases of 2PC, name its commit point and estimate its added latency and lock time.", "topicId": "two-phase-commit" },
+  { "id": "distributed-transactions-c2", "text": "I can explain with a timeline why 2PC blocks when the coordinator dies after PREPARE, and how a replicated coordinator fixes it.", "topicId": "coordinator-failure" },
+  { "id": "distributed-transactions-c3", "text": "I can design a saga with a pivot, compensations for every earlier step and irreversible effects placed after the pivot.", "topicId": "sagas" },
+  { "id": "distributed-transactions-c4", "text": "I can choose between orchestration and choreography for a given flow and explain why choreography needs an outbox.", "topicId": "saga-coordination" },
+  { "id": "distributed-transactions-c5", "text": "I can propose a design that avoids a distributed transaction, such as co-locating data, reservations or reconciliation.", "topicId": "avoiding-distributed-transactions" }
+]

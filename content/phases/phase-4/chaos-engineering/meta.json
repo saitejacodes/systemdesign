@@ -1,0 +1,17 @@
+{
+  "id": "p4-chaos-engineering",
+  "phase": 4,
+  "slug": "chaos-engineering",
+  "title": "Chaos Engineering",
+  "order": 15,
+  "week": 10,
+  "estimatedMinutes": 55,
+  "topics": [
+    { "id": "chaos-principles", "title": "Principles of chaos engineering", "depth": "tradeoffs" },
+    { "id": "steady-state-hypothesis", "title": "The steady-state hypothesis", "depth": "deep" },
+    { "id": "game-days", "title": "Game days", "depth": "awareness" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p4-fault-tolerance", "p4-circuit-breakers", "p4-bulkheads-load-shedding", "p4-disaster-recovery"]
+}

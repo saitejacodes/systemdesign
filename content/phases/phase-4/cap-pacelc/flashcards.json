@@ -1,0 +1,17 @@
+[
+  { "id": "cap-pacelc-f1", "front": "CAP theorem, precisely?", "back": "If the network can partition, a replicated system cannot guarantee both linearizability and that every non-failing node responds, during that partition.", "topicId": "cap-precise" },
+  { "id": "cap-pacelc-f2", "front": "CAP's C means?", "back": "Linearizability: behaves like one copy; once a read returns a value, every later read returns it or newer. Not ACID's C.", "topicId": "cap-precise" },
+  { "id": "cap-pacelc-f3", "front": "CAP's A means?", "back": "Every request to a non-failing node eventually gets a non-error response, with no time bound, on every side of a partition. Stricter than SLA uptime.", "topicId": "cap-precise" },
+  { "id": "cap-pacelc-f4", "front": "Who proved CAP and when?", "back": "Conjectured by Eric Brewer (2000 keynote); proved by Seth Gilbert and Nancy Lynch (2002).", "topicId": "cap-precise" },
+  { "id": "cap-pacelc-f5", "front": "Why can't you choose CA?", "back": "Partitions happen to you. The real choice is what each operation does when one occurs: refuse (C) or answer possibly stale (A).", "topicId": "partitions" },
+  { "id": "cap-pacelc-f6", "front": "Why does a GC pause count as a partition?", "back": "Peers can't tell a paused node from a cut-off one: both just miss replies past the timeout.", "topicId": "partitions" },
+  { "id": "cap-pacelc-f7", "front": "Every partition becomes what decision?", "back": "A timeout decision: after waiting, proceed alone (favour A) or refuse (favour C).", "topicId": "partitions" },
+  { "id": "cap-pacelc-f8", "front": "5-node etcd split 3 / 2: who keeps writing?", "back": "Only the 3-node majority side. The 2-node side can't commit writes or serve linearizable reads.", "topicId": "cp-vs-ap" },
+  { "id": "cap-pacelc-f9", "front": "How can a 'CP' leader serve a stale read?", "back": "It is cut off and deposed but still answers reads from memory. Fix: confirm leadership with a majority (read index) before reading.", "topicId": "cp-vs-ap" },
+  { "id": "cap-pacelc-f10", "front": "Cassandra: CP or AP?", "back": "Per query. CL ONE keeps every side answering (AP-like); QUORUM reads and writes refuse on the minority side (CP-like).", "topicId": "cp-vs-ap" },
+  { "id": "cap-pacelc-f11", "front": "Dynamo's cart during a partition?", "back": "Stays writable on every side and merges conflicting versions, so a deleted item can occasionally reappear.", "topicId": "cp-vs-ap" },
+  { "id": "cap-pacelc-f12", "front": "Three ways 'pick 2 of 3' misleads?", "back": "P isn't optional; the choice is per operation, not all-or-nothing; it ignores latency on a healthy network.", "topicId": "pick-two-myth" },
+  { "id": "cap-pacelc-f13", "front": "PACELC?", "back": "If Partition: Availability or Consistency. Else: Latency or Consistency.", "topicId": "pacelc" },
+  { "id": "cap-pacelc-f14", "front": "Cassandra, Riak, Dynamo in PACELC?", "back": "PA/EL by default (Abadi's classification): available under partition, low latency otherwise.", "topicId": "pacelc" },
+  { "id": "cap-pacelc-f15", "front": "Cost of a consistent write with leader in Virginia and quorum in Europe?", "back": "At least one cross-Atlantic round trip, roughly 75–90 ms, on every write.", "topicId": "pacelc" }
+]

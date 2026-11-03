@@ -1,0 +1,19 @@
+{
+  "id": "p4-distributed-locks",
+  "phase": 4,
+  "slug": "distributed-locks",
+  "title": "Distributed Locks",
+  "order": 8,
+  "week": 9,
+  "estimatedMinutes": 65,
+  "topics": [
+    { "id": "why-locks", "title": "Efficiency locks vs correctness locks", "depth": "tradeoffs" },
+    { "id": "leases", "title": "Leases", "depth": "deep" },
+    { "id": "fencing", "title": "Fencing tokens and the GC-pause race", "depth": "deep" },
+    { "id": "redis-locks", "title": "Redis locks and the Redlock debate", "depth": "tradeoffs" },
+    { "id": "coordination-locks", "title": "ZooKeeper and etcd locks", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p2-locking", "p3-redis", "p4-consensus", "p4-time-ordering"]
+}

@@ -1,0 +1,227 @@
+## Why it matters
+
+Every component fails eventually: disks, power supplies, network switches, whole data centres, and, most often, the software and the people operating it. <Term slug="high-availability">High availability</Term> (HA) is the practice of designing a system so that it keeps serving while individual parts fail, by having more than one of everything that matters and a way to shift work onto the survivors. It is also where intuition misleads most: adding components in a chain makes a system **less** available, two replicas in the same rack are not really two, and a standby that has never been tested is a hope rather than a plan. On 28 February 2017, an operator command typed with a wrong input removed more servers than intended from Amazon S3's index and placement subsystems in the us-east-1 region, and S3 in that region was unavailable for several hours. AWS's own post-event summary notes that its Service Health Dashboard couldn't be updated at first because it depended on S3 itself. This section teaches you to calculate availability, to place redundancy where it actually helps, and to choose between active-active and active-passive, across availability zones and regions.
+
+<Callout type="analogy" title="A twin-engine airliner">
+A twin-engine airliner is a lesson in availability. It has two engines, and **each one alone can keep the plane flying**: that is redundancy with enough spare capacity (both engines running and sharing the load is active-active). It has two pilots, but only one flies at a time while the other monitors and is ready to take over in seconds: active-passive, with a standby that is "hot" because they are awake, briefed and watching. Its route is planned so that a diversion airport is always within reach if an engine is lost: the multi-region plan. And the scariest failures are the ones that hit both engines at once, from a shared cause such as the same fuel supply: a **correlated failure**, which no amount of "we have two" protects against. The 2008 British Airways Flight 38 accident at Heathrow, where both engines lost thrust on approach because of ice in the fuel system, is the textbook case.
+
+Where the analogy breaks down: two engines are separate physical objects, and their failures are mostly independent. Two copies of your service run the **same code, the same config and the same deploy**, so a bad release or a poison request takes them all down together. In software, correlated failure is the norm, not the exception.
+</Callout>
+
+## Availability and the nines
+
+<DepthStamp depth="deep" />
+
+<Term slug="availability">Availability</Term> is the fraction of time, or of requests, for which a system does its job. Two common definitions:
+
+- **Time-based:** uptime ÷ (uptime + downtime). Simple, but "up" needs a definition: is a service that answers 30% of requests with errors up?
+- **Request-based:** successful requests ÷ valid requests. Google's SRE book recommends this for services because it measures what users experience, and partial outages count partially.
+
+Availability is usually quoted in <Term slug="nines">nines</Term>. The arithmetic is just (1 − availability) × the period. A year has 365 × 24 = 8,760 hours, or 525,600 minutes; a 30-day month has 43,200 minutes.
+
+| Availability | Downtime per year | Downtime per 30-day month | Arithmetic (per year) |
+|---|---|---|---|
+| 99% ("two nines") | 87.6 h (3.65 days) | 7.2 h | 0.01 × 8,760 h |
+| 99.9% | 8.76 h | 43.2 min | 0.001 × 8,760 h |
+| 99.95% | 4.38 h | 21.6 min | 0.0005 × 8,760 h |
+| 99.99% | 52.6 min | 4.32 min | 0.0001 × 525,600 min |
+| 99.999% ("five nines") | 5.26 min | 25.9 s | 0.00001 × 525,600 min |
+
+Each extra nine cuts allowed downtime tenfold and usually costs much more than the last. At five nines you have about 26 seconds a month: less than it takes a human to read a page alert, so every failure must be handled automatically.
+
+Availability is driven by two numbers: how often things fail, the **mean time between failures** (MTBF), and how long they stay broken, the **mean time to recovery** (MTTR). For a single component, availability = MTBF ÷ (MTBF + MTTR).
+
+### Worked example: MTTR is the cheap lever
+
+A server fails about once a month (MTBF ≈ 720 h).
+
+- If someone gets paged and replaces it in **1 hour**: 720 ÷ 721 = **99.86%**, about 12 hours of downtime a year.
+- If automation replaces it in **5 minutes**: 720 ÷ (720 + 0.083) = **99.988%**, about 1 hour a year.
+
+Same hardware, same failure rate, and almost a nine and a half better, purely from recovering faster. Most HA design is really MTTR design: detect quickly, fail over automatically, and keep a spare ready.
+
+## Redundancy
+
+<DepthStamp depth="deep" />
+
+<Term slug="redundancy">Redundancy</Term> means running more instances of a component than the load strictly needs, so that losing some of them doesn't take the service down. It removes a <Term slug="single-point-of-failure">single point of failure</Term>, but only if three things are true:
+
+1. **Spare capacity.** The survivors must be able to carry the full load. Running two servers at 80% each is not redundancy: when one fails, the other needs 160%.
+2. **Detection.** Something must notice the failure, usually <Term slug="health-check">health checks</Term> or <Term slug="heartbeat">heartbeats</Term>, and quickly.
+3. **Shifting work.** Something must route around it: a load balancer removing a target, a client retrying elsewhere, a standby being promoted.
+
+Capacity planning uses shorthand. <Term slug="n-plus-one-redundancy">N+1</Term> means you need N instances for peak load and run one spare; N+2 survives a failure during maintenance; 2N means a full duplicate of everything.
+
+### Worked example: how much spare capacity does a zone loss need?
+
+A service needs capacity for **30,000 requests a second** at peak.
+
+| Layout | Normal load per zone | Load per surviving zone after losing one | Capacity to provision per zone | Total provisioned |
+|---|---|---|---|---|
+| 2 zones | 15,000 | 30,000 | 30,000 | 60,000 (2× peak) |
+| 3 zones | 10,000 | 15,000 | 15,000 | 45,000 (1.5× peak) |
+| 4 zones | 7,500 | 10,000 | 10,000 | 40,000 (1.33× peak) |
+
+Spreading across more zones makes zone-level redundancy cheaper, because each survivor absorbs a smaller share. This is one reason three zones is the common default for production on clouds that offer it.
+
+Stateless tiers (web and app servers) are easy to make redundant: run several behind a <Term slug="load-balancer">load balancer</Term>. Stateful tiers are hard, because the copies must hold the same data: that is replication, and its failover and <Term slug="split-brain">split-brain</Term> problems, covered in the replication section.
+
+## Active-active vs active-passive
+
+<DepthStamp depth="deep" />
+
+There are two basic ways to arrange redundant copies.
+
+In <Term slug="active-passive">active-passive</Term>, one copy serves all traffic and a standby waits to take over. Standbys come in temperatures: **hot** (running and continuously up to date, ready in seconds or a minute or two), **warm** (running but not fully in sync or scaled down, minutes), **cold** (needs to be started or restored, hours). Takeover is called <Term slug="failover">failover</Term>. Amazon RDS Multi-AZ is a well-known example: it keeps a synchronously replicated standby database in another availability zone and, on failure, promotes it and repoints the instance's DNS name to it.
+
+In <Term slug="active-active">active-active</Term>, every copy serves traffic all the time. Losing one means the others take its share; there is no promotion step.
+
+| | Active-passive | Active-active |
+|---|---|---|
+| Normal capacity use | Standby is idle (or serves only reads) | All copies serve |
+| Failover | Detect, promote, redirect: seconds to minutes | Remove the failed copy from rotation; others absorb load |
+| Is the backup path proven? | Only if you test failover regularly | Yes, it carries traffic every day |
+| Writes to shared state | Simple: one writer | Hard: needs conflict handling or partitioned ownership |
+| Typical use | Relational databases, single-writer systems | Stateless tiers, read replicas, partitioned or multi-leader data |
+
+The hidden strength of active-active is that the redundant path is exercised constantly; the hidden weakness of active-passive is that the standby is the least-tested part of the system and is only used on the worst day of the year. The hidden cost of active-active is capacity headroom (each copy must be able to absorb the others' share) and, for data, write conflicts.
+
+### Worked example: an AZ failure with active-passive failover
+
+A web tier runs active-active across zones A and B behind a load balancer (health checks every 10 seconds, 3 failures to mark a target unhealthy). The database is active-passive: primary in zone A, synchronous standby in zone B. Zone A loses power.
+
+| Time | Event | User impact |
+|---|---|---|
+| t = 0 s | Zone A loses power: zone A web servers and DB primary are gone | Requests routed to zone A fail; requests in zone B fail on DB calls |
+| t = 0 to 30 s | Load balancer health checks fail 3 times for zone A targets | About half of requests error until targets are removed |
+| t = 30 s | Zone A targets marked unhealthy; all traffic to zone B web servers | Web tier healthy; DB writes and reads still failing |
+| t ≈ 30 to 120 s | Database detects primary loss, promotes standby, updates DNS name | All DB-backed requests fail or time out |
+| t ≈ 120 s | Apps reconnect to the new primary (if they re-resolve DNS and don't cache it forever) | Recovery; zone B web servers now carry 100% of traffic |
+| After | Zone B must hold the full load with no standby left | Running without redundancy until zone A returns or a new standby is built |
+
+Lessons from the timeline: a two-minute outage is the **good** case. It assumes zone B was provisioned for 100% load, that clients honour DNS changes (some runtimes cache DNS results for a long time), that connection pools drop dead connections, and that the synchronous standby had every committed write. AWS's RDS documentation describes Multi-AZ failovers as typically completing in one to two minutes, which is consistent with this timeline. Each of those assumptions is exactly what a failover drill tests.
+
+## Multi-AZ and multi-region
+
+<DepthStamp depth="tradeoffs" />
+
+Cloud providers group infrastructure in two levels. An <Term slug="availability-zone">availability zone</Term> (AZ) is, in AWS's description, one or more discrete data centres with redundant power, networking and connectivity, physically separated from the other zones in its region by a meaningful distance but within about 100 km, and connected to them by low-latency links (single-digit milliseconds). A **region** is a geographic area containing several AZs; regions are hundreds or thousands of kilometres apart and designed to fail independently. Google Cloud and Azure use the same zone-and-region model with their own definitions.
+
+**Multi-AZ** is the default for anything that matters. It protects against a data-centre-level failure (power, cooling, a fibre cut, a fire) while keeping inter-zone latency low enough for synchronous replication and for load-balancing across zones. Costs: inter-AZ data transfer charges on most clouds and spare capacity in each zone.
+
+**Multi-region** protects against what multi-AZ cannot: a region-wide event (like the 2017 S3 outage, or a bad deploy to a regional control plane), and it can put servers closer to users. It costs a lot more:
+
+- **Latency between regions is physics.** Light in fibre travels at about 200,000 km/s. New York to London is about 5,600 km in a straight line, so a round trip takes at least 2 × 5,600 ÷ 200,000 s = **56 ms**, and real routes are longer. Synchronous replication across regions adds that to every write.
+- **So cross-region replication is usually asynchronous**, which means a regional failover can lose the most recent writes (the RPO question in the disaster-recovery section).
+- **Active-active across regions** forces a decision about writes: give each record a home region, or accept multi-leader conflicts and resolve them.
+- **Cost and operations:** duplicate capacity, data transfer, and every deploy, config and secret now has to exist in two places and stay consistent.
+
+| Option | Protects against | Typical extra write latency | Main cost |
+|---|---|---|---|
+| Single AZ | Individual server failures (with redundancy) | None | Exposed to a data-centre failure |
+| Multi-AZ | Data-centre loss | About a millisecond or two for sync replication | Spare zone capacity, inter-AZ transfer |
+| Multi-region active-passive | Region loss | None if async (with data-loss risk) | Idle standby region; failover is rarely practised |
+| Multi-region active-active | Region loss, plus lower latency for distant users | None locally if writes stay home | Conflict handling, double capacity, complexity |
+
+## Availability math
+
+<DepthStamp depth="deep" />
+
+Two formulas cover most designs, both assuming component failures are **independent**.
+
+**In series** (every component must work, as in a request path through load balancer, app and database), multiply:
+
+A<sub>series</sub> = A<sub>1</sub> × A<sub>2</sub> × … × A<sub>n</sub>
+
+A chain is always **less** available than its weakest link. Ten components at 99.9% each give 0.999<sup>10</sup> ≈ 99.0%.
+
+**In parallel** (the system works if any one copy works), multiply the failure probabilities:
+
+A<sub>parallel</sub> = 1 − (1 − A<sub>1</sub>) × (1 − A<sub>2</sub>) × … × (1 − A<sub>n</sub>)
+
+Two independent copies at 99% each: 1 − 0.01 × 0.01 = **99.99%**. Each independent copy multiplies the failure probability by its own.
+
+<Figure caption="FIG. 9.1 · SERIES AND PARALLEL · THE CHECKOUT PATH AFTER STEP 3">
+  <Diagram label="Block diagram: a load balancer in series with a parallel pair of app servers, in series with an active-passive database pair. Series blocks multiply availability; parallel blocks multiply failure probability." chart={`flowchart LR
+    U[Users] --> LB[Load balancer 99.99%]
+    LB --> A1[App server 1 99.95%]
+    LB --> A2[App server 2 99.95%]
+    A1 --> P[(DB primary 99.9%)]
+    A2 --> P
+    P -. failover .-> S[(DB standby 99.9%)]`} />
+</Figure>
+
+*Series blocks multiply their availabilities; parallel blocks multiply their failure probabilities.*
+
+### Worked example: a checkout path
+
+Single instances: load balancer 99.99%, app server 99.95%, database 99.9%.
+
+1. **All single, in series:** 0.9999 × 0.9995 × 0.999 = **99.840%**. Downtime: 0.0016 × 8,760 h ≈ **14.0 hours a year**.
+2. **Add a database standby (active-passive).** On paper, 1 − 0.001 × 0.001 = 99.9999%. But failover isn't instant: say 6 failovers a year at 90 seconds each = 9 minutes, or 0.0017% of the year. Effective database ≈ **99.998%**. Chain: 0.9999 × 0.9995 × 0.99998 ≈ **99.938%**, about **5.4 hours** a year. The app server is now the weakest link.
+3. **Add a second app server (active-active).** 1 − 0.0005<sup>2</sup> = 99.99998%. Chain: 0.9999 × 0.9999998 × 0.99998 ≈ **99.988%**, about **62 minutes** a year, of which roughly 53 minutes come from the single load balancer and 9 from database failovers.
+
+The lesson: redundancy pays off at the weakest link and only there, and the next weakest link immediately becomes the target. (Managed cloud load balancers are themselves redundant across zones, which is why the realistic next step is the database failover time.)
+
+### Where the formulas lie
+
+The parallel formula assumes **independence**, and real failures are correlated:
+
+- **Shared infrastructure.** Two app servers on the same rack or in the same AZ fail together when it does. If the AZ is 99.9% available, a same-AZ pair can't beat 99.9% no matter what the formula says: (1 − 0.005<sup>2</sup>) × 0.999 ≈ 99.898%. Put each server (99.5%) in a different AZ (99.9% each), and the pair is 1 − (1 − 0.995 × 0.999)<sup>2</sup> ≈ **99.996%**.
+- **Shared software.** Every replica runs the same build; a bad deploy, a leap-second bug or a poison message hits them all. Staggered (canary) deploys are a redundancy technique.
+- **Shared dependencies.** Two "independent" services that both call the same auth service, DNS provider or config store share its failures, as the S3 2017 dashboard did.
+- **Failover machinery is in series.** The health checker, the promotion logic and DNS are components too. If failover itself fails 1 time in 10, your parallel pair is much weaker than computed.
+- **Load-induced cascades.** When one of two copies fails, the other doubles its load; if it wasn't provisioned for that, it fails too. That is not independent at all.
+
+<TradeoffBox title="High availability tradeoffs" items={[
+  { gain: "Redundancy removes single points of failure", cost: "Spare capacity sits idle; more parts to operate and monitor" },
+  { gain: "Active-active: no promotion step, backup path proven daily", cost: "Every copy needs headroom; shared writes need conflict handling" },
+  { gain: "Active-passive: simple single-writer semantics", cost: "Failover takes seconds to minutes and is rarely exercised" },
+  { gain: "Multi-AZ: survives a data-centre loss with low added latency", cost: "Inter-AZ transfer cost and per-zone spare capacity" },
+  { gain: "Multi-region: survives region loss, serves distant users faster", cost: "Physics-bound latency, async data loss risk, double cost and complexity" }
+]} />
+
+<NotWhenBox title="When not to add more availability" items={[
+  "When users and the business tolerate the downtime: an internal batch report doesn't need four nines.",
+  "Before the weakest link is fixed: a second region doesn't help if every request still calls one shared database.",
+  "Multi-region active-active for a team that hasn't yet automated multi-AZ failover.",
+  "When the redundant copies share the failure you fear: two replicas on one host, or one config push to both."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Adding more components makes the system more reliable." right="Components in series multiply availabilities, so each one lowers the total. Only parallel, independent copies raise it." />
+
+<Misconception wrong="Two replicas at 99% each give 99.99%." right="Only if their failures are independent. Same rack, same AZ, same build or same dependency correlate failures and can erase most of the gain." />
+
+<Misconception wrong="We have a standby, so we're highly available." right="An untested standby often fails on the day it's needed: stale config, missing capacity, clients caching the old address. Availability comes from failover you practise." />
+
+<Misconception wrong="Multi-region is just multi-AZ further apart." right="Inter-region latency of tens of milliseconds pushes replication to asynchronous, which brings data-loss and write-conflict decisions that multi-AZ never forces." />
+
+## Interview angle
+
+<InterviewAngle title="High availability" questions={[
+  "What availability does your design achieve? Show the math.",
+  "What happens if an availability zone goes down? Walk me through the first two minutes.",
+  "Why active-passive for the database but active-active for the app tier?",
+  "Do you need multi-region? What would it cost you?",
+  "Your two replicas are each 99.9%. Why might the pair be much worse than 99.9999%?"
+]}>
+HA questions appear in nearly every design interview during the deep-dive or wrap-up. Strong answers do three things: compute availability with the series and parallel formulas and convert it to downtime per year, identify the weakest link rather than adding redundancy everywhere, and name the correlated failures the formulas ignore. Ask for the target first: "99.9% or 99.99%?" changes the design.
+
+The follow-up that separates candidates is "so should we go multi-region?" A weak answer says yes because it's more available. A strong one asks what the business loses per hour of a regional outage, notes that multi-AZ already covers data-centre failures, and explains what multi-region forces: async replication and its data loss window, a write-ownership model, double cost, and regular failover drills. Often the right answer is "multi-AZ now, with backups restorable in another region, and revisit when the numbers justify it".
+</InterviewAngle>
+
+## Practice
+
+1. A request passes through a CDN (99.99%), an API gateway (99.95%), two microservices (99.9% each) and a database (99.95%). Compute the availability and downtime per year. Then decide which single change buys the most, and show the new number.
+2. A service needs 24,000 requests a second at peak and must survive the loss of one zone. Compare total provisioned capacity in 2, 3 and 4 zones.
+3. Write the timeline for an AZ failure in your own current or past system, from first error to full recovery. Mark every assumption that has never been tested.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

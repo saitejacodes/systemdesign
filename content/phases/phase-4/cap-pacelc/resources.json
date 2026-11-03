@@ -1,0 +1,42 @@
+[
+  {
+    "id": "brewer-cap-12-years",
+    "title": "CAP Twelve Years Later: How the \"Rules\" Have Changed",
+    "author": "Eric Brewer",
+    "kind": "blog",
+    "url": "https://www.infoq.com/articles/cap-twelve-years-later-how-the-rules-have-changed/",
+    "why": "CAP's author explains why \"pick two\" misleads and how to manage partitions explicitly: detect, limit, recover.",
+    "topicIds": ["pick-two-myth", "partitions"],
+    "free": true
+  },
+  {
+    "id": "kleppmann-cp-ap",
+    "title": "Please stop calling databases CP or AP",
+    "author": "Martin Kleppmann",
+    "kind": "blog",
+    "url": "https://martin.kleppmann.com/2015/05/11/please-stop-calling-databases-cp-or-ap.html",
+    "why": "A careful walk through CAP's exact definitions and why many real databases are neither CP nor AP.",
+    "topicIds": ["cap-precise", "cp-vs-ap", "pick-two-myth"],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 9 places CAP inside the wider picture of linearizability, its cost, and consensus.",
+    "topicIds": ["cap-precise", "pacelc"],
+    "free": false
+  },
+  {
+    "id": "abadi-pacelc",
+    "title": "DBMS Musings (Daniel Abadi's blog, where PACELC was introduced)",
+    "author": "Daniel Abadi",
+    "kind": "blog",
+    "url": "https://dbmsmusings.blogspot.com/",
+    "why": "PACELC's author on the latency vs consistency trade-off that exists even without partitions.",
+    "topicIds": ["pacelc"],
+    "free": true
+  }
+]

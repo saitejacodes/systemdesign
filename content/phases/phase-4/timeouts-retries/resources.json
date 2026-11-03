@@ -1,0 +1,42 @@
+[
+  {
+    "id": "aws-timeouts-retries",
+    "title": "Timeouts, retries, and backoff with jitter",
+    "author": "Marc Brooker (Amazon Builders' Library)",
+    "kind": "blog",
+    "url": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
+    "why": "How Amazon picks timeouts from latency percentiles, limits retries to one layer, and uses jitter and token buckets to stop retry storms.",
+    "topicIds": ["timeouts", "backoff-jitter", "retry-budgets"],
+    "free": true
+  },
+  {
+    "id": "aws-backoff-jitter",
+    "title": "Exponential Backoff And Jitter",
+    "author": "Marc Brooker (AWS Architecture Blog)",
+    "kind": "blog",
+    "url": "https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/",
+    "why": "The original comparison of no jitter, full, equal and decorrelated jitter, with the exact formulas and simulation results.",
+    "topicIds": ["backoff-jitter"],
+    "free": true
+  },
+  {
+    "id": "sre-handling-overload",
+    "title": "Handling Overload (Site Reliability Engineering, chapter 21)",
+    "author": "Google",
+    "kind": "free-book",
+    "url": "https://sre.google/sre-book/handling-overload/",
+    "why": "Per-request retry limits, the 10% per-client retry budget, and why retries should happen at a single layer.",
+    "topicIds": ["retry-budgets"],
+    "free": true
+  },
+  {
+    "id": "grpc-deadlines",
+    "title": "Deadlines",
+    "author": "gRPC documentation",
+    "kind": "docs",
+    "url": "https://grpc.io/docs/guides/deadlines/",
+    "why": "How gRPC clients set deadlines, how servers check and propagate them, and why every RPC should have one.",
+    "topicIds": ["timeout-budgets", "timeouts"],
+    "free": true
+  }
+]

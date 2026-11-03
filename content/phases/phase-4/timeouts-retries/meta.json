@@ -1,0 +1,19 @@
+{
+  "id": "p4-timeouts-retries",
+  "phase": 4,
+  "slug": "timeouts-retries",
+  "title": "Timeouts and Retries",
+  "order": 11,
+  "week": 10,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "timeouts", "title": "Always set timeouts", "depth": "deep" },
+    { "id": "timeout-budgets", "title": "Timeout budgets across hops", "depth": "deep" },
+    { "id": "backoff-jitter", "title": "Exponential backoff with full jitter", "depth": "deep" },
+    { "id": "retry-budgets", "title": "Retry budgets and retry storms", "depth": "deep" },
+    { "id": "retry-idempotency", "title": "Idempotency as a prerequisite", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["retry-storm"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p4-fault-tolerance", "p3-failure-handling", "p2-idempotency"]
+}

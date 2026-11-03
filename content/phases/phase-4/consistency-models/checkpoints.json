@@ -1,0 +1,8 @@
+[
+  { "id": "consistency-models-c1", "text": "I can define linearizability (Herlihy and Wing) and show with a timeline how a follower read breaks a username uniqueness check.", "topicId": "linearizability" },
+  { "id": "consistency-models-c2", "text": "I can explain how sequential consistency differs from linearizability using ZooKeeper's read behaviour.", "topicId": "sequential" },
+  { "id": "consistency-models-c3", "text": "I can explain causal order and show how dependency tracking prevents a post becoming visible before an earlier permission change.", "topicId": "causal" },
+  { "id": "consistency-models-c4", "text": "I can state exactly what eventual consistency promises and construct a last-write-wins timeline that loses an acknowledged write.", "topicId": "eventual" },
+  { "id": "consistency-models-c5", "text": "I can implement read-your-writes and monotonic reads with version tracking or session pinning instead of leader-only reads.", "topicId": "session-guarantees" },
+  { "id": "consistency-models-c6", "text": "I can choose the weakest safe model per operation and estimate its cost, such as DynamoDB read capacity for strong vs eventual reads.", "topicId": "choosing-a-model" }
+]

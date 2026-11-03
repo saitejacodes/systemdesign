@@ -1,0 +1,32 @@
+[
+  {
+    "id": "aws-dr-whitepaper",
+    "title": "Disaster Recovery of Workloads on AWS: Recovery in the Cloud",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/whitepapers/latest/disaster-recovery-workloads-on-aws/disaster-recovery-workloads-on-aws.html",
+    "why": "The source of the four DR strategies (backup and restore, pilot light, warm standby, multi-site active-active) with RPO and RTO for each.",
+    "topicIds": ["rpo-rto", "dr-tiers", "failover-practice"],
+    "free": true
+  },
+  {
+    "id": "sre-data-integrity",
+    "title": "Site Reliability Engineering, chapter 26: Data Integrity",
+    "author": "Google (Beyer, Jones, Petoff, Murphy, eds.)",
+    "kind": "free-book",
+    "url": "https://sre.google/sre-book/data-integrity/",
+    "why": "Why replication is not a backup, why recovery matters more than backup, and how Google layers defences against data loss.",
+    "topicIds": ["backup-strategies", "backup-vs-replication"],
+    "free": true
+  },
+  {
+    "id": "postgres-pitr",
+    "title": "PostgreSQL: Continuous Archiving and Point-in-Time Recovery",
+    "author": "The PostgreSQL Global Development Group",
+    "kind": "docs",
+    "url": "https://www.postgresql.org/docs/current/continuous-archiving.html",
+    "why": "Exactly how a base backup plus archived write-ahead log restores a database to a chosen moment.",
+    "topicIds": ["backup-strategies", "backup-vs-replication"],
+    "free": true
+  }
+]

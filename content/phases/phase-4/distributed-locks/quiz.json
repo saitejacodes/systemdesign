@@ -1,0 +1,187 @@
+[
+  {
+    "id": "distributed-locks-q1",
+    "type": "scenario",
+    "prompt": "What is the most likely explanation?",
+    "scenario": "Two workers both wrote to the same S3-style object in one night, and the later write came from the worker that had acquired the lock first. Logs show worker 1 acquired a 10-second etcd lease at 02:00:00, logged a 17-second stop-the-world GC pause at 02:00:01, and wrote at 02:00:19. Worker 2 acquired the lock at 02:00:11 and wrote at 02:00:12. etcd shows no errors.",
+    "options": [
+      { "id": "a", "text": "etcd lost the lock during a leader election and granted it twice" },
+      { "id": "b", "text": "Worker 1's lease expired mid-pause; it wrote stale data with no fencing" },
+      { "id": "c", "text": "Worker 2 skipped the lock because the lease TTL had been set too long" },
+      { "id": "d", "text": "Clock skew between the two workers made both leases appear to be valid" }
+    ],
+    "correct": ["b"],
+    "explanation": "Worker 1's 10-second lease expired during its 17-second pause, etcd correctly granted the lock to worker 2, and worker 1 resumed believing it still held the lock. Without a fencing token checked by the storage, its stale write was accepted. etcd replicates lock state through Raft and logged no errors, so a double grant is not indicated. Worker 2 did acquire the lock, at 02:00:11, after expiry. Lease expiry is measured by the etcd cluster, not by comparing the workers' clocks.",
+    "topicId": "fencing",
+    "difficulty": 2
+  },
+  {
+    "id": "distributed-locks-q2",
+    "type": "single",
+    "prompt": "Storage has accepted a write with fencing token 34. Which statement is true?",
+    "options": [
+      { "id": "a", "text": "A write with token 33 is rejected, even if that client still thinks it holds the lock" },
+      { "id": "b", "text": "A write with token 33 is accepted if it arrives within the original 33 lease period" },
+      { "id": "c", "text": "The lock service is responsible for rejecting the write that carries token 33" },
+      { "id": "d", "text": "Fencing also stops token 33 writing before token 34 has written anything at all" }
+    ],
+    "correct": ["a"],
+    "explanation": "Storage remembers the highest token it has accepted and rejects any lower token, regardless of what the older client believes. Lease timing doesn't enter into it: storage compares numbers, not times. The check must be at the resource, because the lock service never sees the write. Fencing does not block an older holder before any newer holder has written; in that window the older write is accepted, which is safe because nothing newer exists to overwrite.",
+    "topicId": "fencing",
+    "difficulty": 2
+  },
+  {
+    "id": "distributed-locks-q3",
+    "type": "scenario",
+    "prompt": "Which change actually closes the gap?",
+    "scenario": "A reviewer flags that a lease can expire during a GC pause. The author proposes adding `if not lock.still_held(): abort()` immediately before each write to the database.",
+    "options": [
+      { "id": "a", "text": "The check is enough, as long as still_held() reads from the lock service's leader" },
+      { "id": "b", "text": "Halve the lease TTL so a long pause is detected sooner by the background renewer" },
+      { "id": "c", "text": "Pass a monotonic token with each write and have the database reject older ones" },
+      { "id": "d", "text": "Switch the lock service from Redis to ZooKeeper, which handles paused clients" }
+    ],
+    "correct": ["c"],
+    "explanation": "A pause can occur between the still_held() check and the write, so any client-side check only narrows the window. Moving the comparison into the database with a monotonic fencing token closes it, because the database sees both writes. Reading from the leader doesn't help with a pause after the read. A shorter TTL makes expiry during pauses more likely, not less. ZooKeeper keeps lock state correct, but a paused ZooKeeper client whose session expired has the same problem.",
+    "topicId": "leases",
+    "difficulty": 3
+  },
+  {
+    "id": "distributed-locks-q4",
+    "type": "single",
+    "prompt": "Why must a Redis lock's release check the token before deleting the key?",
+    "options": [
+      { "id": "a", "text": "Without it, Redis refuses DEL on a key that was originally created with NX set" },
+      { "id": "b", "text": "A holder whose lease expired could delete the next holder's lock by mistake" },
+      { "id": "c", "text": "The token check makes the lock survive a Redis primary failover to a replica" },
+      { "id": "d", "text": "It turns the random value into a fencing token that storage can compare" }
+    ],
+    "correct": ["b"],
+    "explanation": "If client A's lease expires and client B acquires the lock, an unconditional DEL from A would release B's lock. The atomic compare-and-delete (a Lua script) prevents that. Redis has no rule against deleting keys created with NX. The check does nothing for failover, where the key itself is lost. A random value identifies a holder but isn't ordered, so it can't act as a fencing token.",
+    "topicId": "redis-locks",
+    "difficulty": 1
+  },
+  {
+    "id": "distributed-locks-q5",
+    "type": "scenario",
+    "prompt": "What happened?",
+    "scenario": "A service uses `SET lock NX PX 30000` on a Redis primary with one asynchronous replica managed by Sentinel. Client A gets OK. Two seconds later the primary's host loses power, the replica is promoted, and client B's `SET lock NX` succeeds. Both run the critical section.",
+    "options": [
+      { "id": "a", "text": "Client B's clock ran fast, so it saw A's 30-second expiry as already passed" },
+      { "id": "b", "text": "Sentinel deletes all keys that have a TTL during promotion to avoid stale locks" },
+      { "id": "c", "text": "A should have used PX with a longer TTL so the key would survive the failover" },
+      { "id": "d", "text": "The lock key was acknowledged before replication, so the new primary never had it" }
+    ],
+    "correct": ["d"],
+    "explanation": "Redis replication is asynchronous: the primary acknowledged A's SET before the replica received it, so the promoted replica had no lock key and granted it to B. Expiry is evaluated by the Redis server, not by B's clock. Sentinel does not purge keys with TTLs on promotion. TTL length is irrelevant when the key never reached the replica.",
+    "topicId": "redis-locks",
+    "difficulty": 2
+  },
+  {
+    "id": "distributed-locks-q6",
+    "type": "multi",
+    "prompt": "Which points are part of Kleppmann's critique of Redlock? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Its safety depends on bounded delays, pauses and clock error" },
+      { "id": "b", "text": "It does not produce a monotonic fencing token for the resource" },
+      { "id": "c", "text": "A clock jump on one node can let two clients hold a majority" },
+      { "id": "d", "text": "It fails whenever any single one of the five Redis nodes is down" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "Kleppmann argues Redlock relies on timing assumptions for safety, offers no fencing token, and gives the scenario of a node's clock jumping forward so it expires a key early and a second client gains a majority. Redlock is specifically designed to tolerate a minority of nodes being down (it needs 3 of 5), so that is not a criticism he makes.",
+    "topicId": "redis-locks",
+    "difficulty": 3
+  },
+  {
+    "id": "distributed-locks-q7",
+    "type": "single",
+    "prompt": "Which statement fairly reflects antirez's reply to the Redlock critique?",
+    "options": [
+      { "id": "a", "text": "Redlock needs tightly synchronised clocks, which NTP makes reliable" },
+      { "id": "b", "text": "A pause after acquiring hurts every auto-expiring lock, not only Redlock" },
+      { "id": "c", "text": "Redlock issues monotonic tokens, so fencing works out of the box with it" },
+      { "id": "d", "text": "Redlock should only be used for efficiency locks, never for correctness" }
+    ],
+    "correct": ["b"],
+    "explanation": "Antirez argues that a process pausing after it has acquired a lock affects any lock with automatic release, ZooKeeper's included, and that Redlock checks elapsed time to detect delays during acquisition. He says Redlock assumes clocks run at about the same rate, not that they are synchronised. Redlock's tokens are random, not monotonic. Recommending Redlock only for efficiency is closer to Kleppmann's position than his.",
+    "topicId": "redis-locks",
+    "difficulty": 3
+  },
+  {
+    "id": "distributed-locks-q8",
+    "type": "scenario",
+    "prompt": "What is the best design choice?",
+    "scenario": "A cron job that rebuilds a recommendations cache runs on 8 servers every 10 minutes. If two servers run it at once, the cache is rebuilt twice with the same result and the database does some extra work. The team is debating whether to deploy a 5-node etcd cluster for the lock.",
+    "options": [
+      { "id": "a", "text": "Use a single Redis SET NX PX lock; a rare duplicate run is harmless here" },
+      { "id": "b", "text": "Deploy etcd and add fencing tokens to the cache writes to stay correct" },
+      { "id": "c", "text": "Use Redlock across 5 Redis nodes, since a single node cannot be trusted" },
+      { "id": "d", "text": "Skip locks and let all 8 servers rebuild it every time; work is idempotent" }
+    ],
+    "correct": ["a"],
+    "explanation": "This is an efficiency lock: a duplicate run costs some database work and nothing else. A simple single-node Redis lock removes nearly all duplicates at almost no operational cost. A consensus cluster with fencing protects correctness that isn't at stake here. Redlock adds complexity for an efficiency problem, which even its critics call overkill. Running all 8 every time is safe but multiplies database load eightfold for no benefit.",
+    "topicId": "why-locks",
+    "difficulty": 2
+  },
+  {
+    "id": "distributed-locks-q9",
+    "type": "scenario",
+    "prompt": "What is the simplest correct design?",
+    "scenario": "50 API servers sell tickets for a concert. Each sale decrements a remaining-seats count in a single PostgreSQL row; it must never go below zero. An engineer proposes a ZooKeeper lock around each read-decrement-write.",
+    "options": [
+      { "id": "a", "text": "Keep the ZooKeeper lock, but add a fencing token column to the seats row" },
+      { "id": "b", "text": "Read the count, check it in the app, then write it back if it is above zero" },
+      { "id": "c", "text": "Use one conditional UPDATE: decrement where seats_left is still above zero" },
+      { "id": "d", "text": "Use a single-node Redis lock instead, because ZooKeeper is too slow here" }
+    ],
+    "correct": ["c"],
+    "explanation": "The critical section is one row in one database, so an atomic conditional UPDATE (decrement WHERE seats_left > 0, checking rows affected) gives mutual exclusion with no lock service at all. Adding ZooKeeper plus fencing would work but adds a cluster and a round trip for nothing. A plain read-check-write without a lock races and oversells. Swapping to Redis keeps an unnecessary lock and loses safety on failover.",
+    "topicId": "why-locks",
+    "difficulty": 2
+  },
+  {
+    "id": "distributed-locks-q10",
+    "type": "single",
+    "prompt": "In ZooKeeper's lock recipe, why does each waiter watch only the node just below its own?",
+    "options": [
+      { "id": "a", "text": "ZooKeeper allows each session to hold only one watch at a time" },
+      { "id": "b", "text": "To avoid waking every waiter on each release, a herd effect" },
+      { "id": "c", "text": "So that the lowest node can be used as the fencing token" },
+      { "id": "d", "text": "Because ephemeral nodes can't be listed with getChildren" }
+    ],
+    "correct": ["b"],
+    "explanation": "If all waiters watched the lock directory, every release would wake all of them to re-list children, though only one can win. Watching only the predecessor wakes exactly one waiter. Sessions can hold many watches. The fencing token comes from the holder's own sequence number or zxid, not from what it watches. Ephemeral nodes are listed normally by getChildren.",
+    "topicId": "coordination-locks",
+    "difficulty": 2
+  },
+  {
+    "id": "distributed-locks-q11",
+    "type": "multi",
+    "prompt": "Compared with a single Redis lock, what does an etcd-based lock give you? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Lock state that survives losing a minority of nodes" },
+      { "id": "b", "text": "A monotonic revision usable as a fencing token" },
+      { "id": "c", "text": "Protection from a client paused past its lease" },
+      { "id": "d", "text": "Lower acquire latency than an in-memory Redis SET" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "etcd replicates lock keys through Raft, so a granted lock isn't lost when a minority of nodes fails, and its cluster-wide revision increases on every change, giving a natural fencing token. A paused client whose lease expired still believes it holds the lock; only fencing at the resource catches it. A consensus write is slower than a single in-memory Redis command, not faster.",
+    "topicId": "coordination-locks",
+    "difficulty": 2
+  },
+  {
+    "id": "distributed-locks-q12",
+    "type": "single",
+    "prompt": "A job holds a 10-second lease and takes about 2 seconds of work. What is the best renewal policy?",
+    "options": [
+      { "id": "a", "text": "Never renew; 10 seconds is already five times the job's length" },
+      { "id": "b", "text": "Renew every 9 seconds so as few renewal calls as possible are made" },
+      { "id": "c", "text": "Renew about every 3 seconds and stop work if a renewal ever fails" },
+      { "id": "d", "text": "Renew every 100 ms so that the lease can never expire under a pause" }
+    ],
+    "correct": ["c"],
+    "explanation": "Renewing at roughly a third of the TTL leaves room for a failed or slow renewal, and treating a failed renewal as \"stop now\" limits how long a worker acts without a lease. Never renewing is risky if a run is slower than usual. Renewing at 9 seconds leaves 1 second of margin for a slow call. Renewing every 100 ms adds load and still can't prevent expiry, because a paused process can't renew at all.",
+    "topicId": "leases",
+    "difficulty": 1
+  }
+]

@@ -1,0 +1,8 @@
+[
+  { "id": "cap-pacelc-c1", "text": "I can state CAP with Gilbert and Lynch's definitions (linearizability, every non-failing node responds, arbitrary message loss) and sketch the two-replica proof.", "topicId": "cap-precise" },
+  { "id": "cap-pacelc-c2", "text": "I can explain why a distributed system cannot opt out of partitions and why a slow node looks the same as a partitioned one.", "topicId": "partitions" },
+  { "id": "cap-pacelc-c3", "text": "I can describe what clients on the majority and minority side of a partition see in etcd, Cassandra at ONE, and Cassandra at QUORUM.", "topicId": "cp-vs-ap" },
+  { "id": "cap-pacelc-c4", "text": "I can explain how a deposed leader serves a stale read and how a read index or lease prevents it.", "topicId": "cp-vs-ap" },
+  { "id": "cap-pacelc-c5", "text": "I can give three reasons the \"pick 2 of 3\" triangle misleads and still use CP and AP as shorthand precisely.", "topicId": "pick-two-myth" },
+  { "id": "cap-pacelc-c6", "text": "I can classify a system with PACELC and calculate the latency cost of consistent reads and writes across regions.", "topicId": "pacelc" }
+]

@@ -1,0 +1,7 @@
+[
+  { "id": "timeouts-retries-c1", "text": "I can pick a timeout from a downstream's client-side latency percentiles and an accepted false-timeout rate, and use Little's law to show how many threads a slow dependency would hold.", "topicId": "timeouts" },
+  { "id": "timeouts-retries-c2", "text": "I can propagate a deadline across four hops, subtracting each hop's work and a safety margin, and fail fast when the remaining budget cannot fit a call.", "topicId": "timeout-budgets" },
+  { "id": "timeouts-retries-c3", "text": "I can write the exact full-jitter formula and compute the sleep window and average for any attempt, base and cap.", "topicId": "backoff-jitter" },
+  { "id": "timeouts-retries-c4", "text": "I can compute retry amplification across layers (k^L) and show how a 10% retry budget caps worst-case load at 1.1×.", "topicId": "retry-budgets" },
+  { "id": "timeouts-retries-c5", "text": "I can list which failures not to retry and explain why retrying a non-idempotent call after a timeout needs an idempotency key stored atomically with the effect.", "topicId": "retry-idempotency" }
+]

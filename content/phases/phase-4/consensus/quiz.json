@@ -1,0 +1,172 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "A team wants better fault tolerance and grows its etcd cluster from 3 nodes to 4. What did they actually get?",
+    "options": [
+      { "id": "a", "text": "Tolerance of two failures instead of one, at the cost of slower writes" },
+      { "id": "b", "text": "Still one tolerated failure, and every write now needs three acknowledgements" },
+      { "id": "c", "text": "Faster writes, because the leader can now choose any two of three followers" },
+      { "id": "d", "text": "No change at all, because etcd ignores the fourth node until a fifth is added" }
+    ],
+    "correct": ["b"],
+    "explanation": "A majority of 4 is 3, so the cluster survives only one failure, exactly like 3 nodes, while each write must now reach 3 nodes instead of 2. Tolerating two failures needs 5 nodes (a majority of 3 survives two losses). Writes get slower, not faster, because the majority grew. etcd does use a fourth member; it simply doesn't buy any extra tolerance.",
+    "topicId": "why-consensus",
+    "difficulty": 2
+  },
+  {
+    "id": "q2",
+    "type": "scenario",
+    "prompt": "What happens on each side of the partition?",
+    "scenario": "A 5-node Raft cluster (A to E) has leader A in term 6. A network partition isolates A and B from C, D and E. Clients keep sending writes to both sides.",
+    "options": [
+      { "id": "a", "text": "Both sides keep accepting writes and reconcile them with last-write-wins later" },
+      { "id": "b", "text": "A keeps committing writes because it is still the leader of term 6" },
+      { "id": "c", "text": "C, D, E elect a term-7 leader and commit; A can append but never commit" },
+      { "id": "d", "text": "Neither side can write until the partition heals, since no node sees all five" }
+    ],
+    "correct": ["c"],
+    "explanation": "C, D and E are 3 of 5, a majority, so after an election timeout one of them wins term 7 and commits writes. A can still append entries locally, but only B acknowledges, 2 of 5, so nothing it receives commits; when the partition heals A sees term 7 and steps down, and its uncommitted entries are overwritten. Raft never merges divergent histories with last-write-wins, being leader of an old term grants nothing without a majority, and consensus needs a majority, not all nodes.",
+    "topicId": "raft-election",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "Why does Raft randomise each follower's election timeout (for example 150 to 300 ms)?",
+    "options": [
+      { "id": "a", "text": "So one follower usually times out first and wins before others start" },
+      { "id": "b", "text": "To compensate for clock skew between the followers' hardware clocks" },
+      { "id": "c", "text": "So that the leader can detect which followers are slowest to respond" },
+      { "id": "d", "text": "To spread heartbeat traffic evenly so the network is never saturated" }
+    ],
+    "correct": ["a"],
+    "explanation": "If all followers timed out together they would all become candidates, split the vote, and retry repeatedly. Randomised timeouts make it likely one node starts and wins first. Raft's safety doesn't rely on clocks at all, the leader learns follower progress from acknowledgements, and heartbeats are sent by the leader on its own interval, not shaped by follower timeouts.",
+    "topicId": "raft-election",
+    "difficulty": 1
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "What did the client's error actually tell it?",
+    "scenario": "A client sends `SET quota 100` to a Raft leader. The leader appends the entry and sends it to followers, then crashes before replying. The client gets a connection error and a new leader is elected.",
+    "options": [
+      { "id": "a", "text": "The write definitely failed, because the leader never acknowledged it" },
+      { "id": "b", "text": "The write definitely succeeded, because the leader had already logged it" },
+      { "id": "c", "text": "Its outcome is unknown: it survives only if it reached a majority's logs" },
+      { "id": "d", "text": "It will be applied twice when the client retries, since Raft dedupes nothing" }
+    ],
+    "correct": ["c"],
+    "explanation": "If the entry reached a majority before the crash, the election restriction guarantees the new leader has it and will commit it; if not, it may be overwritten. The client can't tell which, so it should retry with an idempotency key or read back the value. 'Definitely failed' and 'definitely succeeded' are both false certainties. Duplicates on retry are a real risk, but that's why apps attach request ids; it isn't guaranteed to happen.",
+    "topicId": "raft-log",
+    "difficulty": 3
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "A 5-node Raft cluster's leader has follower round trips of 1, 1, 60 and 65 ms, and each disk sync takes 2 ms. Roughly what is commit latency?",
+    "options": [
+      { "id": "a", "text": "About 67 ms, because the leader waits for every follower's disk sync" },
+      { "id": "b", "text": "About 3 ms: two fast followers plus the leader make a majority" },
+      { "id": "c", "text": "About 62 ms, because the median follower round trip sets latency" },
+      { "id": "d", "text": "About 2 ms, since the leader commits once its own disk sync ends" }
+    ],
+    "correct": ["b"],
+    "explanation": "A commit needs 3 of 5 copies: the leader plus the two 1 ms followers, each with a 2 ms sync, so about 3 ms. Raft never waits for all followers, the 'median follower' isn't what counts (the leader's own copy is one of the three), and the leader alone is 1 of 5, not a majority.",
+    "topicId": "raft-log",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "single",
+    "prompt": "What does the commit index guarantee about entries at or below it?",
+    "options": [
+      { "id": "a", "text": "Every node in the cluster has already applied them to its state" },
+      { "id": "b", "text": "They are permanent and will be present in every future leader's log" },
+      { "id": "c", "text": "They were written by the current leader during the current term" },
+      { "id": "d", "text": "They have been fsynced to disk on every node, including slow ones" }
+    ],
+    "correct": ["b"],
+    "explanation": "Committed means stored on a majority, so by the election restriction every future leader has them: they can never be lost or replaced. It doesn't mean every node has applied or even received them (slow followers catch up later), and committed entries can come from earlier terms and leaders.",
+    "topicId": "raft-log",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "prompt": "Which node can win, and why?",
+    "scenario": "In a 3-node cluster, entry 20 (term 3) is committed on the old leader and node X. Node Y's log ends at entry 19 (term 3). The leader crashes, and Y's election timeout fires first.",
+    "options": [
+      { "id": "a", "text": "Y wins, because it started its election first and asked for votes first" },
+      { "id": "b", "text": "Y wins with its own vote alone, since the old leader cannot vote against it" },
+      { "id": "c", "text": "Y loses: X refuses since its log is more up to date, so X must win" },
+      { "id": "d", "text": "Either can win; the new leader then fetches entry 20 from the old leader" }
+    ],
+    "correct": ["c"],
+    "explanation": "The election restriction: X won't vote for a candidate whose log is behind its own (same last term, lower index), so Y can't reach 2 of 3; X can, with Y's vote, and X has entry 20. Starting first doesn't override the restriction, one vote of three isn't a majority, and the old leader is down, so nothing could be fetched from it: leader completeness has to come from the vote rule.",
+    "topicId": "raft-safety",
+    "difficulty": 3
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "prompt": "What is the bug, and what fixes it?",
+    "scenario": "A team's Raft-based store serves reads directly from the leader's in-memory state to save latency. During a partition, a deposed leader keeps answering reads for 4 seconds with values that the new leader has already overwritten.",
+    "options": [
+      { "id": "a", "text": "Followers lag, so reads should move to the follower with the newest log" },
+      { "id": "b", "text": "The leader must confirm with a majority (e.g. ReadIndex) before reading" },
+      { "id": "c", "text": "Election timeouts are too long; dropping them to 10 ms will fix staleness" },
+      { "id": "d", "text": "Writes need fsync on all nodes so the old leader receives every update" }
+    ],
+    "correct": ["b"],
+    "explanation": "A leader can't know it was deposed until it talks to a majority, so linearizable reads must first confirm leadership (a heartbeat round, as in etcd's ReadIndex) or rely on a clock-bounded lease. Reading from followers makes staleness worse. Shorter timeouts only speed up the new election; the old leader still doesn't learn about it. And the partitioned leader can't receive updates however writes are synced.",
+    "topicId": "raft-safety",
+    "difficulty": 3
+  },
+  {
+    "id": "q9",
+    "type": "multi",
+    "prompt": "Which statements about Paxos and Raft are accurate? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Both need a majority of nodes to decide" },
+      { "id": "b", "text": "Multi-Paxos uses a stable leader like Raft" },
+      { "id": "c", "text": "Paxos tolerates half the nodes being down" },
+      { "id": "d", "text": "Raft needs synchronized clocks for safety" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "Both rely on overlapping majorities, and Multi-Paxos elects a stable leader that skips the prepare phase for successive slots, much like Raft. Neither can decide with half the nodes down (in a 4-node cluster, 2 is not a majority), and Raft's safety uses logical terms, not clocks; timeouts only affect liveness.",
+    "topicId": "paxos",
+    "difficulty": 2
+  },
+  {
+    "id": "q10",
+    "type": "scenario",
+    "prompt": "Which design fits best?",
+    "scenario": "Four instances of a billing scheduler run for redundancy, but only one may run the nightly invoice job at a time. The company already runs a 3-node etcd cluster.",
+    "options": [
+      { "id": "a", "text": "Embed a Raft library in the scheduler so the four instances vote among themselves" },
+      { "id": "b", "text": "Each instance campaigns via an etcd lease; the holder runs jobs with a fencing token" },
+      { "id": "c", "text": "Pick the instance with the lowest IP address, since that never changes at runtime" },
+      { "id": "d", "text": "Let all four run the job and rely on the database to reject the duplicate invoices" }
+    ],
+    "correct": ["b"],
+    "explanation": "Use the existing consensus service: campaign for a key under a lease, renew while alive, and pass a fencing token (such as the key's revision) to the systems the job writes to so a paused ex-leader is rejected. Embedding Raft in four instances adds an even-sized cluster to operate. Lowest-IP has no failure detection or partition safety. Relying on the database to catch duplicates can work only with strict uniqueness constraints, and still wastes and risks partial side effects.",
+    "topicId": "coordination-services",
+    "difficulty": 2
+  },
+  {
+    "id": "q11",
+    "type": "single",
+    "prompt": "In ZooKeeper's leader-election recipe, what releases leadership when the leader process crashes?",
+    "options": [
+      { "id": "a", "text": "Its ephemeral znode is deleted when its session expires" },
+      { "id": "b", "text": "The other clients vote it out once a majority agrees" },
+      { "id": "c", "text": "A cron job sweeps znodes older than the lock timeout" },
+      { "id": "d", "text": "The sequential counter resets and reassigns the order" }
+    ],
+    "correct": ["a"],
+    "explanation": "Ephemeral znodes are tied to the client's session; when heartbeats stop and the session expires, ZooKeeper deletes them, and the next-lowest sequential znode's owner (watching its predecessor) takes over. Clients don't vote (ZooKeeper's servers run Zab internally), there's no sweeper job, and sequence numbers never reset.",
+    "topicId": "coordination-services",
+    "difficulty": 2
+  }
+]

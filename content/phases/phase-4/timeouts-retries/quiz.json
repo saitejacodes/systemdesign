@@ -1,0 +1,190 @@
+[
+  {
+    "id": "timeouts-retries-q1",
+    "type": "scenario",
+    "prompt": "Roughly how many worker threads would the gateway need to keep up while the pricing service hangs?",
+    "scenario": "A gateway handles 400 requests a second, and every request calls a pricing service with a 10-second timeout. The pricing service starts accepting connections and never replying.",
+    "options": [
+      { "id": "a", "text": "About 40, because only one call in ten will still be waiting at any moment" },
+      { "id": "b", "text": "About 400, one thread per request arriving in a single second of traffic" },
+      { "id": "c", "text": "About 4,000, which is 400 requests a second held for 10 seconds each" },
+      { "id": "d", "text": "About 10, one for each second of the timeout window that is still open" }
+    ],
+    "correct": ["c"],
+    "explanation": "Little's law: concurrency = arrival rate × time held = 400 × 10 s = 4,000 threads, far more than a typical pool, so the gateway runs out of threads and fails even unrelated requests. 400 counts only one second of arrivals, but each call is held for ten. 40 divides when it should multiply. 10 ignores the arrival rate entirely.",
+    "topicId": "timeouts",
+    "difficulty": 2
+  },
+  {
+    "id": "timeouts-retries-q2",
+    "type": "scenario",
+    "prompt": "Which timeout is the most defensible starting point for this call?",
+    "scenario": "Measured from the caller, a downstream's latency is p50 = 30 ms, p99 = 120 ms and p99.9 = 450 ms. The team accepts about 0.1% of good calls timing out.",
+    "options": [
+      { "id": "a", "text": "About 500 ms, just above p99.9 so roughly one good call in a thousand times out" },
+      { "id": "b", "text": "About 60 ms, twice the median, so slow calls are cut off before they pile up" },
+      { "id": "c", "text": "About 30 seconds, so that slow calls during an incident still get time to finish" },
+      { "id": "d", "text": "About 120 ms, the p99, since 99% of good calls finishing is the industry standard" }
+    ],
+    "correct": ["a"],
+    "explanation": "Setting the timeout near the percentile that matches the accepted false-timeout rate (p99.9 for 0.1%) plus a little padding is the method Brooker describes. Twice the median would time out several percent of good calls, each a likely retry. 30 seconds lets a hung dependency eat the caller's threads. p99 would fail about 1% of good calls, ten times the accepted rate, and there is no universal p99 standard.",
+    "topicId": "timeouts",
+    "difficulty": 2
+  },
+  {
+    "id": "timeouts-retries-q3",
+    "type": "scenario",
+    "prompt": "What is the core problem with these timeouts?",
+    "scenario": "The API gateway times out at 2 s. It calls service A, which calls service B with a 3 s timeout and one retry. B calls the database with a 5 s timeout.",
+    "options": [
+      { "id": "a", "text": "The timeouts are too short overall; deep services need longer limits to finish their work" },
+      { "id": "b", "text": "Inner timeouts exceed the outer one, so work continues long after the user has a 504" },
+      { "id": "c", "text": "B should retry the database instead of A retrying B, because B is nearer the failure" },
+      { "id": "d", "text": "Timeouts should be equal at every hop, so 2 s for all three calls would fix the problem" }
+    ],
+    "correct": ["b"],
+    "explanation": "When inner timeouts are longer than the outer one, deeper services keep working (and retrying) for seconds after the gateway has given up, wasting capacity during exactly the incidents where it is scarce. Deadline propagation fixes this. Longer timeouts make the waste worse. Moving the retry does not fix the budget mismatch. Equal per-hop timeouts still add up: three hops of 2 s can each start after the previous one spent most of the budget.",
+    "topicId": "timeout-budgets",
+    "difficulty": 2
+  },
+  {
+    "id": "timeouts-retries-q4",
+    "type": "scenario",
+    "prompt": "What timeout should the order service give its call to inventory?",
+    "scenario": "The gateway sets a 1,000 ms deadline. The order service receives the request at t = 0, does 350 ms of its own work, then calls inventory. It keeps a 50 ms safety margin.",
+    "options": [
+      { "id": "a", "text": "1,000 ms, because inventory is a separate service with its own budget" },
+      { "id": "b", "text": "950 ms, because only the safety margin needs to be subtracted here" },
+      { "id": "c", "text": "650 ms, because that is what remains after the order service's work" },
+      { "id": "d", "text": "600 ms, because the work and the margin both come out of the budget" }
+    ],
+    "correct": ["d"],
+    "explanation": "Remaining = deadline − time spent − margin = 1,000 − 350 − 50 = 600 ms. Giving inventory a fresh 1,000 ms ignores that the user's clock is already running. 950 ms forgets the 350 ms already spent. 650 ms leaves no margin for the order service to handle the reply or the error before the gateway times out.",
+    "topicId": "timeout-budgets",
+    "difficulty": 2
+  },
+  {
+    "id": "timeouts-retries-q5",
+    "type": "single",
+    "prompt": "Which formula is full jitter?",
+    "options": [
+      { "id": "a", "text": "sleep = random_between(0, min(cap, base × 2^attempt))" },
+      { "id": "b", "text": "sleep = min(cap, base × 2^attempt) + random_between(0, base)" },
+      { "id": "c", "text": "sleep = min(cap, base × 2^attempt) / 2 + random_between(0, half)" },
+      { "id": "d", "text": "sleep = min(cap, random_between(base, previous_sleep × 3))" }
+    ],
+    "correct": ["a"],
+    "explanation": "Full jitter draws uniformly from zero to the capped exponential value. Adding a small random amount to the backoff barely spreads clients that failed together. Half plus a random half is equal jitter. The random draw between base and three times the previous sleep is decorrelated jitter.",
+    "topicId": "backoff-jitter",
+    "difficulty": 1
+  },
+  {
+    "id": "timeouts-retries-q6",
+    "type": "scenario",
+    "prompt": "With full jitter, what is the sleep window and the average sleep for attempt 4?",
+    "scenario": "A client uses base = 50 ms and cap = 2 s, counting attempts from 0.",
+    "options": [
+      { "id": "a", "text": "0–2,000 ms, average 1,000 ms, because the cap applies from attempt 4" },
+      { "id": "b", "text": "400–800 ms, average 600 ms, because half the window is always kept" },
+      { "id": "c", "text": "0–800 ms, average 400 ms, because 50 × 2⁴ = 800 is under the cap" },
+      { "id": "d", "text": "800 ms exactly, because jitter only applies once the cap is reached" }
+    ],
+    "correct": ["c"],
+    "explanation": "min(2,000, 50 × 16) = 800 ms, and full jitter draws uniformly from 0 to 800, averaging 400. The cap is not reached until 50 × 2^attempt exceeds 2,000, at attempt 6. 400–800 ms describes equal jitter, not full jitter. Jitter applies on every attempt; it is most needed early, when many clients failed together.",
+    "topicId": "backoff-jitter",
+    "difficulty": 2
+  },
+  {
+    "id": "timeouts-retries-q7",
+    "type": "scenario",
+    "prompt": "How many calls reach the database for one user tap while it is failing every query?",
+    "scenario": "A mobile app, an API gateway and a backend service each make up to 3 attempts on failure. The backend is the only one that talks to the database.",
+    "options": [
+      { "id": "a", "text": "9, three attempts at each of the three layers added together" },
+      { "id": "b", "text": "27, because each layer multiplies the attempts of the one above" },
+      { "id": "c", "text": "3, because only the backend's own retries reach the database" },
+      { "id": "d", "text": "7, the first try plus two retries at each of the three layers" }
+    ],
+    "correct": ["b"],
+    "explanation": "Each app attempt causes 3 gateway attempts, each causing 3 backend attempts: 3 × 3 × 3 = 27. Adding the layers (9) or counting retries (7) treats them as independent when they nest. Counting only the backend's 3 forgets that each upper-layer retry starts a fresh set of backend attempts.",
+    "topicId": "retry-budgets",
+    "difficulty": 2
+  },
+  {
+    "id": "timeouts-retries-q8",
+    "type": "scenario",
+    "prompt": "Why does the service stay down after the rollback, and what is the best fix?",
+    "scenario": "A service with capacity for 1,200 requests a second normally gets 1,000. A bad deploy makes half the calls fail; clients retry up to 3 more times. The deploy is rolled back after 60 seconds, but error rates stay near 100% and load sits around 4,000 requests a second.",
+    "options": [
+      { "id": "a", "text": "Retries alone now exceed capacity, a metastable loop; cap them with a ~10% retry budget" },
+      { "id": "b", "text": "The rollback did not deploy everywhere; roll back again and wait for caches to warm up" },
+      { "id": "c", "text": "Backoff without a cap; raising the maximum backoff to 60 s will fix the problem alone" },
+      { "id": "d", "text": "The service is under-provisioned; autoscale to 4,000 requests a second of capacity" }
+    ],
+    "correct": ["a"],
+    "explanation": "Once overload makes nearly every call fail, each request turns into 4 attempts, 4,000 a second, which keeps the service overloaded with the trigger gone: a metastable failure. A retry budget caps load at about 1,100 a second so it can recover. A partial rollback would not explain load quadrupling. Longer backoff delays retries but, without a budget, they still arrive. Scaling to 4,000 a second pays for the retry storm instead of stopping it, and may not happen fast enough during the event.",
+    "topicId": "retry-budgets",
+    "difficulty": 3
+  },
+  {
+    "id": "timeouts-retries-q9",
+    "type": "multi",
+    "prompt": "Which of these should a client generally NOT retry automatically? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "A 404 Not Found from a GET for a user id that does not exist" },
+      { "id": "b", "text": "A POST that creates an order, sent with no idempotency key" },
+      { "id": "c", "text": "A connection reset on an idempotent GET with plenty of deadline" },
+      { "id": "d", "text": "A call where only 20 ms of the deadline remains and p50 is 40 ms" }
+    ],
+    "correct": ["a", "b", "d"],
+    "explanation": "A 404 will repeat identically. A POST without a key may already have succeeded, so a retry can create a duplicate order. With 20 ms left and a 40 ms median, the retry will almost certainly miss the deadline and only adds load. A connection reset on an idempotent GET with time to spare is the textbook case for a retry with backoff and jitter.",
+    "topicId": "retry-idempotency",
+    "difficulty": 2
+  },
+  {
+    "id": "timeouts-retries-q10",
+    "type": "scenario",
+    "prompt": "What should the client do to retry this payment safely?",
+    "scenario": "A client sends POST /charges for $50 with a 2-second timeout. It times out. The payment service actually charged the card at 2.1 s and its response went to a closed connection.",
+    "options": [
+      { "id": "a", "text": "Retry with a fresh idempotency key, so the server treats it as a brand-new request" },
+      { "id": "b", "text": "Never retry payments; tell the user the charge failed and ask them to try again" },
+      { "id": "c", "text": "Retry with the same idempotency key, so the server returns the stored first result" },
+      { "id": "d", "text": "Retry with a longer timeout, so the second attempt has time to see the response" }
+    ],
+    "correct": ["c"],
+    "explanation": "Reusing the key lets the server recognise the retry and return the original charge instead of charging again. A fresh key defeats the purpose and causes the double charge. Telling the user it failed is wrong too: the card was charged, so a manual retry also double charges. A longer timeout on the retry does not help, because the second attempt is still a new charge.",
+    "topicId": "retry-idempotency",
+    "difficulty": 2
+  },
+  {
+    "id": "timeouts-retries-q11",
+    "type": "single",
+    "prompt": "What does a 10% retry budget guarantee?",
+    "options": [
+      { "id": "a", "text": "Every request is retried at most 10% of the times it fails" },
+      { "id": "b", "text": "Worst-case load is about 1.1× normal, however bad the outage" },
+      { "id": "c", "text": "No more than 10% of requests will fail during an outage" },
+      { "id": "d", "text": "Retries wait 10% longer each time, so they spread out more" }
+    ],
+    "correct": ["b"],
+    "explanation": "The budget limits retries to about 10% of requests, so even if every call fails, total load stays near 1.1× normal. It is a fleet-wide ratio, not a per-request retry probability. It says nothing about how many requests fail; during a real outage most failures will not be retried. Spreading retries over time is jitter's job.",
+    "topicId": "retry-budgets",
+    "difficulty": 1
+  },
+  {
+    "id": "timeouts-retries-q12",
+    "type": "single",
+    "prompt": "When does a hedged request make sense?",
+    "options": [
+      { "id": "a", "text": "For idempotent reads with a long tail, sent after about the p95 latency" },
+      { "id": "b", "text": "For any write, sent immediately to two replicas to double the success rate" },
+      { "id": "c", "text": "For an overloaded service, to make sure at least one copy gets through" },
+      { "id": "d", "text": "For calls with no timeout, as a substitute for setting a proper deadline" }
+    ],
+    "correct": ["a"],
+    "explanation": "Hedging fights tail latency: only requests slower than about p95 get a second copy, so extra load stays small, and the operation must be safe to run twice. Hedging writes can apply them twice. Hedging into an overloaded service adds load exactly when it hurts. Hedging is not a replacement for a timeout; both copies still need one.",
+    "topicId": "retry-budgets",
+    "difficulty": 2
+  }
+]

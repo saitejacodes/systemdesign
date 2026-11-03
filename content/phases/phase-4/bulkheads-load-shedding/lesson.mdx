@@ -1,0 +1,227 @@
+## Why it matters
+
+Most large outages are not one component dying. They are one component getting **slow**, and that slowness spreading. A recommendations service starts answering in five seconds instead of fifty milliseconds; every caller's threads pile up waiting on it; the callers stop answering their own callers; and within a minute a checkout page that never needed recommendations is timing out too. The second classic failure is plain overload: a traffic spike, a retry storm or a cold cache sends more work than a service can do, latency climbs past every client's timeout, and the service spends 100% of its CPU on answers nobody is waiting for. Michael Nygard's *Release It!* named the first defence the **bulkhead**, and Google's *Site Reliability Engineering* book devotes two chapters to the second (handling overload and cascading failures). This section covers both: how to stop one bad dependency from sinking a whole service, and how a service should say "no" early and cheaply so it keeps saying "yes" to the requests that matter.
+
+<Callout type="analogy" title="The submarine, the nightclub and the hospital">
+A submarine's hull is divided into watertight compartments. A torpedo floods one compartment, the crew slams the door, and the boat stays afloat on the rest: that is a bulkhead. Now picture a nightclub at capacity. A good bouncer stops letting people in at the door the moment the dance floor is full; a bad bouncer lets everyone in, the floor jams solid, nobody can reach the bar, and the club makes no money at all even though it is packed: that is the difference between load shedding and collapse. Finally, an emergency room on a terrible night does not treat patients in arrival order. A triage nurse sends the heart attack straight in and asks the sprained ankle to come back tomorrow: that is priority-based shedding. And the nurse decides at the front desk, in ten seconds, not after the patient has occupied a bed for an hour: that is admission control.
+
+Where the picture breaks down: a flooded compartment stays flooded, but a software bulkhead recovers by itself the moment the dependency speeds up again. And unlike a nightclub queue, a rejected client may come straight back and knock again (a retry), so shedding only works if clients are taught to wait.
+</Callout>
+
+## Bulkheads: isolating thread pools and connections
+
+<DepthStamp depth="deep" />
+
+A <Term slug="bulkhead">bulkhead</Term> partitions a shared, limited resource (threads, connections, memory, CPU, whole server fleets) into separate pools, so that exhausting one pool cannot exhaust the others. The resource that most often sinks a service is **concurrency**: the number of requests it can have in flight at once. A Java service on Tomcat, for example, has a fixed worker pool (`maxThreads`, 200 by default). An async service has no thread limit but still has a <Term slug="connection-pool">connection pool</Term> per downstream, file descriptors and memory for pending requests. Whatever the resource, if every outgoing call draws from one shared pool, the slowest dependency decides how much of that pool is left for everyone else.
+
+### Worked example: one slow dependency eats the whole pool
+
+A product-page service runs with **200 worker threads** and receives **400 requests a second**. Each request calls inventory and pricing; **30%** of requests also call a recommendations service, which normally answers in **50 ms**.
+
+By <Term slug="littles-law">Little's law</Term> (in-flight = arrival rate × time in system), recommendations normally occupies 400 × 0.3 × 0.05 = **6 threads**. At t = 0 s recommendations degrades and every call now hangs for **5 seconds** until the client timeout fires. Steady state would need 120 calls/s × 5 s = **600** threads, three times the pool:
+
+| Time | Threads stuck on recommendations | Free threads | What users see |
+|---|---|---|---|
+| t = 0 s | 6 | ~170 | Normal |
+| t = 1 s | ~126 (120 new hung calls) | ~50 | Normal, but the pool is draining |
+| t = 1.7 s | ~200 | 0 | New requests start queueing for a thread |
+| t = 3 s | 200 | 0 | Every page, including the 70% that never call recommendations, waits in the queue |
+| t = 5 s onward | 200 (each released thread is grabbed by another doomed call) | 0 | Product page times out for everyone: down because of a widget |
+
+The shared pool is the problem: threads freed by fast inventory calls are immediately taken by the next request, 30% of which hang again, so the pool never recovers while the dependency is slow.
+
+### The fix: a pool per dependency
+
+Give each downstream its own bounded pool sized for normal load plus headroom, and reject immediately when it is full:
+
+| Dependency | Normal in-flight (rate × p99 latency) | Bulkhead limit | Behaviour when full |
+|---|---|---|---|
+| Inventory | 400/s × 0.04 s = 16 | 50 | Fail the request (inventory is essential) |
+| Pricing | 400/s × 0.03 s = 12 | 40 | Fail the request |
+| Recommendations | 120/s × 0.08 s ≈ 10 | 20 | Skip the widget, render the page without it |
+
+Rerun the incident. Recommendations still takes 5 seconds, but only **20** calls can be waiting on it at once, so it is served at about 20 ÷ 5 = 4 calls a second and the other ~116 calls a second are rejected in microseconds and fall back to "no recommendations". The remaining 180 threads are untouched, inventory and pricing keep working, and users see a product page with an empty carousel instead of an error page. The bulkhead turned a total outage into graceful degradation.
+
+<Figure caption="FIG. 13.1 · BULKHEADS · ONE FULL COMPARTMENT, THE REST DRY">
+  <Diagram label="Incoming requests reach a worker pool, which calls three dependencies through separate bounded pools. The recommendations pool is full and rejects fast to a fallback, while inventory and pricing pools keep working." chart={`flowchart LR
+    R[Incoming requests 400 per s] --> W[Worker threads 200]
+    W --> I[Inventory pool max 50]
+    W --> P[Pricing pool max 40]
+    W --> X[Recommendations pool max 20 FULL]
+    I --> IS[(Inventory service)]
+    P --> PS[(Pricing service)]
+    X -.slow 5 s.-> XS[(Recommendations service)]
+    X -->|rejected in microseconds| F[Fallback: page without widget]`} />
+</Figure>
+
+*Separate pools per dependency: the slow one fills only its own compartment.*
+
+### Thread-pool versus semaphore bulkheads
+
+Libraries offer two shapes. A **thread-pool bulkhead** runs the call on a dedicated pool of threads with a bounded queue; the caller's thread can give up after a timeout even if the dependency's thread is still stuck. Netflix's Hystrix (now in maintenance mode) used this by default. A **semaphore bulkhead** just counts in-flight calls and rejects when the count hits the limit; it costs almost nothing but cannot rescue the caller's thread from a call that hangs, so it relies on the client having a good timeout. Resilience4j provides both (`SemaphoreBulkhead` and `ThreadPoolBulkhead`). In async and event-loop runtimes (Node.js, Go, Netty), the semaphore shape is the natural one: there are no per-call threads to isolate, only a count of outstanding requests.
+
+### Bulkheads at bigger scales
+
+The same idea applies far above a single process: **separate connection pools** per database or per tenant (one tenant's heavy reports cannot take every connection); **separate fleets** for batch and customer traffic; **cells**, independent copies of the whole stack each serving a slice of customers, so a bad deploy or poison request hurts one cell (AWS describes cell-based architecture in its Well-Architected guidance); and **per-zone isolation**, so one zone's trouble stays in that zone.
+
+### What a bulkhead does not protect against
+
+A bulkhead contains a *slow or failing dependency*. It does nothing when the service itself is overloaded (every pool fills because there is simply too much traffic: that is load shedding's job), when the essential dependency is the one that fails (a full inventory pool still fails the page; there is no useful fallback), or when the shared resource is outside the pools (all pools still share one CPU, one heap and one database). It also needs a timeout: a semaphore slot held by a call that never returns is a slot lost forever.
+
+The cost of every bulkhead is **stranded capacity**: a pool reserved for recommendations sits idle when recommendations is healthy and checkout is busy. Pool sizes need numbers (rate × p99 latency × a headroom factor such as 2), and they need revisiting when traffic changes.
+
+## Priority-based load shedding
+
+<DepthStamp depth="deep" />
+
+<Term slug="load-shedding">Load shedding</Term> means deliberately rejecting some requests when a server is overloaded, so it can serve the rest well. It feels wrong to refuse work, but the alternative is worse. Above capacity, a queue forms; requests wait longer than clients will wait; clients time out and retry; the server finishes work whose answers are thrown away. The useful output, called <Term slug="goodput">goodput</Term> (successful responses delivered within the client's deadline), collapses even while throughput looks high.
+
+### Worked example: accepting everything versus shedding
+
+A service can process **1,000 requests a second**. Clients use a **1-second timeout**. A spike brings **1,500 requests a second** for one minute.
+
+| Seconds into the spike | Without shedding: queue length | Without shedding: wait for a new request | With shedding |
+|---|---|---|---|
+| 1 | 500 | 0.5 s | ~1,000/s served fast, ~500/s rejected in about 1 ms |
+| 2 | 1,000 | 1.0 s (at the timeout) | same |
+| 4 | 2,000 | 2.0 s (every client has given up) | same |
+| 60 | 30,000 | 30 s | same |
+
+Without shedding, from about the two-second mark almost every response arrives after its client gave up, so goodput falls towards **zero** while the CPU stays at 100%. Worse, the timed-out clients retry, raising the offered load above 1,500 (a <Term slug="retry-storm">retry storm</Term>). With shedding, the server keeps a short queue, answers about 1,000 requests a second on time and turns the excess away with a cheap error. Goodput stays near 1,000. Shedding 33% of requests is a far better outcome than failing 100% of them.
+
+### Shed early, cheaply and visibly
+
+The AWS Builders' Library article "Using load shedding to avoid overload" (David Yanacek) makes the key operational point: rejecting a request is not free, so load-test a service *past* its capacity to find where goodput starts to fall, and set the shedding threshold below that point.
+
+- **Reject before doing work.** A shed request should cost a tiny fraction of a served one: check limits before parsing large bodies, before authentication calls, certainly before database queries.
+- **Drop expired work.** If a request has waited in the queue longer than its <Term slug="deadline">deadline</Term>, the client has gone; drop it instead of processing it. Propagated deadlines (gRPC does this) make that check possible deeper in the stack.
+- **Keep queues short.** A deep queue only converts overload into latency. Facebook's "Fail at Scale" (ACM Queue, 2015) describes using a controlled-delay policy that shortens queue timeouts when a queue has been standing for a while, and switching to LIFO order under overload so the freshest requests, whose clients are still waiting, are served first.
+- **Say so clearly.** Return HTTP 503 (or 429 when the caller exceeded its own quota), optionally with `Retry-After`, so well-behaved clients back off instead of retrying instantly.
+
+### Priority: decide what to drop
+
+Not all requests are equal, so shed the least valuable first. Give every request a <Term slug="request-criticality">criticality</Term> label at the edge and pass it along. Google's SRE book describes four levels used internally:
+
+| Criticality | Meaning | Example |
+|---|---|---|
+| CRITICAL_PLUS | Most important; failure is directly user-visible and serious | Payment authorisation |
+| CRITICAL | Default for production, user-facing requests | Loading a product page |
+| SHEDDABLE_PLUS | Partial unavailability is expected and tolerated | Prefetching the next page, recommendations |
+| SHEDDABLE | Can fail often; will retry later | Batch jobs, analytics, log uploads |
+
+The server then sheds by band: at 80% utilisation it starts rejecting SHEDDABLE work, at 90% SHEDDABLE_PLUS, and only near saturation does it touch CRITICAL.
+
+### Worked example: a 3× spike, shed by priority
+
+A checkout service serves **1,000 requests a second** at full capacity and normally runs at 600/s. A marketing push triples traffic to **1,800/s**: 300 CRITICAL_PLUS (payments), 900 CRITICAL (cart and product), 600 SHEDDABLE (analytics beacons and prefetches).
+
+| Time | Event | Admitted | Shed |
+|---|---|---|---|
+| t = 0 s | Spike arrives; utilisation jumps past 80% | 1,000 | 800, mostly random |
+| t = 1 s | SHEDDABLE band closed | 1,000 (300 + 700 of CRITICAL) | All 600 SHEDDABLE, 200 CRITICAL |
+| t = 2 s | Steady state under the spike | 300 payments (100%), 700 of 900 cart (78%) | 600 + 200 |
+| t = 180 s | Autoscaling adds capacity to 2,000/s | 1,800 | 0 |
+
+Arithmetic: capacity 1,000 − 300 payments = 700 left for 900 CRITICAL requests, so 700 ÷ 900 ≈ 78% of them succeed and 100% of payments do. Shedding uniformly instead would have served 1,000 ÷ 1,800 ≈ 56% of *everything*, failing 44% of payments to protect analytics beacons. Priority turned "everyone has a bad day" into "nobody notices the dropped beacons, and some cart loads retry". Netflix has written about the same idea at its API gateway, prioritising requests a viewer is actively waiting on (such as starting playback) over background requests like prefetches. Priorities must come from a small, fixed set controlled by the platform; if every team can mark its own traffic "critical", soon everything is.
+
+What shedding does not protect against: a downstream bottleneck it cannot see (if the shared database is the thing overloaded, each service shedding on its *own* CPU never triggers), work already admitted (shedding at the door does not cancel in-flight requests), and capacity that is permanently too small (shedding buys minutes for scaling, not a substitute for it).
+
+Two more pitfalls. First, a shed request that is immediately retried is not shed at all; it comes back with extra overhead. Pair shedding with <Term slug="exponential-backoff">exponential backoff</Term> and retry budgets. Second, low-priority work cannot be starved forever: batch jobs that are always shed eventually become an incident of their own, so give them reserved capacity or run them off-peak.
+
+## Admission control
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="admission-control">Admission control</Term> is the decision, made at the entry point, of whether to accept a new request at all, based on the server's current state. Load shedding is the *outcome* (some requests are refused); admission control is the *mechanism* that decides which and when. It is different from <Term slug="rate-limiter">rate limiting</Term>: a rate limiter enforces a per-client quota whatever the server's health ("you get 100 requests a second"), while admission control protects the server whatever the client's quota ("I am full right now").
+
+<Figure caption="FIG. 13.2 · ADMISSION CONTROL · THE DECISION AT THE DOOR">
+  <Diagram label="A request arrives. If its deadline has passed it is dropped. If the client is over quota it gets 429. If the server is at its concurrency limit, low-priority requests get 503 and critical ones may wait briefly in a short queue. Otherwise the request is admitted to a per-dependency bulkhead." chart={`flowchart TD
+    A[Request arrives] --> B{Deadline already passed?}
+    B -->|yes| D1[Drop silently]
+    B -->|no| C{Client over its quota?}
+    C -->|yes| D2[429 Too Many Requests]
+    C -->|no| E{In-flight at concurrency limit?}
+    E -->|no| G[Admit]
+    E -->|yes| F{Criticality}
+    F -->|sheddable| D3[503 with Retry-After]
+    F -->|critical| Q[Short queue with timeout]
+    Q --> G
+    G --> H[Per-dependency bulkhead pools]`} />
+</Figure>
+
+*Cheap checks first: expired work and over-quota clients are rejected before the server spends anything on them.*
+
+### What signal to admit on
+
+| Signal | How it works | Strength | Weakness |
+|---|---|---|---|
+| Fixed concurrency limit | Reject when in-flight requests exceed N | Simple, directly prevents pile-ups | N must be tuned; wrong after hardware or code changes |
+| Queue wait time | Reject when requests have waited longer than a target | Tracks what users feel | Reacts only after a queue has formed |
+| CPU or memory utilisation | Reject low priority above a threshold | Matches the real bottleneck for CPU-bound work | Noisy; misses I/O-bound overload |
+| Adaptive concurrency limit | Adjust N from observed latency, like TCP congestion control | Self-tuning as capacity changes | More moving parts; needs good latency signals |
+| Token bucket per client | Refill tokens at a set rate; reject without a token | Fairness between tenants | Protects against noisy clients, not against total overload |
+
+### Adaptive limits
+
+A fixed limit is guesswork: too low wastes capacity, too high allows a pile-up. An <Term slug="concurrency-limit">adaptive concurrency limit</Term> measures latency continuously and treats rising latency as a sign of queueing. If latency stays near its baseline, it raises the limit a little; if latency climbs, it cuts the limit, much like TCP's congestion window (additive increase, multiplicative decrease). Netflix's open-source `concurrency-limits` library implements this family of algorithms, including ones inspired by TCP Vegas. Envoy offers an adaptive concurrency filter based on the same principle. The appeal is that nobody has to recompute limits after every deploy; the risk is oscillation if the latency signal is noisy.
+
+### Admission control on the client side
+
+A server under heavy load still spends CPU rejecting requests. Google's SRE book describes **client-side adaptive throttling**: each client tracks, over the last two minutes, how many requests it sent and how many the backend accepted, and starts rejecting locally with probability
+
+```
+max(0, (requests − K × accepts) / (requests + 1))
+```
+
+with K typically 2. When the backend accepts everything, the probability is zero. When it starts rejecting, the client drops a growing share of its own requests before they ever leave the machine, so the backend's rejection cost shrinks too. Lowering K makes clients throttle earlier; raising it lets more traffic through.
+
+<TradeoffBox title="Bulkheads, shedding and admission control" items={[
+  { gain: "Bulkheads: one slow dependency cannot exhaust every thread or connection", cost: "Stranded capacity in idle pools; one more set of limits to size and maintain" },
+  { gain: "Load shedding: goodput stays near capacity during spikes instead of collapsing", cost: "Some users get errors on purpose; needs clients that back off rather than retry instantly" },
+  { gain: "Priority shedding: the requests that matter survive overload", cost: "Requires a criticality label on every request and discipline about who may mark traffic critical" },
+  { gain: "Adaptive limits: tune themselves as capacity changes", cost: "Harder to reason about; can oscillate with noisy latency" },
+  { gain: "Client-side throttling: rejection costs nothing on the backend", cost: "Clients must be trusted and updated; a misbehaving client ignores it" }
+]} />
+
+<NotWhenBox title="When these are overkill" items={[
+  "A service with one dependency and steady low traffic: a timeout and a connection pool limit already act as its bulkhead.",
+  "Thread-pool bulkheads in an event-loop runtime: there are no per-request threads to isolate; use a counting limit instead.",
+  "Priority tiers when every request is equally important: if you cannot name anything to drop, shed by arrival and keep queues short.",
+  "Asynchronous work that can wait: put it on a queue and let consumers pull at their own pace rather than shedding it."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Autoscaling makes load shedding unnecessary." right="New instances take tens of seconds to minutes to start and warm up. Shedding protects the service during that gap, and some bottlenecks (a shared database, a licence limit) do not autoscale at all." />
+
+<Misconception wrong="Rejecting requests lowers availability, so the server should always try to serve everything." right="Above capacity, accepting everything makes latency exceed every timeout and goodput falls to near zero. Rejecting the excess quickly keeps most requests succeeding." />
+
+<Misconception wrong="A bigger thread pool is a safer thread pool." right="A bigger shared pool only delays exhaustion by a few seconds when a dependency hangs, and it adds memory and context-switching overhead. Isolation, not size, stops the spread." />
+
+<Misconception wrong="Load shedding and rate limiting are the same thing." right="A rate limiter enforces per-client quotas regardless of server health. Load shedding reacts to the server's own overload, even when every client is within quota." />
+
+## Interview angle
+
+<InterviewAngle title="Bulkheads and load shedding" questions={[
+  "One of your service's five dependencies gets slow and your whole service goes down. Why, and how do you prevent it?",
+  "How would you size a bulkhead for a dependency that receives 300 calls a second with a 120 ms p99?",
+  "Traffic doubles in ten seconds. Autoscaling takes three minutes. What does your service do in between?",
+  "How do you decide which requests to drop first, and who gets to label a request critical?",
+  "Your service sheds load but CPU is still pegged at 100%. What might be wrong?"
+]}>
+These ideas come up whenever a design has many dependencies or a traffic spike. Start with the mechanism of cascading failure (a slow dependency holds threads; Little's law shows how fast the pool fills), then propose per-dependency bulkheads with numbers and a fallback for non-essential calls. For overload, explain goodput collapse, then layer the defences: per-client rate limits at the edge, admission control with an adaptive concurrency limit, priority-based shedding, dropping requests whose deadline has passed, and clients that back off with retry budgets. For the last question, good answers include rejection that happens too late (after expensive work), immediate client retries, or a long queue that lets work through after its deadline.
+</InterviewAngle>
+
+## Practice
+
+1. A service has 300 threads and 600 requests a second. 25% of requests call a search service whose p99 is 80 ms. Search hangs and calls time out at 3 seconds. How long until the shared pool is exhausted? Size a search bulkhead with 2× headroom and state how many search calls a second it can still serve during the hang.
+2. A server handles 2,000 requests a second and is offered 3,000, of which 40% are prefetches labelled SHEDDABLE_PLUS. Which requests should be shed, and what fraction of critical requests survives?
+3. Using client-side throttling with K = 2, what rejection probability does a client apply after sending 1,000 requests of which the backend accepted 300? What about K = 1.5?
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

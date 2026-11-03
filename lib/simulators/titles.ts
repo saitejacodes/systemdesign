@@ -15,4 +15,13 @@ export const SIM_TITLES: Record<string, string> = {
   "redis-playground": "Redis playground",
   "message-queue": "Message queue",
   outbox: "Outbox",
+  cap: "CAP and PACELC",
+  quorum: "Quorums",
+  raft: "Raft consensus",
+  clocks: "Clocks and ordering",
+  saga: "Saga",
+  snowflake: "Snowflake IDs",
+  "retry-storm": "Retry storm",
+  "circuit-breaker": "Circuit breaker",
+  "availability-calculator": "Availability calculator",
 };

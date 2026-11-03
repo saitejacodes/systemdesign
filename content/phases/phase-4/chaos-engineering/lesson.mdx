@@ -1,0 +1,191 @@
+## Why it matters
+
+Every resilience mechanism in this phase (timeouts, retries, circuit breakers, bulkheads, failover) is code and configuration that runs only when something goes wrong. That makes it the least exercised code you own. A retry policy can be wrong for a year and nobody notices until the day the dependency fails; a failover script can rot for a year and nobody notices until the region goes dark. Netflix, after a major database corruption in 2008 interrupted its DVD shipping, moved to AWS and decided to assume instances would disappear without warning. Its answer was **Chaos Monkey**, a tool that randomly terminates production instances during business hours, so engineers would build services that survive it as a matter of routine. Netflix later added region-scale exercises (Chaos Kong), request-level failure injection (FIT) and an automated experimentation platform (ChAP). The practice grew into a discipline, chaos engineering, described in the Principles of Chaos Engineering. This section covers what it is, how to run an experiment safely, and how game days exercise the people and processes as well as the software.
+
+<Callout type="analogy" title="Chaos engineering is a vaccine">
+A vaccine gives a healthy body a small, controlled dose of the real threat, while doctors watch its vital signs, so that the body learns to survive the full disease later. Map it piece by piece. The **dose** is the fault you inject (kill one instance, add 300 ms of latency). The **small** dose is the blast radius: 1% of traffic, one zone, not everything. The **vital signs** are the steady state: orders per minute, stream starts per second. The **doctor on standby** with adrenaline is the stop condition: if vital signs drop past a threshold, the experiment ends immediately. And you **never vaccinate a patient who is already sick**: no chaos during an incident, and no experiment on a weakness you already know about (fix it first).
+
+Where the analogy breaks down: a body builds immunity automatically. Software does not. An experiment only makes a system stronger if engineers fix what it found; an experiment whose findings sit in a backlog is just a controlled outage.
+</Callout>
+
+## Principles of chaos engineering
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="chaos-engineering">Chaos engineering</Term> is the discipline of experimenting on a system in order to build confidence in its ability to withstand turbulent conditions in production. The key word is **experimenting**. A test checks a known expectation ("this function returns 4"); a chaos experiment probes an uncertainty ("we believe checkout survives losing a zone; let's find out") and either increases confidence or uncovers a weakness nobody knew about.
+
+The Principles of Chaos Engineering (principlesofchaos.org) list five advanced principles. In plain terms:
+
+| Principle | What it means in practice | Why |
+|---|---|---|
+| Build a hypothesis around steady-state behaviour | Measure a business-level output, such as successful checkouts per minute, not CPU or thread counts | You care whether users are served, not how the internals look |
+| Vary real-world events | Inject faults that really happen: instance death, latency, dependency errors, clock skew, full disks, zone loss, traffic spikes | Exotic faults teach you little; common ones cause most outages |
+| Run experiments in production | Staging differs in traffic, data, configuration and scale, so some weaknesses appear only in production | Confidence about production needs evidence from production |
+| Automate experiments to run continuously | Experiments run on a schedule or in the deploy pipeline, not once a year | Systems drift; last quarter's result says little about today |
+| Minimise blast radius | Start tiny, expand only after success, and be ready to stop instantly | The experiment must never become the outage |
+
+### Fault injection is the tool, not the discipline
+
+<Term slug="fault-injection">Fault injection</Term> is the mechanism: deliberately introducing a failure, such as terminating a process, dropping packets, returning errors from a dependency or adding latency. Common tools include Netflix's Chaos Monkey (instance termination), AWS Fault Injection Service (managed experiments with stop conditions), Gremlin (a commercial platform), Chaos Mesh and LitmusChaos (Kubernetes-native, both CNCF projects), and Shopify's Toxiproxy (a TCP proxy that injects latency and failures, popular in tests). Randomly breaking things with these tools, without a hypothesis, measurement and a way to stop, is not chaos engineering. It is just breaking things.
+
+### Blast radius and stop conditions
+
+The <Term slug="blast-radius">blast radius</Term> is how much of the system and its users an experiment can affect. Control it on several axes at once:
+
+- **Traffic:** route a small percentage of requests (or of users) through the fault. Netflix's ChAP, as Netflix described it, sent a small slice of traffic to an experiment cluster and a matching slice to a control cluster, so faults touched only the experiment slice.
+- **Scope:** one instance, then one service, then one zone; never start with a region.
+- **Time:** run for minutes, not hours, at first, and during working hours when the owning team is at their desks.
+- **A <Term slug="stop-condition">stop condition</Term>:** an automatic rule that halts the experiment and rolls back the fault when a guard metric crosses a threshold, for example "checkout success below 99% for 60 seconds". AWS FIS implements this by attaching CloudWatch alarms to an experiment.
+
+### Worked example: the experiment that became the outage
+
+An illustrative story of what skipping these controls looks like. A team wants to test how services cope with a slow authentication service, which every request calls. They inject **800 ms** of latency into auth, for **all** traffic, with no control group and no stop condition, at 17:30 on a Friday.
+
+| Time | Event |
+|---|---|
+| t = 0 | Latency injected into every auth call |
+| t = 20 s | Callers with 500 ms auth timeouts start failing every request; callers with no timeout start holding threads |
+| t = 60 s | Clients retry failed logins three times each; auth's request rate quadruples and its real latency climbs past the injected 800 ms |
+| t = 3 min | Site-wide login and checkout errors; the on-call engineer for another team is paged and does not know an experiment is running |
+| t = 9 min | Someone remembers the experiment; the person who started it has gone home and the tool's kill switch needs their credentials |
+| t = 14 min | Fault removed; retry storm takes a further 6 minutes to drain |
+
+Everything here was predictable: a 1% slice with a control group, a stop condition on login success, an announcement to on-call, and a kill switch any responder can use would have turned it into a cheap, useful finding ("several callers have no auth timeout").
+
+### Prerequisites, and when not to do it
+
+Chaos engineering assumes you can **see** the steady state (good metrics and dashboards), can **stop** the experiment quickly and have **already fixed** the failures you know about. If you know that losing the primary database takes the site down, you do not need an experiment to prove it; you need to fix it. The common progression is to start in a test environment, run a first production experiment at tiny scale, then automate.
+
+Be clear about what chaos engineering does **not** do. It does not make a system resilient by itself; the fixes do. It cannot prove the absence of weaknesses, only test the specific faults you chose, so rare combinations (two zones failing, a fault during a deploy) stay untested unless you design for them. And it does not test logical failures well: injecting a bad data migration or a corrupted backup is usually a disaster-recovery drill, not a fault injection.
+
+## The steady-state hypothesis
+
+<DepthStamp depth="deep" />
+
+The <Term slug="steady-state-hypothesis">steady-state hypothesis</Term> is the precise, measurable claim an experiment tries to disprove: "when fault X happens, metric M stays within bounds B". It has three parts.
+
+1. **A steady-state metric** that reflects user value and moves quickly. Netflix uses stream starts per second (SPS): it has a strong daily pattern, so deviations stand out, and when it drops, customers are unhappy. An online shop might use successful checkouts per minute; a payments API, authorisation success rate and p99 latency.
+2. **A fault** described exactly: which component, what failure, how much, for how long.
+3. **A tolerance:** how far the metric may move before the hypothesis is rejected. Without a number, any result can be argued to be fine.
+
+### Control versus experiment
+
+Comparing the metric before and after the fault is weak, because traffic changes minute to minute. Stronger: split traffic into a **control** group and an **experiment** group of equal size at the same time, inject the fault only into the experiment group and compare the two. Any difference is caused by the fault, not by the time of day.
+
+<Figure caption="FIG. 15.1 · A CHAOS EXPERIMENT · HYPOTHESIS, FAULT, COMPARE, STOP">
+  <Diagram label="Define the steady state and hypothesis, split a small slice of traffic into control and experiment groups, inject the fault into the experiment group only, then compare. If a stop condition fires, roll back. If the metric holds, confidence rises and the blast radius can grow. If it deviates, record a weakness and fix it." chart={`flowchart TD
+    A[Define steady-state metric and tolerance] --> B[Write hypothesis: under fault X, metric stays within bounds]
+    B --> C[Route 1 percent to control, 1 percent to experiment]
+    C --> D[Inject fault into experiment group only]
+    D --> E{Stop condition fired?}
+    E -->|yes| F[Roll back fault immediately]
+    E -->|no| G{Experiment differs from control beyond tolerance?}
+    G -->|no| H[Hypothesis holds: grow blast radius, automate]
+    G -->|yes| I[Weakness found: roll back, file fix, rerun after fix]
+    F --> I`} />
+</Figure>
+
+*The experiment ends in one of two useful outcomes: more confidence, or a weakness found before it caused an outage.*
+
+### Worked example: losing one cache node
+
+A product service handles **50,000 requests a second** and depends on a 6-node cache cluster. The team believes their client library notices a dead node and redistributes its keys within seconds. (This example is illustrative; the numbers are chosen to show the method.)
+
+**Hypothesis:** "If one cache node is terminated, the request success rate of the experiment group stays within 0.5 percentage points of the control group, and p99 latency stays below 400 ms."
+
+**Setup:** 1% of traffic (500 requests a second) to each group. The experiment group uses its own small set of app instances whose cache client is pointed at a cluster where one node will be killed. **Stop condition:** experiment success rate below 98% for 30 seconds.
+
+| Time | Event | Control success | Experiment success | Experiment p99 |
+|---|---|---|---|---|
+| t = 0 s | Both groups healthy | 99.8% | 99.8% | 180 ms |
+| t = 60 s | One cache node terminated | 99.8% | 99.7% | 1,900 ms |
+| t = 75 s | Clients still sending a sixth of requests to the dead node, each waiting for a 2 s connect timeout | 99.8% | 99.1% | 2,050 ms |
+| t = 90 s | Thread pools filling with stalled cache calls; timeouts begin | 99.8% | 98.6% | 2,100 ms |
+| t = 105 s | Stop condition (success under 98% for 30 s) has not fired, but the p99 bound is long broken; experimenter rolls back by hand | 99.8% | 98.4% | 2,100 ms |
+| t = 120 s | Node restored; experiment group recovers | 99.8% | 99.8% | 190 ms |
+
+At 500 requests a second, the 60 seconds of fault cost the experiment group at most 500 × 60 × (0.998 − 0.984) ≈ 420 extra failed requests, a small price compared with discovering the same behaviour across 100% of traffic during a real node failure. **Hypothesis rejected.** The investigation found the client library refreshed its node list only every 60 seconds and had a 2-second connect timeout. Fixes: shorten the connect timeout to 50 ms, mark a node down after three consecutive failures, and add a bulkhead around cache calls. The team reran the experiment after the fix, saw the p99 stay under 300 ms, and added it to a weekly automated schedule.
+
+Note the second lesson in the table: the stop condition was on success rate, but the first metric to break was latency. Good stop conditions guard every bound in the hypothesis, not just one.
+
+### Choosing faults
+
+| Fault | Real-world event it imitates | What it often reveals |
+|---|---|---|
+| Terminate an instance or container | Hardware failure, spot reclaim, OOM kill | Slow health checks, sticky sessions, warm-up gaps |
+| Add latency to a dependency | Overloaded downstream, noisy neighbour | Missing timeouts, unbounded pools, retry storms |
+| Return errors from a dependency | Bad deploy downstream | Missing fallbacks, breakers that never open |
+| Drop or partition network traffic | Network partition, misconfigured firewall | Split brain, hung connections without keepalive |
+| Fill a disk or exhaust memory | Log growth, leaks | Crash loops, missing alerts |
+| Skew a clock | NTP failure | Expired tokens, wrong ordering, lease bugs |
+| Evacuate a zone or region | Zone or region outage | Capacity shortfalls, hidden cross-region dependencies |
+
+## Game days
+
+<DepthStamp depth="awareness" />
+
+A <Term slug="game-day">game day</Term> is a scheduled exercise in which a team deliberately triggers a failure scenario, often a large one, and practises responding to it together. Where an automated chaos experiment tests the **software**, a game day also tests the **people and processes**: does the alert fire and page the right person, does the runbook work, does the incident commander know who to call, do status updates go out, does the failover in the disaster-recovery plan actually achieve its RTO?
+
+The practice is commonly associated with Amazon, where Jesse Robbins ran GameDay exercises, and Google runs a long-standing company-wide Disaster Recovery Testing (DiRT) programme. AWS's Well-Architected Framework recommends regular game days. A typical one looks like this:
+
+- **Before:** pick a scenario and a hypothesis ("if the payments database primary fails, we fail over within 10 minutes with no lost authorisations"), agree the blast radius and stop conditions, and tell support and stakeholders.
+- **Roles:** a facilitator who injects the failure and keeps time, responders who handle it as they would a real incident (ideally without knowing every detail in advance), and observers who write down what happened, when, and what was confusing.
+- **During:** run the scenario, treat it like a real incident, stop it if real users are harmed beyond the agreed bounds.
+- **After:** a blameless review that produces concrete fixes with owners, then rerun the scenario once they land.
+
+A lighter version needs no production fault at all. Google's SRE book describes the **Wheel of Misfortune**, a role-play in which an experienced engineer walks a newer on-call engineer through a past incident, revealing what the dashboards "show" as they ask questions. Tabletop exercises like this are a cheap first step and a good way to train on-call staff before running real faults.
+
+### What game days do not replace
+
+A game day once a quarter is a snapshot. It does not catch the regression shipped the week after, which is why the principles call for automated, continuous experiments as well. And it does not replace basic engineering: if the game day finds a missing timeout, the fix is the timeout, not another game day.
+
+<TradeoffBox title="Chaos engineering" items={[
+  { gain: "Finds weaknesses on your schedule, with engineers watching, at a tiny blast radius", cost: "Real, if small, user impact during experiments; needs leadership buy-in" },
+  { gain: "Production experiments reveal what staging cannot (real traffic, data and configuration)", cost: "Requires strong observability and reliable stop conditions before the first run" },
+  { gain: "Control versus experiment comparison isolates the fault's true effect", cost: "Needs traffic-routing infrastructure to split and steer a small slice" },
+  { gain: "Automated, continuous experiments catch regressions as the system drifts", cost: "Engineering time to build, maintain and act on findings" },
+  { gain: "Game days train people and test runbooks, paging and communication", cost: "Hours of many engineers' time; scenarios must be refreshed to stay useful" }
+]} />
+
+<NotWhenBox title="When not to run a chaos experiment" items={[
+  "You already know the system will fail under that fault: fix it first; an experiment proves nothing new.",
+  "You cannot observe the steady state or stop the experiment quickly: build the metrics and kill switch first.",
+  "During an active incident, a freeze or peak season: the system is already under stress and responders are busy.",
+  "The team has no capacity to act on findings: experiments without follow-through are just self-inflicted outages."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Chaos engineering means randomly breaking production to see what happens." right="It is a controlled experiment: a steady-state hypothesis, a small blast radius, a control group and stop conditions. Randomness is optional; control is not." />
+
+<Misconception wrong="We should start with region-wide failures to get the most value." right="Start with the smallest fault that tests a real hypothesis, at the smallest blast radius, then expand. Large first experiments are how chaos engineering causes outages." />
+
+<Misconception wrong="If the experiment caused errors, it failed." right="An experiment that rejects its hypothesis has succeeded: it found a weakness at 1% of traffic during working hours instead of 100% at 3 a.m." />
+
+<Misconception wrong="Chaos engineering only works at Netflix scale." right="The method needs a measurable steady state and a way to stop, not a huge fleet. A small team can run a game day or inject latency with Toxiproxy in a test environment." />
+
+## Interview angle
+
+<InterviewAngle title="Chaos engineering" questions={[
+  "How would you convince yourself that your checkout service really survives losing an availability zone?",
+  "What would your steady-state metric be for this system, and why not CPU?",
+  "How do you run a chaos experiment in production without causing an outage?",
+  "Your experiment caused a 2% error spike in the experiment group. What do you do next?",
+  "How is a game day different from an automated chaos experiment?"
+]}>
+Chaos engineering usually comes up at the end of a reliability discussion: "you've added retries, breakers and failover; how do you know they work?" A strong answer names a business-level steady-state metric, writes a falsifiable hypothesis with a tolerance, describes the blast radius (a small traffic slice, control versus experiment groups), lists stop conditions on every bound, and says what happens to findings. On the fourth question, the strong answer is that the stop condition should already have rolled the fault back; then compare with the control group to confirm causation, find the mechanism, fix it, and rerun the same experiment to prove the fix before widening the blast radius. Mention that experiments become continuous once they pass, because systems drift.
+</InterviewAngle>
+
+## Practice
+
+1. Write a steady-state hypothesis, blast radius and two stop conditions for this experiment: add 500 ms of latency to every call from an order service to its tax-calculation dependency.
+2. With 1% of 20,000 requests a second in each of the control and experiment groups, and baseline success of 99.9%, how many extra failures would a 10-minute experiment cause if experiment success fell to 99.0%?
+3. Plan a 2-hour game day for the disaster-recovery failover of one service: scenario, roles, what the observers record, and what counts as success.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

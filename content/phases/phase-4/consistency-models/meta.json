@@ -1,0 +1,20 @@
+{
+  "id": "p4-consistency-models",
+  "phase": 4,
+  "slug": "consistency-models",
+  "title": "Consistency Models",
+  "order": 2,
+  "week": 9,
+  "estimatedMinutes": 65,
+  "topics": [
+    { "id": "linearizability", "title": "Linearizability", "depth": "deep" },
+    { "id": "sequential", "title": "Sequential consistency", "depth": "awareness" },
+    { "id": "causal", "title": "Causal consistency", "depth": "deep" },
+    { "id": "eventual", "title": "Eventual consistency", "depth": "deep" },
+    { "id": "session-guarantees", "title": "Session guarantees", "depth": "deep" },
+    { "id": "choosing-a-model", "title": "Choosing a model in real products", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["cap"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p4-cap-pacelc", "p2-replication"]
+}

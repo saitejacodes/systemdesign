@@ -1,0 +1,8 @@
+[
+  { "id": "disaster-recovery-c1", "text": "I can define RPO and RTO, convert them into lost orders or revenue for a given system, and explain why each system gets its own targets.", "topicId": "rpo-rto" },
+  { "id": "disaster-recovery-c2", "text": "I can estimate a restore's real RTO from data size, restore throughput and log replay time, and spot when a documented RTO is fiction.", "topicId": "rpo-rto" },
+  { "id": "disaster-recovery-c3", "text": "I can design a backup scheme with point-in-time recovery, 3-2-1 placement, immutability and retention long enough to catch slow corruption.", "topicId": "backup-strategies" },
+  { "id": "disaster-recovery-c4", "text": "I can explain, threat by threat, what replication protects against and what only a backup or delayed replica can recover.", "topicId": "backup-vs-replication" },
+  { "id": "disaster-recovery-c5", "text": "I can choose between backup and restore, pilot light, warm standby and active-active for a system and state what each tier does not cover.", "topicId": "dr-tiers" },
+  { "id": "disaster-recovery-c6", "text": "I can plan a failover drill that exercises fencing, DNS, hidden dependencies, capacity and failback, and records the measured RTO.", "topicId": "failover-practice" }
+]

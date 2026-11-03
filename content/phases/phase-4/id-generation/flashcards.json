@@ -1,0 +1,19 @@
+[
+  { "id": "id-generation-f1", "front": "UUIDv4 layout?", "back": "128 bits: 122 random, 6 fixed for version and variant.", "topicId": "uuid" },
+  { "id": "id-generation-f2", "front": "UUIDv7 layout (RFC 9562)?", "back": "48-bit Unix ms timestamp first, then version bits and 74 bits of randomness (optionally partly a counter). Sorts by creation time.", "topicId": "uuid" },
+  { "id": "id-generation-f3", "front": "How many UUIDv4s for a 50% chance of one collision?", "back": "About √(2 · ln 2 · 2^122) ≈ 2.7 × 10^18, about 86 years at a billion a second.", "topicId": "uuid" },
+  { "id": "id-generation-f4", "front": "Why do random UUID keys slow B-tree inserts at scale?", "back": "Each insert hits a random leaf page: cold reads from disk once the index outgrows memory, plus page splits and half-empty pages.", "topicId": "uuid" },
+  { "id": "id-generation-f5", "front": "Store a UUID as?", "back": "A native 16-byte type (uuid, BINARY(16)), never a 36-character string.", "topicId": "uuid" },
+  { "id": "id-generation-f6", "front": "Four problems with auto-increment at scale?", "back": "Breaks under sharding, ID only exists after insert, leaks volume, has gaps by design.", "topicId": "auto-increment" },
+  { "id": "id-generation-f7", "front": "Why do sequences have gaps?", "back": "They are non-transactional: a rolled-back insert still consumes its number.", "topicId": "auto-increment" },
+  { "id": "id-generation-f8", "front": "Flickr's ticket servers?", "back": "Two MySQL servers bumping an auto-increment, one issuing odd and one even IDs; clients alternate.", "topicId": "ticket-servers" },
+  { "id": "id-generation-f9", "front": "Range allocation (hi/lo)?", "back": "Each app server takes a block of IDs (say 1,000) and hands them out from memory. Fewer round trips; gaps on restart.", "topicId": "ticket-servers" },
+  { "id": "id-generation-f10", "front": "Snowflake bit layout?", "back": "1 sign bit, 41 bits ms since custom epoch, 10 bits machine ID, 12 bits sequence.", "topicId": "snowflake" },
+  { "id": "id-generation-f11", "front": "Snowflake capacity?", "back": "4,096 IDs per ms per machine (about 4.1 million/s), 1,024 machines, 2^41 ms ≈ 69.7 years.", "topicId": "snowflake" },
+  { "id": "id-generation-f12", "front": "Why a custom epoch?", "back": "41 bits of ms last about 69.7 years; counting from 1970 would waste decades already spent.", "topicId": "snowflake" },
+  { "id": "id-generation-f13", "front": "Clock goes backwards under Snowflake: defences?", "back": "Track last timestamp; wait for small jumps, refuse and alert on big ones, or use max(now, last). Configure NTP to slew, not step.", "topicId": "snowflake" },
+  { "id": "id-generation-f14", "front": "How do containers get unique machine IDs?", "back": "Claim one through a lease (etcd, ZooKeeper, a DB row); stop generating if the lease is lost.", "topicId": "snowflake" },
+  { "id": "id-generation-f15", "front": "K-sortable?", "back": "Roughly ordered by creation time; IDs from different machines within a small window may be out of order.", "topicId": "sortability" },
+  { "id": "id-generation-f16", "front": "Where do time-ordered keys hurt?", "back": "Range-partitioned stores (Spanner, Bigtable, HBase): every insert hits the newest range's server.", "topicId": "sortability" },
+  { "id": "id-generation-f17", "front": "Snowflake IDs in JSON?", "back": "Send as strings: JavaScript numbers are exact only to 2^53 − 1.", "topicId": "sortability" }
+]

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "kleppmann-locking",
+    "title": "How to do distributed locking",
+    "author": "Martin Kleppmann",
+    "kind": "blog",
+    "url": "https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html",
+    "why": "The GC-pause race, fencing tokens, the efficiency-vs-correctness framing and the critique of Redlock's timing assumptions.",
+    "topicIds": ["why-locks", "leases", "fencing", "redis-locks"],
+    "free": true
+  },
+  {
+    "id": "antirez-redlock",
+    "title": "Is Redlock safe?",
+    "author": "Salvatore Sanfilippo (antirez)",
+    "kind": "blog",
+    "url": "http://antirez.com/news/101",
+    "why": "The Redis author's point-by-point reply; read it right after Kleppmann's post to see both sides.",
+    "topicIds": ["redis-locks"],
+    "free": true
+  },
+  {
+    "id": "zookeeper-recipes",
+    "title": "ZooKeeper Recipes and Solutions",
+    "author": "Apache ZooKeeper",
+    "kind": "docs",
+    "url": "https://zookeeper.apache.org/doc/current/recipes.html",
+    "why": "The official lock recipe with ephemeral sequential nodes and the predecessor-watch trick that avoids the herd effect.",
+    "topicIds": ["coordination-locks"],
+    "free": true
+  },
+  {
+    "id": "chubby-paper",
+    "title": "The Chubby lock service for loosely-coupled distributed systems",
+    "author": "Mike Burrows (OSDI 2006)",
+    "kind": "paper",
+    "url": "https://research.google/pubs/the-chubby-lock-service-for-loosely-coupled-distributed-systems/",
+    "why": "Google's lock service: coarse-grained locks, sequencers (fencing) and lock-delay, with lessons from running it in production.",
+    "topicIds": ["fencing", "coordination-locks", "leases"],
+    "free": true
+  }
+]

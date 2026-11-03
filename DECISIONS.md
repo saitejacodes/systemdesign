@@ -104,3 +104,10 @@
 - The mass-expiry and flush challenges use a read-only workload. With writes, delete-on-write keeps re-filling the hot keys at random times, which hides the synchronised expiry the challenge is about.
 - Missing-id lookups draw from 1,000 fixed absent ids, not unbounded random ones, so caching "not found" has repeats to catch. Truly random ids need a Bloom filter, which the lesson covers and the sim does not.
 - Agents' choices kept as reported: Redis HyperLogLog uses 1,024 registers; message-queue commit-after is periodic (1 s) like Kafka auto-commit; the outbox's 1,000-order run uses a `maxOrders` config key that stays set after the challenge (same as `crashAt` in replication).
+
+## Prompt 12
+- Written by five parallel subagents (three sections each) from one shared brief, with a raised quality bar sent mid-run at the user's request (primary sources, failure timelines, worked arithmetic, staff-level judgement). Each agent wrote only its own section folders and its own glossary file; the 106 terms merged with no slug collisions. All five were interrupted once by the usage limit and resumed from their saved transcripts.
+- Review: all 51 resource URLs fetched (all live); every lesson's Mermaid diagrams rendered in the browser; distributed-locks read in full; vendor facts the agents flagged as from memory were checked (etcd election timeout, Cassandra hint window and gc_grace_seconds, DynamoDB read units, S3 strong consistency, Resilience4j and Envoy outlier-detection defaults, ntpd's 128 ms step threshold, Spanner's 1–7 ms ε, PostgreSQL 18 uuidv7(), RDS Multi-AZ failover time).
+- consistency-models had no diagram; a strength-ladder figure was added here.
+- Quizzes were held to the rebalance standard from the start (quizcheck passes for all 15).
+- Phase 4 has no case study yet, so practiceCaseStudyIds is empty; distributed-locks and chaos-engineering have no simulator in the spec.

@@ -1,0 +1,19 @@
+{
+  "id": "p4-id-generation",
+  "phase": 4,
+  "slug": "id-generation",
+  "title": "Unique ID Generation",
+  "order": 7,
+  "week": 9,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "uuid", "title": "UUIDv4 vs UUIDv7", "depth": "deep" },
+    { "id": "auto-increment", "title": "Database auto-increment", "depth": "tradeoffs" },
+    { "id": "ticket-servers", "title": "Ticket servers and range allocation", "depth": "tradeoffs" },
+    { "id": "snowflake", "title": "Snowflake IDs: bit layout and clock skew", "depth": "deep" },
+    { "id": "sortability", "title": "Sortability tradeoffs", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["snowflake"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p2-indexing", "p2-sharding", "p4-time-ordering"]
+}

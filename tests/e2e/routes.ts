@@ -9,6 +9,8 @@ export const ROUTES = [
   ...["/phase/2/rest", "/phase/2/graphql", "/phase/2/grpc", "/phase/2/api-gateway", "/phase/2/rate-limiting", "/phase/2/idempotency", "/phase/2/sql-vs-nosql", "/phase/2/data-modeling", "/phase/2/indexing", "/phase/2/transactions", "/phase/2/locking", "/phase/2/replication", "/phase/2/sharding", "/phase/2/consistent-hashing", "/phase/2/connection-pooling", "/phase/2/object-storage", "/phase/2/search", "/phase/2/olap-vs-oltp"],
   "/phase/3",
   ...["/phase/3/cache-layers", "/phase/3/cache-strategies", "/phase/3/eviction", "/phase/3/invalidation", "/phase/3/cache-failures", "/phase/3/cdn", "/phase/3/redis", "/phase/3/queues-vs-pubsub", "/phase/3/delivery-semantics", "/phase/3/partitioning-ordering", "/phase/3/failure-handling", "/phase/3/event-driven", "/phase/3/kafka-vs-queues"],
+  "/phase/4",
+  ...["/phase/4/cap-pacelc", "/phase/4/consistency-models", "/phase/4/quorums", "/phase/4/consensus", "/phase/4/time-ordering", "/phase/4/distributed-transactions", "/phase/4/id-generation", "/phase/4/distributed-locks", "/phase/4/high-availability", "/phase/4/fault-tolerance", "/phase/4/timeouts-retries", "/phase/4/circuit-breakers", "/phase/4/bulkheads-load-shedding", "/phase/4/disaster-recovery", "/phase/4/chaos-engineering"],
   "/simulators",
   "/simulators/single-server-queue",
   "/simulators/estimation-calculator",

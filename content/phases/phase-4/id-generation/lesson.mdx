@@ -1,0 +1,213 @@
+## Why it matters
+
+On a single database, IDs are a solved problem: the database hands out 1, 2, 3 and nobody thinks about it again. The moment you shard that database, run writes in two regions, or want to create an object before it reaches the database at all (an offline mobile app, an event published to a queue), "who hands out the next number?" becomes a distributed systems question. The answer shapes your index performance, your shard balance, what your URLs leak to competitors and whether a clock jumping backwards can mint a duplicate. Twitter built Snowflake in 2010 when moving off MySQL left it without a central counter for tweet IDs; Instagram published its own Snowflake-style scheme in 2012, generated inside PostgreSQL shards; and in 2024 the IETF standardised UUIDv7 (RFC 9562) because so many teams had reinvented time-ordered UUIDs. This section covers the main ways to generate IDs and the one tradeoff that runs through all of them: sortable or scattered.
+
+<Callout type="analogy" title="Naming babies in a hospital with no front desk">
+A hospital with one front desk stamps every newborn with the next number from a roll: simple, until the desk has a queue and the hospital opens a second building (auto-increment). You could hand each building its own roll, odd numbers here, even numbers there (ticket servers). You could let every nurse pick a name by rolling dice 37 times, so two babies sharing a name is less likely than the hospital being hit by a meteor, but the birth register is now in random order (UUIDv4). Or every nurse writes "date and time of birth, ward number, Nth baby this minute": nobody needs to talk to anybody, the register is sorted by time for free, and everything works beautifully until one ward's clock gets set back an hour and two babies get the same name (Snowflake and clock skew).
+
+Where the analogy breaks down: real nurses would notice a duplicate name; an ID generator never does. Nothing downstream checks, so a duplicate ID surfaces later as a failed insert, or worse, as two objects silently sharing a key.
+</Callout>
+
+What a good ID needs, in rough priority order: **unique** (never collide, even across machines and restarts), **available** (minting one never waits on a single box that might be down), **compact** (8 bytes is cheaper than 16, which is cheaper than a 36-character string, in every index and foreign key), and, depending on the use, **sortable by time** or deliberately **unguessable**. No scheme maximises all of these at once.
+
+## UUIDv4 vs UUIDv7
+
+<DepthStamp depth="deep" />
+
+A <Term slug="uuid">UUID</Term> (universally unique identifier) is a 128-bit value, usually written as 36 characters of hex and dashes, such as `550e8400-e29b-41d4-a716-446655440000`. Its selling point is that any machine can create one with no coordination at all. Of the 128 bits, a few are fixed to say which **version** of UUID it is; the version decides how the rest are filled.
+
+**UUIDv4** fills 122 bits with random data. Collisions are possible in principle but negligible in practice. The birthday bound says that among *n* random values drawn from *N* possibilities, the chance of a 50% collision arrives at about *n* = √(2 · ln 2 · *N*). With *N* = 2<sup>122</sup> ≈ 5.3 × 10<sup>36</sup>, that is √(1.386 × 5.3 × 10<sup>36</sup>) ≈ **2.7 × 10<sup>18</sup>** UUIDs. At a billion IDs per second, reaching that takes 2.7 × 10<sup>9</sup> seconds, roughly **86 years** of nonstop generation. For a more realistic system minting 10<sup>12</sup> IDs in its whole life, the collision probability is about *n*²/2*N* ≈ 10<sup>−13</sup>. The real risk is not the maths but a bad random number generator, such as a cloned VM image that restarts with the same seed, so use the operating system's cryptographic random source.
+
+The problem with v4 is **where new rows land in an index**. A database primary key is usually a <Term slug="b-tree">B-tree</Term>, and in MySQL's InnoDB the table itself is stored in primary-key order. Sequential keys always insert at the right-hand edge: the same few pages stay hot in memory and fill up neatly. Random keys insert into a random leaf page every time. Once the index is bigger than memory, most inserts need to read a cold page from disk first, and full pages are split in half (a <Term slug="page-split">page split</Term>), leaving the tree full of half-empty pages. The result is more I/O, a bigger index and worse cache hit rates as the table grows.
+
+<Term slug="uuidv7">UUIDv7</Term>, defined in RFC 9562 (May 2024), keeps the 128-bit UUID format but puts a **48-bit Unix timestamp in milliseconds** in the most significant bits, followed by the version bits and **74 bits of randomness** (the RFC also allows some of those bits to be used as a counter for ordering within one millisecond). Because the time comes first, v7 UUIDs created later sort later, so inserts land near the right edge of the B-tree just like an auto-increment, while any machine can still mint them independently. PostgreSQL 18 added a built-in `uuidv7()` function; most languages have libraries.
+
+| Property | UUIDv4 | UUIDv7 |
+|---|---|---|
+| Size | 16 bytes | 16 bytes |
+| Random bits | 122 | 74 (shared by every ID in the same millisecond) |
+| Sort order | Random | By creation time (millisecond precision) |
+| B-tree inserts | Scattered across the whole index | Clustered at the right edge |
+| Reveals creation time | No | Yes, to the millisecond |
+| Coordination needed | None | None (just a reasonable clock) |
+
+Two practical notes. Store UUIDs in a native 16-byte type (`uuid` in PostgreSQL, `BINARY(16)` in MySQL), not as a 36-character string, which more than doubles the key and every index and foreign key that copies it. And remember that "unguessable" and "unique" are different jobs: RFC 9562 itself advises against treating UUIDs as security capabilities. A v7 tells anyone who sees it when the object was created; if that matters, or if the ID is acting as a secret (a password-reset link), use a dedicated random token.
+
+## Database auto-increment
+
+<DepthStamp depth="tradeoffs" />
+
+An <Term slug="auto-increment">auto-increment</Term> key is the integer counter a database assigns on insert: `AUTO_INCREMENT` in MySQL, `SERIAL` or `GENERATED ... AS IDENTITY` (backed by a sequence) in PostgreSQL. It is small (8 bytes for a `BIGINT`), perfectly ordered on one node, and human-friendly in logs.
+
+Its limits all come from having **one counter in one place**:
+
+- **It does not survive sharding.** Two shards that each count from 1 both produce order 1. You can give each shard a different offset and step (MySQL's `auto_increment_increment` and `auto_increment_offset`, for example step 2 with offsets 1 and 2), but adding a shard later means re-planning the arithmetic.
+- **The ID does not exist until the insert happens.** A client can't create an order, an event and its line items offline and send them together with their IDs already set.
+- **It leaks business data.** If your order IDs go from 1,040,000 to 1,052,000 in a week, a competitor placing one order on each Monday now knows your weekly volume. (During World War II, Allied statisticians famously estimated German tank production from serial numbers; it is still called the German tank problem.)
+- **Gaps are normal.** Sequences are not transactional: a rolled-back insert still consumes its number. Never build logic that assumes consecutive IDs.
+
+For a single-node database that will stay single-node, auto-increment is still the right default. The rest of this section is about what to do when it isn't.
+
+## Ticket servers and range allocation
+
+<DepthStamp depth="tradeoffs" />
+
+A <Term slug="ticket-server">ticket server</Term> keeps auto-increment's small, ordered integers but moves the counter into a dedicated service that every shard asks for IDs. Flickr described its version in 2010: a tiny MySQL table whose only job is to bump an auto-increment value (`REPLACE INTO Tickets64 (stub) VALUES ('a'); SELECT LAST_INSERT_ID();`). To avoid one ticket server being a <Term slug="single-point-of-failure">single point of failure</Term>, Flickr ran **two**, one handing out odd numbers and one even, with clients alternating between them. If one dies, the other keeps issuing; the cost is that IDs are no longer strictly in creation order across the two.
+
+The obvious weakness is a network round trip per ID. The standard fix is **range allocation** (sometimes called the hi/lo pattern): each application server asks the ticket server for a **block** of IDs, say 1,000 at a time, and hands them out from memory.
+
+### Worked example: sizing the block
+
+An order service runs 40 application servers and creates 20,000 orders a second at peak, so each server uses about 500 IDs a second.
+
+- With **one round trip per ID**, the ticket server must handle 20,000 requests a second and every insert waits on it.
+- With **blocks of 1,000**, each server asks about every 2 seconds: **20 requests a second** in total. If the ticket server goes down, each server still has up to 2 seconds of IDs in hand; blocks of 100,000 would buy over three minutes.
+- The cost: when a server restarts, the unused part of its block is lost (gaps again), and IDs from different servers interleave, so ID order no longer equals creation order. Bigger blocks mean more resilience and bigger gaps.
+
+Ticket servers are a sensible choice when you want compact integers, can tolerate a small central dependency and don't need IDs to sort by time across servers.
+
+## Snowflake IDs: bit layout and clock skew
+
+<DepthStamp depth="deep" />
+
+A <Term slug="snowflake-id">Snowflake ID</Term> packs time, machine and a counter into a single 64-bit integer, so every machine can mint ordered IDs locally with no network call. Twitter's original layout:
+
+| Bits | Field | Meaning |
+|---|---|---|
+| 1 | Sign | Always 0, so the ID is a positive signed 64-bit integer |
+| 41 | Timestamp | Milliseconds since a custom **epoch** (Twitter's is in November 2010) |
+| 10 | Machine ID | Twitter split it into 5 bits of data centre and 5 of worker: up to 1,024 generators |
+| 12 | Sequence | Counter within one millisecond on one machine: 0 to 4,095 |
+
+<Figure caption="FIG. 7.1 · SNOWFLAKE GENERATION · ONE MILLISECOND AT A TIME">
+  <Diagram label="Flowchart of Snowflake generation: read the clock; if it went backwards, wait or refuse; if it is the same millisecond, increment the sequence and wait for the next millisecond on overflow; otherwise reset the sequence; then assemble the ID from timestamp, machine ID and sequence." chart={`flowchart TD
+    A[Read current time in ms] --> B{now less than last timestamp?}
+    B -- yes, clock went back --> C[Wait until clock catches up or refuse and alert]
+    C --> A
+    B -- no --> D{now equals last timestamp?}
+    D -- yes --> E[sequence = sequence + 1]
+    E --> F{sequence over 4095?}
+    F -- yes --> G[Spin until next millisecond]
+    G --> A
+    F -- no --> H[Assemble: time bits, machine bits, sequence bits]
+    D -- no --> I[sequence = 0]
+    I --> H
+    H --> J[last timestamp = now, return ID]`} />
+</Figure>
+
+*Snowflake generation: the only shared input is the wall clock, which is exactly where things go wrong.*
+
+### Worked example: what the bits buy
+
+- **Lifetime:** 2<sup>41</sup> milliseconds is about **69.7 years**. Counting from Twitter's November 2010 epoch, the timestamp runs out around 2080. Choosing your own epoch (the day your system launches) rather than 1970 is what makes 41 bits last; Discord, for example, counts from the first moment of 2015.
+- **Throughput per machine:** 4,096 IDs per millisecond is about **4.1 million IDs a second** per generator. If a burst exceeds 4,096 in one millisecond, the generator waits for the next millisecond.
+- **Rebalancing the bits:** if you need 4,000 generators but only 50,000 IDs a second each, take bits from the sequence: 12 machine bits (4,096 machines) and 10 sequence bits (1,024 per millisecond, about a million a second) still fit in 64.
+- **Size:** 8 bytes, the same as a `BIGINT`, half a UUID.
+
+Instagram's 2012 variant used the same idea with different widths, as its engineering blog described: 41 bits of milliseconds, 13 bits of logical shard ID and 10 bits of per-shard sequence, generated by a PL/pgSQL function inside each PostgreSQL shard. Putting the shard in the ID also means you can route a lookup to the right shard from the ID alone.
+
+### Assigning machine IDs
+
+Uniqueness depends entirely on no two live generators sharing a machine ID. Static config works for a fixed fleet; with <Term slug="autoscaling">autoscaling</Term> containers you need an allocator. Twitter's Snowflake used ZooKeeper to coordinate worker IDs; a common modern pattern is to claim a machine ID through a lease in etcd, ZooKeeper or a database row, and stop generating if the lease is lost.
+
+### Clock skew handling
+
+Snowflake trusts the local wall clock, and wall clocks move. NTP can **step** a clock backwards after it has drifted ahead, a VM can resume from a pause with a stale clock, and an operator can fix the time by hand. If the clock goes back and the generator simply trusts it, it re-issues IDs it already issued. Here is that failure step by step, on machine 7 with a naive generator:
+
+| Wall clock (ms) | Event | Timestamp field | Sequence | ID issued |
+|---|---|---|---|---|
+| 1,000 | Request A | 1,000 | 0 | (1,000, 7, 0) |
+| 1,000 | Request B, same millisecond | 1,000 | 1 | (1,000, 7, 1) |
+| 1,001 | NTP steps the clock back 2 ms to 999 | | | |
+| 999 | Request C: new millisecond, sequence resets | 999 | 0 | (999, 7, 0), out of order but unique |
+| 1,000 | Request D: clock reaches 1,000 again, sequence resets | 1,000 | 0 | **(1,000, 7, 0): duplicate of A** |
+
+Nothing in the generator noticed. The duplicate shows up only when the insert of D fails with a primary-key violation, or, in a store without a uniqueness check, when D silently overwrites A. Common responses, from simplest to most elaborate:
+
+1. **Refuse.** Twitter's original Snowflake refused to generate IDs (returning an error) while the clock was behind the last timestamp it had used. Correct, but a stalled generator is an outage for that machine.
+2. **Wait it out** if the jump is small (say under 10 ms), then refuse and alert for anything bigger.
+3. **Never go backwards:** use `max(now, last timestamp)` and keep incrementing the sequence, borrowing from the future until real time catches up. This stays unique, but IDs drift ahead of real time.
+4. **Keep the clock monotonic in the first place:** configure NTP to slew (adjust the clock rate gradually) rather than step, and alert on large offsets.
+
+Also persist or re-derive the last timestamp across restarts: a generator that restarts with a clock that went backwards while it was down has no in-memory "last timestamp" to compare against. A short wait on startup is a cheap guard.
+
+## Sortability tradeoffs
+
+<DepthStamp depth="tradeoffs" />
+
+A <Term slug="k-sortable">k-sortable</Term> ID is one that is roughly ordered by creation time: sorting by ID gives creation order, except that IDs made within a small window on different machines may come out of order. Snowflake IDs, UUIDv7, ULIDs (48-bit millisecond timestamp plus 80 random bits, written as 26 characters) and Segment's KSUIDs (a seconds timestamp plus 128 random bits) are all k-sortable. None is strictly ordered across machines, because their clocks are never perfectly in sync.
+
+Sortable IDs give you real benefits:
+
+- **Index locality** on single-node B-trees, as above.
+- **Cheap pagination and "newest first".** `WHERE id < :cursor ORDER BY id DESC LIMIT 50` uses the primary key directly, with no separate `created_at` index.
+- **Rough time from the ID alone**, handy in logs and debugging.
+
+They also cost you:
+
+- **They leak information.** Creation time, and with sequence numbers, rough volume.
+- **They create a hot spot in range-partitioned databases.** Systems that split data into contiguous key ranges, such as Google Cloud Spanner, Bigtable and HBase, send every new insert to whichever node owns the newest range. Spanner's documentation explicitly warns against monotonically increasing primary keys for this reason and suggests UUIDv4 or bit-reversed sequences instead. Hash-partitioned stores (DynamoDB, Cassandra) hash the <Term slug="partition-key">partition key</Term> first, so they don't care.
+- **"Roughly" is not "exactly".** Two events 1 ms apart on different machines can sort in either order. If you need a true order of events, you need a single sequencer or the logical clocks from the time-ordering section, not an ID scheme.
+
+### Choosing
+
+| Need | Good fit |
+|---|---|
+| Single database, internal IDs | Auto-increment `BIGINT` |
+| Sharded SQL, want compact ordered integers | Snowflake-style 64-bit IDs |
+| IDs created on clients or many services, B-tree storage | UUIDv7 |
+| Range-partitioned store (Spanner, Bigtable) or IDs must reveal nothing | UUIDv4 |
+| Small central dependency acceptable, want small integers | Ticket server with range allocation |
+
+One more gotcha: JavaScript numbers are 64-bit floats and lose precision above 2<sup>53</sup> − 1. Snowflake IDs exceed that, which is why Twitter's API added string `id_str` fields and Discord's API sends IDs as strings. Serialise 64-bit IDs as strings in JSON.
+
+<TradeoffBox title="ID generation tradeoffs" items={[
+  { gain: "Auto-increment: 8 bytes, perfectly ordered, zero effort", cost: "One counter in one place; breaks under sharding and leaks volume" },
+  { gain: "Ticket server with ranges: compact integers, few round trips", cost: "A central dependency; gaps and interleaving across servers" },
+  { gain: "UUIDv4: no coordination, reveals nothing", cost: "16 bytes; random inserts hurt B-tree locality as tables grow" },
+  { gain: "UUIDv7: no coordination and index-friendly", cost: "16 bytes; reveals creation time; hot spots in range-partitioned stores" },
+  { gain: "Snowflake: 8 bytes, ordered, millions per second per node", cost: "Needs unique machine IDs and careful clock handling" }
+]} />
+
+<NotWhenBox title="When not to reach for a distributed ID scheme" items={[
+  "A single database that will stay single: auto-increment is simpler and smaller.",
+  "Security tokens (reset links, API keys): use a dedicated random secret, not any ID.",
+  "Strict global event order: use a single sequencer or logical clocks; k-sortable IDs are only roughly ordered.",
+  "Monotonic keys in Spanner, Bigtable or HBase: they concentrate writes on one node."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="UUIDs are a bad primary key because they're slow." right="Random UUIDv4 keys hurt B-tree locality once the index outgrows memory. Time-ordered UUIDv7 inserts at the right edge like a sequence; the remaining cost is 16 bytes instead of 8." />
+
+<Misconception wrong="Snowflake IDs are globally ordered by time." right="They are k-sortable: ordered per machine, roughly ordered across machines. Clock differences between machines can reorder IDs created a few milliseconds apart." />
+
+<Misconception wrong="Auto-increment IDs are consecutive, so a gap means data loss." right="Sequences are not transactional. Rollbacks, failed inserts and cached sequence values all leave gaps by design." />
+
+## Interview angle
+
+<InterviewAngle title="ID generation" questions={[
+  "Design a unique ID generator for a sharded system creating 100,000 IDs a second.",
+  "Walk me through the bits of a Snowflake ID. How long does it last and how many IDs per second can one node make?",
+  "What happens if the clock on an ID generator goes backwards?",
+  "Why might UUIDv4 primary keys make inserts slower as a table grows? What would you use instead?",
+  "Your IDs need to be unguessable. Does that change your choice?"
+]}>
+This is a classic stand-alone question and a common sub-question inside larger designs (URL shorteners, chat, feeds). Start with requirements: uniqueness scope, throughput, whether IDs must be sortable, whether they're exposed publicly, and the size budget. Then compare two or three options rather than jumping to Snowflake. When you do pick Snowflake, give the bit layout with the arithmetic (2<sup>41</sup> ms is about 69 years; 2<sup>12</sup> is 4,096 per millisecond), explain machine-ID assignment, and handle clock skew explicitly. Mentioning the B-tree locality issue and the JavaScript 2<sup>53</sup> limit shows practical experience.
+
+The follow-up that separates candidates is "what if the clock goes backwards?" A weak answer is "use NTP". A strong one: NTP is *why* clocks go backwards (it steps them), so the generator remembers its last timestamp, waits out small regressions, refuses and alerts on large ones, and the fleet configures NTP to slew rather than step. The next follow-up is usually "and if two containers get the same machine ID?": machine IDs come from a lease, and a generator that loses its lease stops minting before anyone else can claim the ID.
+</InterviewAngle>
+
+## Practice
+
+1. Design a 64-bit layout for a system with up to 8,000 generator processes, each needing at most 200,000 IDs a second, that must last 50 years. Show the bit counts and check each requirement.
+2. A table has 2 billion rows. Estimate the raw size of the primary key alone with a `BIGINT`, a binary UUID and a UUID stored as a 36-character string. Then explain why the real difference is larger once secondary indexes and foreign keys are counted.
+3. Your Snowflake generators run on autoscaled containers. Describe how a new container gets a machine ID, what happens when it is killed, and how you prevent two live containers from ever sharing one.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

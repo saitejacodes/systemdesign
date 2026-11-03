@@ -1,0 +1,207 @@
+## Why it matters
+
+If every write must reach every replica, one slow disk stalls the whole system. If every write may reach just one, a read can easily miss it. Quorums are the dial between those extremes, and a surprising amount of production infrastructure is set by it. Amazon's 2007 Dynamo paper described a common configuration of three replicas where a write waits for two of them and a read asks two of them, and Cassandra, Riak and ScyllaDB inherited the same idea as per-request consistency levels. Majority quorums also sit underneath Raft, ZooKeeper and every leader election you will meet in the consensus section. Getting the arithmetic right tells you how many node failures you survive, what your tail latency is, and whether a read can miss an acknowledged write. Getting the edge cases right tells you why "R + W > N" is a much weaker promise than most people think.
+
+<Callout type="analogy" title="Three notaries and a will">
+You deposit copies of your will with three notaries (N = 3). To make a change, you must get at least two of them to stamp the new version (W = 2). Anyone who wants to read the will must ask at least two notaries (R = 2) and trust the newest date stamp they see. Because any two notaries out of three share at least one person, a reader always reaches someone holding the latest version. If one notary is on holiday when a new version arrives, the next reader who notices the stale copy tells them to update (read repair), and once a month all three compare folders page by page (anti-entropy). If two notaries are unreachable and you leave the new will with a stranger who promises to pass it on (a sloppy quorum with hinted handoff), the guarantee is gone: the next reader can ask the two original notaries and never see it.
+
+Where it breaks down: notaries compare dates written by a trustworthy clock. Real replicas compare version numbers or timestamps from clocks that drift, so "newest" is itself a judgement call when two writes race.
+</Callout>
+
+## N, R and W
+
+<DepthStamp depth="deep" />
+
+In <Term slug="leaderless-replication">leaderless replication</Term>, each key is stored on **N** replicas, its <Term slug="replication-factor">replication factor</Term>. A coordinator (the client library, or whichever node received the request) sends each write to all N replicas and reports success once **W** of them acknowledge it. It sends each read to the replicas and returns once **R** of them respond, picking the value with the newest version. A <Term slug="quorum">quorum</Term> is any set of replicas large enough to make a decision; here, W replicas for a write and R for a read.
+
+Three numbers fall straight out of the configuration:
+
+- **Failures tolerated.** Writes keep succeeding with up to N − W replicas down; reads with up to N − R down.
+- **Latency.** A write's latency is the time of the W-th fastest acknowledgement; a read's is the R-th fastest response. You wait for the slowest member of the quorum, not the slowest replica overall.
+- **Freshness.** Whether a read is guaranteed to overlap the latest write, which is the next topic.
+
+### Worked example: latency and availability for N = 3
+
+Three replicas answer a request in **2 ms, 5 ms and 40 ms** (the third is in a busy rack). Each replica is independently up 99% of the time.
+
+| Setting | Waits for | Latency | P(enough replicas up) | Survives |
+|---|---|---|---|---|
+| W = 1 or R = 1 | fastest | 2 ms | 1 − 0.01³ = 0.999999 | 2 failures |
+| W = 2 or R = 2 | second fastest | 5 ms | 0.99³ + 3 × 0.99² × 0.01 = 0.970299 + 0.029403 = **0.999702** | 1 failure |
+| W = 3 or R = 3 | slowest | 40 ms | 0.99³ = **0.970299** | 0 failures |
+
+Requiring all three replicas costs 8× the latency of a majority here and turns three 99% nodes into a 97% service, worse than any single node. Majority quorums are popular because they balance both columns: one slow or dead replica is simply ignored.
+
+### Consistency levels in Cassandra
+
+Cassandra exposes the same dial as a per-request consistency level: `ONE`, `TWO`, `THREE`, `QUORUM`, `ALL`, and multi-data-centre variants `LOCAL_QUORUM` and `EACH_QUORUM`, plus `ANY` for writes. `QUORUM` means ⌊sum of replication factors ÷ 2⌋ + 1 across all data centres. With two data centres at RF 3 each, that is ⌊6 ÷ 2⌋ + 1 = **4** replicas, so every `QUORUM` request must cross the WAN. `LOCAL_QUORUM` asks for ⌊3 ÷ 2⌋ + 1 = **2** replicas in the local data centre only, which keeps latency local, at the cost of no overlap guarantee between data centres.
+
+## R + W > N and its limits
+
+<DepthStamp depth="deep" />
+
+If **R + W > N**, every read quorum shares at least one replica with every write quorum. The argument is the pigeonhole principle: a write touched W replicas and a read touches R; if they were disjoint, they would need W + R distinct replicas, but only N exist. So at least one replica the read contacts has seen the latest successful write, and since the read returns the newest version it sees, the read reflects that write.
+
+The rule comes from David Gifford's 1979 weighted-voting scheme, which also required **W > N ÷ 2** so that any two write quorums overlap and two conflicting writes cannot both succeed against disjoint replicas. Dynamo-style stores usually require only the first condition and resolve concurrent writes afterwards.
+
+| N | W | R | R + W > N? | Behaviour |
+|---|---|---|---|---|
+| 3 | 2 | 2 | 4 > 3, yes | Balanced; tolerates 1 failure each way |
+| 3 | 3 | 1 | 4 > 3, yes | Fast reads; any single dead replica blocks writes |
+| 3 | 1 | 3 | 4 > 3, yes | Fast writes; any single dead replica blocks reads |
+| 3 | 1 | 1 | 2, no | Fastest; reads can miss acknowledged writes |
+| 5 | 3 | 3 | 6 > 5, yes | Tolerates 2 failures each way |
+
+### What the overlap does not give you
+
+Overlap guarantees that a read *contacts* a replica with the latest write. It does not make the system linearizable. Martin Kleppmann's *Designing Data-Intensive Applications* lists the gaps, and each one is a real bug:
+
+- **Concurrent writes.** Two writes to the same key with no ordering between them are resolved by a rule such as last-write-wins, which can drop one.
+- **A write concurrent with reads.** While a write is still landing, some reads see it and others don't.
+- **Partially failed writes.** If a write reaches fewer than W replicas, the client is told it failed, but the replicas that did receive it are not rolled back.
+- **Restores from stale copies.** A replica holding the new value dies and is rebuilt from one holding the old value, shrinking the number of replicas that have the write below W.
+- **Sloppy quorums**, covered below.
+
+### Failure story: a failed write that later appears, then disappears
+
+N = 3, W = 2, R = 2, replicas A, B and C, all holding `seat 14C = free`, in a Dynamo-style store whose read repair runs asynchronously after the read returns. The network to B and C is congested.
+
+| Time | Event | A | B | C |
+|---|---|---|---|---|
+| t = 0 ms | Client 1 writes `seat 14C = Maya` | Maya | (delayed) | (delayed) |
+| t = 500 ms | Only A acked within the timeout; client 1 is told **write failed** | Maya | free | free |
+| t = 520 ms | Client 2 reads from A and B: newest is Maya | Maya | free | free |
+| t = 530 ms | Client 3 reads from B and C: both say free | Maya | free | free |
+
+Client 2 saw the seat taken; then client 3, whose read started later, saw it free: not linearizable, despite 2 + 2 > 3. Client 1 thinks the booking failed, yet it is visible to some readers and may spread to all of them through repair. Making quorum reads monotonic requires the reader to write the newest value back to a quorum *before* returning (synchronous read repair), and preventing the "failed but visible" write needs either conditional writes or a consensus-based system.
+
+## Sloppy quorums and hinted handoff
+
+<DepthStamp depth="awareness" />
+
+Each key has a <Term slug="preference-list">preference list</Term>: its N home replicas, followed by further nodes on the ring. In a **strict** quorum, W acknowledgements must come from the home replicas. Dynamo introduced a <Term slug="sloppy-quorum">sloppy quorum</Term>: if home replicas are unreachable, the coordinator writes to the next healthy nodes on the preference list instead and counts their acknowledgements toward W. Each stand-in stores the write with a note saying which home replica it belongs to. When that replica comes back, the stand-in forwards the write and deletes its copy. That forwarding is <Term slug="hinted-handoff">hinted handoff</Term>.
+
+The point is write availability: a shopping cart accepts the "add to cart" even when two of its three home replicas are cut off. The cost is that **R + W > N no longer implies overlap**: the W acknowledgements may all come from nodes outside the home set, and a read that contacts the home replicas will miss the write until the hints are delivered.
+
+| Time | Event |
+|---|---|
+| t = 0 s | Home replicas B and C for key K are partitioned away from the coordinator |
+| t = 1 s | Write K = v2 lands on home replica A and stand-in D (with a hint for B). W = 2 satisfied |
+| t = 2 s | Partition heals for reads only; a read with R = 2 hits B and C: returns **v1** |
+| t = 40 s | D's handoff to B succeeds; reads now see v2 |
+
+Cassandra's version differs in a detail worth knowing: the coordinator itself stores hints for unreachable replicas, and hints **do not count** toward the consistency level, except for `ANY`, where a stored hint alone satisfies the write. Hints are only kept for a node that has been down less than `max_hint_window` (three hours by default); after that, the node must be brought up to date by repair.
+
+## Read repair
+
+<DepthStamp depth="deep" />
+
+<Term slug="read-repair">Read repair</Term> fixes stale replicas as a side effect of reading. The coordinator compares the versions it received; if some replicas returned older versions, it writes the newest one back to them.
+
+Cassandra reduces the bandwidth of this check with **digest reads**: it requests the full value from one replica and only a hash (digest) from the others. If the digests match, it returns immediately. If they differ, it fetches full values, resolves by timestamp, returns the newest to the client, and writes it to the stale replicas. At consistency levels above `ONE`, this repair is **blocking**: the read does not return until the stale replicas in the quorum have been updated, which is what makes successive quorum reads monotonic.
+
+### Worked example: the cost of a mismatch
+
+A key is read with N = 3, R = 2, values of 2 KB and 16-byte digests.
+
+- **Digests match (the usual case):** one 2 KB value plus one 16-byte digest crosses the network, about 2 KB.
+- **Digests differ:** one more round trip to fetch the full value from the other replica (another 2 KB), then a 2 KB write to the stale one. About 6 KB and two extra round trips; at a 1 ms intra-region round trip, a read that normally takes about 1 ms takes about 3 ms. If 1% of reads hit a mismatch, the average barely moves but your p99 now includes the repair path.
+
+The limitation is structural: read repair only fixes what is read. A key written once and read rarely can stay stale on one replica for months, and if the two up-to-date replicas fail, the stale value becomes the only one left. That is why read repair is never enough on its own.
+
+## Anti-entropy and Merkle trees
+
+<DepthStamp depth="deep" />
+
+<Term slug="anti-entropy">Anti-entropy</Term> is a background process that compares whole replicas and copies over whatever is missing, whether or not anyone reads it. The challenge is doing that without shipping every key across the network. Dynamo, Cassandra (`nodetool repair`) and Riak (active anti-entropy) use a <Term slug="merkle-tree">Merkle tree</Term>: each leaf is a hash of a range of keys, and each parent is a hash of its children. Two replicas compare their root hashes; if they match, the whole range is identical. If not, they compare children and descend only into subtrees that differ.
+
+<Figure caption="FIG. 3.1 · MERKLE COMPARISON · DESCEND ONLY WHERE HASHES DIFFER">
+  <Diagram label="Two replicas compare Merkle trees. The roots differ, so they compare the left and right children. The left matches and is skipped. The right differs, so they descend until they find one differing leaf range, then exchange only those keys." chart={`sequenceDiagram
+    participant A as Replica A
+    participant B as Replica B
+    A->>B: root hash
+    B-->>A: root differs
+    A->>B: left and right child hashes
+    B-->>A: left matches, right differs
+    Note over A,B: skip the left half entirely
+    A->>B: children of right
+    B-->>A: one leaf range differs
+    A->>B: keys and versions in that range
+    B-->>A: newer versions for the stale keys`} />
+</Figure>
+
+*A Merkle comparison touches one path per difference, not every key.*
+
+### Worked example: finding one bad key among a million
+
+A replica holds **1,000,000 keys**. Its Merkle tree has **65,536 (2¹⁶) leaves**, so each leaf covers about 15 keys, and the tree is 16 levels deep.
+
+- **Without a tree:** send a hash for every key: 1,000,000 × 16 bytes = **16 MB** per comparison, even when nothing differs.
+- **With a tree, replicas identical:** compare one root hash: **16 bytes**.
+- **With a tree, one key differs:** compare two child hashes at each of 16 levels, 32 hashes (512 bytes), then exchange the ~15 keys in the differing leaf.
+
+The trade-off is maintenance: trees must be rebuilt or updated as data changes, and a repair across a large node is heavy on disk and network, so operators schedule it rather than run it continuously.
+
+### Failure story: the deleted row that came back
+
+Leaderless stores implement deletes by writing a <Term slug="tombstone">tombstone</Term>, a marker that says "deleted at time T", because simply removing the data would let a stale replica resurrect it during repair. Tombstones are eventually purged; in Cassandra, after `gc_grace_seconds`, which defaults to **864,000 s (10 days)**.
+
+| Day | Event | A | B | C |
+|---|---|---|---|---|
+| 0 | Row R deleted at QUORUM; C is down | tombstone | tombstone | R |
+| 1 | C comes back after its hint window expired; no repair is run | tombstone | tombstone | R |
+| 11 | Compaction on A and B purges tombstones older than 10 days | (nothing) | (nothing) | R |
+| 12 | Read repair or anti-entropy sees R on C and nothing on A, B: copies R back | **R** | **R** | R |
+
+The deleted row is back. The rule that prevents it: run a full repair on every node **more often than `gc_grace_seconds`**, so every replica has received every tombstone before it can be purged.
+
+<TradeoffBox title="Tuning quorums" items={[
+  { gain: "W = N: every replica has every acknowledged write", cost: "One slow replica sets write latency; one dead replica blocks writes" },
+  { gain: "Majority W and R: survives one failure in three, waits for the median replica", cost: "Still not linearizable; concurrent writes need a conflict rule" },
+  { gain: "W = 1 or R = 1: lowest latency, highest availability", cost: "Reads can miss acknowledged writes; more repair work" },
+  { gain: "Sloppy quorum with hinted handoff: writes succeed during partitions", cost: "Breaks the overlap guarantee until hints are delivered" },
+  { gain: "Read repair plus anti-entropy: replicas converge, even for cold data", cost: "Extra read latency on mismatch; scheduled repairs cost disk and network" }
+]} />
+
+<NotWhenBox title="When quorum tuning is not the answer" items={[
+  "You need compare-and-set, uniqueness or locks: use a consensus system (etcd, ZooKeeper) or a single leader, not R + W > N.",
+  "Writes to the same key are frequently concurrent and must not be lost: last-write-wins will drop some; use mergeable data types or conditional writes.",
+  "A single data centre with modest write volume: a leader with synchronous standby is simpler to operate and reason about.",
+  "You cannot run regular repairs: tombstone purging and cold-data staleness will eventually bite."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="R + W > N makes a leaderless store linearizable." right="It only guarantees overlap between a read and the latest successful write. Concurrent writes, partially failed writes and sloppy quorums still produce non-linearizable results." />
+
+<Misconception wrong="A quorum always means a majority." right="R and W are tunable. A majority is one common choice; W = N with R = 1 also satisfies R + W > N, with different failure and latency behaviour." />
+
+<Misconception wrong="If my write at QUORUM failed, the data was not written." right="Replicas that received it keep it. A failed write can later become visible, so retries must be idempotent." />
+
+<Misconception wrong="Read repair keeps every replica in sync." right="It only fixes keys that are read. Cold data needs anti-entropy, and deletes need repair within the tombstone grace period." />
+
+## Interview angle
+
+<InterviewAngle title="Quorums" questions={[
+  "You have N = 3. Which R and W would you pick for a write-heavy metrics store, and for a user profile store? Why?",
+  "Does R + W > N give you strong consistency? Give a counterexample.",
+  "What is a sloppy quorum and what does it cost you?",
+  "How do replicas that missed writes catch up if nobody reads the data?",
+  "Your deleted rows are reappearing in Cassandra. What is the likely cause?"
+]}>
+Expect to be asked to choose numbers and defend them. State N, R and W, then immediately derive failures tolerated (N − W, N − R) and latency (the W-th and R-th fastest replica). Show the overlap argument in one line, then volunteer its limits before the interviewer does: concurrent writes, partial failures, sloppy quorums. The common follow-up is "so how would you get real strong consistency?" The strong answer is that quorum overlap is not enough: you need a single ordering of writes, from a leader or a consensus protocol such as Raft, plus a read that confirms it is current. Finish with repair: read repair for hot data, Merkle-tree anti-entropy for everything, scheduled within the tombstone grace period.
+</InterviewAngle>
+
+## Practice
+
+1. With N = 5 and each replica 99.5% available, compute the probability that a W = 3 write can succeed, and compare it with W = 5. Show the binomial terms.
+2. Two data centres each run Cassandra with RF = 3. Compare `QUORUM` and `LOCAL_QUORUM` for reads and writes: how many replicas each needs, whether the request crosses the WAN, and whether a write in one data centre is guaranteed visible to a read in the other.
+3. Write a timeline in which N = 3, W = 2, R = 2 still returns a stale value because of a sloppy quorum, then show how hinted handoff eventually fixes it.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

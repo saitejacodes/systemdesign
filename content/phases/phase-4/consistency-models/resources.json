@@ -1,0 +1,42 @@
+[
+  {
+    "id": "jepsen-consistency",
+    "title": "Consistency Models",
+    "author": "Jepsen (Kyle Kingsbury)",
+    "kind": "docs",
+    "url": "https://jepsen.io/consistency",
+    "why": "A clickable map of consistency models showing which implies which and which can stay available under partition.",
+    "topicIds": ["linearizability", "sequential", "causal", "session-guarantees"],
+    "free": true
+  },
+  {
+    "id": "vogels-eventually-consistent",
+    "title": "Eventually Consistent - Revisited",
+    "author": "Werner Vogels",
+    "kind": "blog",
+    "url": "https://www.allthingsdistributed.com/2008/12/eventually_consistent.html",
+    "why": "Amazon's CTO defines eventual consistency and its client-side variants, including read-your-writes and monotonic reads.",
+    "topicIds": ["eventual", "session-guarantees"],
+    "free": true
+  },
+  {
+    "id": "cosmos-consistency-levels",
+    "title": "Consistency levels in Azure Cosmos DB",
+    "author": "Microsoft",
+    "kind": "docs",
+    "url": "https://learn.microsoft.com/en-us/azure/cosmos-db/consistency-levels",
+    "why": "A real product exposing five named levels from Strong to Eventual, with the guarantees and costs of each.",
+    "topicIds": ["choosing-a-model", "session-guarantees"],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapters 5 and 9 cover replication anomalies, linearizability and causal ordering in depth.",
+    "topicIds": ["linearizability", "causal", "eventual"],
+    "free": false
+  }
+]

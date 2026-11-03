@@ -1,0 +1,8 @@
+[
+  { "id": "time-ordering-c1", "text": "I can compute worst-case clock error from a drift rate and sync interval, and choose between a wall clock and a monotonic clock.", "topicId": "clock-skew" },
+  { "id": "time-ordering-c2", "text": "I can explain why NTP accuracy is bounded by path asymmetry and what slewing and stepping do to a clock.", "topicId": "ntp-limits" },
+  { "id": "time-ordering-c3", "text": "I can assign Lamport timestamps to a message diagram and state exactly what they do and do not prove.", "topicId": "lamport-clocks" },
+  { "id": "time-ordering-c4", "text": "I can compute vector clocks for a sequence of events and identify which pairs are concurrent.", "topicId": "vector-clocks" },
+  { "id": "time-ordering-c5", "text": "I can show with a timeline how clock skew makes last-write-wins lose data and propose a safer design.", "topicId": "concurrent-updates" },
+  { "id": "time-ordering-c6", "text": "I can explain what hybrid logical clocks and TrueTime commit wait each guarantee and cost.", "topicId": "hlc-truetime" }
+]

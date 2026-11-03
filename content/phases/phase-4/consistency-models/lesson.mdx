@@ -1,0 +1,220 @@
+## Why it matters
+
+"Is it consistent?" is not a yes-or-no question. Between "behaves exactly like one machine" and "all copies agree eventually, whenever that is" sits a whole ladder of guarantees, and every database and cloud service picks a rung, often a different one per API call. Amazon S3 switched to strong read-after-write consistency for all objects in December 2020; before that, an overwrite could be followed by a read of the old object. DynamoDB reads are eventually consistent unless you set `ConsistentRead`, and the strongly consistent version costs twice as much read capacity. Azure Cosmos DB offers five named levels and defaults to "Session". If you don't know which rung you are standing on, you will ship bugs that only appear under load or during failover: usernames claimed twice, comments that vanish on refresh, a reply shown before its question. This section gives you the precise definitions, the bug each weaker model permits, and how to choose.
+
+<Callout type="analogy" title="Four ways to hear the news">
+**Linearizable** is a live TV broadcast of a single scoreboard: everyone sees each change at the same instant, and once anyone has seen 2–1, nobody can see 1–1 again. **Sequential** is everyone watching the same recording with different delays: all viewers see the goals in the same order, but your neighbour may still be cheering the first goal while you've seen the second. **Causal** is a group chat that never shows a reply before the message it answers, though two unrelated messages may arrive in different orders on different phones. **Eventual** is village gossip: everyone hears everything sooner or later, in any order, and the story may change along the way.
+
+Where it breaks down: in the analogy you can see that a delay exists. In a real system a stale read looks exactly like a fresh one; nothing tells you that you are watching the recording.
+</Callout>
+
+A <Term slug="consistency-model">consistency model</Term> is a contract between a data store and its clients: it defines which values a read is allowed to return, given the history of writes. A stronger model allows fewer outcomes, which is easier to program against, and costs more coordination, which means more latency and less availability during partitions. The models below are ordered from strongest to weakest.
+
+<Figure caption="FIG. 2.1 · THE LADDER · EACH RUNG ALLOWS MORE OUTCOMES AND NEEDS LESS COORDINATION">
+  <Diagram label="Diagram: linearizable implies sequential, which implies causal, which implies the four session guarantees, which sit above eventual consistency. Linearizable and sequential cannot stay available during a partition; causal and weaker can." chart={`flowchart TD
+    L["Linearizable: one copy, real-time order"] --> S["Sequential: one order for everyone, may lag real time"]
+    S --> C["Causal: causes before effects; concurrent writes in any order"]
+    C --> SG["Session guarantees: read-your-writes, monotonic reads, monotonic writes, writes-follow-reads"]
+    SG --> E["Eventual: replicas converge once writes stop"]
+    L -.- U["Unavailable during a partition"]
+    S -.- U
+    C -.- A["Can stay available during a partition"]`} />
+</Figure>
+
+*An arrow means "every history allowed by the upper model is also allowed by the lower one". Jepsen's consistency map shows the full lattice, including models this lesson skips.*
+
+## Linearizability
+
+<DepthStamp depth="deep" />
+
+<Term slug="linearizability">Linearizability</Term> was defined by Maurice Herlihy and Jeannette Wing in 1990. A history of operations is linearizable if every operation appears to take effect **atomically at a single point** between the moment it was invoked and the moment it returned, and the order of those points is consistent with real time. In plainer terms: the system behaves as if there were one copy of the data, and once a write has completed, or once any read has seen the new value, every read that starts afterwards sees it too.
+
+What it promises:
+
+- **Recency.** A read never returns a value older than one already returned to anyone, by any client.
+- **Real-time order.** If operation X finished before operation Y started (on a wall clock no node can see), X is ordered before Y.
+
+What it does **not** promise: anything about multi-object transactions. Linearizability is a single-object, single-operation property. "Transfer 10 from A to B atomically" is serializability, a transaction property. A system that offers both is called strict serializable; Google's Spanner calls its version **external consistency**, achieved by waiting out TrueTime's clock uncertainty at commit.
+
+### Failure story: two people claim the same username
+
+A sign-up service checks a username against a replica, then writes to the leader. Replication lag is 50 ms.
+
+| Time | Event | Result |
+|---|---|---|
+| t = 0 ms | Alice's request reads `username=sky` from follower F1: not found | Alice is told "available" |
+| t = 5 ms | Alice's insert reaches the leader and commits | Leader: sky → Alice |
+| t = 20 ms | Bob's request reads `username=sky` from follower F2, which is 50 ms behind | Bob is told "available" |
+| t = 25 ms | Bob's insert reaches the leader | Without a unique constraint on the leader, sky → Bob too |
+
+Bob's read started *after* Alice's write had completed, yet did not see it: not linearizable. Any check-then-act on a uniqueness rule, a lock, a leader lease or a seat inventory needs a linearizable read, or better, an atomic conditional write on the leader (a unique index, `INSERT ... ON CONFLICT`, a compare-and-set).
+
+### Who provides it
+
+etcd provides linearizable reads by default: the leader confirms with a majority that it is still leader before answering. It also offers a cheaper "serializable" read option, served from the local member's state, which may be stale. ZooKeeper writes are linearizable, but reads are served by whichever server the client is connected to and may be behind; calling `sync` before a read brings that server up to date. DynamoDB's strongly consistent reads (`ConsistentRead=true`) return the latest successfully written value; they are not supported on global secondary indexes.
+
+The cost is coordination. A linearizable read needs either a round trip to a quorum or a leader lease that relies on bounded clock drift, and a linearizable system must refuse requests on the minority side of a partition. That is exactly the CAP trade-off from the previous section.
+
+## Sequential consistency
+
+<DepthStamp depth="awareness" />
+
+<Term slug="sequential-consistency">Sequential consistency</Term>, defined by Leslie Lamport in 1979 for multiprocessor memory, requires that the result of any execution is the same as if all operations were executed in **some single order**, and each process's operations appear in that order **in the sequence the process issued them**.
+
+The difference from linearizability is the missing real-time constraint. Every client sees the same order of events, but that order may lag behind reality. If Alice's write finishes at noon and Bob reads at 12:01, a sequentially consistent system may still show Bob the older value, as long as everyone agrees on the order in which things eventually happened, and as long as Bob never goes backwards.
+
+ZooKeeper is the closest well-known example: its documentation promises that updates from a client are applied in the order they were sent and that all servers apply updates in the same order, while a read on a lagging server can return an older state. You rarely choose sequential consistency deliberately in system design; it matters mainly so you can recognise that "everyone sees the same order" is not the same as "everyone sees the latest".
+
+## Causal consistency
+
+<DepthStamp depth="deep" />
+
+<Term slug="causal-consistency">Causal consistency</Term> preserves the order of operations that are causally related and lets everything else float. Operation A is causally before B if B could have been influenced by A: the same client did A then B, or B read a value that A wrote, or a chain of such links connects them (Lamport's 1978 "happened-before" relation). Every node must show causally related operations in that order. Operations with no causal link are **concurrent**, and different nodes may show them in different orders.
+
+### Failure story: the boss sees the post
+
+This is a classic example from research on causal consistency. Alice's photo-sharing account replicates asynchronously to two data centres.
+
+| Time | Event | Replica in EU | Replica in US |
+|---|---|---|---|
+| t = 0 ms | Alice removes her boss from her friends list (write 1) | applied | in flight |
+| t = 200 ms | Alice posts "Job hunting, don't tell anyone" (write 2) | applied | in flight |
+| t = 230 ms | Write 2 arrives in the US first over a faster path | | post visible, boss still a friend |
+| t = 240 ms | The boss, reading from the US replica, sees the post | | **privacy leak** |
+| t = 400 ms | Write 1 finally arrives in the US | | boss removed, too late |
+
+An eventually consistent store allows this: both writes arrive eventually, which is all it promised. A causally consistent store forbids it, because write 2 was issued after write 1 by the same client, so the US replica must hold write 2 back until write 1 is applied.
+
+How it is implemented: each write carries its dependencies, typically as version vectors or logical timestamps (covered in the time-ordering section), and a replica delays making a write visible until all of its dependencies are visible. MongoDB offers causally consistent client sessions: with majority read and write concern, a session's operations carry a cluster time so that a later read in the session reflects its earlier writes and reads, even on a secondary.
+
+Why causal is special: it can stay **available during partitions**. Each side keeps accepting writes and simply delays showing writes whose dependencies haven't arrived. Mahajan, Alvisi and Dahlin showed in 2011 that a variant of causal consistency is essentially the strongest model an always-available system can provide. The catch is metadata: tracking dependencies costs bytes per write and bookkeeping per replica, and concurrent writes to the same key still conflict and need a merge rule.
+
+## Eventual consistency
+
+<DepthStamp depth="deep" />
+
+<Term slug="eventual-consistency">Eventual consistency</Term>, in Werner Vogels's 2008 formulation, guarantees that **if no new updates are made to an object, eventually all accesses will return the last updated value**. Read that carefully, because it promises very little:
+
+- It says nothing about **how long** "eventually" is. Usually milliseconds; during a failure, possibly hours.
+- It says nothing about **what reads return in the meantime**. A read can return an old value, then a newer one, then the old one again from another replica.
+- It says nothing about **which of two concurrent writes wins**. That is decided by a conflict-resolution rule.
+- On a key that is written continuously, the "no new updates" premise never holds, so the guarantee is technically vacuous.
+
+### Failure story: last-write-wins eats an update
+
+Many eventually consistent stores, including Cassandra, resolve concurrent writes with **last-write-wins (LWW)**: the write with the higher timestamp survives. Two clients add items to a shared shopping list stored as one value; client B's clock runs 30 ms behind.
+
+| Time (real) | Event | Timestamp attached |
+|---|---|---|
+| t = 0 ms | Client A reads list `[milk]` | |
+| t = 2 ms | Client B reads list `[milk]` | |
+| t = 10 ms | A writes `[milk, eggs]` to replica 1 | 10 |
+| t = 20 ms | B writes `[milk, bread]` to replica 2 | 20 − 30 = **−10** |
+| t = 60 ms | Replicas exchange writes; LWW keeps the higher timestamp | `[milk, eggs]` |
+
+Both writes were acknowledged. Bread is silently gone, and with B's skewed clock the *later* write lost. The store converged, so it kept its promise; the application just lost data. Fixes are to model data so concurrent writes merge rather than overwrite (a set of items rather than one list value; data types designed to merge automatically, known as CRDTs), to detect concurrency with version vectors and keep both versions as siblings for the application to merge (Riak's approach), or to use a conditional write so the second writer must re-read.
+
+Eventual consistency is the right choice far more often than its reputation suggests: like counts, view counters, DNS records, product recommendations, search indexes and caches all tolerate brief staleness, and in exchange you get local-latency reads and writes that keep working during partitions.
+
+## Session guarantees
+
+<DepthStamp depth="deep" />
+
+Most user-facing anomalies come from one user's own session, not from global ordering. In 1994, Doug Terry and colleagues on the Bayou project defined four <Term slug="session-guarantees">session guarantees</Term> that can be layered on an eventually consistent store, each scoped to a single client session:
+
+| Guarantee | Promise to one session | Bug it prevents |
+|---|---|---|
+| <Term slug="read-your-writes">Read-your-writes</Term> | Reads reflect the session's own earlier writes | "I saved my profile and the old one came back" |
+| <Term slug="monotonic-reads">Monotonic reads</Term> | Reads never return older data than a previous read | "The comment appeared, then disappeared on refresh" |
+| Monotonic writes | The session's writes are applied everywhere in the order issued | A password change applied before the account creation it depends on |
+| Writes-follow-reads | A write is ordered after the writes the session had read | Replying to a comment that some replicas have not received yet |
+
+Causal consistency implies all four. Session guarantees are the cheap, practical subset: they cost little because they only order operations within one session.
+
+### Failure story: the vanishing comment
+
+| Time | Event |
+|---|---|
+| t = 0 ms | Comment C is written to the leader |
+| t = 40 ms | Follower F1 applies C; follower F2 is lagging by 2 s |
+| t = 300 ms | User refreshes; the load balancer picks F1: C is visible |
+| t = 900 ms | User refreshes again; the load balancer picks F2: **C is gone** |
+| t = 2,000 ms | F2 catches up; C reappears |
+
+Monotonic reads fixes this. Two common implementations: **pin** the session to one replica (hash the user ID), or have the client remember the highest log position or version it has seen and only accept reads from replicas at least that far along, falling back to the leader. The second technique also gives read-your-writes if the client records the position of its own last write. Cosmos DB's default "Session" level works this way: the client carries a session token that encodes what it has seen.
+
+## Choosing a model in real products
+
+<DepthStamp depth="tradeoffs" />
+
+| Product | Default | Other options |
+|---|---|---|
+| Spanner | Strict serializable (external consistency) | Stale reads at a timestamp are a *weaker*, faster option |
+| etcd | Linearizable reads and writes | Serializable reads are the weaker local option |
+| ZooKeeper | Linearizable writes; reads may lag | `sync` before a read |
+| DynamoDB | Eventually consistent reads | `ConsistentRead=true` (not on global secondary indexes) |
+| Amazon S3 | Strong read-after-write for objects (since Dec 2020) | n/a |
+| MongoDB | Reads from the primary by default | Causally consistent sessions for secondary reads |
+| Cosmos DB | Session | Bounded staleness or Strong; Consistent prefix and Eventual are weaker |
+| Cassandra | Per-query consistency level | `QUORUM` on reads and writes for overlap |
+| DNS | Eventual, bounded loosely by record TTLs | n/a |
+
+### Worked example: what strong reads cost on DynamoDB
+
+A catalogue service reads items of up to 4 KB at **20,000 reads a second**. DynamoDB charges one read capacity unit (RCU) per strongly consistent read of up to 4 KB, and half an RCU for an eventually consistent one.
+
+- All strongly consistent: 20,000 × 1 = **20,000 RCU**.
+- All eventually consistent: 20,000 × 0.5 = **10,000 RCU**, half the read bill.
+- Mixed: the 2% of reads that happen right after a seller edits their own listing (read-your-writes matters there) use strong reads; the rest use eventual. 400 × 1 + 19,600 × 0.5 = **10,200 RCU**, about 51% of the all-strong cost, and sellers never see their edit vanish.
+
+That mixed design is the pattern to remember: pick the weakest model that each operation's users won't notice, and pay for strength only where a stale answer causes harm.
+
+<TradeoffBox title="Stronger vs weaker models" items={[
+  { gain: "Linearizable: simplest to reason about; safe for locks, uniqueness, leader election", cost: "Quorum round trip per operation; minority side unavailable during partitions" },
+  { gain: "Causal: no reply-before-question bugs and still available under partition", cost: "Dependency metadata on every write; concurrent writes still need a merge rule" },
+  { gain: "Session guarantees: fixes the anomalies users actually notice, cheaply", cost: "Only protects one session; other users can still see stale data" },
+  { gain: "Eventual: local-latency reads and writes, survives any partition", cost: "Stale and out-of-order reads; LWW can silently drop concurrent writes" }
+]} />
+
+<NotWhenBox title="When not to pay for strong consistency" items={[
+  "Counters, likes and view counts: an off-by-a-few display harms nobody, and merging counters is easy.",
+  "Caches and search indexes: they are derived, stale copies by design; validate against the source of truth where it matters.",
+  "Analytics reads: a dashboard that is a few seconds behind is still correct for decisions.",
+  "Cross-region user-facing reads where the user cannot observe the staleness: use session guarantees instead."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Eventual consistency means data converges within a few hundred milliseconds." right="It promises convergence only once writes stop, with no time bound, and nothing about what reads return meanwhile or which concurrent write survives." />
+
+<Misconception wrong="Linearizability and serializability are the same thing." right="Linearizability is about single operations on single objects respecting real time. Serializability is about multi-object transactions in some serial order, not necessarily real-time order." />
+
+<Misconception wrong="If I always read from the leader, I have linearizability." right="Only if the node really is still the leader. A deposed leader cut off by a partition can serve stale reads unless it confirms leadership with a quorum or holds a safe lease." />
+
+<Misconception wrong="Reading from the leader is the only way to get read-your-writes." right="Clients can track the log position of their last write and read from any replica that has reached it, or use a session token as Cosmos DB does." />
+
+## Interview angle
+
+<InterviewAngle title="Consistency models" questions={[
+  "A user edits their profile and the old version comes back on refresh. Which guarantee is missing and how do you fix it without sending every read to the leader?",
+  "Which operations in a chat app need linearizability and which are fine with eventual consistency?",
+  "What is the difference between linearizability and serializability?",
+  "Why can causal consistency stay available during a partition when linearizability cannot?",
+  "Your system uses last-write-wins. Describe a sequence of events that loses an acknowledged write."
+]}>
+The interviewer is testing whether you can map a user-visible bug to the guarantee that prevents it, and whether you avoid paying for strength you don't need. Name the anomaly (stale read, vanished write, reply before question), name the weakest guarantee that forbids it (read-your-writes, monotonic reads, causal), then give a mechanism (version tracking, session pinning, dependency metadata). Reserve linearizability for check-then-act: uniqueness, locks, inventory. A strong follow-up answer: "LWW loses writes when two clients update the same key concurrently, or when clocks are skewed; I'd model the data so updates merge, or use conditional writes."
+</InterviewAngle>
+
+## Practice
+
+1. For a banking app, list five operations (view balance, transfer, list transactions, update address, view statement) and assign each the weakest model that is safe. Justify each in one sentence.
+2. Design read-your-writes for a profile service with one leader and four followers lagging up to 3 s, without routing all reads to the leader. What does the client store and what does the server check?
+3. Write a timeline (t = 0 ms, …) in which a comment reply is shown before its parent on an eventually consistent store, then show which metadata a causally consistent store uses to prevent it.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

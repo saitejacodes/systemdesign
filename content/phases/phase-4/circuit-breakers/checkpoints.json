@@ -1,0 +1,8 @@
+[
+  { "id": "circuit-breakers-c1", "text": "I can draw the closed, open and half-open state machine and say what triggers each of its transitions.", "topicId": "breaker-states" },
+  { "id": "circuit-breakers-c2", "text": "I can explain why a breaker without a half-open state flaps against a recovering service, and how half-open trials prevent it.", "topicId": "breaker-states" },
+  { "id": "circuit-breakers-c3", "text": "I can choose a failure-rate threshold, window, minimum call count and open duration for a dependency, and estimate how long the breaker takes to trip given the timeout.", "topicId": "breaker-thresholds" },
+  { "id": "circuit-breakers-c4", "text": "I can say when per-host outlier detection is the right tool instead of a service-wide breaker, and how Envoy's circuit breaking differs from the application pattern.", "topicId": "breaker-thresholds" },
+  { "id": "circuit-breakers-c5", "text": "I can pick a fallback for each dependency, state its staleness and cost, and decide when failing fast with an honest error is better.", "topicId": "fallbacks" },
+  { "id": "circuit-breakers-c6", "text": "I can design alerts on breaker state and fallback rate so a fallback never hides an outage.", "topicId": "fallbacks" }
+]

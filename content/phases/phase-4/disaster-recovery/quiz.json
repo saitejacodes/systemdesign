@@ -1,0 +1,172 @@
+[
+  {
+    "id": "disaster-recovery-q1",
+    "type": "single",
+    "prompt": "A database is backed up every night at 02:00 to fast local disks and restores in 15 minutes. What are its RPO and RTO for a disk failure at 23:00?",
+    "options": [
+      { "id": "a", "text": "RPO about 21 hours, RTO about 15 minutes" },
+      { "id": "b", "text": "RPO about 15 minutes, RTO about 21 hours" },
+      { "id": "c", "text": "RPO zero, since a full backup exists, RTO 15 minutes" },
+      { "id": "d", "text": "RPO and RTO both about 24 hours, the backup interval" }
+    ],
+    "correct": ["a"],
+    "explanation": "Everything written since 02:00 is lost (21 hours of data: the RPO), and the restore takes 15 minutes (the RTO, ignoring detection and verification). Option b swaps the two definitions. Having a backup does not make RPO zero; it only bounds loss to the time since that backup. The backup interval bounds the worst-case RPO, but this failure is 21 hours in, and it says nothing about restore time.",
+    "topicId": "rpo-rto",
+    "difficulty": 1
+  },
+  {
+    "id": "disaster-recovery-q2",
+    "type": "scenario",
+    "prompt": "Will this restore meet the RTO, and what is the main reason?",
+    "scenario": "A runbook promises a 3-hour RTO for a 6 TB database. Recovery means copying the last nightly base backup from object storage at about 300 MB/s and replaying 12 hours of archived log at about 4× real speed. The last full restore test was two years ago on 800 GB.",
+    "options": [
+      { "id": "a", "text": "Yes; 6 TB at 300 MB/s takes roughly 2 hours and log replay overlaps the copy" },
+      { "id": "b", "text": "No; the copy alone takes ~5.6 hours, and replay adds ~3 hours on top of that" },
+      { "id": "c", "text": "Yes; object storage parallelises reads, so size does not affect how long it takes" },
+      { "id": "d", "text": "No; but only because the log replay is slow, while the copy itself fits in an hour" }
+    ],
+    "correct": ["b"],
+    "explanation": "6,000,000 MB ÷ 300 MB/s = 20,000 s ≈ 5.6 h, then 12 h ÷ 4 = 3 h of replay, so about 8.6 h before verification: the RTO is fiction because nobody re-measured as data grew. Option a gets the arithmetic wrong by a factor of almost three, and replay cannot start until the base backup is restored. Parallel reads may raise throughput, but restore time still scales with size; the given throughput already accounts for it. The copy alone already exceeds the RTO, so blaming only replay is wrong.",
+    "topicId": "rpo-rto",
+    "difficulty": 2
+  },
+  {
+    "id": "disaster-recovery-q3",
+    "type": "scenario",
+    "prompt": "What is the fastest correct recovery path?",
+    "scenario": "At 11:42:05 a migration runs DELETE FROM accounts with no WHERE clause on production Postgres. The cluster has a synchronous standby, two async read replicas, nightly base backups and continuous WAL archiving. The mistake is noticed at 11:50.",
+    "options": [
+      { "id": "a", "text": "Promote the synchronous standby, which is guaranteed to hold every committed row" },
+      { "id": "b", "text": "Promote whichever async replica lags most, since it will not have the delete yet" },
+      { "id": "c", "text": "PITR from the base backup, replaying WAL to just before 11:42:05, then reconcile" },
+      { "id": "d", "text": "Restore last night's base backup as is and ask users to redo all of today's work" }
+    ],
+    "correct": ["c"],
+    "explanation": "PITR restores the database as it was a moment before the delete, so the RPO is about a second; later legitimate writes can be reconciled from logs. The synchronous standby holds every committed change, including the delete, so promoting it changes nothing. Async replicas lag by milliseconds to seconds, not eight minutes, so they applied the delete long ago. Restoring the base backup without replay throws away hours of good data when the archived WAL could recover it.",
+    "topicId": "backup-vs-replication",
+    "difficulty": 2
+  },
+  {
+    "id": "disaster-recovery-q4",
+    "type": "multi",
+    "prompt": "Against which threats does cross-region replication alone protect you? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Losing the whole primary region to a power or network outage" },
+      { "id": "b", "text": "The primary database host's disk failing completely" },
+      { "id": "c", "text": "Ransomware encrypting rows through the application's credentials" },
+      { "id": "d", "text": "A bug that has written wrong prices to the table for two weeks" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "Replication keeps a live copy elsewhere, so it survives losing the primary host or region. Ransomware writing through the application is just more writes, and the replica applies them too. A two-week bug has already been replicated everywhere; only backups retained for longer than two weeks can restore correct prices.",
+    "topicId": "backup-vs-replication",
+    "difficulty": 2
+  },
+  {
+    "id": "disaster-recovery-q5",
+    "type": "single",
+    "prompt": "What does a delayed replica with a one-hour delay add that ordinary replicas and nightly backups do not?",
+    "options": [
+      { "id": "a", "text": "Fast recovery from a mistake noticed within the hour, by stopping replay before it" },
+      { "id": "b", "text": "Protection from region loss, because it is always placed in a separate region" },
+      { "id": "c", "text": "A guaranteed zero RPO for every disaster, since it holds every past state" },
+      { "id": "d", "text": "Lower read latency for reporting queries that tolerate one hour of staleness" }
+    ],
+    "correct": ["a"],
+    "explanation": "Because changes reach it an hour late, you can stop it before a bad write is applied, roll forward to just before the mistake and promote it in minutes rather than hours of restore. Its placement is a separate choice; the delay itself gives no regional protection. It holds one state an hour behind, not every past state, and is useless once the mistake is older than the delay. It can serve stale reads, but that is a side effect, not what it adds for recovery.",
+    "topicId": "backup-vs-replication",
+    "difficulty": 2
+  },
+  {
+    "id": "disaster-recovery-q6",
+    "type": "scenario",
+    "prompt": "Which change fixes the gap this incident revealed?",
+    "scenario": "Attackers obtained an administrator's cloud credentials. They encrypted the production volumes and then deleted every snapshot and every backup in the same account, including the copies replicated to a second region.",
+    "options": [
+      { "id": "a", "text": "Take backups every hour instead of nightly so that less data is ever at risk" },
+      { "id": "b", "text": "Replicate the backups to a third region in the same account for redundancy" },
+      { "id": "c", "text": "Immutable backups held in a separate account with its own separate credentials" },
+      { "id": "d", "text": "Encrypt all backups with a key stored in the same account as the production data" }
+    ],
+    "correct": ["c"],
+    "explanation": "The failure was that one set of credentials could destroy every copy. Object-lock style immutability plus a separate account means even a compromised admin cannot delete backups before retention ends. More frequent backups are deleted just as easily. A third region in the same account is reachable with the same stolen credentials. Encryption protects confidentiality, not deletion, and a key in the compromised account can be destroyed too, making the backups unreadable.",
+    "topicId": "backup-strategies",
+    "difficulty": 2
+  },
+  {
+    "id": "disaster-recovery-q7",
+    "type": "single",
+    "prompt": "A team keeps seven daily backups. Why might that be insufficient even though the backups work perfectly?",
+    "options": [
+      { "id": "a", "text": "Seven backups exceed most cloud storage quotas, so the oldest gets silently dropped" },
+      { "id": "b", "text": "Silent corruption may go unnoticed for weeks, by which time all seven contain it" },
+      { "id": "c", "text": "Daily backups cannot be combined with PITR, so the RPO is always a full 24 hours" },
+      { "id": "d", "text": "Restore tools only read the newest backup, so the other six are never usable" }
+    ],
+    "correct": ["b"],
+    "explanation": "Retention must exceed the time it takes to notice a problem; a bug writing bad data for three weeks leaves no clean copy in a seven-day window. Storage quotas are not the issue. Daily base backups are exactly what PITR builds on, combined with log archiving. Any retained backup can be restored; tools do not ignore older ones.",
+    "topicId": "backup-strategies",
+    "difficulty": 1
+  },
+  {
+    "id": "disaster-recovery-q8",
+    "type": "scenario",
+    "prompt": "Which DR tier fits best?",
+    "scenario": "A B2B invoicing service must recover from a regional outage within 30 minutes with under a minute of data loss. Traffic is modest and the budget is tight; the team cannot justify running a second full copy of the stack.",
+    "options": [
+      { "id": "a", "text": "Backup and restore from cross-region backups using infrastructure-as-code" },
+      { "id": "b", "text": "Multi-site active-active with writes accepted in both regions at all times" },
+      { "id": "c", "text": "Pilot light: data replicated live, compute defined but scaled to zero" },
+      { "id": "d", "text": "No DR tier; rely on multi-AZ deployment inside the one primary region" }
+    ],
+    "correct": ["c"],
+    "explanation": "Live data replication gives an RPO of seconds, and starting pre-defined compute fits a 30-minute RTO at a fraction of a full stack's cost. Backup and restore typically has RPO and RTO of hours. Active-active meets the targets but is the full second stack the budget rules out, and adds write-conflict complexity. Multi-AZ protects against a zone failure, not a regional outage.",
+    "topicId": "dr-tiers",
+    "difficulty": 2
+  },
+  {
+    "id": "disaster-recovery-q9",
+    "type": "single",
+    "prompt": "A company runs active-active across two regions. What does it still need a separate plan for?",
+    "options": [
+      { "id": "a", "text": "Losing one region entirely, because traffic cannot move between regions" },
+      { "id": "b", "text": "A single server crashing, because active-active only works at region level" },
+      { "id": "c", "text": "Logical damage such as a bad migration, which hits both regions at once" },
+      { "id": "d", "text": "Read traffic, because active-active designs only route writes to both" }
+    ],
+    "correct": ["c"],
+    "explanation": "Active-active replicates every write, including destructive ones, so backups or PITR are still required for logical damage. Region loss is precisely what active-active handles by shifting traffic. Server crashes are handled by ordinary redundancy inside each region. Active-active serves reads and writes in both regions.",
+    "topicId": "dr-tiers",
+    "difficulty": 1
+  },
+  {
+    "id": "disaster-recovery-q10",
+    "type": "scenario",
+    "prompt": "Which finding is the most important to fix before the next drill?",
+    "scenario": "In a failover drill, the database promotes in 5 minutes and DNS is switched at minute 8, but services in the standby region crash on start because they read secrets from a vault that exists only in the primary region. Total measured RTO: 55 minutes against a 15-minute target.",
+    "options": [
+      { "id": "a", "text": "Promote the database faster by switching to synchronous cross-region replication" },
+      { "id": "b", "text": "Replicate the secrets store to the standby region and test that services start" },
+      { "id": "c", "text": "Shorten the DNS TTL so that clients move to the standby within a few seconds" },
+      { "id": "d", "text": "Remove the drill from the calendar, since it caused an outage of 55 minutes" }
+    ],
+    "correct": ["b"],
+    "explanation": "The hidden dependency on a primary-region secrets store is what blew the RTO, and in a real regional outage it would block recovery entirely. Database promotion took 5 minutes and was not the bottleneck; synchronous replication would add latency to every commit for no gain here. DNS TTL matters, but traffic moved at minute 8 to services that could not start. Stopping drills hides the problem until a real disaster, which is far worse.",
+    "topicId": "failover-practice",
+    "difficulty": 2
+  },
+  {
+    "id": "disaster-recovery-q11",
+    "type": "multi",
+    "prompt": "After failing over to the standby region, the original primary region recovers. Which steps belong in a safe failback? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Keep the old primary fenced so it cannot accept writes" },
+      { "id": "b", "text": "Replicate writes taken in the standby back to the old primary" },
+      { "id": "c", "text": "Treat the return as a second failover with its own checks" },
+      { "id": "d", "text": "Point DNS straight back, since the old data is still intact" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "The old primary must not take writes alongside the standby (split brain), it is missing everything written during the failover and must catch up first, and switching back is a failover in reverse that needs the same verification. Pointing DNS straight back would serve stale data and lose every write made in the standby region.",
+    "topicId": "failover-practice",
+    "difficulty": 3
+  }
+]

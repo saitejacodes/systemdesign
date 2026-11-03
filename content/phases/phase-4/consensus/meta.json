@@ -1,0 +1,20 @@
+{
+  "id": "p4-consensus",
+  "phase": 4,
+  "slug": "consensus",
+  "title": "Consensus and Raft",
+  "order": 4,
+  "week": 9,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "why-consensus", "title": "Why consensus is needed", "depth": "deep" },
+    { "id": "raft-election", "title": "Raft terms and leader election", "depth": "deep" },
+    { "id": "raft-log", "title": "Raft log replication and the commit index", "depth": "deep" },
+    { "id": "raft-safety", "title": "Raft safety rules", "depth": "deep" },
+    { "id": "paxos", "title": "Paxos", "depth": "awareness" },
+    { "id": "coordination-services", "title": "etcd and ZooKeeper in practice", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["raft"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p4-quorums", "p2-replication"]
+}

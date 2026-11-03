@@ -1,0 +1,32 @@
+[
+  {
+    "id": "dynamo-paper",
+    "title": "Dynamo: Amazon's Highly Available Key-value Store",
+    "author": "DeCandia et al.",
+    "kind": "paper",
+    "url": "https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf",
+    "why": "The source of N/R/W tuning, sloppy quorums, hinted handoff and Merkle-tree anti-entropy.",
+    "topicIds": ["nrw", "sloppy-quorums", "anti-entropy"],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 5's section on quorum consistency lists exactly where R + W > N stops protecting you.",
+    "topicIds": ["overlap", "read-repair"],
+    "free": false
+  },
+  {
+    "id": "cassandra-docs",
+    "title": "Apache Cassandra documentation",
+    "author": "Apache Software Foundation",
+    "kind": "docs",
+    "url": "https://cassandra.apache.org/doc/latest/",
+    "why": "Consistency levels, hinted handoff, read repair and nodetool repair as implemented in a real Dynamo-style database.",
+    "topicIds": ["nrw", "sloppy-quorums", "read-repair", "anti-entropy"],
+    "free": true
+  }
+]

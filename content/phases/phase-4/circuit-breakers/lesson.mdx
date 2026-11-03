@@ -1,0 +1,193 @@
+## Why it matters
+
+Timeouts stop one call from waiting forever. But when a dependency is truly down, a timeout still costs you the full timeout on *every* call: at 300 requests a second and a 1-second timeout, 300 threads sit waiting for answers that will never come, and the struggling dependency keeps receiving traffic it cannot serve. A <Term slug="circuit-breaker">circuit breaker</Term> notices that a dependency is failing and stops calling it for a while, so callers get an immediate answer (an error or a fallback) and the dependency gets room to recover. Michael Nygard popularised the pattern in his book *Release It!* (Pragmatic Bookshelf, first edition 2007), Martin Fowler's widely read "CircuitBreaker" article spread it further, and Netflix's Hystrix library made it standard in Java services in the 2010s. Hystrix has been in maintenance mode since 2018, and Netflix pointed users to Resilience4j, which is what most Java teams use today; .NET teams commonly use Polly, and service meshes such as Envoy offer related features at the proxy. This section covers how a breaker works, how to set its thresholds, and what to return when it is open.
+
+<Callout type="analogy" title="The bouncer at a club that is on fire">
+A bouncer stands at the door of a club (the dependency). Normally the door is **closed** in the electrical sense: the circuit is complete and people stream in. The bouncer counts how many come running back out coughing. When more than half of the last hundred come out coughing, he **opens** the circuit: he shuts the door and tells everyone in the queue "not tonight" immediately, instead of letting them walk in and choke. He doesn't keep the door shut forever. After a minute he goes **half-open**: he lets exactly ten volunteers in. If they come back fine, the fire is out and the doors reopen. If any come out coughing, the door shuts for another minute. And while the door is shut, a good bouncer hands out vouchers for the bar next door (the **fallback**) instead of just a "no".
+
+Where it breaks down: a real bouncer can see smoke. A breaker cannot see the dependency at all; it infers health only from the outcome of calls, so it can be fooled by its own client's bugs, and it learns nothing while the door is shut except through the half-open trial.
+</Callout>
+
+A naming trap: in electrical terms, a **closed** circuit lets current flow and an **open** one does not. So a breaker that is *closed* is the normal, healthy state where calls go through, and *open* means calls are blocked. People new to the pattern often get this backwards.
+
+## Breaker states: closed, open, half-open
+
+<DepthStamp depth="deep" />
+
+A circuit breaker is a small state machine that wraps calls to one dependency.
+
+<Figure caption="FIG. 12.1 · THE CIRCUIT BREAKER STATE MACHINE">
+  <Diagram label="Closed: calls pass and outcomes are recorded. When the failure rate crosses the threshold, the breaker moves to Open, where calls fail fast. After the wait duration, it moves to Half-open, where a few trial calls pass. If they succeed, it returns to Closed. If they fail, it returns to Open." chart={`stateDiagram-v2
+    [*] --> Closed
+    Closed --> Open: failure rate over threshold
+    Open --> HalfOpen: wait duration elapsed
+    HalfOpen --> Closed: trial calls succeed
+    HalfOpen --> Open: trial calls fail
+    Closed --> Closed: record outcome of each call`} />
+</Figure>
+
+*Three states, four transitions. The half-open state is what lets a breaker recover safely.*
+
+- **Closed.** Calls pass through to the dependency. The breaker records each outcome (success, failure, slow) in a sliding window. If the failure rate crosses the threshold, it trips to open.
+- **Open.** Calls do not reach the dependency at all. The breaker rejects them in microseconds, which is called <Term slug="fail-fast">failing fast</Term>, and the caller runs its fallback or returns an error. After a wait duration (for example 30 or 60 seconds) the breaker moves to half-open.
+- **Half-open.** A limited number of trial calls (say 10) are let through; everything else still fails fast. If the trials succeed well enough, the breaker closes and normal traffic resumes. If they fail, it opens again for another wait.
+
+The <Term slug="half-open-state">half-open state</Term> is the part people skip, and it is the part that matters most for recovery.
+
+### Failure story: a breaker that flaps without half-open
+
+Imagine a home-grown breaker with only two states: after 30 seconds open, it simply closes and lets all traffic through. The dependency is a search service that, after a crash, takes about 2 minutes to warm its caches and can handle only 20% of normal load while cold. Normal load is 2,000 requests a second from all callers.
+
+| Time | Breaker | What the search service receives | Result |
+|---|---|---|---|
+| t = 0 s | Closed | 2,000 req/s; service crashes | Failures pile up |
+| t = 2 s | Opens | 0 req/s; service restarts, cold | Callers fail fast |
+| t = 32 s | Closes fully | 2,000 req/s at a cold service that can take 400 | Overloaded again within a second |
+| t = 34 s | Opens | 0 req/s; caches barely warmed | Fail fast |
+| t = 64 s | Closes fully | 2,000 req/s again | Overloaded again |
+| … | Flapping every 30 s | The service never gets a sustained, gentle load to warm up | Outage lasts as long as the flapping |
+
+The breaker turned recovery into a series of full-load spikes. With a half-open state that lets 10 trial calls through per caller, the cold service receives a trickle, answers it successfully, and the breakers close one by one, spreading the return of traffic. Some implementations go further and ramp traffic back gradually after closing.
+
+### Breakers and retries together
+
+A breaker and a retry policy must cooperate:
+
+- Put the **retry outside the breaker**, so every attempt is recorded by the breaker, and **never retry a "breaker open" rejection**. In Resilience4j that rejection is a `CallNotPermittedException`; retrying it just spins.
+- Count **timeouts as failures**. A dependency that hangs is the main thing a breaker protects you from.
+- Do not count **client errors** such as `400` or `404` as failures. A burst of bad input from one caller should not cut everyone off from a healthy service. Resilience4j lets you configure which exceptions are recorded and which are ignored.
+
+## Thresholds and windows
+
+<DepthStamp depth="tradeoffs" />
+
+A breaker's behaviour is set by a handful of numbers. Resilience4j's names are a useful vocabulary:
+
+| Setting | Meaning | Trade-off |
+|---|---|---|
+| Failure-rate threshold | Percentage of failed calls in the window that trips the breaker (Resilience4j default: 50%) | Lower trips sooner on real outages but also on noise |
+| Sliding window | The last N calls (count-based) or the last N seconds (time-based) used to compute the rate (default: last 100 calls) | Longer windows are stabler but slower to react |
+| Minimum number of calls | Calls needed in the window before the rate is evaluated at all | Stops 1 failure out of 2 calls from tripping a low-traffic breaker |
+| Slow-call threshold | A call slower than this counts as slow; a high <Term slug="slow-call-rate">slow-call rate</Term> can trip the breaker too | Catches a dependency that is degrading before it starts timing out |
+| Wait duration in open | How long to stay open before trying half-open (default: 60 s) | Shorter recovers faster but probes a sick service more often |
+| Calls permitted in half-open | Trial calls let through before deciding | More trials give a more confident decision but more load on a sick service |
+
+Simpler breakers use a <Term slug="trip-threshold">trip threshold</Term> of **consecutive failures** ("open after 5 failures in a row"). That is easy to reason about but behaves badly at high traffic, where a healthy service with a 1% error rate will produce 5 failures in a row often enough to trip occasionally, and at low traffic, where a dead service might take minutes to accumulate 5 calls.
+
+### Worked example: how fast does it trip?
+
+An app instance calls a pricing service at **300 requests a second**, with a **1-second timeout**. The breaker uses a time-based window of 10 seconds, a minimum of **20 calls**, and a **50%** failure-rate threshold. At t = 0 the pricing service stops responding.
+
+| Time | What happens | Threads waiting on pricing |
+|---|---|---|
+| t = 0 ms | Calls start hanging. No failures are recorded yet, because a hanging call has no outcome | rising |
+| t = 1,000 ms | The first calls hit the 1 s timeout and are recorded as failures. In-flight: 300 × 1 s = 300 | about 300 |
+| t ≈ 1,070 ms | About 20 timeouts recorded; the window also holds the last 10 s of earlier successes, about 3,000 of them | about 300 |
+| t ≈ 5,500 ms | Failures (300 × 4.5 s ≈ 1,350) now equal the successes still in the 10 s window (300 × 4.5 s); the rate reaches 50% and the breaker opens | falling to 0 |
+| After that | Calls are rejected in microseconds: 300 × ~0.00001 s ≈ 0 threads | about 0 |
+
+Two lessons. First, **a breaker can react no faster than the timeout**: with a 30-second timeout nothing would trip for 30 seconds, and the thread pool would be long gone. A slow-call threshold of, say, 500 ms helps the breaker see degradation earlier, but the timeout still bounds it. Second, **a long window full of old successes delays tripping**. A count-based window of the last 100 calls would have tripped about 50 calls after the first timeout, at roughly t = 1.2 s. Pick windows in terms of how quickly you need to react at your traffic level.
+
+### Where the breaker lives
+
+- **Per caller instance (the usual case).** Each of 50 app instances has its own breaker for pricing. They trip independently, which is fine, but note that in half-open the pricing service sees up to 50 × 10 = **500** trial calls at once, not 10.
+- **Per dependency versus per host.** A breaker for "the pricing service" sees an average across its replicas. If 1 of 10 replicas is broken, the failure rate is about 10%, which will not trip a 50% breaker, and tripping would cut off the 9 healthy replicas anyway. That is a job for <Term slug="outlier-detection">outlier detection</Term>: Envoy's outlier detection ejects an individual host from the load-balancing pool after, for example, a run of consecutive 5xx responses (5 by default), and returns it after an ejection period that grows each time it is ejected again.
+- **Envoy's "circuit breaking" is different.** In Envoy the term means limits on concurrency to an upstream cluster: maximum connections, pending requests, active requests and active retries. When a limit is hit, extra requests fail fast. It protects against overload rather than tracking a failure rate, so it complements an application-level breaker rather than replacing it.
+
+### A softer alternative: adaptive throttling
+
+A breaker is all or nothing per state. Google's SRE book chapter "Handling Overload" describes <Term slug="adaptive-throttling">client-side adaptive throttling</Term>: each client tracks, over the last two minutes, how many requests it sent (`requests`) and how many the backend accepted (`accepts`), and rejects new requests locally with probability
+
+```text
+max(0, (requests - K * accepts) / (requests + 1))
+```
+
+with K typically 2. When the backend accepts everything, the probability is zero. As it starts rejecting, clients shed more and more of their own traffic smoothly, without a hard open/closed switch. The book notes K = 2 lets some extra requests reach the backend so clients notice recovery promptly.
+
+## Fallbacks
+
+<DepthStamp depth="tradeoffs" />
+
+When the breaker is open, the caller still has to return *something*. A <Term slug="fallback">fallback</Term> is the planned alternative response. The options, from most to least useful for the user:
+
+| Fallback | Example | Cost or risk |
+|---|---|---|
+| Cached or stale value | Last known price list, last good feed | Staleness; must be clearly bounded and ideally shown as such |
+| Generic default | Bestsellers instead of recommendations | Lower quality; needs to be precomputed so it costs nothing to serve |
+| Degraded response | Product page without the reviews block | Users notice something missing; that is usually fine |
+| Accept and defer | Queue the email or the analytics event for later | Needs a durable queue and idempotent processing on replay |
+| Fail fast with a clear error | "Payments are temporarily unavailable" | Honest, instant, keeps resources free; the user is blocked |
+
+The last row is a legitimate choice. For writes and anything involving money or permissions, a fast, honest error is usually better than a guess.
+
+### Failure story: the fallback nobody noticed
+
+An illustrative example of how a quiet fallback goes wrong. A shop converts prices with a currency service, wrapped in a breaker. The fallback returns a hard-coded exchange rate written into the code two years earlier.
+
+| Time | Event |
+|---|---|
+| Friday 18:00 | The currency service's certificate expires; every call fails; the breaker opens |
+| Friday 18:00 onward | The fallback serves the two-year-old rate. Pages render, error rates on the shop look perfect, no alert fires |
+| Saturday | Thousands of orders are priced with the old rate, some under cost |
+| Monday 09:00 | Finance spots the margin drop; engineers find the breaker has been open for 63 hours |
+
+The breaker worked and the fallback worked, and that was the problem: the system degraded silently. Lessons a staff engineer applies:
+
+- **Every fallback is a feature with a cost.** Write down what it returns, how stale it can be, and when it is *not* acceptable (here: prices).
+- **Alert on breaker state and fallback rate**, not just on user-facing errors. "Breaker open for more than 5 minutes" should page someone.
+- **Bound staleness.** Serve the last fetched rate for up to an hour, then fail closed for checkout.
+- **Prefer fallbacks that add no load.** The AWS Builders' Library article "Avoiding fallback in distributed systems" warns that a fallback which calls a different, rarely used system can overload it; precomputed or local data is safer.
+- **Test the fallback path**, or it will be broken the day you need it.
+
+<TradeoffBox title="Circuit breakers" items={[
+  { gain: "Fail fast in microseconds instead of waiting for a timeout on every call", cost: "Some requests that would have succeeded are rejected while the breaker is open" },
+  { gain: "Takes load off a struggling dependency so it can recover", cost: "Thresholds and windows need tuning per dependency and traffic level" },
+  { gain: "Half-open trials let traffic return gently", cost: "Many caller instances each probing can still add up to a lot of trial load" },
+  { gain: "Fallbacks keep users moving during an outage", cost: "Each fallback is code that can be stale, wrong, untested or silently hide the outage" },
+  { gain: "Per-host outlier detection removes one bad replica", cost: "Does not help when the whole dependency is down; you still need the breaker" }
+]} />
+
+<NotWhenBox title="When a breaker is the wrong tool" items={[
+  "Calls to a local, in-process component: there is no remote failure to isolate.",
+  "Very low traffic paths where the minimum call count is never reached: use timeouts and alerts instead.",
+  "One bad replica among many healthy ones: use outlier detection or health checks so you do not cut off the healthy ones.",
+  "Writes where the only fallback is a guess, such as charging a card: fail fast with a clear error instead of inventing a result.",
+  "As a substitute for timeouts: without a timeout a hanging call never records a failure, so the breaker never trips."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="An open circuit breaker means traffic is flowing normally." right="Open means calls are blocked and fail fast. Closed is the healthy state where calls pass through, as in an electrical circuit." />
+
+<Misconception wrong="After the wait period the breaker should go straight back to closed." right="Going straight to full traffic can knock a recovering service over again and make the breaker flap. Half-open lets a few trial calls through first." />
+
+<Misconception wrong="A circuit breaker replaces the need for timeouts." right="A breaker only learns from completed calls. A hanging call records nothing until it times out, so the timeout sets how quickly the breaker can react." />
+
+<Misconception wrong="Any fallback is better than an error." right="A wrong price, a stale permission or a hidden outage can cost more than an honest error. For writes and money, failing fast is often the right fallback." />
+
+## Interview angle
+
+<InterviewAngle title="Circuit breakers" questions={[
+  "Draw the circuit breaker state machine and explain each transition.",
+  "What threshold and window would you choose for this dependency, and why?",
+  "The recommendation service is down. What does your breaker do, and what does the user see?",
+  "One of ten replicas returns errors. Does your breaker trip? Should it?",
+  "How do circuit breakers and retries interact?",
+  "How would you know a breaker has been open for hours?"
+]}>
+Breakers come up whenever your design has a synchronous call to another service: "what if it's down?" Give the three states and the half-open trial, then numbers: for example a 50% failure-rate threshold over the last 100 calls, a minimum of 20 calls, 30 seconds open, 10 trial calls, with timeouts and 5xx counted as failures and 4xx ignored. State the fallback for that dependency and its cost. The typical next question is about retries; the strong answer is that retries sit outside the breaker, rejections from an open breaker are never retried, and both live inside a retry budget. Then mention per-host outlier detection for the one-bad-replica case, and alerting on breaker state so a fallback never hides an outage for a whole weekend.
+</InterviewAngle>
+
+## Practice
+
+1. A service calls a dependency at 500 requests a second with a 2-second timeout. How many threads are tied up before the breaker trips if the dependency hangs? How does that change with a 250 ms timeout?
+2. Choose breaker settings (window type and size, minimum calls, threshold, wait, half-open trials) for a dependency called 5 times a minute, and for one called 5,000 times a second. Explain the difference.
+3. For a ride-hailing app, write the fallback for each dependency of "request a ride": maps ETA, surge pricing, payment-method check, driver matching. Mark which ones should fail fast instead.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

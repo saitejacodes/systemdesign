@@ -1,0 +1,7 @@
+[
+  { "id": "bulkheads-load-shedding-c1", "text": "I can use Little's law to show how fast one hanging dependency exhausts a shared thread pool, and size a per-dependency bulkhead with headroom.", "topicId": "bulkheads" },
+  { "id": "bulkheads-load-shedding-c2", "text": "I can choose between a thread-pool and a semaphore bulkhead and name what a bulkhead does not protect against.", "topicId": "bulkheads" },
+  { "id": "bulkheads-load-shedding-c3", "text": "I can explain goodput collapse under overload with numbers and why rejecting the excess early keeps most requests succeeding.", "topicId": "load-shedding" },
+  { "id": "bulkheads-load-shedding-c4", "text": "I can design criticality tiers, compute who survives a spike when shedding by priority, and prevent shed requests from returning as retries.", "topicId": "load-shedding" },
+  { "id": "bulkheads-load-shedding-c5", "text": "I can distinguish admission control from rate limiting and pick an admission signal (fixed or adaptive concurrency, queue wait, CPU) for a given service.", "topicId": "admission-control" }
+]

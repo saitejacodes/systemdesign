@@ -1,0 +1,19 @@
+{
+  "id": "p4-quorums",
+  "phase": 4,
+  "slug": "quorums",
+  "title": "Quorums",
+  "order": 3,
+  "week": 9,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "nrw", "title": "N, R and W", "depth": "deep" },
+    { "id": "overlap", "title": "R + W > N and its limits", "depth": "deep" },
+    { "id": "sloppy-quorums", "title": "Sloppy quorums and hinted handoff", "depth": "awareness" },
+    { "id": "read-repair", "title": "Read repair", "depth": "deep" },
+    { "id": "anti-entropy", "title": "Anti-entropy and Merkle trees", "depth": "deep" }
+  ],
+  "simulatorIds": ["quorum"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p4-consistency-models", "p2-replication", "p2-consistent-hashing"]
+}

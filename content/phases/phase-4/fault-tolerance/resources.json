@@ -1,0 +1,42 @@
+[
+  {
+    "id": "aws-static-stability",
+    "title": "Static stability using Availability Zones",
+    "author": "Becky Weiss and Mike Furr (Amazon Builders' Library)",
+    "kind": "blog",
+    "url": "https://aws.amazon.com/builders-library/static-stability-using-availability-zones/",
+    "why": "The primary source for static stability: how EC2 separates control and data planes and why AWS pre-provisions capacity across zones.",
+    "topicIds": ["static-stability", "spof-elimination"],
+    "free": true
+  },
+  {
+    "id": "aws-avoiding-fallback",
+    "title": "Avoiding fallback in distributed systems",
+    "author": "Jacob Gabrielson (Amazon Builders' Library)",
+    "kind": "blog",
+    "url": "https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/",
+    "why": "Why a rarely exercised fallback path can cause the outage it was meant to prevent, and the alternatives Amazon prefers.",
+    "topicIds": ["graceful-degradation"],
+    "free": true
+  },
+  {
+    "id": "sre-cascading-failures",
+    "title": "Addressing Cascading Failures (Site Reliability Engineering, chapter 22)",
+    "author": "Google",
+    "kind": "free-book",
+    "url": "https://sre.google/sre-book/addressing-cascading-failures/",
+    "why": "How one overloaded component takes down its neighbours, and the degradation and load-shedding responses that stop it.",
+    "topicIds": ["graceful-degradation", "spof-elimination"],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann (O'Reilly)",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Chapter 1 defines faults versus failures and explains hardware, software and human faults and why correlated software faults are the hardest.",
+    "topicIds": ["spof-elimination"],
+    "free": false
+  }
+]

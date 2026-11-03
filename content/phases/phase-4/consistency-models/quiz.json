@@ -1,0 +1,328 @@
+[
+  {
+    "id": "consistency-models-q1",
+    "type": "scenario",
+    "prompt": "Which consistency guarantee did the sign-up flow lack?",
+    "scenario": "Alice's sign-up checks that username \"sky\" is free by reading a follower, then inserts it on the leader at t = 5 ms. Bob's check starts at t = 20 ms, reads a follower that is 50 ms behind, also sees \"sky\" as free, and inserts it too.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Read-your-writes, since Bob never saw the insert he made himself"
+      },
+      {
+        "id": "b",
+        "text": "Linearizability: a read after a completed write missed that write"
+      },
+      {
+        "id": "c",
+        "text": "Eventual consistency, since the follower never received the write"
+      },
+      {
+        "id": "d",
+        "text": "Monotonic writes, since the two inserts were applied out of order"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Bob's read started after Alice's write completed and still missed it, which is exactly what linearizability forbids. Read-your-writes concerns a session's own writes, but the missing write was Alice's, not Bob's. The follower would have received it shortly, so eventual consistency held. Monotonic writes concerns one session's writes being applied in order, which isn't the problem here.",
+    "topicId": "linearizability",
+    "difficulty": 2
+  },
+  {
+    "id": "consistency-models-q2",
+    "type": "single",
+    "prompt": "What is the key difference between linearizability and serializability?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Linearizability is for single objects in real-time order; serializability orders whole transactions"
+      },
+      {
+        "id": "b",
+        "text": "Serializability is stronger because it also forces every transaction to respect wall-clock order"
+      },
+      {
+        "id": "c",
+        "text": "They are the same guarantee, one named by database people and one by systems people"
+      },
+      {
+        "id": "d",
+        "text": "Linearizability applies only to reads while serializability applies only to writes"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Linearizability is a recency guarantee on individual operations against single objects; serializability says multi-object transactions behave as if run one at a time in some order, which need not match real time. Serializability alone does not respect real time; the combination is strict serializability. They are distinct guarantees. Neither is limited to only reads or only writes.",
+    "topicId": "linearizability",
+    "difficulty": 2
+  },
+  {
+    "id": "consistency-models-q3",
+    "type": "single",
+    "prompt": "A ZooKeeper client writes a value, then another client connected to a lagging server reads the old value. Which statement is correct?",
+    "options": [
+      {
+        "id": "a",
+        "text": "This is a ZooKeeper bug, since its writes go through a quorum"
+      },
+      {
+        "id": "b",
+        "text": "It is allowed: reads are served locally and may lag; sync fixes it"
+      },
+      {
+        "id": "c",
+        "text": "It can't happen, because every read is forwarded to the leader"
+      },
+      {
+        "id": "d",
+        "text": "It's allowed only while the cluster is split by a network partition"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "ZooKeeper writes are linearizable, but reads are answered by whichever server the client is connected to, which may be behind; calling sync first brings it up to date. A quorum write doesn't make every server current, so it's not a bug. Reads are not forwarded to the leader. Lagging servers are normal even without any partition.",
+    "topicId": "sequential",
+    "difficulty": 2
+  },
+  {
+    "id": "consistency-models-q4",
+    "type": "scenario",
+    "prompt": "Which is the weakest consistency model that prevents this?",
+    "scenario": "Alice removes her boss from her friends list and then, 200 ms later, posts a message about job hunting. Both writes replicate asynchronously. In the US data centre, the post arrives first and the boss reads it before the friends-list change arrives.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Read-your-writes for the boss's own session"
+      },
+      {
+        "id": "b",
+        "text": "Linearizability for every read and every write made"
+      },
+      {
+        "id": "c",
+        "text": "Causal consistency across Alice's two writes"
+      },
+      {
+        "id": "d",
+        "text": "Monotonic reads for the boss's own session"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Alice's post causally follows her friends-list change, so causal consistency makes every replica show them in that order, and it is weaker (and more available) than linearizability. Linearizability would also prevent it but is not the weakest. Read-your-writes and monotonic reads protect one reader's view of its own history, but the boss never saw either write before, so neither helps.",
+    "topicId": "causal",
+    "difficulty": 3
+  },
+  {
+    "id": "consistency-models-q5",
+    "type": "single",
+    "prompt": "Why can causal consistency remain available during a partition when linearizability cannot?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It resolves every conflict by keeping the write with the newer timestamp"
+      },
+      {
+        "id": "b",
+        "text": "It forwards writes across the partition through a separate backup link"
+      },
+      {
+        "id": "c",
+        "text": "Each side can keep serving and only delay writes whose dependencies are absent"
+      },
+      {
+        "id": "d",
+        "text": "It uses a majority quorum, which is always reachable from at least one side"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Causal consistency only needs dependencies to be visible before a write is shown, which each side can enforce locally, so neither side must refuse requests. Timestamp-based last-write-wins is a conflict rule, not why causal stays available. A backup link would mean there was no partition. A majority quorum leaves the minority side unavailable, which is the linearizable approach.",
+    "topicId": "causal",
+    "difficulty": 2
+  },
+  {
+    "id": "consistency-models-q6",
+    "type": "multi",
+    "prompt": "Which of these does eventual consistency, as Vogels defines it, actually guarantee? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Replicas converge if writes to the key stop"
+      },
+      {
+        "id": "b",
+        "text": "Convergence completes within one second"
+      },
+      {
+        "id": "c",
+        "text": "Interim reads only ever move forward in time"
+      },
+      {
+        "id": "d",
+        "text": "All replicas end on the same final value"
+      }
+    ],
+    "correct": [
+      "a",
+      "d"
+    ],
+    "explanation": "If no new updates are made, all replicas eventually return the same last value, so convergence and a common final value are guaranteed. There is no time bound at all. Interim reads can go backwards when they hit different replicas; preventing that is monotonic reads, a separate guarantee.",
+    "topicId": "eventual",
+    "difficulty": 2
+  },
+  {
+    "id": "consistency-models-q7",
+    "type": "scenario",
+    "prompt": "What is the final value of the list, and why?",
+    "scenario": "A store uses last-write-wins by client timestamp. Clients A and B both read the list [milk]. At real time 10 ms, A writes [milk, eggs] with timestamp 10. At real time 20 ms, B, whose clock is 30 ms slow, writes [milk, bread] with timestamp -10. Both writes are acknowledged.",
+    "options": [
+      {
+        "id": "a",
+        "text": "[milk, bread], since B's write really did happen last"
+      },
+      {
+        "id": "b",
+        "text": "[milk, eggs, bread], since the replicas merge both edits"
+      },
+      {
+        "id": "c",
+        "text": "[milk, eggs]; LWW keeps the higher timestamp, so bread is lost"
+      },
+      {
+        "id": "d",
+        "text": "The second write fails and B gets a conflict error to retry"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Last-write-wins keeps the value with the higher timestamp, 10 beats -10, so A's list survives and B's acknowledged write silently disappears even though it happened later in real time. The store can't know real time, only timestamps. LWW overwrites rather than merges. Nothing reports a conflict: that would need conditional writes or version vectors.",
+    "topicId": "eventual",
+    "difficulty": 2
+  },
+  {
+    "id": "consistency-models-q8",
+    "type": "scenario",
+    "prompt": "Which fix stops the comment from disappearing, without sending all reads to the leader?",
+    "scenario": "A user refreshes a thread twice. The first refresh hits follower F1, which shows the new comment. The second hits follower F2, two seconds behind, and the comment is gone. Reads are round-robined across four followers.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Raise the cache TTL so the first page is served again"
+      },
+      {
+        "id": "b",
+        "text": "Track the last version seen; skip replicas behind it"
+      },
+      {
+        "id": "c",
+        "text": "Make the leader replicate synchronously to followers"
+      },
+      {
+        "id": "d",
+        "text": "Add a fifth follower so lag is spread more thinly"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "This is a monotonic-reads violation. Remembering the highest version or log position the session has seen and only reading from replicas at least that current (or pinning the session to one replica) fixes it. A longer cache TTL hides it for one page but not across other pages. Synchronous replication to all followers would fix it but slows every write, which is far costlier. Another follower doesn't reduce lag.",
+    "topicId": "session-guarantees",
+    "difficulty": 2
+  },
+  {
+    "id": "consistency-models-q9",
+    "type": "single",
+    "prompt": "Which statement about the four session guarantees is correct?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Causal consistency implies all four of them"
+      },
+      {
+        "id": "b",
+        "text": "They need a single leader to serve every read"
+      },
+      {
+        "id": "c",
+        "text": "They protect what every user sees globally"
+      },
+      {
+        "id": "d",
+        "text": "They are equivalent to linearizability"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Read-your-writes, monotonic reads, monotonic writes and writes-follow-reads are all implied by causal consistency. They don't require a single leader; Bayou defined them on top of weakly consistent replicas. They are scoped to one session, not to all users. They are much weaker than linearizability, which orders operations across all clients in real time.",
+    "topicId": "session-guarantees",
+    "difficulty": 2
+  },
+  {
+    "id": "consistency-models-q10",
+    "type": "scenario",
+    "prompt": "What read capacity does the mixed design need?",
+    "scenario": "A DynamoDB table serves 20,000 reads a second of items under 4 KB. 2% of reads follow the user's own edit and must be strongly consistent (1 RCU each); the rest can be eventually consistent (0.5 RCU each).",
+    "options": [
+      {
+        "id": "a",
+        "text": "10,000 RCU"
+      },
+      {
+        "id": "b",
+        "text": "10,200 RCU"
+      },
+      {
+        "id": "c",
+        "text": "20,000 RCU"
+      },
+      {
+        "id": "d",
+        "text": "10,400 RCU"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "400 strong reads × 1 + 19,600 eventual reads × 0.5 = 400 + 9,800 = 10,200 RCU. 10,000 assumes every read is eventual. 20,000 assumes every read is strong. 10,400 counts the 400 strong reads on top of an all-eventual 10,000 instead of replacing 400 eventual reads.",
+    "topicId": "choosing-a-model",
+    "difficulty": 2
+  },
+  {
+    "id": "consistency-models-q11",
+    "type": "multi",
+    "prompt": "In a chat product, which operations genuinely need linearizability? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Claiming a unique room handle"
+      },
+      {
+        "id": "b",
+        "text": "Showing the online-members count"
+      },
+      {
+        "id": "c",
+        "text": "Electing one worker per room shard"
+      },
+      {
+        "id": "d",
+        "text": "Showing a sender's own new message"
+      }
+    ],
+    "correct": [
+      "a",
+      "c"
+    ],
+    "explanation": "Claiming a unique handle and electing a single worker are check-then-act operations: a stale read creates duplicates or two leaders. An online count can be approximate. Seeing your own message needs only read-your-writes, a cheap session guarantee, not global linearizability.",
+    "topicId": "choosing-a-model",
+    "difficulty": 2
+  }
+]

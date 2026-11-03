@@ -1,0 +1,226 @@
+## Why it matters
+
+Every component you run will eventually break: disks die, a kernel panics, a deploy ships a bug, a cloud zone loses power, a certificate expires at 3 a.m. You cannot prevent faults, so the real design question is what the *user* sees when one happens. A <Term slug="fault-tolerance">fault-tolerant</Term> system keeps doing its job, perhaps in a reduced form, while some of its parts are broken. Netflix popularised this mindset in the early 2010s: its engineering blog described serving a fallback, such as a list of popular titles instead of personalised recommendations, when a recommendation dependency failed, rather than showing an error page. AWS writes publicly about designing services to be "statically stable", so they keep working through a lost Availability Zone without needing to change anything. This section covers the three ideas underneath that: remove single points of failure, degrade gracefully instead of falling over, and make the system stable without having to react.
+
+<Callout type="analogy" title="The wedding with three backup DJs">
+Picture a wedding reception. A fragile wedding has one DJ, one laptop, one extension cord: when the cord gets kicked out, the dancing stops and everyone stares at the cake (a single point of failure). A fault-tolerant wedding has a second laptop plugged into a different socket, already playing the same playlist muted, so the switch takes one second. When the speakers blow, a graceful wedding keeps the party going on the venue's ceiling speakers: quieter, no bass, but people are still dancing (graceful degradation). And the statically stable wedding? The caterer brought enough food for 150% of the guest list on day one, so when a second bus of cousins turns up, nobody has to phone the shop at 10 p.m. hoping it's open.
+
+Where the analogy breaks down: a wedding's backup laptop is obviously independent of the first one. In software, "backup" copies often share a hidden dependency (the same config file, the same deploy, the same DNS record), which is exactly the trap this section is about.
+</Callout>
+
+First, two words that people often blur. A **fault** is one component deviating from its spec: a disk returns errors, a process crashes, a network link drops packets. A **failure** is the *system as a whole* stopping providing its service to users. Fault tolerance is the art of stopping faults from turning into failures. Designing Data-Intensive Applications (Kleppmann) draws exactly this distinction, and it is a useful habit in interviews: "this is a fault in the cache; here is why it is not a failure of checkout."
+
+## Eliminating single points of failure
+
+<DepthStamp depth="deep" />
+
+A <Term slug="single-point-of-failure">single point of failure</Term> (SPOF) is any component whose failure on its own takes the whole service down. The cure is redundancy: have more than one, and make sure traffic can move to the survivors automatically. That sounds simple; the hard part is *finding* all the SPOFs, because the obvious ones are rarely the ones that bite.
+
+### Walk the request path
+
+The reliable way to find SPOFs is to trace one request from the user's device to the data and back, and ask at every hop: "if there were only one of these, and it died now, what happens?"
+
+| Hop | Typical SPOF | Typical fix |
+|---|---|---|
+| DNS | One DNS provider, or one record pointing at one IP | Multiple nameservers, health-checked records, short TTLs on failover records |
+| Load balancer | A single load-balancer VM | A managed load balancer spread across zones, or a pair sharing a <Term slug="virtual-ip">virtual IP</Term> |
+| App servers | One instance, or all instances in one zone | Several stateless instances across at least two zones, behind <Term slug="health-check">health checks</Term> |
+| Database | One primary with no replica | A synchronous or semi-synchronous standby in another zone with automatic failover |
+| Cache | One cache node the app cannot live without | A replicated cache, plus an app that survives a cold cache |
+| Config, secrets, certificates | One config server read on every request; one certificate everyone forgot | Cache config locally; automate renewal and alert on expiry |
+| People and process | One engineer who knows how to fail over | Runbooks, automation, practised drills |
+
+The last two rows are where outages really come from. A service with three app servers, a replicated database and a managed load balancer can still go down because every instance reads a feature-flag file from one storage bucket on startup, or because the TLS certificate expired.
+
+### Redundancy is only as good as its independence
+
+Two copies of something only help if they do not fail *together*. A <Term slug="correlated-failure">correlated failure</Term> is one cause taking out many "redundant" copies at once. Common culprits:
+
+- **Same rack, same zone, same region.** Three replicas in one Availability Zone survive a host failure but not a zone power event. Spread replicas across failure domains.
+- **Same software.** A bad deploy or config push reaches every instance. This is why deploys go out gradually (one host, then one zone, then the rest) with automatic rollback.
+- **Same input.** A malformed request (a "query of death") that crashes one instance will crash every instance the load balancer retries it on.
+- **Same dependency.** Two app clusters in different regions that both call one auth service in one region share that SPOF.
+- **Same clock or calendar.** Leap seconds, certificate expiry dates and licence expiries hit every copy at the same moment.
+
+### A query of death, step by step
+
+Here is how the "same input" case plays out with 8 instances behind a load balancer that retries a failed request on another instance (an illustrative timeline, not a specific incident):
+
+| Time | Event | Healthy instances |
+|---|---|---|
+| t = 0 ms | A client sends a request with a 50 MB JSON array; instance 1 runs out of memory and crashes | 7 |
+| t = 30 ms | The load balancer sees a reset connection and retries the same request on instance 2, which also crashes | 6 |
+| t = 60–210 ms | The client's own retry and further load-balancer retries walk the request across instances 3 to 8 | 0 |
+| t = 210 ms onward | Every request now fails; instances restart in about 40 s, and the client retries the same poison request as soon as they come back | 0 to 1 |
+
+Eight-way redundancy bought nothing, because the cause was in the input, not the hardware. Defences: validate and size-limit inputs at the edge, cap load-balancer retries, and stop retrying a request that has already crashed a backend.
+
+### Detection and failover
+
+Redundancy needs a way to notice a dead copy and move traffic. Load balancers do this with health checks; databases use a <Term slug="heartbeat">heartbeat</Term> between primary and standby, often with a consensus system (see the consensus section) deciding who the new primary is. Two things to remember:
+
+1. **Failover time is downtime.** If a health check runs every 10 seconds and needs 3 failures to mark an instance dead, a crashed instance keeps receiving traffic for up to about 30 seconds.
+2. **Failover is itself a risky operation.** A failover that fires on a false alarm, or two nodes that both believe they are primary (<Term slug="split-brain">split-brain</Term>), can cause a worse outage than the original fault. This is why database failover usually needs a majority vote, not just "I can't reach the primary".
+
+### Worked example: N+1 and N+2
+
+A service needs **6 instances** to handle peak traffic. With exactly 6, one crash means the remaining 5 run at 120% of their comfortable load: latency climbs, and the overload may cause a second crash. Running **N+1 = 7** survives one failure at full capacity. But during a deploy you usually take one instance out at a time, and a crash during the deploy leaves you at N−1 again. That is why many teams run **N+2 = 8** for services that deploy often: one slot for maintenance, one for an unplanned failure. The cost is 2/6 ≈ 33% more instances than strictly needed.
+
+## Graceful degradation
+
+<DepthStamp depth="deep" />
+
+Removing SPOFs keeps a component alive. <Term slug="graceful-degradation">Graceful degradation</Term> is what you do when a component is *not* alive: keep the core function working with reduced quality instead of failing completely. The key move is to classify every dependency of a request as **critical** (no answer without it) or **optional** (the answer is worse without it, but still useful).
+
+<Figure caption="FIG. 10.1 · A PRODUCT PAGE THAT DEGRADES INSTEAD OF FAILING">
+  <Diagram label="The product page needs catalog and pricing to render. Reviews, recommendations and stock count are optional; if any of them fails, the page renders without that block or with a cached or default value." chart={`flowchart LR
+    U[User request] --> P[Product page service]
+    P -->|critical| C[Catalog]
+    P -->|critical| PR[Pricing]
+    P -.->|optional| R[Reviews]
+    P -.->|optional| REC[Recommendations]
+    P -.->|optional| S[Stock count]
+    R -.->|fails| R2[Hide reviews block]
+    REC -.->|fails| REC2[Show bestsellers list]
+    S -.->|fails| S2[Show In stock from cache]`} />
+</Figure>
+
+*Solid lines are critical dependencies; dashed lines are optional ones with a planned fallback.*
+
+### Ways to degrade
+
+- **Drop the feature.** Hide the reviews panel; render the page without it.
+- **Serve something static or generic.** Bestsellers instead of personalised recommendations; a default avatar instead of the user's photo.
+- **Serve stale data.** Show the last cached stock level or exchange rate, ideally with a note that it may be out of date.
+- **Accept now, finish later.** If the email service is down, write "send receipt" to a queue and complete the order anyway.
+- **Turn off expensive work.** Disable search suggestions or high-resolution images under load. Many teams wire these to feature flags often called "kill switches" so an on-call engineer can shed them in seconds.
+- **Go read-only.** If the primary database is unavailable but replicas are healthy, let users browse and read while blocking writes with a clear message.
+
+### Worked example: availability with and without degradation
+
+A product page calls **five** services, each available **99.9%** of the time, and treats every one as critical. Because the page needs all five, availabilities multiply (the high-availability section covers this series rule):
+
+- 0.999⁵ ≈ **0.995**, so the page is up about **99.5%** of the time: roughly **216 minutes** of failure in a 30-day month (0.5% × 43,200 minutes).
+
+Now mark three of them (reviews, recommendations, stock count) optional, each with a fallback. Only catalog and pricing remain critical:
+
+- 0.999² ≈ **0.998**, about **86 minutes** a month: the page fails less than half as often, without touching any of the five services.
+
+The degraded page is not as good, but it still sells products. That is the point.
+
+### Fail open or fail closed?
+
+Some dependencies are *checks*: an authorisation service, a fraud score, a rate limiter, a spam filter. When the check is unavailable you must choose:
+
+- <Term slug="fail-open">Fail open</Term>: let the request through as if the check passed. Right for a rate limiter or a recommendation filter, where letting traffic through for a few minutes is far better than blocking everyone.
+- <Term slug="fail-closed">Fail closed</Term>: reject the request as if the check failed. Right for authentication, payments authorisation, and anything where a wrong "yes" causes harm that cannot be undone.
+
+There is no universal answer; decide per check and write it down. A useful middle ground is "fail open with limits": allow small orders through when the fraud service is down, but hold orders above some value for later review.
+
+### When the fallback is the outage
+
+Graceful degradation has a dangerous cousin: a fallback that switches to a *different, rarely used* mechanism when the primary fails. The AWS Builders' Library article "Avoiding fallback in distributed systems" argues that Amazon generally avoids this kind of fallback, for three reasons: the fallback path is hard to test, it only runs during an emergency when conditions are worst, and it can put load on something that was never sized for it. A plausible example of how that goes wrong:
+
+| Time | Event |
+|---|---|
+| t = 0 s | The config cache cluster that 2,000 app servers read from fails |
+| t = 0.2 s | Every app server's fallback kicks in: "if the cache fails, read config from the primary database" |
+| t = 0.5 s | The database, sized for a few writes a second from the admin tool, receives 2,000 servers × 50 reads a second = 100,000 reads a second |
+| t = 3 s | The database saturates; the admin tool and the order service, which share it, start timing out |
+| t = 10 s | An outage of one optional cache has become an outage of orders |
+
+The fallback turned a contained fault into a correlated failure. Better options, roughly in order of preference:
+
+1. **Make the primary more reliable** instead of adding a second path (replicate the cache, run it in every zone).
+2. **Make the "fallback" the normal path.** Each app server keeps a local copy of the config and refreshes it in the background; if the refresh fails, it keeps the old copy. The code that serves stale config runs on every request, so it is always tested. This is static stability, covered below.
+3. **Degrade by doing less, not by doing something else.** Hiding the reviews block or serving bestsellers from a precomputed file adds no load anywhere.
+4. If you must fall back to another system, **rate-limit the fallback** and size the target for it.
+
+### Degradation must be tested
+
+A fallback that has never run is a guess. Fallback code paths rot: the cached value they rely on is never populated, the default response has a bug, or the "optional" call turns out to be awaited before rendering anyway. Test fallbacks deliberately, by injecting failures in staging and in production game days (see the chaos engineering section), and give each fallback a metric so you can see when it fires.
+
+## Static stability
+
+<DepthStamp depth="awareness" />
+
+<Term slug="static-stability">Static stability</Term> is a term AWS uses for a system that keeps working correctly when a dependency fails *without having to make any changes in response*. The opposite is a system that survives a failure only if it can react: launch new servers, update DNS, rewrite configuration. The trouble with reacting is that the tools you react with are often impaired by the same event.
+
+### Control plane versus data plane
+
+The idea becomes clearer with two terms:
+
+- The <Term slug="data-plane">data plane</Term> is the part that serves each request: the running instances, the load balancer forwarding packets, the database answering queries.
+- The <Term slug="control-plane">control plane</Term> is the part that changes the system: launching instances, scaling groups, updating routes and configuration.
+
+Control planes are usually more complex and less frequently exercised than data planes, and during a large event everyone calls them at once. A statically stable design depends only on the data plane during a failure. Instances that are already running keep running even if the API to launch new ones is down.
+
+### Worked example: pre-provisioned capacity across zones
+
+A service needs **600 instances** at peak and runs in **3 Availability Zones**.
+
+| Design | Instances per zone | Total | After losing one zone | What must happen during the outage |
+|---|---|---|---|---|
+| Reactive | 200 | 600 | 400 (67% of need) | Launch 200 more, through a control plane that may be busy or impaired |
+| Statically stable | 300 | 900 | 600 (100% of need) | Nothing |
+
+The statically stable design costs **50% more** capacity, which is the price of not needing the control plane in an emergency. With 4 zones the overhead falls: you need 600 ÷ 3 = 200 per zone across 4 zones, 800 in total, **33% more**. The general rule is that with *N* zones you provision 1 ÷ (*N* − 1) extra.
+
+Other statically stable habits:
+
+- **Keep serving the last known good config** if the config service is unreachable, instead of refusing to start or crashing.
+- **Cache credentials and DNS answers** with sensible lifetimes so a short outage of the identity or DNS service does not stop running workloads.
+- **Push, don't pull, on the hot path.** A service that fetches a value from another service on every request depends on it; one that receives updates and keeps a local copy does not.
+
+<TradeoffBox title="Fault-tolerance techniques" items={[
+  { gain: "Redundancy across zones removes most hardware and zone SPOFs", cost: "More instances, cross-zone traffic charges, and failover logic to build and test" },
+  { gain: "N+2 capacity survives a failure during a deploy", cost: "About a third more instances than strictly needed for a six-instance service" },
+  { gain: "Graceful degradation keeps the core function up when optional parts fail", cost: "Every fallback is extra code that must be designed, tested and monitored" },
+  { gain: "Fail open keeps users moving when a check is down", cost: "For a short window, requests that should have been rejected get through" },
+  { gain: "Static stability needs no emergency actions", cost: "Pre-provisioned spare capacity you pay for every day" }
+]} />
+
+<NotWhenBox title="When not to go further" items={[
+  "Internal tools and batch jobs that can wait an hour: a restart runbook is cheaper than multi-zone redundancy.",
+  "Degrading correctness-critical data: never show a stale bank balance as if it were current, or skip a payment check to stay up.",
+  "Static stability for spiky, low-value workloads: paying for 50% idle capacity may cost more than the occasional slow recovery.",
+  "Adding redundant copies that share one dependency: fix the shared dependency first, or the second copy buys nothing."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Two of everything means no single point of failure." right="Two copies in the same zone, running the same config, behind the same DNS record can fail together. Redundancy only helps when the copies fail independently." />
+
+<Misconception wrong="Graceful degradation means returning an error page with a nice message." right="An error page is still a failure. Degradation means the core job still works: the page renders and the user can buy, just without reviews or recommendations." />
+
+<Misconception wrong="Autoscaling makes a service fault tolerant." right="Autoscaling is a control-plane reaction. If the control plane is slow or impaired during the same event, the extra capacity never arrives. Static stability pre-provisions it." />
+
+<Misconception wrong="Failing open is always the safer default." right="It depends on the check. Failing open is right for rate limits and recommendations, and dangerous for authentication and payment authorisation." />
+
+## Interview angle
+
+<InterviewAngle title="Fault tolerance" questions={[
+  "Walk me through your design and point out every single point of failure.",
+  "The recommendation service is down. What does the user see?",
+  "Your fraud-check service times out. Do you let the payment through?",
+  "One Availability Zone goes dark. What has to happen for your service to stay up, and what if the cloud API is also slow?",
+  "How do you know your fallback actually works?"
+]}>
+Interviewers almost always ask "what happens if X dies?" after you draw a design. Answer per component: is it redundant, are the copies independent (different zones, staggered deploys), how fast is failover, and if it does fail, is it critical or optional? For optional dependencies, name the fallback (cached, default, hidden, queued). For checks, say fail open or fail closed and why. Mention static stability when capacity or config is involved, and finish with how you would test the fallbacks.
+
+The follow-up that separates levels is "and what does your fallback depend on?" A weak answer is "it reads from the database instead". A strong answer checks the fallback's own load and dependencies: "the fallback is a precomputed bestsellers file baked into each instance, so it adds no load to anything that might also be struggling; and it fires in our weekly game day, so we know it works."
+</InterviewAngle>
+
+## Practice
+
+1. A checkout page depends on six services at 99.95% each. Compute the page's availability if all six are critical, then if only three are. How many minutes of failure a month is each?
+2. A service needs 900 instances at peak across 3 zones. How many must you run to be statically stable against losing one zone? How many with 5 zones?
+3. List every dependency of a "send message" request in a chat app and label each critical or optional, fail open or fail closed, with the fallback for each optional one.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

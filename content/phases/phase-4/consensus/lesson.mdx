@@ -1,0 +1,267 @@
+## Why it matters
+
+Every time you run `kubectl apply`, the change is stored in etcd, and etcd only says "done" once a majority of its nodes have written it to disk. That is consensus at work, and it sits underneath a surprising amount of infrastructure: Kubernetes keeps all cluster state in etcd, HashiCorp Consul and CockroachDB replicate with Raft, and Apache Kafka replaced its ZooKeeper dependency with its own Raft-based controller quorum (KRaft). The replication section showed what goes wrong without it: two nodes both believe they are the leader, both accept writes, and the data splits into two histories. Consensus is the tool that makes "who is the leader?" and "what is the next entry in the log?" questions with exactly one answer, even while machines crash and networks drop messages. You will rarely implement it, but you will build on it constantly.
+
+<Callout type="analogy" title="A pirate crew electing a captain by majority vote">
+A pirate ship has five crew and needs exactly one captain. Anyone can call a vote, but only after they have heard nothing from the current captain for a while, and each pirate gets one vote per "voyage number". Whoever collects three of five votes becomes captain for that voyage, and every order they give is written into the ship's log, which only counts once three pirates have copied it. If the captain falls overboard, the voyage number goes up and a new vote begins. If the old captain climbs back aboard shouting orders, the crew checks his voyage number, sees it is old, and ignores him. Two pirates locked in the brig (a minority partition) can shout all they like: two votes are never a majority, so they can never crown a rival captain.
+
+Where the analogy breaks: real pirates can see each other. Raft nodes cannot tell a dead captain from a slow messenger, which is why "heard nothing for a while" is a timeout, not a certainty, and why an old captain may keep shouting orders for a while before he learns the voyage number has moved on.
+</Callout>
+
+## Why consensus is needed
+
+<DepthStamp depth="deep" />
+
+<Term slug="consensus">Consensus</Term> is the problem of getting several machines to agree on a single value, or a sequence of values, such that once a value is decided, it never changes, and every machine that learns a decision learns the same one. Formally, a consensus algorithm must provide:
+
+- **Agreement:** no two nodes decide different values.
+- **Validity:** the decided value was actually proposed by someone (no inventing values).
+- **Termination:** every node that stays up eventually decides.
+
+Leader election (who leads this period?), locks (who holds lock X?), configuration (what is the current value?) and database replication (what is write number 1,042?) are all this problem. The last is the general case. If every node starts from the same state and applies the same commands in the same order, every node ends in the same state. That idea is called a <Term slug="replicated-state-machine">replicated state machine</Term>, and consensus is how the nodes agree on the order of commands.
+
+### Why it is hard
+
+On one machine, ordering is free. Across machines, messages are delayed, lost or reordered, you cannot tell a slow node from a dead one, nodes crash mid-operation, and there is no shared clock to decide "who wrote first". A 1985 result by Fischer, Lynch and Paterson (the "FLP impossibility" result) proved that in a fully asynchronous network, with no bound on message delay, no deterministic algorithm can guarantee consensus will always terminate if even one node may crash. Practical algorithms such as Raft and Paxos get around this by never compromising safety (they never decide two different values) while relying on timeouts for progress. If the network behaves badly enough, they may stall, but they do not lie.
+
+### Why majorities
+
+Consensus algorithms use a **majority** of nodes, written ⌊N/2⌋ + 1. Any two majorities of the same cluster share at least one node, so a decision made by one majority is always visible to the next majority that tries to decide anything. The quorums section built the same intuition with R + W > N.
+
+| Cluster size | Majority | Failures tolerated |
+|---|---|---|
+| 1 | 1 | 0 |
+| 3 | 2 | 1 |
+| 4 | 3 | 1 |
+| 5 | 3 | 2 |
+| 7 | 4 | 3 |
+
+A 4-node cluster tolerates no more failures than a 3-node one, yet every write must reach three nodes instead of two. That is why consensus clusters are almost always odd-sized, and usually 3 or 5: each extra pair of nodes buys one more tolerated failure at the cost of slower writes.
+
+## Raft terms and leader election
+
+<DepthStamp depth="deep" />
+
+<Term slug="raft">Raft</Term> was published by Diego Ongaro and John Ousterhout in 2014 with an explicit goal: be as capable as Paxos but easier to understand and implement correctly. It splits consensus into three sub-problems: leader election, log replication, and safety. etcd, Consul, CockroachDB, TiKV and Kafka's KRaft all use Raft or a close variant.
+
+Every node is in one of three roles:
+
+- **Follower:** passive. Accepts log entries and heartbeats from the leader and answers vote requests.
+- **Candidate:** a follower that has stopped hearing from a leader and is asking for votes.
+- **Leader:** handles all client writes and replicates them. At most one per term.
+
+<Figure caption="FIG. 4.1 · RAFT ROLE TRANSITIONS">
+  <Diagram label="State diagram: a follower whose election timeout fires becomes a candidate. A candidate that wins a majority becomes leader. A candidate that sees a valid leader or higher term returns to follower; a split vote makes it time out and start a new election. A leader that sees a higher term steps down to follower." chart={`stateDiagram-v2
+    [*] --> Follower
+    Follower --> Candidate: election timeout, no heartbeat
+    Candidate --> Leader: votes from a majority
+    Candidate --> Candidate: split vote, timeout, new term
+    Candidate --> Follower: sees current leader or higher term
+    Leader --> Follower: sees a higher term`} />
+</Figure>
+
+*Raft roles: every transition is triggered by a timeout, a vote count or a term number.*
+
+### Terms
+
+Time in Raft is divided into numbered <Term slug="raft-term">terms</Term>. Each term starts with an election and has at most one leader. Terms act as a logical clock: every message carries the sender's term, and the rules are blunt:
+
+- If you receive a message with a **higher** term, adopt that term and become a follower.
+- If you receive a request with a **lower** term, reject it.
+
+That second rule is what neutralises a deposed leader. A leader cut off by a partition still thinks it leads term 4; when it reconnects, its requests carry term 4, the others are on term 5, and they reject it. As soon as it sees term 5, it steps down.
+
+### Election
+
+The leader sends periodic heartbeats (empty log-append messages) to every follower. Each follower has an <Term slug="election-timeout">election timeout</Term>: if it hears nothing from a leader for that long, it assumes the leader is gone and:
+
+1. Increments its term and becomes a candidate.
+2. Votes for itself.
+3. Sends a vote request to every other node, including its term and the index and term of its last log entry.
+
+Each node grants **at most one vote per term**, first come first served, and only to a candidate whose log is at least as up to date as its own (more on that under safety). A candidate that collects votes from a majority becomes leader and immediately sends heartbeats to assert itself.
+
+**Split votes.** If two followers time out at once, they may split the votes and nobody gets a majority. Both time out again and start a new term. Raft makes this rare by **randomising** election timeouts. The Raft paper uses timeouts drawn from 150 to 300 ms as its example; whichever node's timer fires first usually wins before anyone else even becomes a candidate.
+
+### Worked example: a 5-node election
+
+Nodes A to E, heartbeat interval 50 ms, election timeouts randomised between 150 and 300 ms. Leader A crashes at t = 0, just after its last heartbeat.
+
+| Time | Event |
+|---|---|
+| 0 ms | A crashes. B to E each have timers running: B 290, C 170, D 240, E 210 ms |
+| 170 ms | C times out first, moves to term 8, votes for itself, requests votes |
+| 172 ms | B, D, E (still term 7, no vote cast in term 8) grant their votes |
+| 172 ms | C has 4 of 5 votes (majority is 3) and becomes leader of term 8 |
+| 173 ms | C sends heartbeats; B, D, E reset their timers and stay followers |
+
+Writes were unavailable for roughly 170 to 175 ms. Shorter timeouts mean faster failover but more false elections when a leader is merely slow (a garbage-collection pause, a busy disk). Raft's guidance is that the election timeout should be much longer than the typical round trip between nodes, and much shorter than the typical time between real failures.
+
+## Raft log replication and the commit index
+
+<DepthStamp depth="deep" />
+
+Once elected, the leader is the only node that accepts writes. Each write becomes an **entry** in the leader's log, tagged with its index (position) and the term in which it was created. Replication works like this:
+
+1. The client sends a command, for example `SET config/max_conn 500`.
+2. The leader appends it to its own log at, say, index 42, term 8.
+3. The leader sends an append-entries request to every follower, including the entry and the index and term of the entry just before it.
+4. Each follower checks that it has a matching entry at that previous position. If yes, it appends, writes to disk and acknowledges. If not, it rejects, and the leader retries with an earlier position until the logs match, overwriting the follower's conflicting entries.
+5. Once the entry is stored on a **majority** (leader included), the leader marks it **committed**, applies it to its state machine and replies to the client.
+6. Later messages tell followers the new commit position, and they apply the entry too.
+
+<Figure caption="FIG. 4.2 · RAFT LOG REPLICATION · COMMIT ON MAJORITY">
+  <Diagram label="Sequence: a client sends SET to the leader. The leader appends entry 42 and sends it to followers F1 to F4. F1 and F2 acknowledge; F3 is slow and F4 is down. With leader plus F1 and F2 the entry is on 3 of 5 nodes, so the leader advances the commit index to 42, applies it and replies OK. The next heartbeat carries commit index 42 and followers apply it." chart={`sequenceDiagram
+    participant Cl as Client
+    participant L as Leader
+    participant F1 as Follower 1
+    participant F2 as Follower 2
+    participant F3 as Follower 3 slow
+    Cl->>L: SET max_conn 500
+    Note over L: append index 42, term 8
+    L->>F1: AppendEntries 42, prev 41/8
+    L->>F2: AppendEntries 42, prev 41/8
+    L->>F3: AppendEntries 42, prev 41/8
+    F1-->>L: ok (stored on disk)
+    F2-->>L: ok (stored on disk)
+    Note over L: 3 of 5 have it, commitIndex = 42
+    L-->>Cl: OK
+    L->>F1: heartbeat, commitIndex 42
+    L->>F2: heartbeat, commitIndex 42
+    F3-->>L: ok (late, still counts later)`} />
+</Figure>
+
+*Log replication: the client gets OK as soon as a majority has the entry on disk, not when every node does.*
+
+The <Term slug="commit-index">commit index</Term> is the highest log index known to be committed. An entry at or below it is permanent: it will be in the log of every future leader. Entries above it may still be overwritten if the leader crashes before replicating them widely.
+
+### Worked example: what a write costs
+
+A 5-node etcd cluster runs in one region across three availability zones. Round trips from the leader are about 1 ms to the two nodes in nearby zones and about 2 ms to the other two, and each node's disk sync takes about 2 ms.
+
+- The leader writes to its own disk (2 ms) while sending to followers in parallel.
+- It needs two follower acknowledgements to reach 3 of 5. The two fastest arrive after about 1 ms of network plus 2 ms of disk, so roughly **3 ms**.
+- The slow followers do not matter for latency at all.
+
+Now stretch the cluster across three regions with 70 ms between them. Whatever happens, at least one acknowledgement must cross a region, so every write costs **at least about 70 ms plus a disk sync**. This is why consensus clusters usually live within one region, and why multi-region systems built on consensus (such as Google Spanner or CockroachDB) choose carefully where each group's leader and replicas sit.
+
+Throughput has a second ceiling: everything funnels through one leader. Implementations batch and pipeline appends, and beyond that split data into many independent Raft groups, each with its own leader (CockroachDB calls them ranges, TiKV calls them regions).
+
+## Raft safety rules
+
+<DepthStamp depth="deep" />
+
+Electing a leader and copying a log is the easy part. The subtle part is making sure a committed entry is **never** lost or replaced, even across many crashes and elections. Raft guarantees this with a few rules.
+
+**Election restriction.** A node refuses to vote for a candidate whose log is less up to date than its own. "More up to date" means the last entry has a higher term, or the same term and a higher index. Since a committed entry is on a majority, and a winning candidate needs votes from a majority, at least one voter has that entry and will refuse any candidate missing it. So every new leader already has every committed entry. This property is called **leader completeness**.
+
+**Log matching.** If two logs have an entry with the same index and term, they are identical up to and including that entry. The previous-index check in every append enforces it, and it means the leader never has to compare entire logs, only one position.
+
+**Leaders never overwrite their own log.** They only append. Followers' conflicting, uncommitted entries are overwritten to match the leader.
+
+**Commit only current-term entries by counting.** A new leader does not mark an entry from an older term as committed just because it now sits on a majority. It commits an entry from its own term, and everything before it becomes committed with it. The Raft paper shows a specific failure sequence where counting old-term replicas would let a committed entry be overwritten later; this rule closes that gap. In practice, a new leader immediately appends a no-op entry in its own term to commit everything before it quickly.
+
+**Reading safely.** A leader that has been partitioned away may not know it was deposed, so if it answered reads from its own state it could return stale data. To serve a linearizable read, the leader must first confirm it is still leader, for example by exchanging a heartbeat round with a majority before answering (etcd calls its version of this ReadIndex). Some systems instead use leader leases that rely on bounded clock drift: faster, but correct only if clocks behave.
+
+### Failure story: a leader with a stale term
+
+Five nodes, A to E. A leads term 4. A partition cuts A and B off from C, D and E. What Raft promises here is not that A stops instantly, but that nothing A does in isolation can ever become committed.
+
+| Time | Event |
+|---|---|
+| 0 ms | Partition: A and B on one side, C, D, E on the other |
+| 10 ms | Client 1 sends `x = 1` to A. A appends it at index 50, term 4. Only B acknowledges: 2 of 5 is not a majority, so A cannot commit and does not reply OK |
+| 180 ms | C's election timeout fires. C moves to term 5 and wins votes from D and E (3 of 5) |
+| 200 ms | Client 2 sends `x = 2` to C. C appends it at index 50, term 5; D and E acknowledge; committed. Client 2 gets OK |
+| 900 ms | Client 1 times out and gets an error, not OK. The write's fate is unknown to it |
+| 5,000 ms | Partition heals. A sends a heartbeat in term 4. C, D and E reject it and reply with term 5. A adopts term 5 and becomes a follower |
+| 5,010 ms | C's append-entries finds A and B disagree at index 50. Their term-4 entry is overwritten with C's `x = 2` |
+
+Nothing acknowledged was lost: client 1 never received OK. That is the precise guarantee. Raft does **not** promise that an unacknowledged write failed (it may or may not survive), which is why clients retry with an idempotency key rather than assuming. And if A had served a **read** of `x` from its own memory at 3,000 ms, it would have returned stale data, which is exactly what the ReadIndex check prevents.
+
+## Paxos
+
+<DepthStamp depth="awareness" />
+
+<Term slug="paxos">Paxos</Term>, introduced by Leslie Lamport (in "The Part-Time Parliament", published 1998, and re-explained in "Paxos Made Simple" in 2001), is the original practical consensus algorithm and still underpins many systems: Google's Chubby lock service and Spanner both use Paxos.
+
+Basic (single-decree) Paxos decides one value with two phases:
+
+1. **Prepare/promise:** a proposer picks a unique, increasing proposal number n and asks acceptors to promise to ignore anything numbered below n. Each acceptor that promises also reports any value it has already accepted.
+2. **Accept/accepted:** if a majority promised, the proposer asks them to accept a value: the highest-numbered value any of them reported, or its own if none did. Once a majority accepts, the value is chosen.
+
+Real systems run **Multi-Paxos**: a stable leader skips phase 1 for successive log slots, which ends up looking a lot like Raft. The difference is that the Paxos papers leave leader election, log gaps and membership changes to the implementer, which is why Raft was written. ZooKeeper's Zab and Viewstamped Replication solve the same problem with different details. For interviews, know that Paxos and Raft give the same guarantee: majority agreement that survives minority failures.
+
+## etcd and ZooKeeper in practice
+
+<DepthStamp depth="tradeoffs" />
+
+Most engineers meet consensus through a **coordination service**: a small, strongly consistent key-value store that other systems use for the few facts that must never be ambiguous.
+
+- **etcd** is a key-value store replicated with Raft. It offers watches (be told when a key changes), leases (keys that vanish if their owner stops renewing), transactions (compare-and-swap), and ready-made election and lock helpers in its client libraries. Kubernetes stores all cluster state in it.
+- **ZooKeeper** stores a tree of small nodes called znodes, replicated with its own protocol, Zab. It offers watches, **ephemeral** znodes (deleted when the client's session ends) and **sequential** znodes (the server appends an increasing counter to the name). Hadoop, HBase and older Kafka versions relied on it.
+
+Typical uses:
+
+| Use | etcd | ZooKeeper |
+|---|---|---|
+| Configuration | Store config keys; services watch them and reload | Store config in znodes with watches |
+| Leader election | Campaign by creating a key under a lease; lowest revision wins | Create an ephemeral sequential znode; lowest sequence number wins |
+| Locks | Same as election, per lock name; lease expiry releases a crashed holder | Same recipe; session expiry deletes the ephemeral znode |
+| Service discovery | Register under a lease; key disappears if the instance dies | Ephemeral znode per instance |
+
+Both make leader election cheap for your application: rather than running Raft yourself, you let three or five etcd nodes run it and build a lease on top. The distributed-locks section covers why such locks still need fencing tokens: a holder can pause, lose its lease, and keep acting without knowing it.
+
+Sizing: a 3-node cluster that loses two nodes refuses writes rather than risk split brain (in CAP terms, it chooses consistency). Five nodes let you take one down for maintenance and still survive a crash. Beyond that, larger majorities just make writes slower.
+
+<TradeoffBox title="Consensus tradeoffs" items={[
+  { gain: "Exactly one leader and one order of writes, even through crashes", cost: "Every write waits for a majority round trip plus a disk sync" },
+  { gain: "Survives up to (N − 1) / 2 node failures with no data loss", cost: "A minority partition cannot write at all: availability is sacrificed" },
+  { gain: "Bigger clusters tolerate more failures", cost: "Bigger majorities make writes slower; one leader caps throughput" },
+  { gain: "Off-the-shelf services (etcd, ZooKeeper) make election and locks easy", cost: "Another critical cluster to operate, monitor and back up" }
+]} />
+
+<NotWhenBox title="When not to reach for consensus" items={[
+  "Bulk data such as user records or analytics events: use a database that runs consensus internally, or shard into many groups, not one etcd cluster.",
+  "Data where last-write-wins or merging is acceptable, such as counters, likes or caches: eventual consistency is cheaper.",
+  "Low-latency writes spread across distant regions: every write would pay a cross-region round trip.",
+  "Two-node setups: a majority of 2 is 2, so losing either node stops everything. Use 3."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A 4-node cluster is more fault-tolerant than a 3-node cluster." right="Both tolerate exactly one failure, since a majority of 4 is 3. The fourth node only makes writes slower. Use odd sizes." />
+
+<Misconception wrong="Once the leader replies OK, every node has the write." right="Only a majority is guaranteed to have it. Slow or down followers catch up later, so reading from an arbitrary follower can return stale data." />
+
+<Misconception wrong="Consensus keeps the system available during a partition." right="Only the majority side can make progress. The minority side, including a deposed leader, must refuse writes. Consensus buys consistency, not availability." />
+
+<Misconception wrong="Raft needs synchronized clocks." right="Raft's correctness does not depend on clocks at all; terms are logical numbers. Timeouts only affect how quickly a new leader is elected." />
+
+## Interview angle
+
+<InterviewAngle title="Consensus and Raft" questions={[
+  "Walk me through what happens when a Raft leader crashes.",
+  "Why are consensus clusters usually 3 or 5 nodes and not 4 or 6?",
+  "A network partition splits a 5-node cluster 3 to 2. What can each side do?",
+  "How does Raft make sure a new leader never loses a committed write?",
+  "Your service needs a single active scheduler instance. How would you build that?"
+]}>
+Start from the guarantee: a majority must agree, and any two majorities overlap, so committed decisions survive. Then walk through Raft in three steps: terms and randomised election timeouts for leader election, append-entries with a majority acknowledgement for commits, and the election restriction for safety. Quantify with the failure table (2f + 1 nodes tolerate f failures) and the latency cost (a majority round trip plus a disk sync per write). For application design questions, don't implement consensus: put a lease-based election or lock on etcd or ZooKeeper, and mention fencing tokens for anything the leader writes to.
+
+The usual next question is "so why not put everything in etcd?" The strong answer: a consensus group is one ordered log behind one leader, every write pays a majority round trip and an fsync, and the store is sized for megabytes to a few gigabytes of metadata. Keep the facts that must be unambiguous (who leads, which shard lives where, current config) in the coordination service, and put the bulk data in a database that partitions it, possibly into many independent Raft groups as CockroachDB and TiKV do.
+</InterviewAngle>
+
+## Practice
+
+1. A 7-node Raft cluster is split 4 to 3 by a partition, and the old leader is on the side with 3. Describe what each side does for the next second, including terms.
+2. Leader-to-follower round trips are 1, 1, 40 and 45 ms in a 5-node cluster, and disk sync takes 3 ms. Estimate commit latency. What happens to it if the two nearby followers fail?
+3. Design leader election for a cron service with 4 instances using etcd leases. What lease length would you choose, and what happens during a 10-second garbage-collection pause on the leader?
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

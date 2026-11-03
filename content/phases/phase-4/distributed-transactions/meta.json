@@ -1,0 +1,19 @@
+{
+  "id": "p4-distributed-transactions",
+  "phase": 4,
+  "slug": "distributed-transactions",
+  "title": "Distributed Transactions: 2PC and Sagas",
+  "order": 6,
+  "week": 9,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "two-phase-commit", "title": "Two-phase commit", "depth": "deep" },
+    { "id": "coordinator-failure", "title": "Coordinator failure and the blocking problem", "depth": "deep" },
+    { "id": "sagas", "title": "Sagas and compensating actions", "depth": "deep" },
+    { "id": "saga-coordination", "title": "Orchestration vs choreography", "depth": "tradeoffs" },
+    { "id": "avoiding-distributed-transactions", "title": "When to avoid distributed transactions", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["saga"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p2-transactions", "p2-idempotency", "p3-event-driven", "p4-consensus"]
+}

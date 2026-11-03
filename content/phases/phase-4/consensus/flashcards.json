@@ -1,0 +1,18 @@
+[
+  { "id": "consensus-f1", "front": "Consensus: the three properties?", "back": "Agreement (no two nodes decide differently), validity (the value was proposed by someone), termination (live nodes eventually decide).", "topicId": "why-consensus" },
+  { "id": "consensus-f2", "front": "Replicated state machine?", "back": "Same start state + same commands in the same order = same end state on every node. Consensus agrees on the order.", "topicId": "why-consensus" },
+  { "id": "consensus-f3", "front": "Failures tolerated by N nodes?", "back": "(N − 1) / 2, rounded down. 3 nodes → 1, 5 → 2, 7 → 3. 4 nodes still → 1.", "topicId": "why-consensus" },
+  { "id": "consensus-f4", "front": "What does FLP say, and how do Raft and Paxos live with it?", "back": "No deterministic algorithm guarantees termination in a fully asynchronous network with one crash. They never compromise safety and use timeouts for progress.", "topicId": "why-consensus" },
+  { "id": "consensus-f5", "front": "Raft's three roles?", "back": "Follower (passive), candidate (asking for votes), leader (takes all writes, at most one per term).", "topicId": "raft-election" },
+  { "id": "consensus-f6", "front": "Raft term rules?", "back": "See a higher term: adopt it and become a follower. See a request with a lower term: reject it.", "topicId": "raft-election" },
+  { "id": "consensus-f7", "front": "Why randomised election timeouts?", "back": "So one follower usually times out first and wins, avoiding repeated split votes. The paper's example range is 150–300 ms.", "topicId": "raft-election" },
+  { "id": "consensus-f8", "front": "Votes per node per term?", "back": "At most one, first come first served, and only to a candidate whose log is at least as up to date.", "topicId": "raft-election" },
+  { "id": "consensus-f9", "front": "When is a Raft entry committed?", "back": "When the leader has stored an entry from its current term on a majority of nodes (leader included).", "topicId": "raft-log" },
+  { "id": "consensus-f10", "front": "Commit latency of a 5-node Raft cluster?", "back": "Roughly the second-fastest follower's round trip plus a disk sync. Slow followers don't count.", "topicId": "raft-log" },
+  { "id": "consensus-f11", "front": "What does a follower check on every append?", "back": "That it has an entry matching the previous index and term. If not, it rejects and the leader backs up until logs match.", "topicId": "raft-log" },
+  { "id": "consensus-f12", "front": "Election restriction?", "back": "Vote only for candidates whose last entry has a higher term, or the same term and an equal or higher index. Guarantees new leaders have every committed entry.", "topicId": "raft-safety" },
+  { "id": "consensus-f13", "front": "Why can't a Raft leader serve reads from memory alone?", "back": "It may have been deposed without knowing. Confirm leadership with a majority first (ReadIndex) or use a clock-bounded lease.", "topicId": "raft-safety" },
+  { "id": "consensus-f14", "front": "Paxos's two phases?", "back": "Prepare/promise (reserve proposal number n, learn prior accepted values), then accept/accepted (a majority accepts a value).", "topicId": "paxos" },
+  { "id": "consensus-f15", "front": "etcd vs ZooKeeper building blocks?", "back": "etcd: Raft, keys with leases, watches, compare-and-swap. ZooKeeper: Zab, ephemeral and sequential znodes, watches.", "topicId": "coordination-services" },
+  { "id": "consensus-f16", "front": "What belongs in a coordination service?", "back": "Small facts that must be unambiguous: leader, locks, shard map, config. Not bulk data.", "topicId": "coordination-services" }
+]

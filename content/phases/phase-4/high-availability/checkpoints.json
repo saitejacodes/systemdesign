@@ -1,0 +1,7 @@
+[
+  { "id": "high-availability-c1", "text": "I can convert an availability target into downtime per year and per month, and show why MTTR is often the cheapest lever.", "topicId": "nines" },
+  { "id": "high-availability-c2", "text": "I can size spare capacity so a service survives losing one zone, for 2, 3 or 4 zones.", "topicId": "redundancy" },
+  { "id": "high-availability-c3", "text": "I can choose active-active or active-passive for a given tier and walk through an AZ failure timeline second by second.", "topicId": "active-modes" },
+  { "id": "high-availability-c4", "text": "I can explain what multi-AZ and multi-region each protect against, and what multi-region forces on replication and writes.", "topicId": "multi-az-region" },
+  { "id": "high-availability-c5", "text": "I can compute series and parallel availability for a request path, find the weakest link and name the correlated failures the formulas ignore.", "topicId": "availability-math" }
+]
