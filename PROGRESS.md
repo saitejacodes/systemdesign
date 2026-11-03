@@ -14,7 +14,7 @@
 - [x] 11 Phase 3 Simulators
 - [x] 12 Phase 4 Content
 - [x] 13 Phase 4 Simulators
-- [ ] 14 Phase 5 Content + Simulators
+- [x] 14 Phase 5 Content + Simulators
 - [ ] 15 Phase 6 Content + Simulators
 - [ ] 16 Algorithm Sandboxes
 - [ ] 17 Design Studio: Canvas

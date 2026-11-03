@@ -1,0 +1,198 @@
+## Why it matters
+
+Your architecture diagram is only a picture until something creates the load balancers, databases, networks and permissions it shows. If people create them by clicking in a cloud console, nobody can say exactly what production looks like, staging slowly stops resembling it, and rebuilding a region after a disaster becomes archaeology. Hand-run operations are also how small mistakes get big: on 28 February 2017, AWS's summary of the S3 outage in us-east-1 explained that an engineer ran an established command to remove a small number of servers, mistyped one input, and removed a much larger set, taking down S3 in the region for hours. AWS's fix was to change its tooling so capacity is removed more slowly and never below a safe minimum. Infrastructure as code applies the same idea to everything: infrastructure changes are written down, reviewed as a diff, previewed before they run, and applied by a tool with guard rails, not by someone typing quickly at 2 a.m.
+
+<Callout type="analogy" title="The housekeeper with a photo of the perfect room">
+A hotel housekeeper is handed a photo of how room 412 should look: two lamps, one desk, blue curtains. She doesn't follow a list of steps; she compares the room to the photo and fixes only the differences (that is declarative infrastructure, and the comparison is the plan). She keeps a clipboard noting which real lamp is "lamp 1" in the photo, so she doesn't buy a new one every visit (state). If a guest drags the desk to the window, the room has drifted from the photo; next time she comes, she moves it back, whether or not the guest had a good reason (drift). Where the analogy breaks: this housekeeper only comes when you call her. Terraform reconciles only when someone runs it, unlike Kubernetes controllers, which check the room every few seconds. And if you change the photo's caption from "lamp 1" to "reading lamp" without telling her, she may throw the old lamp out and buy a new one.
+</Callout>
+
+## Declarative infrastructure
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="infrastructure-as-code">Infrastructure as code</Term> (IaC) means defining infrastructure (networks, servers, databases, DNS, IAM permissions) in version-controlled files that a tool turns into real resources. The files get code review, history and CI just like application code.
+
+There are two styles:
+
+- **Imperative:** a script of steps. "Create a VPC. Then create a subnet. Then create a database." Run it twice and you get two databases, unless every step checks first.
+- <Term slug="declarative-infrastructure">Declarative</Term>: a description of the desired end state. "There is one database, `db.r6g.large`, 500 GB, in this subnet." The tool works out what to create, change or delete to make reality match. Run it twice and the second run does nothing.
+
+| Tool | Style | Language | Reconciles |
+|---|---|---|---|
+| Terraform / OpenTofu | Declarative | HCL | When you run `apply` |
+| AWS CloudFormation | Declarative | YAML / JSON | When you update a stack |
+| Pulumi | Declarative engine, imperative language | TypeScript, Python, Go and others | When you run `up` |
+| AWS CDK | Code that synthesises CloudFormation | TypeScript, Python and others | Via CloudFormation |
+| Kubernetes manifests, Crossplane | Declarative | YAML | Continuously, via controllers |
+| Ansible | Mostly procedural tasks with idempotent modules | YAML | When the playbook runs |
+
+The column that matters most for system design is the last one. Kubernetes controllers run a **control loop**: they compare desired and actual state every few seconds and fix differences forever. Terraform compares only when someone runs it. That is why Terraform is used for slow-changing foundations (accounts, networks, clusters, managed databases) and Kubernetes or a GitOps tool for fast-changing workloads running on top.
+
+The field genuinely debates the language. HCL's supporters argue that a restricted language keeps infrastructure readable and reviewable by anyone; Pulumi and CDK supporters argue that real loops, functions, types and tests beat copy-pasted config. Both produce a declarative desired state; the argument is about how you write it.
+
+A note on Terraform itself: in August 2023 HashiCorp moved Terraform from the open-source MPL licence to the Business Source License. A community fork, OpenTofu, now lives under the Linux Foundation and remains largely compatible. Everything below applies to both.
+
+## Terraform concepts
+
+<DepthStamp depth="deep" />
+
+A minimal Terraform configuration:
+
+```hcl
+provider "aws" {
+  region = "eu-west-1"
+}
+
+resource "aws_db_instance" "main" {
+  identifier        = "orders-db"
+  engine            = "postgres"
+  instance_class    = "db.r6g.large"
+  allocated_storage = 500
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+output "db_endpoint" {
+  value = aws_db_instance.main.endpoint
+}
+```
+
+The building blocks:
+
+- <Term slug="terraform-provider">Provider</Term>: a plugin that translates resources into API calls for one platform (AWS, Google Cloud, Cloudflare, GitHub, Datadog). `terraform init` downloads the providers and configures where state is kept.
+- **Resource:** one real object, named by its **address**, here `aws_db_instance.main`. The address is Terraform's identity for it.
+- **Data source:** a read-only lookup of something that already exists (an AMI ID, an existing VPC).
+- **Variables and outputs:** inputs to a configuration and values it exposes to others.
+- **Module:** a reusable folder of resources with inputs and outputs, for example one "service" module used by thirty teams.
+- **Dependency graph:** references such as `aws_db_instance.main.endpoint` tell Terraform what depends on what. It builds a graph and creates independent resources in parallel (10 at a time by default, the `-parallelism` flag).
+
+### Plan, then apply
+
+The core workflow is **write, plan, apply**. A <Term slug="terraform-plan">plan</Term> refreshes what Terraform knows about each resource, compares desired with actual, and prints the diff before anything changes:
+
+```
+  + create
+  ~ update in-place
+  - destroy
+-/+ destroy and then create replacement
+```
+
+The `-/+` line is the one to read twice. Some attribute changes cannot be applied in place, so the provider marks them "forces replacement", and Terraform will delete the old resource and create a new one. For a stateless server that is fine. For a database it means data loss.
+
+In a team, plans run in CI on every pull request and the plan output is posted for review; `apply` runs only after merge, ideally applying the exact saved plan file (`terraform plan -out=tfplan`, then `terraform apply tfplan`) so what was reviewed is what runs.
+
+### Failure timeline: a rename that deletes a database
+
+| Time | Event |
+|---|---|
+| Mon 10:00 | A refactor renames `aws_db_instance.main` to `aws_db_instance.orders` for readability |
+| Mon 10:05 | CI posts a plan: `- aws_db_instance.main` and `+ aws_db_instance.orders`. The reviewer skims "1 to add, 1 to destroy" |
+| Mon 10:30 | Merged; the pipeline applies. Terraform sees a new address and an orphaned one, so it destroys the old database and creates an empty one |
+| Mon 10:45 | Orders fail. Recovery means restoring from the last snapshot and losing the writes since |
+
+Terraform has no idea the two names are "the same" resource unless you say so. The fixes, in layers:
+
+1. A `moved` block (Terraform 1.1+) records the rename, so the plan shows a move, not a destroy and create:
+   ```hcl
+   moved {
+     from = aws_db_instance.main
+     to   = aws_db_instance.orders
+   }
+   ```
+2. `lifecycle { prevent_destroy = true }` on stateful resources makes any plan that would destroy them fail.
+3. Cloud-side protection, such as RDS deletion protection, as a final backstop the IaC tool cannot bypass by accident.
+4. Policy checks in CI that block any plan destroying a database without a second approval.
+
+## State
+
+<DepthStamp depth="deep" />
+
+<Term slug="terraform-state">Terraform state</Term> is a JSON file that maps each resource address in your code to the real object's ID in the cloud (`aws_db_instance.orders` → `orders-db`), along with the attributes Terraform last saw. Without it, Terraform could not tell "this database is the one I created" from "this is someone else's database with a similar name".
+
+Four rules every team learns, often the hard way:
+
+1. **Store it remotely.** A state file on a laptop means only one person can safely run Terraform. Use a remote backend: an S3 bucket, Google Cloud Storage, Azure Blob Storage or HCP Terraform. Turn on bucket versioning so you can recover a corrupted state.
+2. **Lock it.** <Term slug="state-locking">State locking</Term> stops two applies from running at once and interleaving changes. With the S3 backend, locking traditionally used a DynamoDB table; Terraform 1.10 and later can also lock with a lock file in the bucket itself. Never force-unlock unless you are sure the other run is dead.
+3. **Treat it as a secret.** State stores attributes in plaintext, which can include generated database passwords and private keys. Encrypt the bucket, restrict who can read it, and prefer having passwords generated and held by a secrets manager.
+4. **Never hand-edit it.** Use `terraform state mv`, `moved` blocks, `import` blocks (Terraform 1.5+) to adopt existing resources, and `removed` blocks to stop managing a resource without destroying it.
+
+### Splitting state: blast radius and speed
+
+One state file for a whole company is tempting and dangerous. Every plan refreshes every resource, and every apply can touch everything. Rough numbers: a state with **3,000 resources**, each needing one read API call of about 200 ms during refresh, at the default parallelism of 10, takes at least 3,000 / 10 × 0.2 s = **60 seconds** just to refresh, before cloud API rate limits slow it further. Worse, a mistake in that one configuration can reach every environment.
+
+Split state along lines of ownership and change rate: per environment (dev, staging, prod), and within an environment per layer (network, data stores, each service). A typical layout has dozens of small states, each planning in seconds, each with a small, obvious blast radius. Pass values between them with outputs and data sources, not by copying IDs.
+
+### Environments: same code, different inputs
+
+Promote infrastructure like application artifacts: the same module version runs in staging and then production, with different variables (instance sizes, replica counts). Pin module and provider versions so an upgrade happens deliberately in a pull request, not silently on a Tuesday. Many teams pair this with <Term slug="immutable-infrastructure">immutable infrastructure</Term>: instead of patching running servers, build a new machine image or container and replace the old instances, so no server accumulates undocumented changes.
+
+## Drift
+
+<DepthStamp depth="awareness" />
+
+<Term slug="configuration-drift">Configuration drift</Term> is any difference between what the code says and what is actually running, usually because someone changed a resource outside the IaC tool. Drift is inevitable in an incident; the danger is that it is invisible until the next apply silently undoes it.
+
+| Time | Event |
+|---|---|
+| Week 1, Tue 03:10 | Incident: the orders database runs out of connections. On-call raises the instance from `db.r6g.large` to `db.r6g.2xlarge` in the console. Incident resolved |
+| Week 1, Tue 09:00 | Postmortem written; nobody updates the Terraform code |
+| Week 4, Thu 15:00 | An engineer adds a tag to the database in Terraform. The plan shows `~ instance_class: "db.r6g.2xlarge" -> "db.r6g.large"` among other changes; it is missed |
+| Week 4, Thu 15:20 | Apply shrinks the database during peak traffic; the original incident returns |
+
+How teams handle it:
+
+- **Detect it on a schedule.** Run `terraform plan -detailed-exitcode` nightly per state; exit code 2 means changes are pending, which in a quiet repository means drift. `terraform plan -refresh-only` shows what changed in the real world without proposing to change it back.
+- **Decide per change.** Either codify the console change (update the code to match reality, the usual answer after an incident) or let the next apply revert it. `terraform apply -refresh-only` accepts real-world values into state.
+- **Exclude what something else owns.** If an autoscaler changes a group's desired count, add `lifecycle { ignore_changes = [desired_capacity] }` so Terraform stops fighting it.
+- **Make the console read-only** for production in normal operation, with break-glass access that is logged and followed by a "codify the change" task.
+
+<TradeoffBox title="Infrastructure as code choices" items={[
+  { gain: "Declarative IaC: reviewable diffs, repeatable environments, rebuildable regions", cost: "A state file to protect and lock, and a plan that must be read carefully" },
+  { gain: "Terraform/OpenTofu: one tool across many clouds and SaaS providers", cost: "Only reconciles when run, so drift accumulates between applies" },
+  { gain: "Continuous reconcilers (Kubernetes controllers, Crossplane): drift is fixed automatically", cost: "They also revert well-meaning manual fixes during an incident, and need a cluster to run in" },
+  { gain: "Small, split states: fast plans and a small blast radius", cost: "More wiring between states via outputs and data sources" },
+  { gain: "General-purpose languages (Pulumi, CDK): loops, types and unit tests", cost: "Infrastructure becomes harder to read for reviewers who are not developers" }
+]} />
+
+<NotWhenBox title="When IaC is overkill or the wrong tool" items={[
+  "A throwaway experiment or hackathon account you will delete next week: the console is fine, as long as it never becomes production.",
+  "Fast-changing application deployments (image versions, replica counts): use your deploy pipeline or Kubernetes, not a Terraform apply per release.",
+  "Data inside resources (database rows, bucket objects): IaC manages the containers, not their contents.",
+  "Managing the same resource from two tools: pick one owner, or they will undo each other's changes forever."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Terraform keeps production matching the code at all times." right="Terraform only compares and fixes when someone runs plan and apply. Between runs, drift accumulates silently unless you detect it on a schedule." />
+
+<Misconception wrong="Renaming a resource in Terraform code is a harmless refactor." right="The address is the resource's identity. A rename without a moved block plans a destroy and a create, which for a database means data loss." />
+
+<Misconception wrong="The state file is just a cache; we can regenerate it." right="State is the only mapping from code addresses to real resources, and may hold secrets. Losing it means re-importing everything by hand, so store it remotely, versioned, encrypted and locked." />
+
+## Interview angle
+
+<InterviewAngle title="Infrastructure as code" questions={[
+  "How would you manage infrastructure for 20 services across dev, staging and production?",
+  "What is Terraform state, where do you keep it, and what goes wrong if two engineers apply at once?",
+  "Someone fixed production in the console during an incident. What happens next week, and how do you handle it?",
+  "How do you stop a Terraform change from deleting a production database?",
+  "Terraform or Kubernetes-native tools for this: where would you draw the line?"
+]}>
+IaC rarely gets a whole interview, but it shows up when you talk about environments, disaster recovery ("how fast can you rebuild in another region?") and safe change. Strong answers describe the plan-in-CI, apply-after-merge workflow; remote, locked, encrypted state split per environment and layer to limit blast radius; and guard rails on stateful resources (moved blocks for refactors, prevent_destroy, cloud-side deletion protection, policy checks on destroys). Show you know drift is normal and must be detected and codified, and that Terraform reconciles only on apply while Kubernetes controllers reconcile continuously, which is why foundations live in Terraform and workloads in a deploy pipeline or GitOps.
+</InterviewAngle>
+
+## Practice
+
+1. Design the state layout for a company with three environments, a shared network, two databases and 15 services. How many state files, who owns each, and how do services find the database endpoint?
+2. A plan shows `-/+ aws_db_instance.orders (forces replacement)` after someone changed one attribute. List three ways your process should have stopped this reaching apply, and how you would make the change safely instead.
+3. Write a drift policy for production: how often you detect drift, who is alerted, and the rule for whether a console change is codified or reverted.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

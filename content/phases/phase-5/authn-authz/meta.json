@@ -1,0 +1,19 @@
+{
+  "id": "p5-authn-authz",
+  "phase": 5,
+  "slug": "authn-authz",
+  "title": "Authentication and Authorization",
+  "order": 6,
+  "week": 11,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "sessions-vs-tokens", "title": "Sessions vs tokens", "depth": "tradeoffs" },
+    { "id": "oauth-flows", "title": "OAuth 2.0 flows", "depth": "deep" },
+    { "id": "oidc", "title": "OpenID Connect", "depth": "deep" },
+    { "id": "jwt", "title": "JWT structure, signing and expiry", "depth": "deep" },
+    { "id": "revocation", "title": "The revocation problem", "depth": "deep" }
+  ],
+  "simulatorIds": ["jwt-inspector"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-client-server", "p1-http", "p1-tls", "p2-api-gateway"]
+}

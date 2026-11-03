@@ -1,0 +1,187 @@
+[
+  {
+    "id": "kubernetes-q1",
+    "type": "single",
+    "prompt": "What happens when a pod's readiness probe fails three times in a row?",
+    "options": [
+      { "id": "a", "text": "The kubelet kills the container and restarts it under the pod's restart policy" },
+      { "id": "b", "text": "The pod is removed from Service endpoints but keeps running until it passes again" },
+      { "id": "c", "text": "The Deployment controller deletes the pod and schedules a replacement elsewhere" },
+      { "id": "d", "text": "The scheduler evicts the pod from its node and marks the node as not ready" }
+    ],
+    "correct": ["b"],
+    "explanation": "Readiness answers 'should this pod get traffic now?', so failure removes the pod from the Service's EndpointSlices; it is not restarted and rejoins when the probe passes. Restarting the container is what a failed liveness probe does. Deployments do not delete pods for failing readiness; they only use readiness to pace rollouts. The scheduler places pods; it does not evict them for probe failures, and one pod's probe says nothing about its node.",
+    "topicId": "probes",
+    "difficulty": 1
+  },
+  {
+    "id": "kubernetes-q2",
+    "type": "scenario",
+    "prompt": "What is the most likely cause of the errors?",
+    "scenario": "A 10-replica Deployment uses default rolling-update settings. Each new version takes about 25 seconds to load data and open its database pool before it can answer requests. For roughly a minute during every deploy, users see 503s and connection-refused errors. The pods have a liveness probe but no readiness probe.",
+    "options": [
+      { "id": "a", "text": "Without readiness, a started container counts as ready and gets traffic before it can serve" },
+      { "id": "b", "text": "The liveness probe restarts new pods during start-up, which drops every connection" },
+      { "id": "c", "text": "The default maxSurge of 25% is too small, so the cluster runs out of pods mid-rollout" },
+      { "id": "d", "text": "kube-proxy cannot update its rules during a rollout until the old ReplicaSet is gone" }
+    ],
+    "correct": ["a"],
+    "explanation": "With no readiness probe, Kubernetes treats a running container as ready, adds it to endpoints at once, and the Deployment controller keeps terminating old pods because the new ones look available. Traffic hits pods that are still initialising. A liveness probe restart would show restart counts and CrashLoopBackOff, not a clean one-minute window. maxSurge controls extra pods; capacity was lost because unready pods counted as available, not because surge was small. kube-proxy updates endpoints continuously during a rollout.",
+    "topicId": "probes",
+    "difficulty": 2
+  },
+  {
+    "id": "kubernetes-q3",
+    "type": "scenario",
+    "prompt": "What turned a slow database into a much longer outage?",
+    "scenario": "During a heavy batch job, database latency rises to 2 seconds for ten minutes. The service's liveness endpoint runs SELECT 1 against the database, with the default 1-second timeout and failure threshold of 3. Thirty pods restart repeatedly and end up in CrashLoopBackOff; the service stays down several minutes after the database recovers.",
+    "options": [
+      { "id": "a", "text": "The readiness probe removed all pods, and endpoints take minutes to refill" },
+      { "id": "b", "text": "The HPA scaled the Deployment to zero because CPU fell while queries waited" },
+      { "id": "c", "text": "Liveness depended on the database, so all pods restarted, piling cold starts on it" },
+      { "id": "d", "text": "SELECT 1 holds a table lock, so thirty pods' probes themselves blocked the batch job" }
+    ],
+    "correct": ["c"],
+    "explanation": "Liveness should check only the process. Tying it to the database made every pod fail together, so the kubelet restarted all 30, each cold start opened new connections to the struggling database, and CrashLoopBackOff's growing delays kept pods down after recovery. Readiness removal is reversed within a probe period once checks pass, not minutes. The HPA does not scale below minReplicas, which is at least 1. SELECT 1 takes no table locks.",
+    "topicId": "probes",
+    "difficulty": 2
+  },
+  {
+    "id": "kubernetes-q4",
+    "type": "scenario",
+    "prompt": "During a rollout with default settings, what is the minimum serving capacity, and is a peak-time deploy safe?",
+    "scenario": "A Deployment runs 20 replicas with maxSurge 25% and maxUnavailable 25% (the defaults). Each pod serves 500 requests per second at target utilisation. Peak traffic is 9,000 requests per second.",
+    "options": [
+      { "id": "a", "text": "20 pods stay available, 10,000/s, because surge pods are added before any are removed" },
+      { "id": "b", "text": "15 pods stay available, 7,500/s, so a deploy at the 9,000/s peak overloads the fleet" },
+      { "id": "c", "text": "18 pods stay available, 9,000/s, because maxUnavailable rounds up to just two pods" },
+      { "id": "d", "text": "10 pods stay available, 5,000/s, because surge and unavailable add together to 50%" }
+    ],
+    "correct": ["b"],
+    "explanation": "maxUnavailable 25% of 20 is 5 (rounded down), so as few as 15 pods may be available: 15 × 500 = 7,500/s, below the 9,000/s peak. Keeping all 20 available requires maxUnavailable 0; the defaults allow removing old pods immediately. 25% of 20 is exactly 5, and maxUnavailable rounds down, never up to fewer. Surge adds pods above 20; it does not subtract from availability, so the floor is 15, not 10.",
+    "topicId": "pods-deployments",
+    "difficulty": 2
+  },
+  {
+    "id": "kubernetes-q5",
+    "type": "scenario",
+    "prompt": "Why do the new pods receive almost no traffic?",
+    "scenario": "A gRPC service sits behind a ClusterIP Service. Clients open one long-lived HTTP/2 connection each at start-up. The HPA scales the service from 4 to 12 pods during a traffic rise, but the 8 new pods stay nearly idle while the original 4 are overloaded.",
+    "options": [
+      { "id": "a", "text": "The new pods fail readiness until the HPA's 5-minute stabilisation window has passed" },
+      { "id": "b", "text": "The ClusterIP weights traffic by pod age, so older pods are preferred for stability" },
+      { "id": "c", "text": "kube-proxy balances connections, not requests, so existing streams stay on old pods" },
+      { "id": "d", "text": "gRPC is not supported by Kubernetes Services and needs a NodePort to be balanced" }
+    ],
+    "correct": ["c"],
+    "explanation": "kube-proxy's iptables or IPVS rules choose a pod when a connection is opened. Every request after that rides the same HTTP/2 connection, so the new pods only get traffic from new connections. Fix it with client-side balancing over a headless Service, a mesh that balances per request, or a maximum connection age. The stabilisation window delays scale-down decisions and has nothing to do with readiness. ClusterIP has no age weighting. gRPC works through Services; NodePort uses the same per-connection rules.",
+    "topicId": "services-ingress",
+    "difficulty": 3
+  },
+  {
+    "id": "kubernetes-q6",
+    "type": "single",
+    "prompt": "An HPA targets 60% CPU utilisation. Six pods are averaging 90% of their CPU request. How many replicas does it ask for?",
+    "options": [
+      { "id": "a", "text": "7" },
+      { "id": "b", "text": "8" },
+      { "id": "c", "text": "9" },
+      { "id": "d", "text": "12" }
+    ],
+    "correct": ["c"],
+    "explanation": "desiredReplicas = ceil(currentReplicas × current / target) = ceil(6 × 90 / 60) = ceil(9) = 9. Seven would mean adding one pod at a time, which the HPA does not do; it jumps to the computed value (within any configured scaling policies). Eight undercounts the ratio of 1.5. Twelve would double the fleet, which corresponds to 120% utilisation, not 90%.",
+    "topicId": "hpa",
+    "difficulty": 2
+  },
+  {
+    "id": "kubernetes-q7",
+    "type": "multi",
+    "prompt": "Which statements about the HPA are true? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "CPU utilisation is measured against the pods' requests" },
+      { "id": "b", "text": "Scale-down waits out a stabilisation window, 5 min by default" },
+      { "id": "c", "text": "It can scale on custom metrics such as requests per second" },
+      { "id": "d", "text": "It adds nodes to the cluster when new pods cannot be placed" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "The HPA computes utilisation as a percentage of each pod's resource request, waits for a 300-second scale-down stabilisation window by default, and supports custom and external metrics. It changes only the replica count: adding nodes for Pending pods is the job of a node autoscaler such as the Cluster Autoscaler or Karpenter.",
+    "topicId": "hpa",
+    "difficulty": 2
+  },
+  {
+    "id": "kubernetes-q8",
+    "type": "single",
+    "prompt": "The API server and etcd become unreachable for ten minutes. What happens to applications already running in the cluster?",
+    "options": [
+      { "id": "a", "text": "All pods are stopped, because kubelets cannot confirm the desired state they hold" },
+      { "id": "b", "text": "Services stop routing, since kube-proxy deletes its rules when it loses the API" },
+      { "id": "c", "text": "Pods fail over to a standby cluster, because Kubernetes replicates every workload" },
+      { "id": "d", "text": "Running pods keep serving, but nothing can be deployed, scaled or rescheduled" }
+    ],
+    "correct": ["d"],
+    "explanation": "The data plane is statically stable: kubelets keep running their containers and kube-proxy keeps the last programmed rules, so traffic flows. What you lose is change: no deploys, no HPA action, no rescheduling of pods from failed nodes. Kubelets do not stop pods when they cannot reach the API. kube-proxy keeps its existing rules rather than deleting them. Kubernetes has no built-in cross-cluster failover; that is something you build.",
+    "topicId": "k8s-architecture",
+    "difficulty": 2
+  },
+  {
+    "id": "kubernetes-q9",
+    "type": "single",
+    "prompt": "What is the reconciliation loop?",
+    "options": [
+      { "id": "a", "text": "A controller repeatedly compares desired state with observed state and acts to close the gap" },
+      { "id": "b", "text": "A nightly job that removes pods and objects that no longer match any running Deployment" },
+      { "id": "c", "text": "The kubelet's restart of a container every time its liveness probe misses a single check" },
+      { "id": "d", "text": "The etcd process for agreeing on each write with a majority of its members using Raft" }
+    ],
+    "correct": ["a"],
+    "explanation": "Every Kubernetes controller runs the same loop: observe, compare with the spec, take a step, repeat. It is why the cluster heals and why changes converge rather than happen atomically. Garbage collection of orphaned objects exists but is continuous and is one controller, not the definition. Liveness restarts need several consecutive failures and are one kubelet behaviour. Raft is how etcd replicates writes, which is a different layer.",
+    "topicId": "k8s-architecture",
+    "difficulty": 1
+  },
+  {
+    "id": "kubernetes-q10",
+    "type": "multi",
+    "prompt": "A pod is deleted during a rolling update. Which steps reduce dropped requests? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "A preStop sleep of a few seconds before draining" },
+      { "id": "b", "text": "Handling SIGTERM by finishing in-flight requests" },
+      { "id": "c", "text": "Setting terminationGracePeriodSeconds to zero" },
+      { "id": "d", "text": "Draining within the termination grace period" }
+    ],
+    "correct": ["a", "b", "d"],
+    "explanation": "SIGTERM and endpoint removal happen in parallel, so traffic may still arrive briefly; a preStop pause covers that gap. The app should then stop taking new work, finish in-flight requests and exit before the grace period (30 s by default) ends in SIGKILL. A zero grace period means immediate SIGKILL, which drops every in-flight request.",
+    "topicId": "probes",
+    "difficulty": 2
+  },
+  {
+    "id": "kubernetes-q11",
+    "type": "single",
+    "prompt": "What does an Ingress object do on its own, without an ingress controller installed?",
+    "options": [
+      { "id": "a", "text": "It provisions a cloud load balancer and a TLS certificate for each host listed" },
+      { "id": "b", "text": "Nothing: it is a set of rules that a controller must watch and implement" },
+      { "id": "c", "text": "It routes by host and path through kube-proxy, which supports layer 7 rules" },
+      { "id": "d", "text": "It exposes each backend Service on a NodePort so outside clients can reach it" }
+    ],
+    "correct": ["b"],
+    "explanation": "An Ingress is only declarative routing rules; an ingress controller (NGINX, HAProxy, Traefik or a cloud integration) watches them and configures a real proxy. Provisioning load balancers or certificates is something a controller or add-on might do, not the object itself. kube-proxy works at layer 4 and knows nothing about hosts or paths. NodePort is a Service type, unrelated to Ingress objects.",
+    "topicId": "services-ingress",
+    "difficulty": 1
+  },
+  {
+    "id": "kubernetes-q12",
+    "type": "scenario",
+    "prompt": "What is the strongest recommendation?",
+    "scenario": "A four-person startup runs three stateless web services and one Postgres database. Nobody on the team has run Kubernetes before. Traffic is modest and grows steadily. A new hire proposes moving everything, including Postgres, onto a self-managed Kubernetes cluster.",
+    "options": [
+      { "id": "a", "text": "Adopt Kubernetes now; it is the industry standard and every team will need it eventually" },
+      { "id": "b", "text": "Use Kubernetes but run only Postgres on it, since databases gain most from self-healing" },
+      { "id": "c", "text": "Use a managed container platform and managed Postgres; revisit when service count grows" },
+      { "id": "d", "text": "Avoid containers entirely; they add overhead that only matters at very large scale" }
+    ],
+    "correct": ["c"],
+    "explanation": "With few stateless services and no platform expertise, a managed container platform (ECS, Cloud Run, App Runner) and a managed database give deploys, scaling and health checks with far less to operate; Kubernetes becomes worth it as services and people grow. Being a standard is not a reason to take on upgrades, networking and security work now. Databases are the hardest thing to run on Kubernetes, needing StatefulSets, storage and failover expertise. Containers themselves are cheap and help even small teams; the cost is in the orchestrator.",
+    "topicId": "interview-scope",
+    "difficulty": 2
+  }
+]

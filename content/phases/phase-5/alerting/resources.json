@@ -1,0 +1,42 @@
+[
+  {
+    "id": "sre-book-monitoring",
+    "title": "Site Reliability Engineering, chapter 6: Monitoring Distributed Systems",
+    "author": "Rob Ewaschuk (Google)",
+    "kind": "free-book",
+    "url": "https://sre.google/sre-book/monitoring-distributed-systems/",
+    "why": "Symptoms versus causes, the four golden signals, and the tests every page should pass.",
+    "topicIds": ["symptom-alerts", "paging-vs-ticketing", "alert-fatigue"],
+    "free": true
+  },
+  {
+    "id": "sre-book-on-call",
+    "title": "Site Reliability Engineering, chapter 11: Being On-Call",
+    "author": "Andrea Spadaccini (Google)",
+    "kind": "free-book",
+    "url": "https://sre.google/sre-book/being-on-call/",
+    "why": "Where the two-incidents-per-shift budget comes from, and how on-call load is kept sustainable.",
+    "topicIds": ["paging-vs-ticketing", "runbooks"],
+    "free": true
+  },
+  {
+    "id": "prometheus-alertmanager",
+    "title": "Prometheus Alertmanager documentation",
+    "author": "The Prometheus Authors",
+    "kind": "docs",
+    "url": "https://prometheus.io/docs/alerting/latest/alertmanager/",
+    "why": "Grouping, inhibition, silences and routing, the concrete tools for ending alert storms.",
+    "topicIds": ["alert-fatigue"],
+    "free": true
+  },
+  {
+    "id": "prometheus-alerting-practices",
+    "title": "Prometheus: Alerting best practices",
+    "author": "The Prometheus Authors",
+    "kind": "docs",
+    "url": "https://prometheus.io/docs/practices/alerting/",
+    "why": "Short, opinionated guidance on alerting on symptoms, keeping alerts simple and linking to consoles.",
+    "topicIds": ["symptom-alerts", "runbooks"],
+    "free": true
+  }
+]

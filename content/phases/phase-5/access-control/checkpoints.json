@@ -1,0 +1,7 @@
+[
+  { "id": "access-control-c1", "text": "I can model a permission scheme in RBAC, including role hierarchy and separation of duty, and count when it explodes into too many roles.", "topicId": "rbac" },
+  { "id": "access-control-c2", "text": "I can rewrite a set of RBAC roles as one ABAC policy and name the PEP, PDP and PIP in a concrete deployment.", "topicId": "abac" },
+  { "id": "access-control-c3", "text": "I can choose between RBAC, ABAC and ReBAC for a given product and explain each model's failure mode.", "topicId": "abac" },
+  { "id": "access-control-c4", "text": "I can scope a cloud IAM policy by action, resource and condition, and explain how an over-privileged role turned the Capital One SSRF into a mass data theft.", "topicId": "least-privilege" },
+  { "id": "access-control-c5", "text": "I can design service-to-service auth with mTLS and short-lived workload identities, and explain how to avoid the confused deputy problem.", "topicId": "service-auth" }
+]

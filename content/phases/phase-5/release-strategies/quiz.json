@@ -1,0 +1,173 @@
+[
+  {
+    "id": "release-strategies-q1",
+    "type": "scenario",
+    "prompt": "Which settings keep full capacity and finish fastest?",
+    "scenario": "A Deployment runs 20 pods and needs all 20 serving at peak. A new pod takes about 60 seconds to become ready. The cluster has room for 5 extra pods.",
+    "options": [
+      { "id": "a", "text": "maxSurge 0, maxUnavailable 5" },
+      { "id": "b", "text": "maxSurge 5, maxUnavailable 0" },
+      { "id": "c", "text": "maxSurge 1, maxUnavailable 0" },
+      { "id": "d", "text": "maxSurge 5, maxUnavailable 5" }
+    ],
+    "correct": ["b"],
+    "explanation": "maxUnavailable 0 keeps 20 pods serving; maxSurge 5 uses exactly the spare room, giving 4 waves of about 60 s, around 4 minutes. maxSurge 0 with maxUnavailable 5 drops to 15 pods, below peak need. maxSurge 1 also keeps capacity but takes 20 waves, about 20 minutes. Allowing 5 unavailable is faster but again dips to 15 serving pods.",
+    "topicId": "rolling",
+    "difficulty": 2
+  },
+  {
+    "id": "release-strategies-q2",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "Every rolling deploy of a Java service causes a 60-second burst of timeouts, even though the new version is correct. Pods take about 45 seconds to warm caches after the process starts. The Deployment has a liveness probe but no readiness probe.",
+    "options": [
+      { "id": "a", "text": "The liveness probe restarts new pods during warm-up, so the rollout keeps looping" },
+      { "id": "b", "text": "maxSurge is too high, so too many new pods share the node CPU during their start" },
+      { "id": "c", "text": "With no readiness probe, cold pods get traffic as soon as their process starts" },
+      { "id": "d", "text": "The Service load balancer caches the old pod IPs and keeps routing to deleted pods" }
+    ],
+    "correct": ["c"],
+    "explanation": "Without a readiness probe a pod is considered ready as soon as its containers start, so it joins Service endpoints and the rollout deletes old pods while new ones are still warming. A readiness probe that checks real serving ability fixes it. A liveness probe restart would show restart counts and is not implied. Surge size affects speed, not whether cold pods take traffic. Endpoints are updated as pods terminate; stale IPs cause brief errors on deletion, not a consistent 60-second warm-up window.",
+    "topicId": "rolling",
+    "difficulty": 2
+  },
+  {
+    "id": "release-strategies-q3",
+    "type": "single",
+    "prompt": "What is the main advantage of blue-green over a rolling deployment?",
+    "options": [
+      { "id": "a", "text": "It needs no extra capacity because blue and green share the same servers" },
+      { "id": "b", "text": "It exposes only a small percentage of users to the new version at first" },
+      { "id": "c", "text": "It removes the need for backward-compatible database schema changes" },
+      { "id": "d", "text": "Switching traffic back to the untouched old environment takes seconds" }
+    ],
+    "correct": ["d"],
+    "explanation": "Blue stays running on the old version, so rollback is a router switch, not another rollout. Blue-green needs double capacity, not none. It exposes 100% of users at the switch; gradual exposure is a canary. Both colours share the database, so schema changes still need expand/contract.",
+    "topicId": "blue-green",
+    "difficulty": 1
+  },
+  {
+    "id": "release-strategies-q4",
+    "type": "scenario",
+    "prompt": "About how many users meet the bad version before the abort?",
+    "scenario": "A site has 600,000 active users an hour, spread evenly. A canary routes 5% of users (by user-ID hash) to v2, and automated analysis aborts it after 10 minutes.",
+    "options": [
+      { "id": "a", "text": "About 500" },
+      { "id": "b", "text": "About 5,000" },
+      { "id": "c", "text": "About 30,000" },
+      { "id": "d", "text": "About 100,000" }
+    ],
+    "correct": ["b"],
+    "explanation": "In 10 minutes, 600,000 / 6 = 100,000 users are active; 5% of them is 5,000. About 500 would be a 0.5% canary. 30,000 is 5% of the full hour, ignoring that the canary ran for 10 minutes. 100,000 is everyone active in the window, which is what a full rollout would expose.",
+    "topicId": "canary",
+    "difficulty": 2
+  },
+  {
+    "id": "release-strategies-q5",
+    "type": "scenario",
+    "prompt": "What should the team do?",
+    "scenario": "A 1% canary received 12,000 requests in 10 minutes and logged 18 errors. At the baseline error rate of 0.1%, about 12 errors were expected.",
+    "options": [
+      { "id": "a", "text": "Abort now, since 18 errors is 50% more than baseline and that is a clear regression" },
+      { "id": "b", "text": "Promote to 100%, since the gap is six errors and that is too few to matter to users" },
+      { "id": "c", "text": "Extend the canary or raise its share, since 18 vs 12 is within normal Poisson noise" },
+      { "id": "d", "text": "Roll back the baseline fleet, since its 0.1% error rate means it is the broken version" }
+    ],
+    "correct": ["c"],
+    "explanation": "With an expected count of 12, Poisson noise is about √12 ≈ 3.5, so 18 is under two standard deviations: not enough evidence either way. Collect more data before deciding. Aborting treats noise as signal; a relative 50% means little on tiny counts. Promoting ignores that a real 0.15% error rate at full traffic could still matter. The baseline rate is the reference point, not evidence the old version is broken.",
+    "topicId": "canary",
+    "difficulty": 3
+  },
+  {
+    "id": "release-strategies-q6",
+    "type": "multi",
+    "prompt": "Which are good practices for feature flags? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Give each release flag an owner and a removal date" },
+      { "id": "b", "text": "Bucket percentage rollouts by a hash of user ID" },
+      { "id": "c", "text": "Reuse an old flag name when a new feature ships" },
+      { "id": "d", "text": "Keep release flags forever so you can always undo" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "Owners and removal dates stop flag debt from accumulating. Hashing the user ID keeps each user in a stable bucket as the percentage grows. Reusing a flag name can reactivate old code paths, a factor in Knight Capital's 2012 loss. Release flags kept forever become dead code and multiply untested paths; long-lived flags should be deliberate ops or permission toggles.",
+    "topicId": "feature-flags",
+    "difficulty": 1
+  },
+  {
+    "id": "release-strategies-q7",
+    "type": "single",
+    "prompt": "Which of Hodgson's toggle categories is meant to be a long-lived kill switch for operations?",
+    "options": [
+      { "id": "a", "text": "Release toggle" },
+      { "id": "b", "text": "Experiment toggle" },
+      { "id": "c", "text": "Ops toggle" },
+      { "id": "d", "text": "Permission toggle" }
+    ],
+    "correct": ["c"],
+    "explanation": "Ops toggles control operational behaviour, such as disabling an expensive feature under load, and some live a long time. Release toggles hide unfinished work and should be removed within days or weeks. Experiment toggles run A/B tests for a bounded period. Permission toggles gate features by user group, such as beta or premium, not for incident response.",
+    "topicId": "feature-flags",
+    "difficulty": 1
+  },
+  {
+    "id": "release-strategies-q8",
+    "type": "scenario",
+    "prompt": "What is the main risk of this plan?",
+    "scenario": "To dark-launch a new order service, the team configures the mesh to mirror every production POST /orders request to v2 and discard v2's responses. v2 uses the same payment provider and database as v1.",
+    "options": [
+      { "id": "a", "text": "Mirroring doubles latency for users, because the proxy waits for both responses" },
+      { "id": "b", "text": "Mirrored requests really charge cards and write orders, duplicating side effects" },
+      { "id": "c", "text": "The mesh cannot mirror POST requests, so the experiment will receive no traffic" },
+      { "id": "d", "text": "Discarded responses mean v2's errors cannot be measured during the dark launch" }
+    ],
+    "correct": ["b"],
+    "explanation": "Discarding the response does not undo what the request did: v2 charges the card and writes the order a second time. Mirror only reads, or stub the payment provider and isolate the datastore. Envoy and Istio mirroring is fire-and-forget, so user latency is not doubled. Mirroring is not limited to GET. v2's own metrics and logs still record its errors even though responses are dropped.",
+    "topicId": "dark-launches",
+    "difficulty": 2
+  },
+  {
+    "id": "release-strategies-q9",
+    "type": "single",
+    "prompt": "In the expand/contract rename of `name` to `full_name`, when is it safe to drop the `name` column?",
+    "options": [
+      { "id": "a", "text": "Right after the backfill finishes copying every value into full_name" },
+      { "id": "b", "text": "As soon as the first version that reads full_name starts its rollout" },
+      { "id": "c", "text": "When no running version or rollback target reads or writes name" },
+      { "id": "d", "text": "Immediately, in the same migration that adds full_name to the table" }
+    ],
+    "correct": ["c"],
+    "explanation": "Contract only when nothing that might run, including the version you would roll back to, still uses the old column. After the backfill, old code still reads name. When the reading version starts rolling out, old pods are still serving and it is still the rollback target. Dropping in the same migration is the one-step rename that breaks old pods mid-deploy.",
+    "topicId": "zero-downtime-migrations",
+    "difficulty": 2
+  },
+  {
+    "id": "release-strategies-q10",
+    "type": "scenario",
+    "prompt": "Why did the whole table stall?",
+    "scenario": "On PostgreSQL, a migration runs `ALTER TABLE orders ADD COLUMN note text;`, which normally completes in milliseconds. A reporting query has been reading `orders` for 40 seconds. For the next 40 seconds every request touching `orders` hangs.",
+    "options": [
+      { "id": "a", "text": "Adding a column rewrites the whole table, which takes about forty seconds here" },
+      { "id": "b", "text": "The reporting query took a write lock that blocks every other reader on the table" },
+      { "id": "c", "text": "The ALTER waits for an exclusive lock, and new queries queue up behind the ALTER" },
+      { "id": "d", "text": "The new nullable column forces every index on orders to rebuild before reads" }
+    ],
+    "correct": ["c"],
+    "explanation": "ALTER TABLE needs ACCESS EXCLUSIVE. It waits behind the reporting query's lock, and every later query queues behind the waiting ALTER, so the table stalls. Use lock_timeout and retry. Adding a nullable column with no default is metadata-only in PostgreSQL, so there is no rewrite. A SELECT takes ACCESS SHARE, which does not block other readers. Adding a column does not rebuild indexes.",
+    "topicId": "zero-downtime-migrations",
+    "difficulty": 3
+  },
+  {
+    "id": "release-strategies-q11",
+    "type": "multi",
+    "prompt": "Which statements about canary releases are true? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "They need routing that can split traffic by weight" },
+      { "id": "b", "text": "They need metrics separated by version to compare" },
+      { "id": "c", "text": "They reliably catch slow, silent data corruption" },
+      { "id": "d", "text": "They need no extra care for database schema changes" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "A canary needs a mesh, ingress or load balancer that sends a weighted share to v2, and per-version metrics to compare. Data corruption that shows up days later does not move error rates or latency in a 15-minute window, so canaries usually miss it. Canary and baseline share the database and run at the same time, so schema changes still need expand/contract.",
+    "topicId": "canary",
+    "difficulty": 2
+  }
+]

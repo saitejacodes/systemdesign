@@ -1,0 +1,7 @@
+[
+  { "id": "ci-cd-c1", "text": "I can explain the difference between continuous integration, continuous delivery and continuous deployment in one sentence each.", "topicId": "pipeline-stages" },
+  { "id": "ci-cd-c2", "text": "I can lay out a deployment pipeline with stages ordered by cost and give each a time budget, keeping the commit stage under 10 minutes.", "topicId": "pipeline-stages" },
+  { "id": "ci-cd-c3", "text": "I can compute how per-test flake rates compound across a suite (0.995^200 ≈ 37% green) and say how I would fix it.", "topicId": "testing-pyramid" },
+  { "id": "ci-cd-c4", "text": "I can explain why we build once and deploy by image digest, and how config differs per environment without a rebuild.", "topicId": "artifact-promotion" },
+  { "id": "ci-cd-c5", "text": "I can name what makes a rollback unsafe (schema, message formats, external side effects) and write an automated rollback trigger.", "topicId": "rollback" }
+]

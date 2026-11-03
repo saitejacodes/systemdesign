@@ -1,0 +1,330 @@
+[
+  {
+    "id": "logging-q1",
+    "type": "single",
+    "prompt": "What is the main advantage of a structured (JSON) log line over a free-text one?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Fields can be queried and aggregated by name without regexes that break when wording changes"
+      },
+      {
+        "id": "b",
+        "text": "JSON lines are always smaller on disk than the same event written as a free-text English sentence"
+      },
+      {
+        "id": "c",
+        "text": "Structured lines are delivered with exactly-once guarantees by every log shipper"
+      },
+      {
+        "id": "d",
+        "text": "It removes the need for timestamps because the log store orders JSON events itself"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Named fields make queries like 'count reason where service=payments' reliable even if the message is reworded. JSON is usually larger than terse text, not smaller, because field names repeat on every line. Format has nothing to do with delivery guarantees; shippers batch, retry and can drop or duplicate regardless. Timestamps are still essential; the store orders events by the timestamp you write.",
+    "topicId": "structured-logs",
+    "difficulty": 1
+  },
+  {
+    "id": "logging-q2",
+    "type": "scenario",
+    "prompt": "What is the best fix?",
+    "scenario": "Your log search shows thousands of events that each contain one line of a Java stack trace, like 'at com.shop.Orders.place(Orders.java:88)', with no request ID and no level. On-call cannot tell which request they belong to.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Add a regex in the log store that stitches lines starting with 'at ' to the previous one"
+      },
+      {
+        "id": "b",
+        "text": "Log each exception as one JSON event with the stack trace in a single field and the request ID set"
+      },
+      {
+        "id": "c",
+        "text": "Raise the service's level to ERROR so that only stack traces are written to the log at all"
+      },
+      {
+        "id": "d",
+        "text": "Turn off stack traces in production and log only the exception class name and message"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "One event per line is the rule: put the whole stack in one field of a structured event that carries the request ID and level, and the problem disappears at the source. Multi-line stitching regexes in the pipeline are fragile, break when lines from different requests interleave, and still leave no request ID. Raising the level hides useful INFO and WARN events and does nothing about the split lines. Dropping stack traces throws away the most useful debugging data instead of fixing the format.",
+    "topicId": "structured-logs",
+    "difficulty": 2
+  },
+  {
+    "id": "logging-q3",
+    "type": "single",
+    "prompt": "A call to the inventory service timed out, the client retried once and the retry succeeded. What level fits the timeout event?",
+    "options": [
+      {
+        "id": "a",
+        "text": "ERROR, because an exception was raised and then caught inside the request handler"
+      },
+      {
+        "id": "b",
+        "text": "FATAL, because a dependency was unavailable for part of the request"
+      },
+      {
+        "id": "c",
+        "text": "WARN, because something unexpected happened but the request still succeeded"
+      },
+      {
+        "id": "d",
+        "text": "DEBUG, because the user never noticed and so nobody will ever need it"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "The operation succeeded after a retry, so it is a warning worth counting, not a failure. ERROR should mean a caller saw a failure; logging every caught exception as ERROR trains people to ignore it. FATAL means the process cannot continue and is exiting. DEBUG is usually disabled in production, so a rising retry rate would become invisible.",
+    "topicId": "log-levels",
+    "difficulty": 1
+  },
+  {
+    "id": "logging-q4",
+    "type": "scenario",
+    "prompt": "What should the team do instead?",
+    "scenario": "A team pages on-call whenever any ERROR line appears in the log store. They get paged several times a night for single errors that never affect more than one user, and once they missed a real outage because the log pipeline was 30 minutes behind.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Page only when ERROR lines exceed a fixed count, such as 50 per minute, in the log store"
+      },
+      {
+        "id": "b",
+        "text": "Lower every ERROR line to WARN so the pager rule fires less and on-call can sleep"
+      },
+      {
+        "id": "c",
+        "text": "Make the log pipeline synchronous so lines are indexed before the request returns"
+      },
+      {
+        "id": "d",
+        "text": "Count errors as a metric and alert on the error rate, using logs to investigate after"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "An error-rate metric is complete, cheap, near real time and normalised by traffic, and the logs remain the evidence for diagnosis. A fixed count of log lines still depends on a lagging pipeline and scales with traffic rather than user pain. Downgrading levels hides real failures. A synchronous pipeline couples request latency and availability to the log store, which can turn a logging outage into a production outage.",
+    "topicId": "log-levels",
+    "difficulty": 2
+  },
+  {
+    "id": "logging-q5",
+    "type": "multi",
+    "prompt": "Which steps are needed for a correlation ID to appear in every log line of a request that crosses an HTTP call and a Kafka hop? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Generate it at the edge if the request arrives without a trusted ID"
+      },
+      {
+        "id": "b",
+        "text": "Store it in request-scoped context that the logging library reads"
+      },
+      {
+        "id": "c",
+        "text": "Copy it into a message header and restore it in the consumer's context"
+      },
+      {
+        "id": "d",
+        "text": "Derive it from the client's IP address so every service gets the same value"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "The ID is created once at the edge, kept in request context (MDC, contextvars, context.Context) so every log call picks it up, and carried in headers and message attributes so the consumer can restore it. An IP address is not unique per request: many requests share one IP (NAT, proxies), and it also identifies the user, so it is both useless and a privacy problem as a correlation ID.",
+    "topicId": "correlation-ids",
+    "difficulty": 2
+  },
+  {
+    "id": "logging-q6",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "Request IDs show up on every log line in the API service, but the email worker's lines for the same orders have an empty request_id. The worker consumes OrderPlaced events from a queue and processes them on a thread pool.",
+    "options": [
+      {
+        "id": "a",
+        "text": "The email worker's logging library cannot write fields longer than 16 characters"
+      },
+      {
+        "id": "b",
+        "text": "The ID is not carried as a message attribute, or the worker's pool threads lose its context"
+      },
+      {
+        "id": "c",
+        "text": "Queues always strip custom metadata, so IDs can never cross an asynchronous hop"
+      },
+      {
+        "id": "d",
+        "text": "The API gateway generates a new ID for every log line instead of one per request"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Async hops are where propagation breaks: the producer must put the ID on the message, and the consumer must restore it into context on whichever thread runs the handler, since thread-locals do not follow work onto pool threads. Field length limits are not the issue and would truncate, not empty, the value. Brokers such as Kafka, SQS and RabbitMQ all support message headers or attributes. If the gateway generated an ID per line, the API's lines would not share an ID either, yet they do.",
+    "topicId": "correlation-ids",
+    "difficulty": 3
+  },
+  {
+    "id": "logging-q7",
+    "type": "single",
+    "prompt": "Why does Grafana Loki usually cost far less to run than Elasticsearch for the same log volume?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It discards every INFO line automatically and keeps only warnings and errors"
+      },
+      {
+        "id": "b",
+        "text": "It indexes only a few labels per stream and scans compressed chunks at query time"
+      },
+      {
+        "id": "c",
+        "text": "It stores logs only in memory and never writes them to disk or object storage"
+      },
+      {
+        "id": "d",
+        "text": "It samples one line in a hundred at ingest and estimates search results from them"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Loki's design keeps a small label index (service, namespace, level) and stores log content as compressed chunks, often in object storage, trading slower wide searches for much cheaper ingest and storage. It does not drop levels on its own; that is a policy you configure in the pipeline. It persists chunks to durable storage rather than keeping logs only in memory. It does not sample or estimate results; queries scan the stored lines.",
+    "topicId": "centralized-logging",
+    "difficulty": 2
+  },
+  {
+    "id": "logging-q8",
+    "type": "single",
+    "prompt": "Why should an application avoid a synchronous network log appender?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Synchronous appenders cannot write JSON, only plain text lines in syslog format"
+      },
+      {
+        "id": "b",
+        "text": "Network appenders reorder lines, so a stack trace would arrive before its message"
+      },
+      {
+        "id": "c",
+        "text": "If the log store slows or fails, request threads block and a logging problem becomes an outage"
+      },
+      {
+        "id": "d",
+        "text": "Most log stores reject connections from application servers and accept data only from node agents"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Blocking on a remote write ties every request's latency and availability to the log pipeline; writing to stdout or a local async buffer keeps the app independent. Appender style has nothing to do with JSON support. Ordering is not the core issue, and a single structured event with a stack field avoids it anyway. Many stores accept direct writes; the problem is coupling, not permission.",
+    "topicId": "centralized-logging",
+    "difficulty": 2
+  },
+  {
+    "id": "logging-q9",
+    "type": "scenario",
+    "prompt": "Roughly how much log data does this produce per day?",
+    "scenario": "An API serves 10,000 requests a second. Each request writes 4 log lines across services, averaging 500 bytes per line.",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 20 GB"
+      },
+      {
+        "id": "b",
+        "text": "About 200 GB"
+      },
+      {
+        "id": "c",
+        "text": "About 1.7 TB"
+      },
+      {
+        "id": "d",
+        "text": "About 17 TB"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "10,000 × 4 × 500 bytes = 20 MB/s, and 20 MB/s × 86,400 s = 1,728,000 MB, about 1.7 TB a day. 20 GB treats the 20 MB/s figure as roughly a quarter-hour of traffic rather than a day. 200 GB is an order of magnitude low, as if only 1 in 10 lines were kept. 17 TB is an order of magnitude high, as if each line were 5 KB.",
+    "topicId": "log-cost-sampling",
+    "difficulty": 2
+  },
+  {
+    "id": "logging-q10",
+    "type": "scenario",
+    "prompt": "Which sampling policy best cuts cost while keeping logs useful for debugging?",
+    "scenario": "Logging costs have tripled. 97% of lines are INFO lines from successful requests; the rest are WARN and ERROR. Engineers often need every line of a failed request to debug it.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Keep a random 3% of all lines at ingest, regardless of each line's level or which request it came from"
+      },
+      {
+        "id": "b",
+        "text": "Drop all INFO lines in the log store after they have been indexed for an hour"
+      },
+      {
+        "id": "c",
+        "text": "Keep all WARN and ERROR, all lines of failed requests, and 1% of other requests by ID hash"
+      },
+      {
+        "id": "d",
+        "text": "Keep every line but shorten retention from 30 days to 3 days for all services"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Sampling by request ID hash keeps complete stories, and keeping all warnings, errors and failed requests protects the cases people debug. Random line sampling keeps fragments of many requests and drops most errors along with INFO. Dropping lines after indexing still pays the ingest cost, which is usually the largest part. Shorter retention cuts storage but not ingest, and loses the ability to look back at last week's incident.",
+    "topicId": "log-cost-sampling",
+    "difficulty": 3
+  },
+  {
+    "id": "logging-q11",
+    "type": "multi",
+    "prompt": "Which of these should never be written to application logs? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "A user's session cookie or a bearer access token"
+      },
+      {
+        "id": "b",
+        "text": "The full card number from a payment request body"
+      },
+      {
+        "id": "c",
+        "text": "The request ID and the HTTP status code returned"
+      },
+      {
+        "id": "d",
+        "text": "A user's plaintext password from a failed login"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "d"
+    ],
+    "explanation": "Tokens and cookies let anyone who reads the logs act as the user; full card numbers bring the log store into PCI DSS scope; plaintext passwords are credentials. Once written, all three are copied to every downstream system and backup. The request ID and status code are exactly what logs should contain: they identify the request and its outcome without exposing secrets.",
+    "topicId": "structured-logs",
+    "difficulty": 1
+  }
+]

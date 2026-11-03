@@ -1,0 +1,19 @@
+{
+  "id": "p5-logging",
+  "phase": 5,
+  "slug": "logging",
+  "title": "Logging",
+  "order": 1,
+  "week": 11,
+  "estimatedMinutes": 55,
+  "topics": [
+    { "id": "structured-logs", "title": "Structured logs", "depth": "deep" },
+    { "id": "log-levels", "title": "Log levels", "depth": "tradeoffs" },
+    { "id": "correlation-ids", "title": "Correlation and request IDs", "depth": "deep" },
+    { "id": "centralized-logging", "title": "Centralized logging", "depth": "tradeoffs" },
+    { "id": "log-cost-sampling", "title": "Cost and sampling", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["observability-lab"],
+  "practiceCaseStudyIds": ["metrics-monitoring"],
+  "prerequisites": ["p1-latency-throughput"]
+}

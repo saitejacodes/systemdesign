@@ -12,6 +12,18 @@
     "sectionId": "p1-dns"
   },
   {
+    "term": "ABAC",
+    "slug": "abac",
+    "definition": "Attribute-based access control (NIST SP 800-162): access is decided by policies over attributes of the subject, the resource and the environment.",
+    "sectionId": "p5-access-control"
+  },
+  {
+    "term": "Access token",
+    "slug": "access-token",
+    "definition": "A short-lived credential issued by an authorization server that a client presents to an API. It may be an opaque reference or a self-contained JWT.",
+    "sectionId": "p5-authn-authz"
+  },
+  {
     "term": "ACID",
     "slug": "acid",
     "definition": "Atomicity, Consistency, Isolation and Durability: the guarantees of a database transaction.",
@@ -54,6 +66,36 @@
     "sectionId": "p4-bulkheads-load-shedding"
   },
   {
+    "term": "Alert fatigue",
+    "slug": "alert-fatigue",
+    "definition": "The loss of attention that comes from receiving too many false or unactionable alerts, which leads responders to ignore or miss real ones.",
+    "sectionId": "p5-alerting"
+  },
+  {
+    "term": "Alert flapping",
+    "slug": "alert-flapping",
+    "definition": "An alert repeatedly firing and resolving because its signal hovers around the threshold, sending a notification each time.",
+    "sectionId": "p5-alerting"
+  },
+  {
+    "term": "Alert grouping",
+    "slug": "alert-grouping",
+    "definition": "Merging related alerts, such as the same alert from many hosts in one cluster, into a single notification. Prometheus Alertmanager does this with group_by labels.",
+    "sectionId": "p5-alerting"
+  },
+  {
+    "term": "Alert inhibition",
+    "slug": "alert-inhibition",
+    "definition": "Muting some alerts while another, usually their cause, is firing, so responders see the root problem instead of every downstream effect.",
+    "sectionId": "p5-alerting"
+  },
+  {
+    "term": "Amplification attack",
+    "slug": "amplification-attack",
+    "definition": "A DDoS technique that sends small spoofed UDP requests to open servers (DNS, NTP, memcached) so their much larger replies flood the victim whose address was forged.",
+    "sectionId": "p5-common-attacks"
+  },
+  {
     "term": "Anti-entropy",
     "slug": "anti-entropy",
     "definition": "A background process that compares replicas and copies over missing or outdated data, whether or not anyone reads it.",
@@ -84,6 +126,12 @@
     "sectionId": "p3-redis"
   },
   {
+    "term": "Artifact promotion",
+    "slug": "artifact-promotion",
+    "definition": "Moving the exact build artifact that passed testing (identified by an immutable digest) from environment to environment, changing only configuration and never rebuilding.",
+    "sectionId": "p5-ci-cd"
+  },
+  {
     "term": "At-least-once delivery",
     "slug": "at-least-once",
     "definition": "A delivery guarantee where each message arrives one or more times, so duplicates are possible.",
@@ -96,10 +144,22 @@
     "sectionId": "p3-delivery-semantics"
   },
   {
+    "term": "Authentication",
+    "slug": "authentication",
+    "definition": "Establishing who a caller is, for example by password plus MFA, a certificate or a signed token. Often shortened to authn.",
+    "sectionId": "p5-authn-authz"
+  },
+  {
     "term": "Authoritative nameserver",
     "slug": "authoritative-nameserver",
     "definition": "The server that holds a domain's actual records and gives the final answer.",
     "sectionId": "p1-dns"
+  },
+  {
+    "term": "Authorization",
+    "slug": "authorization",
+    "definition": "Deciding what an authenticated caller is allowed to do with a given resource. Often shortened to authz.",
+    "sectionId": "p5-authn-authz"
   },
   {
     "term": "Auto-increment key",
@@ -156,6 +216,12 @@
     "sectionId": "p1-tcp-udp"
   },
   {
+    "term": "Bearer token",
+    "slug": "bearer-token",
+    "definition": "A token that grants access to whoever presents it, usually sent as Authorization: Bearer. Anyone who copies it can use it.",
+    "sectionId": "p5-authn-authz"
+  },
+  {
     "term": "Binding",
     "slug": "binding",
     "definition": "In RabbitMQ, a rule connecting an exchange to a queue, with a key or pattern that decides which messages the queue receives.",
@@ -180,6 +246,12 @@
     "sectionId": "p2-indexing"
   },
   {
+    "term": "Blue-green deployment",
+    "slug": "blue-green-deployment",
+    "definition": "Running two full production environments, deploying to the idle one and switching all traffic to it at once, keeping the old one running for instant rollback.",
+    "sectionId": "p5-release-strategies"
+  },
+  {
     "term": "BM25",
     "slug": "bm25",
     "definition": "A ranking function refining TF-IDF with term-frequency saturation and document-length normalisation.",
@@ -196,6 +268,12 @@
     "slug": "bulkhead",
     "definition": "A resilience pattern that splits a limited resource such as threads, connections or servers into separate pools, so exhausting one pool cannot exhaust the others.",
     "sectionId": "p4-bulkheads-load-shedding"
+  },
+  {
+    "term": "Burn rate",
+    "slug": "burn-rate",
+    "definition": "How fast the error budget is being spent relative to the pace that would use exactly all of it over the SLO window: observed error rate divided by (1 minus the SLO).",
+    "sectionId": "p5-slos"
   },
   {
     "term": "Cache",
@@ -276,10 +354,28 @@
     "sectionId": "p1-http"
   },
   {
+    "term": "Canary analysis",
+    "slug": "canary-analysis",
+    "definition": "An automated statistical comparison of a canary's metrics against a baseline of the old version, used to decide whether to promote or abort a release.",
+    "sectionId": "p5-release-strategies"
+  },
+  {
+    "term": "Canary release",
+    "slug": "canary-release",
+    "definition": "Sending a small share of real traffic to a new version, comparing its health with the old version, and widening exposure in steps or aborting.",
+    "sectionId": "p5-release-strategies"
+  },
+  {
     "term": "CAP theorem",
     "slug": "cap-theorem",
     "definition": "The result (Brewer's conjecture, proved by Gilbert and Lynch in 2002) that when a network partition occurs, a replicated system cannot guarantee both linearizable consistency and a response from every non-failing node.",
     "sectionId": "p4-cap-pacelc"
+  },
+  {
+    "term": "Cardinality explosion",
+    "slug": "cardinality-explosion",
+    "definition": "A sudden large rise in the number of time series, usually caused by a metric label with unbounded values such as user IDs, which can exhaust a metrics database's memory.",
+    "sectionId": "p5-metrics"
   },
   {
     "term": "Causal consistency",
@@ -310,6 +406,12 @@
     "slug": "certificate-chain",
     "definition": "The sequence from a site's certificate through intermediates up to a trusted root, each signed by the next.",
     "sectionId": "p1-tls"
+  },
+  {
+    "term": "cgroup",
+    "slug": "cgroup",
+    "definition": "A control group: a Linux kernel feature that accounts for and limits the CPU, memory, I/O and process count of a group of processes. Memory over the limit triggers an OOM kill; CPU over the limit is throttled.",
+    "sectionId": "p5-containers"
   },
   {
     "term": "Change data capture (CDC)",
@@ -414,6 +516,18 @@
     "sectionId": "p1-http"
   },
   {
+    "term": "Configuration drift",
+    "slug": "configuration-drift",
+    "definition": "Any difference between what infrastructure code declares and what is actually running, usually caused by changes made outside the tool.",
+    "sectionId": "p5-iac"
+  },
+  {
+    "term": "Confused deputy",
+    "slug": "confused-deputy",
+    "definition": "A privileged program tricked into using its authority on behalf of a caller who lacks that authority. Fixed by checking the original caller's rights, not just the intermediary's.",
+    "sectionId": "p5-access-control"
+  },
+  {
     "term": "Congestion control",
     "slug": "congestion-control",
     "definition": "Algorithms (slow start, CUBIC, BBR) that limit how fast TCP sends so it does not overload the network between hosts.",
@@ -468,6 +582,54 @@
     "sectionId": "p3-delivery-semantics"
   },
   {
+    "term": "Container",
+    "slug": "container",
+    "definition": "A normal host process started with Linux namespaces that limit what it can see and cgroups that limit what it can use, running from an image's filesystem. It shares the host kernel, unlike a virtual machine.",
+    "sectionId": "p5-containers"
+  },
+  {
+    "term": "Container image",
+    "slug": "container-image",
+    "definition": "A read-only template for a container: an ordered list of filesystem layers plus metadata such as the default command, environment and user, defined by the OCI image specification.",
+    "sectionId": "p5-containers"
+  },
+  {
+    "term": "Container registry",
+    "slug": "container-registry",
+    "definition": "A server that stores and distributes container images by repository, tag and digest, such as Docker Hub, Amazon ECR or a self-hosted registry.",
+    "sectionId": "p5-containers"
+  },
+  {
+    "term": "Container runtime",
+    "slug": "container-runtime",
+    "definition": "The software that creates and runs containers on a host. High-level runtimes such as containerd and CRI-O manage images and lifecycle; low-level runtimes such as runc set up namespaces and cgroups and start the process.",
+    "sectionId": "p5-containers"
+  },
+  {
+    "term": "Context propagation",
+    "slug": "context-propagation",
+    "definition": "Passing the trace ID and current span ID from one service to the next, usually in the W3C traceparent header, so spans join one trace.",
+    "sectionId": "p5-tracing"
+  },
+  {
+    "term": "Continuous delivery",
+    "slug": "continuous-delivery",
+    "definition": "Keeping every change that passes the pipeline releasable, so production deployment is a single action whose timing a person or schedule chooses.",
+    "sectionId": "p5-ci-cd"
+  },
+  {
+    "term": "Continuous deployment",
+    "slug": "continuous-deployment",
+    "definition": "Automatically deploying every change that passes the pipeline to production, with no human gate.",
+    "sectionId": "p5-ci-cd"
+  },
+  {
+    "term": "Continuous integration",
+    "slug": "continuous-integration",
+    "definition": "The practice of merging small changes into the shared mainline at least daily, with every merge automatically built and tested.",
+    "sectionId": "p5-ci-cd"
+  },
+  {
     "term": "Control plane",
     "slug": "control-plane",
     "definition": "The part of a system that changes it, such as launching instances, scaling groups and updating routes or configuration.",
@@ -492,6 +654,18 @@
     "sectionId": "p4-fault-tolerance"
   },
   {
+    "term": "Correlation ID",
+    "slug": "correlation-id",
+    "definition": "A unique ID assigned when a request enters a system and carried to every service, message and job it causes, so all their log lines can be joined. Often called a request ID.",
+    "sectionId": "p5-logging"
+  },
+  {
+    "term": "Counter",
+    "slug": "counter",
+    "definition": "A metric whose value only increases, resetting to zero when the process restarts. You query its rate of increase, not its raw value.",
+    "sectionId": "p5-metrics"
+  },
+  {
     "term": "Covering index",
     "slug": "covering-index",
     "definition": "An index that contains every column a query needs, so the table itself is not read.",
@@ -514,6 +688,42 @@
     "slug": "crdt",
     "definition": "A conflict-free replicated data type: a data structure, such as a counter, set or text sequence, designed so concurrent updates on different replicas always merge to the same result.",
     "sectionId": "p4-time-ordering"
+  },
+  {
+    "term": "Critical path",
+    "slug": "critical-path",
+    "definition": "The chain of operations in a request that determined its total latency; speeding up anything off this chain does not make the request faster.",
+    "sectionId": "p5-tracing"
+  },
+  {
+    "term": "Critical user journey",
+    "slug": "critical-user-journey",
+    "definition": "A sequence of steps a user cares about completing, such as search, add to cart and pay. SLIs are chosen to measure whether these journeys work.",
+    "sectionId": "p5-slos"
+  },
+  {
+    "term": "Cross-site scripting (XSS)",
+    "slug": "xss",
+    "definition": "Injection into a web page: untrusted data inserted into HTML or JavaScript without encoding runs as script in other users' browsers with their session.",
+    "sectionId": "p5-common-attacks"
+  },
+  {
+    "term": "Crypto-shredding",
+    "slug": "crypto-shredding",
+    "definition": "Deleting data by destroying the key it was encrypted with, so every copy, including immutable backups, becomes permanently unreadable.",
+    "sectionId": "p5-data-protection"
+  },
+  {
+    "term": "Dark launch",
+    "slug": "dark-launch",
+    "definition": "Running new code on real production traffic without showing users its results, to test capacity and correctness before release.",
+    "sectionId": "p5-release-strategies"
+  },
+  {
+    "term": "Data encryption key (DEK)",
+    "slug": "data-encryption-key",
+    "definition": "A symmetric key that encrypts the actual data. It is stored only in wrapped form next to the ciphertext and unwrapped by the KMS when needed.",
+    "sectionId": "p5-data-protection"
   },
   {
     "term": "Data lake",
@@ -552,6 +762,18 @@
     "sectionId": "p1-estimation"
   },
   {
+    "term": "DDoS",
+    "slug": "ddos",
+    "definition": "A distributed denial-of-service attack: traffic from many sources at once exhausts bandwidth, connection state or server capacity so legitimate users can't be served.",
+    "sectionId": "p5-common-attacks"
+  },
+  {
+    "term": "Dead man's switch",
+    "slug": "dead-mans-switch",
+    "definition": "An alert that is always firing on purpose and is expected by an external service, which pages if it stops arriving because the alerting pipeline has broken.",
+    "sectionId": "p5-alerting"
+  },
+  {
     "term": "Dead-letter queue",
     "slug": "dead-letter-queue",
     "definition": "A separate queue that receives messages after they have failed too many times, so the main queue keeps flowing and the failures can be inspected.",
@@ -576,6 +798,12 @@
     "sectionId": "p2-locking"
   },
   {
+    "term": "Declarative infrastructure",
+    "slug": "declarative-infrastructure",
+    "definition": "Describing the desired end state of infrastructure and letting a tool compute and apply the changes needed to reach it, so repeated runs change nothing.",
+    "sectionId": "p5-iac"
+  },
+  {
     "term": "Delayed double delete",
     "slug": "delayed-double-delete",
     "definition": "Deleting a cache key after a database update and again after a short delay, to remove any stale value a slow concurrent reader wrote back.",
@@ -592,6 +820,18 @@
     "slug": "denormalization",
     "definition": "Deliberately storing data in more than one place to make reads cheaper.",
     "sectionId": "p2-data-modeling"
+  },
+  {
+    "term": "Deployment (Kubernetes)",
+    "slug": "kubernetes-deployment",
+    "definition": "A Kubernetes object that keeps a set number of identical pods running and rolls out new versions by gradually replacing one ReplicaSet with another.",
+    "sectionId": "p5-kubernetes"
+  },
+  {
+    "term": "Deployment pipeline",
+    "slug": "deployment-pipeline",
+    "definition": "An automated sequence of build, test and deploy stages that each commit passes through, cheapest first; a failure at any stage stops the change.",
+    "sectionId": "p5-ci-cd"
   },
   {
     "term": "Diffie–Hellman key exchange",
@@ -612,10 +852,22 @@
     "sectionId": "p1-monolith-vs-microservices"
   },
   {
+    "term": "Distributed tracing",
+    "slug": "distributed-tracing",
+    "definition": "Recording the path and timing of one request through every service it touches, as a tree of spans sharing a trace ID.",
+    "sectionId": "p5-tracing"
+  },
+  {
     "term": "DNS",
     "slug": "dns",
     "definition": "The Domain Name System: the distributed directory that turns names like example.com into IP addresses.",
     "sectionId": "p1-dns"
+  },
+  {
+    "term": "DNS rebinding",
+    "slug": "dns-rebinding",
+    "definition": "A trick where a hostname resolves to a safe public address when it is checked and to an internal address when it is actually fetched, defeating validation that resolves twice.",
+    "sectionId": "p5-common-attacks"
   },
   {
     "term": "Document store",
@@ -628,6 +880,12 @@
     "slug": "dual-write",
     "definition": "Updating two separate systems, such as a database and a message broker, without a shared transaction, so a failure between the writes leaves them inconsistent.",
     "sectionId": "p3-event-driven"
+  },
+  {
+    "term": "Dynamic secret",
+    "slug": "dynamic-secret",
+    "definition": "A credential generated on demand for one requester with a lease, and revoked automatically when the lease expires, such as a temporary database user created by Vault.",
+    "sectionId": "p5-data-protection"
   },
   {
     "term": "Effectively-once processing",
@@ -654,6 +912,12 @@
     "sectionId": "p4-consensus"
   },
   {
+    "term": "Envelope encryption",
+    "slug": "envelope-encryption",
+    "definition": "Encrypting data locally with a data encryption key, then encrypting (wrapping) that key with a key-encryption key held in a KMS and storing the wrapped key beside the ciphertext.",
+    "sectionId": "p5-data-protection"
+  },
+  {
     "term": "Envoy",
     "slug": "envoy",
     "definition": "An open-source L7 proxy built for service-to-service traffic, commonly used as a sidecar in service meshes.",
@@ -664,6 +928,18 @@
     "slug": "ephemeral-node",
     "definition": "A ZooKeeper znode that is deleted automatically when the client session that created it ends. Lock and leader-election recipes rely on it.",
     "sectionId": "p4-distributed-locks"
+  },
+  {
+    "term": "Error budget",
+    "slug": "error-budget",
+    "definition": "The amount of unreliability an SLO allows over its window, equal to 1 minus the SLO. A 99.9% SLO over 30 days allows 0.1% bad requests, or 43.2 minutes of full outage.",
+    "sectionId": "p5-slos"
+  },
+  {
+    "term": "Error budget policy",
+    "slug": "error-budget-policy",
+    "definition": "A document agreed in advance by engineering, product and leadership that says what changes, such as a release freeze, when a service spends its error budget.",
+    "sectionId": "p5-slos"
   },
   {
     "term": "ETag",
@@ -718,6 +994,18 @@
     "slug": "exchange",
     "definition": "In RabbitMQ, the component producers publish to; it routes each message to queues according to its type (direct, topic, fanout or headers) and its bindings.",
     "sectionId": "p3-kafka-vs-queues"
+  },
+  {
+    "term": "Exemplar",
+    "slug": "exemplar",
+    "definition": "A trace ID attached to a metric sample, such as a histogram bucket, so a point on a graph links to a real request's trace.",
+    "sectionId": "p5-metrics"
+  },
+  {
+    "term": "Expand/contract",
+    "slug": "expand-contract",
+    "definition": "A pattern for incompatible changes (also called parallel change): expand the schema or interface to support old and new, migrate, then contract by removing the old shape once nothing uses it.",
+    "sectionId": "p5-release-strategies"
   },
   {
     "term": "Exponential backoff",
@@ -786,10 +1074,22 @@
     "sectionId": "p4-fault-tolerance"
   },
   {
+    "term": "Feature flag",
+    "slug": "feature-flag",
+    "definition": "A runtime switch in code that turns behaviour on or off for chosen users without a deploy, separating deploying code from releasing it.",
+    "sectionId": "p5-release-strategies"
+  },
+  {
     "term": "Fencing token",
     "slug": "fencing-token",
     "definition": "A number that increases with every lock grant and is sent with each write. The protected resource rejects writes carrying a lower token than one it has already accepted.",
     "sectionId": "p4-distributed-locks"
+  },
+  {
+    "term": "Flaky test",
+    "slug": "flaky-test",
+    "definition": "A test that passes and fails on the same code, usually from timing, ordering or shared state; small flake rates compound across a large suite.",
+    "sectionId": "p5-ci-cd"
   },
   {
     "term": "Flow control",
@@ -832,6 +1132,12 @@
     "slug": "game-day",
     "definition": "A scheduled exercise in which a team triggers a failure scenario and practises responding, testing people, runbooks and paging as well as software.",
     "sectionId": "p4-chaos-engineering"
+  },
+  {
+    "term": "Gauge",
+    "slug": "gauge",
+    "definition": "A metric whose value can go up and down, such as memory in use or queue depth, read as a current level.",
+    "sectionId": "p5-metrics"
   },
   {
     "term": "GeoDNS",
@@ -900,6 +1206,12 @@
     "sectionId": "p2-rest"
   },
   {
+    "term": "Head-based sampling",
+    "slug": "head-based-sampling",
+    "definition": "Deciding at the start of a trace whether to record it and passing the decision downstream. Cheap, but it keeps errors only at the sample rate.",
+    "sectionId": "p5-tracing"
+  },
+  {
     "term": "Head-of-line blocking",
     "slug": "hol-blocking",
     "definition": "When one lost or slow item at the front of a queue holds up everything behind it.",
@@ -934,6 +1246,18 @@
     "slug": "hinted-handoff",
     "definition": "Storing a write meant for an unreachable replica, together with a hint naming that replica, and forwarding it when the replica comes back.",
     "sectionId": "p4-quorums"
+  },
+  {
+    "term": "Histogram",
+    "slug": "histogram",
+    "definition": "A metric that counts observations into buckets, plus their sum and count, so percentiles can be estimated and aggregated across instances.",
+    "sectionId": "p5-metrics"
+  },
+  {
+    "term": "Horizontal Pod Autoscaler",
+    "slug": "horizontal-pod-autoscaler",
+    "definition": "A Kubernetes controller that sets a workload's replica count to ceil(current replicas × current metric ÷ target), evaluated every 15 seconds by default.",
+    "sectionId": "p5-kubernetes"
   },
   {
     "term": "Horizontal scaling",
@@ -1008,10 +1332,28 @@
     "sectionId": "p3-delivery-semantics"
   },
   {
+    "term": "Image digest",
+    "slug": "image-digest",
+    "definition": "The SHA-256 hash of an image's manifest, which names one exact image forever. Unlike a tag, it cannot be moved to point at different bytes.",
+    "sectionId": "p5-containers"
+  },
+  {
+    "term": "Image layer",
+    "slug": "image-layer",
+    "definition": "A content-addressed tarball of the files one build step added, changed or deleted. Layers are stacked by a union filesystem and shared between images that use them.",
+    "sectionId": "p5-containers"
+  },
+  {
     "term": "Immutable backup",
     "slug": "immutable-backup",
     "definition": "A backup that cannot be changed or deleted until its retention period ends, even by an administrator, protecting it from ransomware and runaway scripts.",
     "sectionId": "p4-disaster-recovery"
+  },
+  {
+    "term": "Immutable infrastructure",
+    "slug": "immutable-infrastructure",
+    "definition": "Replacing servers with freshly built images instead of patching them in place, so no machine accumulates undocumented changes.",
+    "sectionId": "p5-iac"
   },
   {
     "term": "In-doubt transaction",
@@ -1030,6 +1372,18 @@
     "slug": "index",
     "definition": "A separate data structure that stores some columns in sorted or hashed order with pointers to rows, so queries can find them without scanning.",
     "sectionId": "p2-indexing"
+  },
+  {
+    "term": "Infrastructure as code",
+    "slug": "infrastructure-as-code",
+    "definition": "Defining infrastructure such as networks, servers, databases and permissions in version-controlled files that a tool turns into real resources.",
+    "sectionId": "p5-iac"
+  },
+  {
+    "term": "Ingress",
+    "slug": "ingress",
+    "definition": "A Kubernetes object holding layer 7 host and path routing rules for traffic entering the cluster. An ingress controller must watch it and configure a real proxy.",
+    "sectionId": "p5-kubernetes"
   },
   {
     "term": "Inverted index",
@@ -1056,6 +1410,12 @@
     "sectionId": "p1-client-server"
   },
   {
+    "term": "JWKS",
+    "slug": "jwks",
+    "definition": "JSON Web Key Set: a document an issuer publishes at a known URL listing its public signing keys, each with a key ID (kid) that tokens reference.",
+    "sectionId": "p5-authn-authz"
+  },
+  {
     "term": "K-sortable ID",
     "slug": "k-sortable",
     "definition": "An ID that is roughly ordered by creation time: sorting by ID gives creation order except for IDs made close together on different machines.",
@@ -1066,6 +1426,18 @@
     "slug": "keep-alive",
     "definition": "Reusing one TCP connection for several HTTP requests instead of opening a new one each time.",
     "sectionId": "p1-http"
+  },
+  {
+    "term": "Key management service (KMS)",
+    "slug": "kms",
+    "definition": "A managed service that holds master keys inside hardware security modules, never exports them, and performs encrypt, decrypt and data-key operations under access policies with an audit log.",
+    "sectionId": "p5-data-protection"
+  },
+  {
+    "term": "Key-encryption key (KEK)",
+    "slug": "key-encryption-key",
+    "definition": "A key, usually kept inside a KMS or HSM, whose only job is to encrypt and decrypt data encryption keys. Rotating it needs only re-wrapping, not re-encrypting data.",
+    "sectionId": "p5-data-protection"
   },
   {
     "term": "Key-value store",
@@ -1128,6 +1500,12 @@
     "sectionId": "p1-load-balancers"
   },
   {
+    "term": "Least privilege",
+    "slug": "least-privilege",
+    "definition": "The principle that every user and program should run with only the privileges its job needs, which limits the damage any bug or leaked credential can do.",
+    "sectionId": "p5-access-control"
+  },
+  {
     "term": "LFU (least frequently used)",
     "slug": "lfu",
     "definition": "An eviction policy that removes the entry with the lowest access count, usually with counts that decay over time.",
@@ -1140,10 +1518,22 @@
     "sectionId": "p4-cap-pacelc"
   },
   {
+    "term": "Linux namespace",
+    "slug": "linux-namespace",
+    "definition": "A kernel feature that gives a process its own private copy of one kind of global resource, such as process IDs, network interfaces, mounts or hostname.",
+    "sectionId": "p5-containers"
+  },
+  {
     "term": "Little's Law",
     "slug": "littles-law",
     "definition": "L = λW: the average number of items in a stable system equals the arrival rate times the average time each spends inside.",
     "sectionId": "p1-latency-throughput"
+  },
+  {
+    "term": "Liveness probe",
+    "slug": "liveness-probe",
+    "definition": "A periodic check that decides whether a container is stuck beyond recovery. On failure the kubelet kills and restarts the container.",
+    "sectionId": "p5-kubernetes"
   },
   {
     "term": "Load balancer",
@@ -1170,16 +1560,40 @@
     "sectionId": "p2-locking"
   },
   {
+    "term": "Log aggregation",
+    "slug": "log-aggregation",
+    "definition": "Collecting logs from every service and machine into one searchable store, also called centralized logging.",
+    "sectionId": "p5-logging"
+  },
+  {
     "term": "Log compaction",
     "slug": "log-compaction",
     "definition": "A Kafka cleanup policy that keeps at least the latest record for each key and removes older records with the same key.",
     "sectionId": "p3-kafka-vs-queues"
   },
   {
+    "term": "Log level",
+    "slug": "log-level",
+    "definition": "A severity tag on a log event, such as DEBUG, INFO, WARN, ERROR or FATAL, used to filter and route events by importance.",
+    "sectionId": "p5-logging"
+  },
+  {
     "term": "Log retention",
     "slug": "log-retention",
     "definition": "The policy that deletes old records from a log by age or total size, regardless of whether consumers have read them; Kafka's default is 7 days.",
     "sectionId": "p3-kafka-vs-queues"
+  },
+  {
+    "term": "Log sampling",
+    "slug": "log-sampling",
+    "definition": "Keeping only a fraction of log events to control cost. It is safest done per request ID rather than per line, while keeping every error.",
+    "sectionId": "p5-logging"
+  },
+  {
+    "term": "Log shipper",
+    "slug": "log-shipper",
+    "definition": "An agent, such as Fluent Bit, Vector or the OpenTelemetry Collector, that reads logs on a node, adds metadata, buffers them and forwards them to a log store.",
+    "sectionId": "p5-logging"
   },
   {
     "term": "Long polling",
@@ -1242,6 +1656,12 @@
     "sectionId": "p4-timeouts-retries"
   },
   {
+    "term": "Metric label",
+    "slug": "metric-label",
+    "definition": "A key-value pair, such as route or status, that splits a metric into separate time series you can filter and group by. Called a tag or attribute in some systems.",
+    "sectionId": "p5-metrics"
+  },
+  {
     "term": "Microservice",
     "slug": "microservice",
     "definition": "A separately deployable service that owns one business capability and its data, and talks to other services over the network.",
@@ -1284,6 +1704,12 @@
     "sectionId": "p2-replication"
   },
   {
+    "term": "Multi-stage build",
+    "slug": "multi-stage-build",
+    "definition": "A Dockerfile with several FROM stages, where build tools live in early stages and only the finished output is copied into a small final image.",
+    "sectionId": "p5-containers"
+  },
+  {
     "term": "Multipart upload",
     "slug": "multipart-upload",
     "definition": "Uploading a large object as independently uploaded parts that are assembled at the end.",
@@ -1294,6 +1720,12 @@
     "slug": "multiplexing",
     "definition": "Carrying many independent streams over one connection at once, as HTTP/2 and HTTP/3 do.",
     "sectionId": "p1-http"
+  },
+  {
+    "term": "Multiwindow, multi-burn-rate alert",
+    "slug": "multiwindow-multi-burn-rate-alert",
+    "definition": "An SLO alert that fires only when the burn rate exceeds a threshold over both a long and a short window, with several thresholds for fast and slow burns (for example 14.4x over 1 hour and 5 minutes).",
+    "sectionId": "p5-slos"
   },
   {
     "term": "MVCC",
@@ -1356,6 +1788,12 @@
     "sectionId": "p1-dns"
   },
   {
+    "term": "OAuth 2.0",
+    "slug": "oauth",
+    "definition": "A framework (RFC 6749) for delegated authorization: an authorization server issues access tokens so an app can call an API on a user's behalf without seeing their password.",
+    "sectionId": "p5-authn-authz"
+  },
+  {
     "term": "Object storage",
     "slug": "object-storage",
     "definition": "Storage that keeps whole objects (bytes plus metadata) under keys in flat buckets, accessed over HTTP.",
@@ -1372,6 +1810,18 @@
     "slug": "oltp",
     "definition": "Online transaction processing: workloads of many small, fast reads and writes of individual records.",
     "sectionId": "p2-olap-vs-oltp"
+  },
+  {
+    "term": "OpenID Connect (OIDC)",
+    "slug": "oidc",
+    "definition": "An identity layer on top of OAuth 2.0 that adds an ID token, a signed JWT telling the client who logged in, plus discovery and a UserInfo endpoint.",
+    "sectionId": "p5-authn-authz"
+  },
+  {
+    "term": "OpenTelemetry",
+    "slug": "opentelemetry",
+    "definition": "A CNCF project providing vendor-neutral APIs, SDKs, the OTLP protocol and a Collector for traces, metrics and logs.",
+    "sectionId": "p5-tracing"
   },
   {
     "term": "Optimistic locking",
@@ -1410,6 +1860,12 @@
     "sectionId": "p4-id-generation"
   },
   {
+    "term": "Parameterised query",
+    "slug": "parameterized-query",
+    "definition": "A query whose SQL text is fixed with placeholders and parsed before values are supplied separately, so values can only ever be treated as data. Also called a prepared statement.",
+    "sectionId": "p5-common-attacks"
+  },
+  {
     "term": "Partition (topic partition)",
     "slug": "topic-partition",
     "definition": "One independent, ordered, append-only log within a topic. Partitions are the unit of storage, consumer parallelism and ordering in Kafka.",
@@ -1446,6 +1902,12 @@
     "sectionId": "p2-graphql"
   },
   {
+    "term": "Personally identifiable information (PII)",
+    "slug": "pii",
+    "definition": "Data that identifies a person directly, such as a name or email, or in combination, such as birth date plus postcode. GDPR calls the broader category personal data.",
+    "sectionId": "p5-data-protection"
+  },
+  {
     "term": "Pessimistic locking",
     "slug": "pessimistic-locking",
     "definition": "Locking data before reading it for update, so other transactions wait.",
@@ -1470,6 +1932,18 @@
     "sectionId": "p4-distributed-transactions"
   },
   {
+    "term": "PKCE",
+    "slug": "pkce",
+    "definition": "Proof Key for Code Exchange (RFC 7636): the client sends a hash of a random secret when requesting an authorization code and must present the secret to redeem it, so an intercepted code is useless.",
+    "sectionId": "p5-authn-authz"
+  },
+  {
+    "term": "Pod",
+    "slug": "pod",
+    "definition": "The smallest unit Kubernetes schedules: one or more containers that run together on one node and share an IP address and volumes. Pods are replaced, never repaired.",
+    "sectionId": "p5-kubernetes"
+  },
+  {
     "term": "Point of presence (PoP)",
     "slug": "point-of-presence",
     "definition": "A CDN data centre located near users, from which cached content is served.",
@@ -1486,6 +1960,12 @@
     "slug": "poison-message",
     "definition": "A message that fails every time it is processed, however often it is retried, for example because its payload is malformed.",
     "sectionId": "p3-failure-handling"
+  },
+  {
+    "term": "Policy decision point (PDP)",
+    "slug": "policy-decision-point",
+    "definition": "The component that evaluates access policy and returns allow or deny, such as Open Policy Agent. A separate enforcement point applies the answer.",
+    "sectionId": "p5-access-control"
   },
   {
     "term": "Power of two random choices",
@@ -1540,6 +2020,12 @@
     "slug": "protobuf",
     "definition": "Google's binary, schema-based serialisation format where fields are identified by numeric tags.",
     "sectionId": "p2-grpc"
+  },
+  {
+    "term": "Pseudonymisation",
+    "slug": "pseudonymization",
+    "definition": "Replacing identifiers with stand-ins that can be linked back to the person using separately kept information. Under GDPR, pseudonymised data is still personal data.",
+    "sectionId": "p5-data-protection"
   },
   {
     "term": "Public key",
@@ -1602,6 +2088,12 @@
     "sectionId": "p2-rate-limiting"
   },
   {
+    "term": "RBAC",
+    "slug": "rbac",
+    "definition": "Role-based access control: permissions are granted to roles and users are assigned roles, so access follows job function.",
+    "sectionId": "p5-access-control"
+  },
+  {
     "term": "RDB snapshot",
     "slug": "rdb-snapshot",
     "definition": "A Redis point-in-time dump of the whole dataset to a compact file, written by a forked child process.",
@@ -1632,10 +2124,22 @@
     "sectionId": "p1-estimation"
   },
   {
+    "term": "Readiness probe",
+    "slug": "readiness-probe",
+    "definition": "A periodic check that decides whether a pod should receive traffic. On failure the pod is removed from Service endpoints but keeps running.",
+    "sectionId": "p5-kubernetes"
+  },
+  {
     "term": "Rebalance",
     "slug": "consumer-rebalance",
     "definition": "Reassigning a consumer group's partitions when members join, leave or are presumed dead, which pauses some consumption and can cause redelivery.",
     "sectionId": "p3-partitioning-ordering"
+  },
+  {
+    "term": "Reconciliation loop",
+    "slug": "reconciliation-loop",
+    "definition": "The pattern every Kubernetes controller follows: repeatedly compare the desired state with the observed state and take a step to close the gap.",
+    "sectionId": "p5-kubernetes"
   },
   {
     "term": "Recovery point objective (RPO)",
@@ -1654,6 +2158,12 @@
     "slug": "recursive-resolver",
     "definition": "The DNS server (often your ISP's, or 8.8.8.8 or 1.1.1.1) that chases a lookup through root, TLD and authoritative servers and caches the answer.",
     "sectionId": "p1-dns"
+  },
+  {
+    "term": "RED method",
+    "slug": "red-method",
+    "definition": "Tom Wilkie's checklist for request-driven services: measure Rate, Errors and Duration for every service.",
+    "sectionId": "p5-metrics"
   },
   {
     "term": "Redis stream",
@@ -1678,6 +2188,12 @@
     "slug": "redundancy",
     "definition": "Running more instances of a component than the load needs, so the service survives losing some. It only works with spare capacity, failure detection and a way to shift work.",
     "sectionId": "p4-high-availability"
+  },
+  {
+    "term": "Refresh token",
+    "slug": "refresh-token",
+    "definition": "A long-lived credential sent only to the authorization server to obtain new access tokens. Because it is checked server-side, it can be revoked.",
+    "sectionId": "p5-authn-authz"
   },
   {
     "term": "Relational database",
@@ -1776,6 +2292,12 @@
     "sectionId": "p1-reverse-proxy"
   },
   {
+    "term": "Rolling deployment",
+    "slug": "rolling-deployment",
+    "definition": "Replacing instances of the old version with the new one in batches, so some capacity always serves traffic and two versions run side by side during the rollout.",
+    "sectionId": "p5-release-strategies"
+  },
+  {
     "term": "Root nameserver",
     "slug": "root-nameserver",
     "definition": "The top of the DNS hierarchy; it points resolvers to the right top-level-domain servers.",
@@ -1800,6 +2322,12 @@
     "sectionId": "p2-grpc"
   },
   {
+    "term": "Runbook",
+    "slug": "runbook",
+    "definition": "A short document linked from an alert that explains what the alert means for users and the steps to confirm, mitigate and escalate it. Also called a playbook.",
+    "sectionId": "p5-alerting"
+  },
+  {
     "term": "Safe method",
     "slug": "safe-method",
     "definition": "An HTTP method that should not change server state, such as GET or HEAD.",
@@ -1822,6 +2350,12 @@
     "slug": "saga-orchestration",
     "definition": "Running a saga from a central orchestrator that tells each service which step to perform and durably records progress, for example with Temporal or AWS Step Functions.",
     "sectionId": "p4-distributed-transactions"
+  },
+  {
+    "term": "Scrubbing centre",
+    "slug": "scrubbing-center",
+    "definition": "A high-capacity network location run by a DDoS mitigation provider that receives a victim's traffic, filters out attack traffic and forwards the clean remainder.",
+    "sectionId": "p5-common-attacks"
   },
   {
     "term": "Sentinel node",
@@ -1852,6 +2386,36 @@
     "slug": "sse",
     "definition": "A browser standard where the server streams text events over one long-lived HTTP response, with automatic reconnect.",
     "sectionId": "p1-realtime"
+  },
+  {
+    "term": "Server-side request forgery (SSRF)",
+    "slug": "ssrf",
+    "definition": "An attack that makes a server send requests to destinations the attacker chooses, reaching internal services or cloud metadata endpoints from inside the trust boundary.",
+    "sectionId": "p5-common-attacks"
+  },
+  {
+    "term": "Service (Kubernetes)",
+    "slug": "kubernetes-service",
+    "definition": "A stable name and virtual IP for the ready pods that match a label selector, so clients do not depend on individual pod IPs.",
+    "sectionId": "p5-kubernetes"
+  },
+  {
+    "term": "Service level agreement (SLA)",
+    "slug": "sla",
+    "definition": "A contract with customers that states consequences, usually service credits, if a service level is missed. It is normally set looser than the internal SLO.",
+    "sectionId": "p5-slos"
+  },
+  {
+    "term": "Service level indicator (SLI)",
+    "slug": "sli",
+    "definition": "A carefully defined quantitative measure of some aspect of a service, best written as good events divided by valid events, such as the fraction of requests that succeed.",
+    "sectionId": "p5-slos"
+  },
+  {
+    "term": "Service level objective (SLO)",
+    "slug": "slo",
+    "definition": "A target value for an SLI over a time window, such as 99.9% of requests succeeding over a rolling 28 days.",
+    "sectionId": "p5-slos"
   },
   {
     "term": "Service mesh",
@@ -1938,10 +2502,28 @@
     "sectionId": "p3-invalidation"
   },
   {
+    "term": "Span",
+    "slug": "span",
+    "definition": "One named, timed operation in a trace, such as an HTTP handler or a database query, with its own ID, a parent ID, attributes and status.",
+    "sectionId": "p5-tracing"
+  },
+  {
+    "term": "SPIFFE",
+    "slug": "spiffe",
+    "definition": "A CNCF standard for workload identity: each workload gets a URI identity (spiffe://trust-domain/path) proven by a short-lived X.509 or JWT credential called an SVID.",
+    "sectionId": "p5-access-control"
+  },
+  {
     "term": "Split brain",
     "slug": "split-brain",
     "definition": "A failure where two nodes both act as leader and accept conflicting writes.",
     "sectionId": "p2-replication"
+  },
+  {
+    "term": "SQL injection",
+    "slug": "sql-injection",
+    "definition": "An attack in which untrusted input pasted into SQL text is parsed as part of the query, changing what it does. Prevented by parameterised queries.",
+    "sectionId": "p5-common-attacks"
   },
   {
     "term": "SSL",
@@ -1954,6 +2536,18 @@
     "slug": "stale-read",
     "definition": "A read that returns a value older than the latest committed write in the source of truth.",
     "sectionId": "p3-invalidation"
+  },
+  {
+    "term": "Startup probe",
+    "slug": "startup-probe",
+    "definition": "A check that holds off liveness and readiness probes until a slow-starting container has finished starting, and restarts it if it never does.",
+    "sectionId": "p5-kubernetes"
+  },
+  {
+    "term": "State locking",
+    "slug": "state-locking",
+    "definition": "A lock on infrastructure state that stops two applies running at once and overwriting each other's changes.",
+    "sectionId": "p5-iac"
   },
   {
     "term": "Stateful server",
@@ -2016,6 +2610,12 @@
     "sectionId": "p1-monolith-vs-microservices"
   },
   {
+    "term": "Structured logging",
+    "slug": "structured-logging",
+    "definition": "Writing each log event as named fields, usually one JSON object per line, so logs can be queried by field instead of parsed with regexes.",
+    "sectionId": "p5-logging"
+  },
+  {
     "term": "Stub resolver",
     "slug": "stub-resolver",
     "definition": "The small DNS client in your operating system that forwards lookups to a recursive resolver.",
@@ -2028,10 +2628,22 @@
     "sectionId": "p3-cdn"
   },
   {
+    "term": "Symptom-based alerting",
+    "slug": "symptom-based-alerting",
+    "definition": "Paging on what users experience, such as failed or slow requests, rather than on internal causes such as high CPU, which are used for diagnosis instead.",
+    "sectionId": "p5-alerting"
+  },
+  {
     "term": "SYN",
     "slug": "syn",
     "definition": "The 'synchronise' flag on the first TCP packet, which asks to open a connection and carries the starting sequence number.",
     "sectionId": "p1-tcp-udp"
+  },
+  {
+    "term": "SYN cookies",
+    "slug": "syn-cookie",
+    "definition": "A TCP defence against SYN floods in which the server encodes connection details in its initial sequence number and stores no state until a valid ACK returns.",
+    "sectionId": "p5-common-attacks"
   },
   {
     "term": "Tail latency",
@@ -2040,10 +2652,40 @@
     "sectionId": "p1-latency-throughput"
   },
   {
+    "term": "Tail-based sampling",
+    "slug": "tail-based-sampling",
+    "definition": "Buffering all spans and deciding after a trace completes whether to keep it, so slow and failed traces can always be kept.",
+    "sectionId": "p5-tracing"
+  },
+  {
     "term": "TCP",
     "slug": "tcp",
     "definition": "Transmission Control Protocol: a connection-based transport that delivers a reliable, ordered byte stream between two hosts.",
     "sectionId": "p1-tcp-udp"
+  },
+  {
+    "term": "Terraform plan",
+    "slug": "terraform-plan",
+    "definition": "Terraform's preview of the creates, updates and destroys needed to make real infrastructure match the code, shown before anything changes.",
+    "sectionId": "p5-iac"
+  },
+  {
+    "term": "Terraform provider",
+    "slug": "terraform-provider",
+    "definition": "A plugin that translates Terraform resources into API calls for one platform, such as AWS, Cloudflare or GitHub.",
+    "sectionId": "p5-iac"
+  },
+  {
+    "term": "Terraform state",
+    "slug": "terraform-state",
+    "definition": "The file mapping each resource address in Terraform code to the real object's ID and last-seen attributes; it can contain secrets.",
+    "sectionId": "p5-iac"
+  },
+  {
+    "term": "Test pyramid",
+    "slug": "test-pyramid",
+    "definition": "The guideline to write many fast unit tests, fewer integration tests and very few end-to-end tests, because cost and flakiness rise with scope.",
+    "sectionId": "p5-ci-cd"
   },
   {
     "term": "TF-IDF",
@@ -2130,6 +2772,12 @@
     "sectionId": "p2-search"
   },
   {
+    "term": "Tokenization (data security)",
+    "slug": "data-tokenization",
+    "definition": "Replacing a sensitive value such as a card number with a random token, while the real value is kept only in a guarded token vault. The token has no mathematical link to the value.",
+    "sectionId": "p5-data-protection"
+  },
+  {
     "term": "Tombstone",
     "slug": "tombstone",
     "definition": "A marker written in place of deleted data that records the deletion, so that replicas which missed the delete do not bring the data back. Tombstones are purged after a grace period.",
@@ -2164,6 +2812,12 @@
     "slug": "trip-threshold",
     "definition": "The condition that moves a circuit breaker from closed to open, such as a failure rate above 50% over the window or a number of consecutive failures.",
     "sectionId": "p4-circuit-breakers"
+  },
+  {
+    "term": "Trunk-based development",
+    "slug": "trunk-based-development",
+    "definition": "A branching model where everyone merges small changes into one main branch at least daily, hiding unfinished work behind feature flags instead of long-lived branches.",
+    "sectionId": "p5-ci-cd"
   },
   {
     "term": "TTL",
@@ -2206,6 +2860,12 @@
     "slug": "udp",
     "definition": "User Datagram Protocol: a connectionless transport that sends independent packets with no delivery, ordering or retransmission guarantees.",
     "sectionId": "p1-tcp-udp"
+  },
+  {
+    "term": "USE method",
+    "slug": "use-method",
+    "definition": "Brendan Gregg's checklist for every resource: check Utilization, Saturation (work waiting) and Errors.",
+    "sectionId": "p5-metrics"
   },
   {
     "term": "Utilization",
@@ -2274,6 +2934,12 @@
     "sectionId": "p4-disaster-recovery"
   },
   {
+    "term": "Web application firewall (WAF)",
+    "slug": "waf",
+    "definition": "A filter in front of a web application that inspects HTTP requests and blocks ones matching attack patterns or rules. It is a safety net, not a replacement for secure code.",
+    "sectionId": "p5-common-attacks"
+  },
+  {
     "term": "WebSocket",
     "slug": "websocket",
     "definition": "A protocol, started by an HTTP upgrade, that keeps one TCP connection open for two-way messages in small frames.",
@@ -2296,6 +2962,12 @@
     "slug": "working-set",
     "definition": "The subset of data actively used over a period of time. A cache that holds the working set gets a high hit ratio even if the full dataset is much larger.",
     "sectionId": "p3-cache-layers"
+  },
+  {
+    "term": "Workload identity",
+    "slug": "workload-identity",
+    "definition": "A credential a running service receives from its platform because of what and where it is, instead of a static secret in its configuration. It is usually short-lived and rotated automatically.",
+    "sectionId": "p5-access-control"
   },
   {
     "term": "Write amplification",

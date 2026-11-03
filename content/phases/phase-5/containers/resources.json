@@ -1,0 +1,32 @@
+[
+  {
+    "id": "docker-docs",
+    "title": "Docker documentation",
+    "author": "Docker Inc.",
+    "kind": "docs",
+    "url": "https://docs.docker.com/",
+    "why": "The reference for Dockerfile instructions, the build cache, multi-stage builds and the storage drivers behind image layers.",
+    "topicIds": ["docker-basics", "images-layers"],
+    "free": true
+  },
+  {
+    "id": "oci-image-spec",
+    "title": "OCI Image Format Specification",
+    "author": "Open Container Initiative",
+    "kind": "repo",
+    "url": "https://github.com/opencontainers/image-spec",
+    "why": "The vendor-neutral definition of manifests, layers and digests that Docker, containerd, CRI-O and Podman all share.",
+    "topicIds": ["images-layers"],
+    "free": true
+  },
+  {
+    "id": "man-namespaces",
+    "title": "namespaces(7) Linux manual page",
+    "author": "Michael Kerrisk (man7.org)",
+    "kind": "docs",
+    "url": "https://man7.org/linux/man-pages/man7/namespaces.7.html",
+    "why": "The primary source on each namespace type and what it isolates; pair it with cgroups(7) on the same site.",
+    "topicIds": ["isolation", "why-containers"],
+    "free": true
+  }
+]

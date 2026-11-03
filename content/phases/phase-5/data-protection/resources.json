@@ -1,0 +1,42 @@
+[
+  {
+    "id": "aws-kms-concepts",
+    "title": "AWS KMS concepts: envelope encryption and data keys",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html",
+    "why": "The canonical description of KEKs, data keys, key rotation and the KMS request model this lesson's arithmetic uses.",
+    "topicIds": ["envelope-encryption", "encryption-at-rest"],
+    "free": true
+  },
+  {
+    "id": "owasp-cryptographic-storage",
+    "title": "OWASP Cryptographic Storage Cheat Sheet",
+    "author": "OWASP",
+    "kind": "docs",
+    "url": "https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html",
+    "why": "Practical guidance on algorithms, modes, key storage and what to encrypt, with links to the password storage and secrets cheat sheets.",
+    "topicIds": ["encryption-at-rest", "envelope-encryption", "pii-handling"],
+    "free": true
+  },
+  {
+    "id": "vault-docs",
+    "title": "HashiCorp Vault documentation: secrets engines and dynamic secrets",
+    "author": "HashiCorp",
+    "kind": "docs",
+    "url": "https://developer.hashicorp.com/vault/docs",
+    "why": "How leased dynamic credentials, the database secrets engine and transit (encryption as a service) work in practice.",
+    "topicIds": ["secrets-management"],
+    "free": true
+  },
+  {
+    "id": "k8s-encrypt-data",
+    "title": "Kubernetes: Encrypting Confidential Data at Rest",
+    "author": "The Kubernetes Authors",
+    "kind": "docs",
+    "url": "https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/",
+    "why": "Shows that Secrets are stored unencrypted by default and how to enable API-server encryption, including KMS providers.",
+    "topicIds": ["secrets-management", "encryption-at-rest"],
+    "free": true
+  }
+]

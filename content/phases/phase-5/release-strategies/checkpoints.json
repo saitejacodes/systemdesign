@@ -1,0 +1,8 @@
+[
+  { "id": "release-strategies-c1", "text": "I can pick maxSurge and maxUnavailable for a rolling deploy and calculate its duration and extra capacity.", "topicId": "rolling" },
+  { "id": "release-strategies-c2", "text": "I can explain why a missing readiness probe turns a rolling deploy into an error spike.", "topicId": "rolling" },
+  { "id": "release-strategies-c3", "text": "I can calculate a canary's blast radius and judge whether its traffic is enough to detect a given error-rate regression.", "topicId": "canary" },
+  { "id": "release-strategies-c4", "text": "I can choose between rolling, blue-green and canary for a service and state what each costs.", "topicId": "blue-green" },
+  { "id": "release-strategies-c5", "text": "I can name the four feature toggle categories and set lifetimes and owners to avoid flag debt.", "topicId": "feature-flags" },
+  { "id": "release-strategies-c6", "text": "I can write the expand/contract steps for renaming a column so every deploy and rollback stays safe.", "topicId": "zero-downtime-migrations" }
+]

@@ -1,0 +1,20 @@
+[
+  { "id": "kubernetes-f1", "front": "Control plane components?", "back": "API server (the only front door), etcd (state, replicated with Raft), scheduler (places pods), controller manager (runs the controllers).", "topicId": "k8s-architecture" },
+  { "id": "kubernetes-f2", "front": "Node components?", "back": "kubelet (runs containers via the runtime, runs probes) and kube-proxy (programs Service routing rules).", "topicId": "k8s-architecture" },
+  { "id": "kubernetes-f3", "front": "Reconciliation loop?", "back": "A controller repeatedly compares desired state with observed state and takes a step to close the gap. Self-healing, eventually consistent.", "topicId": "k8s-architecture" },
+  { "id": "kubernetes-f4", "front": "API server down: what still works?", "back": "Running pods keep serving and Service rules stay. You lose deploys, scaling and rescheduling.", "topicId": "k8s-architecture" },
+  { "id": "kubernetes-f5", "front": "Pod?", "back": "One or more containers scheduled together on one node, sharing an IP and volumes. Disposable: replaced, never repaired.", "topicId": "pods-deployments" },
+  { "id": "kubernetes-f6", "front": "Requests vs limits?", "back": "The scheduler places pods by requests. Limits are enforced by cgroups: memory over limit is OOM-killed, CPU over limit is throttled.", "topicId": "pods-deployments" },
+  { "id": "kubernetes-f7", "front": "maxSurge and maxUnavailable defaults and rounding?", "back": "25% each. maxSurge rounds up, maxUnavailable rounds down. 20 replicas: up to 25 pods, at least 15 available.", "topicId": "pods-deployments" },
+  { "id": "kubernetes-f8", "front": "Rollout that never becomes ready?", "back": "Stalls; after progressDeadlineSeconds (600 s default) it is marked failed. No automatic rollback: run kubectl rollout undo.", "topicId": "pods-deployments" },
+  { "id": "kubernetes-f9", "front": "Service (ClusterIP)?", "back": "A stable virtual IP and DNS name for pods matching a label selector. Only ready pods are in its endpoints.", "topicId": "services-ingress" },
+  { "id": "kubernetes-f10", "front": "Why gRPC pods get unbalanced?", "back": "kube-proxy picks a pod per connection. One long-lived HTTP/2 connection carries all requests to one pod.", "topicId": "services-ingress" },
+  { "id": "kubernetes-f11", "front": "Ingress?", "back": "Layer 7 host and path routing rules into the cluster. Does nothing without an ingress controller. Gateway API is the successor.", "topicId": "services-ingress" },
+  { "id": "kubernetes-f12", "front": "Readiness probe fails?", "back": "Pod removed from Service endpoints. Not restarted.", "topicId": "probes" },
+  { "id": "kubernetes-f13", "front": "Liveness probe fails?", "back": "kubelet kills and restarts the container. Check only the process, never a dependency like the database.", "topicId": "probes" },
+  { "id": "kubernetes-f14", "front": "Startup probe?", "back": "Holds off liveness and readiness until the app has started, for slow starters. Restarts the container if it never passes.", "topicId": "probes" },
+  { "id": "kubernetes-f15", "front": "Probe defaults?", "back": "periodSeconds 10, timeoutSeconds 1, failureThreshold 3: about 30 s to declare failure.", "topicId": "probes" },
+  { "id": "kubernetes-f16", "front": "Graceful shutdown pattern?", "back": "preStop sleep a few seconds (endpoint removal lags SIGTERM), then drain in-flight requests within terminationGracePeriodSeconds (30 s).", "topicId": "probes" },
+  { "id": "kubernetes-f17", "front": "HPA formula?", "back": "desired = ceil(current × currentMetric / target). 6 pods at 90% with a 60% target = 9. Evaluated every 15 s, 10% tolerance.", "topicId": "hpa" },
+  { "id": "kubernetes-f18", "front": "Why the HPA does not save you from a spike?", "back": "15 s cycles plus tens of seconds per pod (minutes if nodes must be added). Use headroom, min replicas and load shedding.", "topicId": "hpa" }
+]

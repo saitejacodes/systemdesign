@@ -1,0 +1,7 @@
+[
+  { "id": "alerting-c1", "text": "I can classify a list of alert rules as symptoms or causes and rewrite cause-based pages as symptom-based ones tied to the SLO.", "topicId": "symptom-alerts" },
+  { "id": "alerting-c2", "text": "I can name the cause alerts that still justify a page (predictable cliffs like a disk filling within hours) and write one with predict_linear.", "topicId": "symptom-alerts" },
+  { "id": "alerting-c3", "text": "I can sort alerts into page, ticket and dashboard using the urgent, actionable, user-visible and requires-intelligence tests.", "topicId": "paging-vs-ticketing" },
+  { "id": "alerting-c4", "text": "I can configure Alertmanager grouping and inhibition so one failed dependency produces one notification, and explain the risk inhibition adds.", "topicId": "alert-fatigue" },
+  { "id": "alerting-c5", "text": "I can write a runbook with impact, confirmation, ordered mitigations, escalation and an owner, and spot when it should be automation instead.", "topicId": "runbooks" }
+]

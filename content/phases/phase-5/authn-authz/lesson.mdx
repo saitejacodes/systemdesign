@@ -1,0 +1,245 @@
+## Why it matters
+
+Every request your system serves has to answer two questions: *who is this?* and *are they allowed to do this?* Get the first wrong and anyone can be anyone; get the second wrong and every logged-in user can read everyone's data. The mechanisms behind both answers, sessions, tokens, OAuth, OpenID Connect and JWTs, are also where real breaches happen. In September 2018 Facebook disclosed that attackers had chained bugs in its "View As" feature to steal access tokens, and it reset the tokens of about 90 million accounts to contain it. In 2023 Microsoft reported that the group it calls Storm-0558 had obtained a consumer-account signing key and used it to forge tokens that enterprise Outlook services accepted, because of a key-validation error. In both cases the problem was not a weak password: it was a token that looked valid to every server that checked it. This section shows how those tokens are made, checked, and, hardest of all, taken back.
+
+<Callout type="analogy" title="The festival wristband">
+At a festival you queue once at the box office, show ID, and get a wristband. After that, every gate guard just looks at your wrist: right colour, right day, untampered clasp, you're in. No guard phones the box office, which is why the gates are fast and why the festival survives the box office's phone line going down. That is a signed token. A cloakroom ticket is the other model: the ticket itself means nothing, and the attendant looks your number up on the rack every time. That is a server-side session. The wristband's weakness is the one that matters: if someone cuts yours off and puts it on, or you are thrown out, the guards will keep waving the wristband through until its date runs out, because nobody told them. The analogy breaks in one useful place: a real wristband is hard to copy, but a token is a string, and copying it is free.
+</Callout>
+
+First, two words that are easy to blur. <Term slug="authentication">Authentication</Term> (authn) establishes *who* the caller is. <Term slug="authorization">Authorization</Term> (authz) decides *what* that caller may do. Logging in is authentication; "may user 42 delete invoice 9001?" is authorization. A 401 Unauthorized response really means "not authenticated"; 403 Forbidden means "authenticated, but not allowed". This section is mostly about authentication and how its result is carried between requests; the next section, access control, is about the decision itself.
+
+## Sessions vs tokens
+
+<DepthStamp depth="tradeoffs" />
+
+HTTP is stateless, so after login the server needs a way to recognise the same user on the next request. There are two families of answer.
+
+**Server-side sessions (reference tokens).** On login the server creates a <Term slug="session">session</Term> record, for example in Redis, keyed by a long random ID, and sends the ID back in a cookie. Every request carries the cookie; the server looks the ID up. The OWASP Session Management Cheat Sheet asks for at least 64 bits of entropy in the ID so it cannot be guessed. Set the cookie `HttpOnly` (JavaScript can't read it), `Secure` (HTTPS only) and `SameSite=Lax` or `Strict` (limits cross-site sending, which blunts cross-site request forgery).
+
+**Self-contained tokens (value tokens).** On login the server issues a signed token, usually a <Term slug="jwt">JWT</Term>, that *contains* the user ID, roles and an expiry. Any service holding the verification key can check it locally with no lookup.
+
+| | Server-side session | Self-contained token (JWT) |
+|---|---|---|
+| Per-request cost | One store lookup (often under 1 ms in-region) | Signature check, no network |
+| Logout / revoke | Delete the record: instant | Hard: valid until `exp` unless you add state back |
+| Store outage | Everyone is logged out or blocked | Verification keeps working |
+| Size on the wire | ~32 bytes of ID | Hundreds of bytes to several KB |
+| Cross-service use | Each service needs store access | Any service with the public key |
+| Data freshness | Always current (roles read live) | Claims frozen at issue time |
+
+Worked numbers make the trade concrete. At **50,000 requests a second**, a session design does 50,000 lookups a second. A small Redis cluster handles that easily, and with **2 million active sessions at about 1 KB each** the store holds about **2 GB**. That is not a scaling problem for most companies; the real costs are that the store is now on the critical path of every request and that every service needs to reach it.
+
+The field genuinely disagrees here. One camp argues that for a browser talking to its own back end, JWTs are the wrong default: you give up instant logout and fresh permissions to save a lookup you could easily afford, and you tempt developers to put tokens in `localStorage`, where any cross-site scripting bug can read them. The other camp points out that once a request fans out across dozens of services, or across organisations, a locally verifiable token is the only design that doesn't make one session store a dependency of everything. Both are right about their own case. A common synthesis is the **backend-for-frontend (BFF)** pattern, which the IETF draft on OAuth for browser-based apps recommends: the browser holds only an `HttpOnly` session cookie, and a server-side component holds the tokens and attaches a short-lived JWT to calls into the internal services.
+
+## OAuth 2.0 flows
+
+<DepthStamp depth="deep" />
+
+<Term slug="oauth">OAuth 2.0</Term> (RFC 6749) is a framework for **delegated authorization**: letting an application act on a user's resources without ever seeing the user's password. It names four roles: the **resource owner** (the user), the **client** (the app), the **authorization server** (which authenticates the user and issues tokens) and the **resource server** (the API). Its output is an <Term slug="access-token">access token</Term>: a credential the client presents to the API, usually as a <Term slug="bearer-token">bearer token</Term> in an `Authorization: Bearer ...` header. "Bearer" means exactly what it sounds like: whoever holds it can use it.
+
+RFC 6749 defined four grant types. Two of them, *implicit* (token returned in the browser URL) and *resource owner password credentials* (the app collects the password), are now forbidden or discouraged by the OAuth 2.0 Security Best Current Practice (RFC 9700, 2025). Two remain the workhorses.
+
+### Authorization code with PKCE
+
+This is the flow for anything with a user: web apps, single-page apps, mobile apps. The client never sees the password, and the tokens never pass through the browser's address bar. A one-time **authorization code** does, and the client swaps it for tokens over a back channel. RFC 6749 recommends the code live at most 10 minutes and be usable once.
+
+The weak spot was the code itself: on mobile, a malicious app registered for the same redirect URL scheme could intercept it. <Term slug="pkce">PKCE</Term> (Proof Key for Code Exchange, RFC 7636, pronounced "pixie") closes that hole. The client invents a random secret, the `code_verifier` (43 to 128 characters), and sends only its hash, `code_challenge = BASE64URL(SHA-256(code_verifier))` with `code_challenge_method=S256`, in the first redirect. At the token endpoint it must present the original verifier. An attacker who steals the code doesn't have the verifier, so the code is useless to them. RFC 9700 now recommends PKCE for every client, including confidential server-side ones.
+
+<Figure caption="FIG. 6.1 · AUTHORIZATION CODE + PKCE · CODE IN THE FRONT CHANNEL, TOKENS IN THE BACK">
+  <Diagram label="The app sends the user to the authorization server with a code challenge, receives a one-time code on the redirect, then exchanges code plus verifier for tokens directly with the authorization server and calls the API with the access token." chart={`sequenceDiagram
+    participant U as User browser
+    participant C as Client app
+    participant AS as Authorization server
+    participant API as Resource server
+    C->>C: make code_verifier, hash it to code_challenge
+    C->>U: redirect to /authorize with challenge, state, scope
+    U->>AS: GET /authorize
+    AS->>U: login page and consent
+    U->>AS: credentials, MFA, approve
+    AS->>U: redirect to client with code and state
+    U->>C: code and state
+    C->>C: check state matches
+    C->>AS: POST /token with code and code_verifier
+    AS->>AS: SHA-256(verifier) equals stored challenge?
+    AS-->>C: access token, refresh token, ID token
+    C->>API: GET /orders with Bearer access token
+    API-->>C: 200 OK`} />
+</Figure>
+
+*Authorization code + PKCE: the only thing that crosses the browser is a short-lived, single-use code bound to a secret the attacker never sees.*
+
+The `state` parameter is a separate defence: a random value the client checks on return, so an attacker can't splice their own code into your user's session (login CSRF).
+
+### Client credentials
+
+When there is no user, a nightly billing job calling the invoices API, say, the client authenticates *as itself* and gets a token for its own permissions. It sends its `client_id` plus a secret, or better, a signed assertion (`private_key_jwt`, RFC 7523) or a client certificate (mTLS, RFC 8705), and receives an access token. RFC 6749 says no refresh token should be issued here: the client can simply ask again. This grant is service-to-service *authorization*; the next section covers how the service proves its identity without a long-lived secret.
+
+## OpenID Connect
+
+<DepthStamp depth="deep" />
+
+OAuth answers "may this app call this API?" It does not, by itself, tell the app *who the user is*. An access token is meant for the API and is opaque to the client. <Term slug="oidc">OpenID Connect</Term> (OIDC Core 1.0, from the OpenID Foundation) is a thin identity layer on top of OAuth: the client adds `openid` to the requested scopes and, alongside the access token, receives an **ID token**, a JWT *addressed to the client* that states who logged in.
+
+Key ID token claims:
+
+| Claim | Meaning | What the client must check |
+|---|---|---|
+| `iss` | Who issued it | Exactly the expected issuer URL |
+| `sub` | Stable user identifier at that issuer | Use `iss` + `sub` as the user key, never email |
+| `aud` | Who it is for | Contains *your* client ID |
+| `exp`, `iat` | Expiry and issue time | Not expired (allow small clock skew) |
+| `nonce` | Value the client sent in the request | Matches, which defeats replay |
+| `auth_time`, `acr`, `amr` | When and how the user authenticated | If you require recent login or MFA |
+
+OIDC also standardises discovery (`/.well-known/openid-configuration` publishes the issuer's endpoints and key URL) and a UserInfo endpoint for profile claims.
+
+The rule interviewers listen for: **the ID token is for the client; the access token is for the API.** Never send an ID token to an API as a credential, and never treat an access token as proof of who the user is.
+
+## JWT structure, signing and expiry
+
+<DepthStamp depth="deep" />
+
+A JWT (RFC 7519) in its common signed form (JWS) is three base64url strings joined by dots: `header.payload.signature`.
+
+```text
+header   {"alg":"RS256","typ":"at+jwt","kid":"k-2026-10"}
+payload  {"iss":"https://id.example.com","sub":"u_8121","aud":"orders-api",
+          "exp":1793780100,"iat":1793779200,"jti":"9f2c41","scope":"orders:read"}
+signature RS256( base64url(header) + "." + base64url(payload), private key )
+```
+
+Two consequences people miss. First, **base64url is encoding, not encryption**: anyone holding the token can read every claim, so never put secrets or sensitive personal data in it. (Encrypted JWTs, JWE, exist but are rarely what you want.) Second, the signature covers header and payload, so changing one byte of either breaks verification.
+
+**Signing algorithms.** `HS256` uses one shared secret (HMAC-SHA-256): every service that can verify a token can also *mint* one, so a leak anywhere is a leak everywhere. `RS256` (RSA) and `ES256` (ECDSA P-256) are asymmetric: the issuer signs with a private key and everyone else verifies with the public key. Issuers publish their public keys as a <Term slug="jwks">JWKS</Term> (JSON Web Key Set) at a well-known URL; the header's `kid` says which key signed this token. Verifiers cache the JWKS and refetch when they see an unknown `kid`, which is what makes key rotation painless: publish the new key, start signing with it, retire the old one after the longest token lifetime has passed.
+
+**Verification, per RFC 8725 (JWT Best Current Practices).**
+
+1. Accept only the algorithms you expect, configured on the verifier, never read from the token. Two classic bugs come from trusting the header: `"alg":"none"` (an unsecured JWT that some old libraries accepted as valid with no signature at all), and *algorithm confusion*, where a server expecting RS256 is handed an HS256 token and uses its RSA *public* key as the HMAC secret, letting anyone who knows the public key forge tokens.
+2. Pick the key by `kid` from the JWKS of the issuer you trust for this token, not from a URL inside the token.
+3. Check `iss`, `aud`, `exp` and `nbf`, with a small clock-skew allowance such as 60 seconds. Storm-0558 is the cautionary tale for this step: a key from the wrong issuer was accepted.
+4. Check `typ` (RFC 9068 uses `at+jwt` for access tokens) so an ID token can't be replayed as an access token.
+
+**Size.** Tokens ride on every request, so size matters. Worked numbers for an RS256 token:
+
+| Part | Raw bytes | Base64url chars |
+|---|---|---|
+| Header (above) | 48 | 64 |
+| Payload (above, 7 claims) | 137 | 183 |
+| RSA-2048 signature | 256 | 342 |
+| **Total** (with the two dots) | | **591** |
+
+Switch to ES256 and the signature drops to 64 bytes (86 characters). Now let someone add 60 group names of about 25 bytes each to the payload: +1,500 bytes raw, +2,000 characters, so the token is about **2.6 KB**. Browsers are only required to store about 4 KB per cookie (RFC 6265), and many servers and proxies cap a single header line at 8 KB (NGINX's default `large_client_header_buffers` is `4 8k`). A token that also carries permissions per resource blows through both. Keep tokens to identity and coarse scopes, and look fine-grained permissions up at the service.
+
+**Expiry.** `exp` is the token's only built-in kill switch. That leads directly to the hard problem.
+
+## The revocation problem
+
+<DepthStamp depth="deep" />
+
+A self-contained token is valid because of maths, not because of a database row. So when a user logs out, changes their password, or an admin disables their account, nothing happens to the tokens already issued. Every service will keep accepting them until `exp`.
+
+**Failure timeline: a stolen token used after logout** (access token TTL 15 minutes, stored in `localStorage`)
+
+| Time | Event |
+|---|---|
+| 09:00:00 | User logs in; gets access token (`exp` 09:15:00) and refresh token |
+| 09:04:10 | A malicious browser extension reads the access token from `localStorage` and sends it out |
+| 09:05:00 | User clicks Log out. Client deletes its tokens; server revokes the refresh token |
+| 09:05:30 | Attacker calls `GET /account/export` with the stolen token. Gateway checks signature, `iss`, `aud`, `exp`: all valid. 200 OK |
+| 09:05–09:15 | Every call succeeds; no service has any record that this user logged out |
+| 09:15:00 | Token expires. The attacker never had the refresh token, so access ends |
+
+With a 15-minute TTL the exposure is about 10 minutes. With a 24-hour TTL, a common lazy default, it would be about **23 hours 55 minutes**. The fixes trade that window against cost:
+
+**1. Short access tokens plus refresh tokens.** Make access tokens short-lived (5–15 minutes) and hand the client a long-lived <Term slug="refresh-token">refresh token</Term> it sends *only* to the authorization server to get new access tokens. The refresh token *is* checked against a database, so revoking it at logout means no new access tokens are issued; the worst case is one access-token lifetime. Cost: a token refresh every few minutes per active client, and some code to retry on 401.
+
+**2. Refresh token rotation with reuse detection.** Each use of a refresh token returns a *new* refresh token and invalidates the old one. If an old one is ever presented again, someone has a copy, so the server revokes the whole token family. RFC 9700 requires public clients to rotate refresh tokens or bind them to the client.
+
+<Figure caption="FIG. 6.2 · REFRESH TOKEN ROTATION · REUSE REVEALS THE THEFT">
+  <Diagram label="The attacker copies refresh token RT1. The real client uses RT1 first and gets RT2. When the attacker later presents RT1, the server sees a reused token and revokes the entire family, so RT2 also stops working and the user must log in again." chart={`sequenceDiagram
+    participant C as Real client
+    participant X as Attacker
+    participant AS as Authorization server
+    Note over X: copies RT1
+    C->>AS: refresh with RT1
+    AS-->>C: new access token and RT2 (RT1 now used)
+    X->>AS: refresh with RT1
+    AS->>AS: RT1 already used, so the family is compromised
+    AS-->>X: 400 invalid_grant
+    AS->>AS: revoke RT2 and every token in the family
+    C->>AS: refresh with RT2
+    AS-->>C: 400 invalid_grant, user must log in again`} />
+</Figure>
+
+*Rotation cannot tell which party is the thief, so it punishes both and forces a fresh login. That is the right trade.*
+
+**3. A denylist.** Record the `jti` (token ID) of every revoked-but-unexpired token and check it on each request. It's smaller than it sounds: entries only need to live until the token's `exp`. With **1 million logouts a day** and a 15-minute TTL, at most about 1,000,000 ÷ 96 ≈ **10,400** entries are live at once, around 0.5 MB. For "log out everywhere" or a disabled account, store one per-user *revoked-before* timestamp instead and reject tokens whose `iat` is older. The catch is philosophical as much as technical: you have reintroduced a lookup on every request, which is the thing JWTs were meant to avoid. Push the list to each gateway's memory rather than calling a central store, and accept a few seconds of propagation delay.
+
+**4. Introspection with opaque tokens.** Issue random reference tokens and let the API ask the authorization server whether each is active (RFC 7662), caching answers for a few seconds. Revocation is immediate, at the price of a network call and an availability dependency.
+
+**5. Sender-constrained tokens.** DPoP (RFC 9449) or mTLS-bound tokens (RFC 8705) tie a token to a key the client holds, so a copied token is useless without the key. This doesn't revoke anything; it makes theft much less valuable, which attacks the same problem from the other side.
+
+<TradeoffBox title="Token lifetime and revocation choices" items={[
+  { gain: "Server-side sessions: instant logout and always-fresh permissions", cost: "A store lookup on every request, and the store is on the critical path" },
+  { gain: "Self-contained JWTs: local verification, no shared dependency", cost: "Cannot be revoked before exp without adding state back" },
+  { gain: "Short TTL + refresh tokens: revocation bounded to minutes", cost: "Frequent refresh traffic and client retry logic" },
+  { gain: "Refresh rotation: detects stolen refresh tokens", cost: "Races on flaky networks can log real users out; needs a small grace window" },
+  { gain: "Denylist or revoked-before timestamp: near-instant revocation", cost: "A per-request check and list distribution to every verifier" },
+  { gain: "Asymmetric signing with a JWKS: verifiers cannot mint tokens, easy rotation", cost: "Larger signatures and key-management work" }
+]} />
+
+<NotWhenBox title="When not to reach for JWTs" items={[
+  "A single web app with its own back end: a session cookie is simpler, revocable and smaller.",
+  "When permissions change often and must apply at once (banking limits, admin removal): claims frozen in a token will be stale.",
+  "As a place to keep user data or secrets: the payload is readable by anyone who has the token.",
+  "Long-lived (hours or days) bearer tokens in the browser: the revocation window is the whole lifetime.",
+  "Rolling your own OAuth server: use a maintained identity provider or library; the specs are full of sharp edges."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A JWT is encrypted, so it's safe to put user details in it." right="A signed JWT is only base64url-encoded. Anyone with the token can decode the payload. Signing gives integrity, not confidentiality." />
+
+<Misconception wrong="Logging out invalidates the user's JWT." right="Logout deletes the client's copy and should revoke the refresh token. Any copy of the access token stays valid until exp unless verifiers check a denylist or revoked-before time." />
+
+<Misconception wrong="OAuth is a login protocol." right="OAuth 2.0 is delegated authorization: it issues access tokens for APIs. Login, meaning who the user is, comes from OpenID Connect's ID token on top of it." />
+
+<Misconception wrong="The token's alg header tells the server how to verify it." right="The verifier must decide the allowed algorithm and key itself. Trusting the header enables the alg none and RS256-to-HS256 confusion attacks described in RFC 8725." />
+
+## Interview angle
+
+<InterviewAngle title="Authentication and tokens" questions={[
+  "Sessions or JWTs for this design, and why?",
+  "A user reports their account was used after they logged out. Walk me through how that is possible and how you'd fix it.",
+  "Why does a single-page app need PKCE, and what attack does it stop?",
+  "How do your 40 internal services verify a token without calling the identity provider on every request, and how do you rotate the signing key?",
+  "What's the difference between an ID token and an access token?"
+]}>
+Auth shows up as the "and how do users log in?" box in almost every design, and interviewers probe whether you understand the trade rather than the buzzwords. Strong answers, in order:
+
+- **Sessions or JWTs:** "Browser to our own back end: session cookie, or a BFF holding tokens. Across many services: short-lived JWTs minted at the gateway, verified locally with the issuer's JWKS."
+- **Used after logout:** "Self-contained tokens stay valid until exp. Keep access tokens at 5–15 minutes, revoke and rotate refresh tokens, and add a revoked-before timestamp per user for account takeover cases."
+- **PKCE:** "It binds the authorization code to a secret only the real client holds, so an intercepted code can't be redeemed. RFC 9700 recommends it for all clients."
+- **Verification at scale:** "RS256 or ES256, cached JWKS keyed by kid, pinned algorithms, check iss, aud, exp. Rotate by publishing the new key first and retiring the old after one max token lifetime."
+- **ID vs access token:** "ID token is for the client, to learn who logged in; access token is for the API. Never cross them."
+</InterviewAngle>
+
+## Practice
+
+1. Your access tokens live 1 hour and you have 3 million logouts a day. How many denylist entries are live at peak, and roughly how much memory do they take at 50 bytes each? What changes if you cut the TTL to 10 minutes?
+2. A product manager wants every permission (about 300 strings of 20 bytes each) inside the JWT "so services don't have to look anything up". Estimate the token size and explain which limits it breaks and what you would do instead.
+3. Draw the login flow for a mobile app that calls three back-end APIs: name each token, where it is stored, its lifetime, and what happens when the phone is stolen.
+
+## Try it
+
+Generate a demo token, decode every claim, sign it with HS256 and change one character of the payload to watch verification fail. Then log the user out and compare how long a stolen token keeps working with a short TTL plus refresh versus a denylist.
+
+<Simulator id="jwt-inspector" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

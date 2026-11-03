@@ -1,0 +1,7 @@
+[
+  { "id": "slos-c1", "text": "I can define SLI, SLO and SLA, give one of each for a real API, and explain why the SLA is looser than the SLO.", "topicId": "sli-slo-sla" },
+  { "id": "slos-c2", "text": "I can write an availability and a latency SLI as good events over valid events, and say where each is measured and what is excluded.", "topicId": "choosing-slis" },
+  { "id": "slos-c3", "text": "I can convert an SLO into allowed bad minutes and bad requests over 30 days, and compute what share of the budget an incident spent.", "topicId": "error-budgets" },
+  { "id": "slos-c4", "text": "I can derive the 14.4x, 6x and 1x burn-rate thresholds from budget share and window length, and explain why each has a short window.", "topicId": "burn-rate-alerts" },
+  { "id": "slos-c5", "text": "I can draft an error budget policy that says what happens to releases when the budget is exhausted and who settles disputes.", "topicId": "budget-policy" }
+]

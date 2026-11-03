@@ -1,0 +1,32 @@
+[
+  {
+    "id": "terraform-docs",
+    "title": "Terraform documentation",
+    "author": "HashiCorp",
+    "kind": "docs",
+    "url": "https://developer.hashicorp.com/terraform/docs",
+    "why": "The reference for the language, plan and apply, state, backends, moved and import blocks, and lifecycle settings.",
+    "topicIds": ["terraform-concepts", "state", "drift"],
+    "free": true
+  },
+  {
+    "id": "terraform-up-and-running",
+    "title": "Terraform: Up & Running",
+    "author": "Yevgeniy Brikman",
+    "kind": "book",
+    "url": "https://www.terraformupandrunning.com/",
+    "why": "The practical guide to state layout, modules, environments and team workflows, from someone who runs Terraform at scale.",
+    "topicIds": ["declarative-infra", "terraform-concepts", "state"],
+    "free": false
+  },
+  {
+    "id": "opentofu-docs",
+    "title": "OpenTofu documentation",
+    "author": "OpenTofu (Linux Foundation)",
+    "kind": "docs",
+    "url": "https://opentofu.org/docs/",
+    "why": "The open-source fork's docs: largely the same concepts, with its own features such as state encryption.",
+    "topicIds": ["declarative-infra", "state"],
+    "free": true
+  }
+]

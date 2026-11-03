@@ -1,0 +1,8 @@
+[
+  { "id": "kubernetes-c1", "text": "I can name the control plane and node components and explain what keeps working when the control plane is down.", "topicId": "k8s-architecture" },
+  { "id": "kubernetes-c2", "text": "I can calculate the pod count, minimum capacity and duration of a rolling update from replicas, maxSurge and maxUnavailable.", "topicId": "pods-deployments" },
+  { "id": "kubernetes-c3", "text": "I can explain how a Service routes to ready pods, why long-lived gRPC connections stay unbalanced and what an Ingress needs to work.", "topicId": "services-ingress" },
+  { "id": "kubernetes-c4", "text": "I can design liveness, readiness and startup probes plus graceful shutdown for a service, and say what each must not check.", "topicId": "probes" },
+  { "id": "kubernetes-c5", "text": "I can apply the HPA formula, estimate how long new capacity takes to arrive and say what absorbs a spike instead.", "topicId": "hpa" },
+  { "id": "kubernetes-c6", "text": "I can argue for and against Kubernetes for a given team and list what an interviewer expects me to know about it.", "topicId": "interview-scope" }
+]

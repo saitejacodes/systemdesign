@@ -1,0 +1,42 @@
+[
+  {
+    "id": "sre-book-monitoring",
+    "title": "Site Reliability Engineering, Chapter 6: Monitoring Distributed Systems",
+    "author": "Rob Ewaschuk, ed. Betsy Beyer (Google)",
+    "kind": "free-book",
+    "url": "https://sre.google/sre-book/monitoring-distributed-systems/",
+    "why": "The source of the four golden signals and the case for symptom-based monitoring over cause-based dashboards.",
+    "topicIds": ["red-use", "histograms-percentiles"],
+    "free": true
+  },
+  {
+    "id": "gregg-use-method",
+    "title": "The USE Method",
+    "author": "Brendan Gregg",
+    "kind": "blog",
+    "url": "https://www.brendangregg.com/usemethod.html",
+    "why": "The original description of utilization, saturation and errors per resource, with checklists for real systems.",
+    "topicIds": ["red-use"],
+    "free": true
+  },
+  {
+    "id": "prometheus-histograms",
+    "title": "Prometheus: Histograms and summaries",
+    "author": "Prometheus",
+    "kind": "docs",
+    "url": "https://prometheus.io/docs/practices/histograms/",
+    "why": "How buckets, histogram_quantile and interpolation error work, and why summaries cannot be aggregated.",
+    "topicIds": ["metric-types", "histograms-percentiles"],
+    "free": true
+  },
+  {
+    "id": "prometheus-naming",
+    "title": "Prometheus: Metric and label naming",
+    "author": "Prometheus",
+    "kind": "docs",
+    "url": "https://prometheus.io/docs/practices/naming/",
+    "why": "Naming conventions such as the _total suffix, and the warning against high-cardinality labels like user IDs.",
+    "topicIds": ["metric-types", "cardinality"],
+    "free": true
+  }
+]

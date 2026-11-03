@@ -1,0 +1,243 @@
+## Why it matters
+
+Google's SRE book reports that roughly 70% of outages are due to changes in a live system: a binary push, a config push, a migration. You cannot stop changing software, so the real question is how much damage one bad change can do before you notice and undo it. Release strategies answer that question. A rolling deploy limits how much capacity you lose at once, blue-green makes undo a switch flip, a canary exposes a new version to 1% of users before 100%, a feature flag lets you turn code off without deploying, and expand/contract migrations stop the database from making rollback impossible. The same buggy build can mean "200 users saw an error for four minutes" or "every user saw errors for an hour", depending only on how it was released.
+
+<Callout type="analogy" title="Tasting the soup before serving the room">
+A chef with a new soup recipe for a 300-seat banquet has choices. Swap the pots one table at a time (rolling). Cook a full second batch and switch every waiter to it at once, keeping the old pot warm in case (blue-green). Serve three tables first and watch their faces before serving the rest (canary). Cook the new soup but keep it under a lid, serving it only to tables the head waiter names (feature flag). Have a cook taste every bowl the old way and the new way side by side, while diners still get the old soup (dark launch). And if the new recipe needs a different bowl, put the new bowls on the shelf first, use them for both soups, and only throw out the old bowls once no pot needs them (expand/contract). Where the analogy breaks: diners complain loudly, but users mostly leave silently, so you need metrics, not faces.
+</Callout>
+
+## Rolling deployments
+
+<DepthStamp depth="deep" />
+
+A <Term slug="rolling-deployment">rolling deployment</Term> replaces instances of the old version with the new one in batches, so some capacity always serves traffic. It is the default in Kubernetes: a Deployment with `strategy: RollingUpdate` creates new pods and deletes old ones, bounded by two settings:
+
+- `maxSurge`: how many pods *above* the desired count may exist during the rollout (default 25%, rounded up).
+- `maxUnavailable`: how many pods *below* the desired count may be unavailable (default 25%, rounded down).
+
+### Worked example: speed vs surge
+
+A service runs 20 pods. Each new pod takes about 60 seconds to pull, start and pass its readiness probe.
+
+| Settings | Pods per wave | Waves | Rollout time | Peak pods | Min available |
+|---|---|---|---|---|---|
+| maxSurge 1, maxUnavailable 0 | 1 | 20 | ≈ 20 min | 21 (+5%) | 20 |
+| maxSurge 5, maxUnavailable 0 | 5 | 4 | ≈ 4 min | 25 (+25%) | 20 |
+| maxSurge 5, maxUnavailable 5 (defaults) | up to 10 | about 2 | ≈ 2–3 min | 25 | 15 |
+
+The trade is explicit: speed costs either spare capacity (surge) or reduced capacity (unavailable). If 20 pods are needed for peak load, `maxUnavailable: 0` is the only safe choice at peak.
+
+### The readiness probe is the safety catch
+
+The rollout only waits for pods that are *Ready*. In Kubernetes, a failed readiness probe removes a pod from Service endpoints; a failed liveness probe restarts the container. Without a readiness probe, a pod counts as ready the moment its process starts.
+
+| Time | Event (no readiness probe, 60 s warm-up) |
+|---|---|
+| 10:00:00 | Rollout starts; 5 new pods created |
+| 10:00:03 | Processes start; Kubernetes marks them Ready and adds them to the Service |
+| 10:00:03–10:01:00 | A quarter of requests hit pods still loading caches and opening pools: timeouts and 503s |
+| 10:00:05 | Kubernetes terminates 5 old pods, since the new ones "are ready" |
+| 10:00:10 | Next wave starts; within about 20 s every pod is a cold new one, and errors spike everywhere |
+
+A readiness probe that checks "can I actually serve a request" (pools open, caches warmed) turns this into an invisible rollout. Also set `minReadySeconds` so a pod must stay ready for a while before the next wave, and a `progressDeadlineSeconds` so a stuck rollout is reported as failed.
+
+The weakness of rolling: **for minutes, two versions serve traffic at once**, and both must work with the same database, the same queues and each other's API calls. Rollback is just another rolling deploy, so it takes as long as the rollout did.
+
+## Blue-green deployments
+
+<DepthStamp depth="tradeoffs" />
+
+A <Term slug="blue-green-deployment">blue-green deployment</Term>, described by Martin Fowler in 2010 (he credits Dan North and Jez Humble), runs two full production environments. Blue serves traffic; green gets the new version, is tested in place, and then the router switches all traffic to green. Blue stays up, idle, as the instant rollback.
+
+<Figure caption="FIG. 13.1 · BLUE-GREEN · THE SWITCH IS THE RELEASE">
+  <Diagram label="The router sends all traffic to blue (v1). Green (v2) is deployed and smoke-tested with no user traffic. The router switches to green. On a problem it switches back to blue, which was never touched. Both environments share one database." chart={`sequenceDiagram
+    participant R as Router
+    participant B as Blue (v1)
+    participant G as Green (v2)
+    participant D as Shared database
+    R->>B: 100% of traffic
+    Note over G: deploy v2, smoke test privately
+    G->>D: test queries
+    R->>G: switch: 100% of traffic
+    Note over B: idle, still on v1
+    Note over R,G: error rate rises
+    R->>B: switch back in seconds
+    B->>D: v1 reads the same database`} />
+</Figure>
+
+*The shared database is the catch: v1 and v2 must both work with its current schema.*
+
+What it buys: no mixed-version window for user traffic (one switch, not twenty waves), and rollback in seconds. What it costs:
+
+- **Double capacity** for as long as both are kept. For 40 servers, that is 40 more for the duration.
+- **A shared database.** Both colours read and write the same data, so schema changes still need expand/contract.
+- **All-or-nothing exposure.** At the switch, 100% of users meet v2 at once. A bug that only shows under real load hits everyone.
+- **The switch itself.** A load balancer target change is near-instant; a DNS-based switch is not, since resolvers cache records for their TTL. Long-lived connections (WebSockets, gRPC streams) stay on blue until they reconnect, so drain them deliberately.
+
+## Canary releases
+
+<DepthStamp depth="deep" />
+
+A <Term slug="canary-release">canary release</Term> (Danilo Sato's 2014 article on martinfowler.com is the standard reference) sends a small fraction of real traffic to the new version, compares its health against the old, and widens step by step: for example 1% → 5% → 25% → 50% → 100%, pausing at each step. The name comes from the canaries miners carried to detect gas before it hurt people.
+
+### Worked example: blast radius
+
+A site serves **600,000 active users an hour**, evenly. A bad v2 fails 20% of requests. Compare exposure before someone notices and reverts, about 10 minutes:
+
+- **Rolling to 100%:** within minutes nearly every user is on v2. In 10 minutes about 600,000 / 6 = **100,000 users** hit v2, a fifth of their requests failing.
+- **Canary at 5%, sticky by user:** 5% × 100,000 = **5,000 users** affected, and an automated check can revert in minutes.
+- **Canary at 1%:** about **1,000 users**.
+
+Route the canary by a hash of the user ID, not by random request, so one user consistently sees one version instead of flickering between them.
+
+### Is the canary actually worse? Statistics matter
+
+Small canaries see little traffic, so noise can swamp the signal. With 2,000 requests a second total and a 1% canary, the canary gets 20 requests a second, **12,000 requests in 10 minutes**.
+
+- Baseline error rate 0.1%: expect about **12** errors. Poisson noise is about √12 ≈ 3.5.
+- If v2's error rate is 0.3%, you see about 36: roughly seven standard deviations above 12, an easy call.
+- If v2's error rate is 0.15%, you see about 18: under two standard deviations, indistinguishable from noise in 10 minutes.
+
+So pick the step size and duration from the regression you need to detect. <Term slug="canary-analysis">Automated canary analysis</Term> does this properly: Netflix and Google open-sourced Kayenta in 2018 as part of Spinnaker. A detail from that design worth copying: compare the canary against a **freshly deployed baseline** of the old version at the same size, not against the long-running fleet, so differences like warm caches and process age do not masquerade as regressions.
+
+<Figure caption="FIG. 13.2 · CANARY STEPS · PROMOTE OR ABORT AT EACH GATE">
+  <Diagram label="A state diagram: deploy canary at 1 percent, analyse, then 5 percent, 25 percent and 100 percent, each followed by analysis. Any failed analysis goes to abort, which routes all traffic back to v1." chart={`stateDiagram-v2
+    [*] --> Canary1: deploy v2 at 1%
+    Canary1 --> Canary5: analysis passes (15 min)
+    Canary5 --> Canary25: analysis passes (15 min)
+    Canary25 --> Full: analysis passes (30 min)
+    Full --> [*]: v1 scaled down
+    Canary1 --> Abort: errors or latency regress
+    Canary5 --> Abort: errors or latency regress
+    Canary25 --> Abort: errors or latency regress
+    Abort --> [*]: 100% back to v1`} />
+</Figure>
+
+Limits: canaries need enough traffic to measure, a router that can split by percentage (a service mesh, an ingress controller, or a load balancer with weighted targets), and metrics that separate canary from baseline. Canaries catch bugs that show up in error rates and latency; they miss slow bugs like data corruption that only becomes visible days later.
+
+## Feature flags
+
+<DepthStamp depth="tradeoffs" />
+
+A <Term slug="feature-flag">feature flag</Term> (feature toggle) is a runtime switch in the code: `if flags.enabled("new-checkout", user) { … }`. It separates **deploying** code from **releasing** behaviour. The code ships dark, and the flag decides who sees it, without a deploy.
+
+Pete Hodgson's article on martinfowler.com sorts flags into four categories, which matters because each has a different lifetime:
+
+| Category | Purpose | Lifetime | Example |
+|---|---|---|---|
+| Release toggle | Hide unfinished or unreleased work on main | days to weeks | New checkout flow |
+| Experiment toggle | A/B test two variants | weeks | Button copy test |
+| Ops toggle | Kill switch to shed load or disable a feature | can be long-lived | Turn off recommendations under load |
+| Permission toggle | Enable features for some users | long-lived | Beta testers, premium plan |
+
+Percentage rollouts usually bucket by `hash(flag_key + user_id) mod 100`, so a user stays in the same bucket as the percentage grows. Most flag systems evaluate locally: the SDK downloads the rules and evaluates them in-process, so a flag check costs microseconds, not a network call, and keeps working if the flag service goes down.
+
+### What flags cost
+
+- **Combinatorics.** Ten independent boolean flags give 2^10 = 1,024 possible code paths. You will not test them all, so keep few flags live and test the combinations that ship.
+- **Flag debt.** A release toggle that lives for a year is dead code with a switch attached. Give every flag an owner and a removal date, and delete it once it is at 100%.
+- **Reuse kills.** Knight Capital's 2012 loss involved a repurposed flag that reactivated old code on one un-updated server. Never reuse a flag name for a new meaning.
+- **Flags are config changes.** Flipping a flag to 100% is a release; give it the same care (gradual percentage, monitoring) as a deploy.
+
+## Dark launches
+
+<DepthStamp depth="awareness" />
+
+A <Term slug="dark-launch">dark launch</Term> runs new code in production on real traffic **without users seeing its results**. Two common forms:
+
+- **Hidden invocation:** the client or server calls the new path but ignores the output. Facebook described dark-launching its Chat backend in 2008, with users' pages quietly exercising it before the chat UI appeared, to load-test at real scale.
+- **Traffic mirroring (shadowing):** a proxy copies live requests to the new version and discards its responses. Envoy and Istio support request mirroring; the mirror is fire-and-forget, so it does not slow the main path.
+
+The danger is side effects. A shadowed "place order" request that really charges a card, sends an email or writes to the shared database is not dark at all. Mirror only read paths, or point the shadow at stubbed downstreams and a separate datastore. Dark launches prove capacity and compare outputs; they do not tell you whether users like the feature.
+
+## Database migrations without downtime
+
+<DepthStamp depth="deep" />
+
+During any rolling or canary deploy, and during any rollback, **two versions of the code run against one database**. A schema change that only the new version understands breaks the old one. The fix is the <Term slug="expand-contract">expand/contract</Term> pattern, also called parallel change (Danilo Sato, martinfowler.com, 2014): first **expand** the schema so it supports old and new code, migrate, then **contract** by removing the old shape once nothing uses it.
+
+### The failure: renaming a column in one step
+
+| Time | Event |
+|---|---|
+| 10:00:00 | Migration runs: `ALTER TABLE users RENAME COLUMN name TO full_name` |
+| 10:00:01 | 20 v1 pods are still serving; every query touching `name` errors |
+| 10:00:01–10:04 | Rolling deploy replaces v1 with v2 wave by wave; errors fall as v1 pods disappear |
+| 10:06 | v2 hits an unrelated bug; on-call rolls back to v1 |
+| 10:06–10:10 | v1 pods fail again: the rollback is now an outage |
+
+### The safe sequence
+
+Renaming `name` to `full_name`:
+
+1. **Expand:** `ALTER TABLE users ADD COLUMN full_name text;` (nullable, no default: in PostgreSQL, adding a column without a volatile default is a metadata change and does not rewrite the table).
+2. **Deploy v2:** writes both `name` and `full_name`; reads `name`.
+3. **Backfill** `full_name` from `name` in batches.
+4. **Deploy v3:** reads `full_name`; still writes both, so rolling back to v2 stays safe.
+5. **Deploy v4:** stops writing `name`.
+6. **Contract:** once no running or rollback-target version reads `name`, drop it.
+
+Every step is compatible with the step before it, so you can roll back any single step. The cost is four deploys and a few days for what looked like a one-line change.
+
+### Backfill and lock arithmetic
+
+Backfilling 50 million rows in one `UPDATE` holds locks for a long time and produces a burst of write-ahead log that replicas must replay. Batch it instead: 5,000 rows per batch at about 100 ms, with a 100 ms pause, is 10,000 batches × 0.2 s = 2,000 s, about **33 minutes**, with replication lag and live traffic unaffected.
+
+Locks are the other trap. In PostgreSQL, `ALTER TABLE` needs an `ACCESS EXCLUSIVE` lock, even if only for milliseconds. If a long-running query holds a conflicting lock, the `ALTER` waits, and **every new query on that table queues behind the waiting `ALTER`**. A 30-second analytics query can become a 30-second outage. Set `lock_timeout` (for example 2 seconds) on migrations and retry. Build indexes with `CREATE INDEX CONCURRENTLY`, which does not block writes. For MySQL, tools like gh-ost (from GitHub) and pt-online-schema-change copy the table in the background and swap it in.
+
+<TradeoffBox title="Choosing a release strategy" items={[
+  { gain: "Rolling: no extra environment, the Kubernetes default", cost: "Mixed versions for minutes; rollback is another full rollout" },
+  { gain: "Blue-green: instant switch and instant rollback", cost: "Double capacity, all users exposed at once, shared database still needs compatible schemas" },
+  { gain: "Canary: a bad version reaches 1–5% of users, with automated abort", cost: "Needs weighted routing, per-version metrics and enough traffic to be statistically meaningful" },
+  { gain: "Feature flags: release and undo in seconds without deploying", cost: "Code-path combinatorics, flag debt, and a flag service to run" },
+  { gain: "Expand/contract: every step rolls back safely", cost: "Several deploys and a backfill for what looks like one change" }
+]} />
+
+<NotWhenBox title="When not to use them" items={[
+  "Canary on a low-traffic internal service: 2 requests a second gives too few errors to compare; use blue-green or a careful rolling deploy.",
+  "Blue-green when capacity is tight or expensive (large GPU fleets): doubling for every release may not be affordable.",
+  "Feature flags for tiny, low-risk changes: a flag that lives longer than the code it guards adds risk instead of removing it.",
+  "Expand/contract for tables nothing reads during deploys (offline batch jobs with a maintenance window): a simple migration is fine there."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Blue-green deployment makes database changes safe because blue is untouched." right="Blue and green share the database. If green's migration drops or renames something, switching back to blue fails too. Schema changes still need expand/contract." />
+
+<Misconception wrong="A 1% canary for 5 minutes proves the release is safe." right="At low traffic only large regressions are visible. Size the step and duration for the smallest regression you need to detect, and compare against a fresh baseline." />
+
+<Misconception wrong="Feature flags remove the need for careful deployment." right="Flipping a flag is a release. It needs gradual rollout and monitoring, and the flagged code still has to deploy safely while dark." />
+
+<Misconception wrong="Shadow traffic is risk-free because users never see the responses." right="Mirrored writes still charge cards, send emails and change shared data unless the shadow's downstreams are stubbed or isolated." />
+
+## Interview angle
+
+<InterviewAngle title="Release strategies" questions={[
+  "You need to ship a risky change to a 10,000 request-per-second service. Walk me through the rollout.",
+  "How would you rename a column on a 500-million-row table with zero downtime?",
+  "Blue-green or canary for this service? What would make you pick the other one?",
+  "Your canary at 1% shows 0.15% errors vs 0.1% baseline. Do you promote?",
+  "How do you stop feature flags from turning into permanent technical debt?"
+]}>
+Release strategy usually comes up in the deep-dive or wrap-up: "how do you deploy this without downtime?" A strong answer names the mechanism and the arithmetic: a canary at 5% for 10 minutes exposes about 5% of the users active in that window, so here is the number; a rolling deploy with maxSurge 25% needs 25% spare capacity. It always addresses the database, because two versions run at once during every rollout and rollback, so schema changes go through expand/contract as separate deploys. For the "do you promote?" follow-up, reason about statistical power: with 12,000 canary requests, 18 errors vs 12 expected is noise, so extend the step rather than promote or abort on a guess. Mention automated abort tied to SLIs and that flags need owners and removal dates.
+</InterviewAngle>
+
+## Practice
+
+1. A service with 30 pods needs at least 30 serving at peak. Each pod takes 90 seconds to become ready. Choose maxSurge and maxUnavailable for a rollout under 10 minutes, and state the extra capacity needed.
+2. A site has 1.2 million active users an hour. Design canary steps so a bad release reaches at most 1% of hourly users before automated abort, stating each step's percentage and duration.
+3. Write the expand/contract plan to split `users.address` (one text field) into `street`, `city` and `postcode`, listing every deploy, what each version reads and writes, and when rollback is safe.
+
+## Try it
+
+Ship a build you don't know is bad. A naive rolling update hurts more than 1% of users before anyone notices; a small canary with automated analysis rolls back first. Then rename a column by ordering the expand/contract steps, and watch each wrong order fail in its own way.
+
+<Simulator id="deployment" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

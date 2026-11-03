@@ -1,0 +1,304 @@
+## Why it matters
+
+"Is the service reliable enough?" sounds like a question about engineering, but it is really a question about money and attention. Too little reliability and users leave. Too much and you spend months gold-plating a system nobody would notice getting worse, while competitors ship features. Google's SRE book describes an odd but instructive case: its global lock service, Chubby, was so reliable that other teams started building services that assumed it never went down. When it did fail, they failed with it. So when Chubby ran well ahead of its target in a quarter, the SRE team deliberately took it down to burn the surplus and flush out the hidden dependencies. That only makes sense once you have a written target, a measurement and a budget for failure. This section is about those three things: service level indicators, objectives and agreements, the error budget they create, the burn-rate alerts that protect it, and the policy that says what happens when it runs out.
+
+<Callout type="analogy" title="The monthly mobile data allowance">
+An error budget is like a phone plan with 10 GB of data a month. You do not try to use zero data: that would mean never leaving Wi-Fi, which wastes the plan you paid for. You spend it on things you value (risky deploys, experiments, migrations). Your phone warns you if you are burning it fast: "you have used 50% in the first three days" is far more alarming than "you have used 50% by the 20th". And when the allowance is gone, the plan changes your behaviour for the rest of the month (slow speeds, or a freeze on new spending) until it resets. Where the analogy breaks: data is used by you on purpose, while most of an error budget is spent by accidents you did not choose; and a data plan resets on the 1st, while most SRE teams use a rolling window, so a bad day keeps counting against you for four weeks.
+</Callout>
+
+## SLI vs SLO vs SLA
+
+<DepthStamp depth="deep" />
+
+The Google SRE book (chapter 4, *Service Level Objectives*) gives the definitions most of the industry now uses.
+
+- A <Term slug="sli">service level indicator (SLI)</Term> is a carefully defined quantitative measure of some aspect of the service: the fraction of requests that succeed, the fraction served faster than 300 ms, the age of the newest data in a report.
+- A <Term slug="slo">service level objective (SLO)</Term> is a target for an SLI over a time window: "99.9% of checkout requests succeed, measured over a rolling 28 days".
+- A <Term slug="sla">service level agreement (SLA)</Term> is a contract with customers that says what happens if you miss: usually service credits, sometimes the right to terminate. The SRE book's test is blunt: if there is no consequence for missing it, it is an SLO, not an SLA.
+
+The workbook (chapter 2, *Implementing SLOs*) recommends writing every SLI as a ratio:
+
+```
+SLI = good events / valid events        (expressed as a percentage, 0–100%)
+```
+
+The ratio form reads the same way for every SLI (100% is perfect), maps onto counters you already collect, and makes the error budget a subtraction. "Valid" excludes events that should not count, such as health checks.
+
+### How the three nest
+
+| Layer | Who sets it | Example | What happens when missed |
+|---|---|---|---|
+| SLI | Engineering | Ratio of non-5xx checkout responses at the load balancer | Nothing by itself: it is just a number |
+| SLO | Engineering with product | 99.9% over 28 days | The error budget policy kicks in (freeze, reprioritise) |
+| SLA | Business and legal | 99.5% per calendar month | Credits or refunds paid to customers |
+
+The SLA is looser than the SLO so you fix trouble long before you owe anyone money. A team whose SLO equals its SLA learns about problems from finance.
+
+### The nines in minutes
+
+An SLO with a time window converts directly into allowed bad time. A 30-day window has 30 × 24 × 60 = 43,200 minutes.
+
+| SLO | Error budget | Allowed full outage in 30 days |
+|---|---|---|
+| 99% | 1% | 432 min (7.2 h) |
+| 99.5% | 0.5% | 216 min (3.6 h) |
+| 99.9% | 0.1% | 43.2 min |
+| 99.95% | 0.05% | 21.6 min |
+| 99.99% | 0.01% | 4.32 min |
+
+Each extra <Term slug="nines">nine</Term> divides the budget by ten. At 99.99% one bad deploy that takes eight minutes to roll back spends nearly two months of budget, which is why the target is a product decision: every nine costs redundancy, slower releases and on-call pain.
+
+### Why not 100%?
+
+The SRE book's chapter 3, *Embracing Risk*, argues that 100% is the wrong target for almost everything. Users reach you through phones, Wi-Fi and ISPs far less reliable than 99.99%, so past a point your improvements are invisible, and 100% leaves zero budget for any change. Pick the lowest target users will be happy with.
+
+## Choosing good SLIs
+
+<DepthStamp depth="tradeoffs" />
+
+A bad SLI is worse than none: it is green while users suffer, or red while they are fine, and either way people learn to ignore it.
+
+### Start from what users do
+
+The workbook suggests starting with a <Term slug="critical-user-journey">critical user journey</Term>: a sequence of steps a user cares about completing, such as "search, add to cart, pay". Each journey usually needs only one to three SLIs. The workbook's SLI menu by kind of system:
+
+| System type | Typical SLIs |
+|---|---|
+| Request-driven (APIs, web) | Availability (fraction of successful requests), latency (fraction faster than a threshold), quality (fraction not served in a degraded mode) |
+| Pipeline (batch, streaming) | Freshness (fraction of data updated recently enough), correctness, coverage (fraction of input processed) |
+| Storage | Durability (fraction of written data that can be read back) |
+
+CPU, queue depth and memory are not SLIs: users experience slow or failed requests, not CPU. Those signals serve capacity planning and debugging.
+
+### Where to measure
+
+| Measurement point | Sees | Misses |
+|---|---|---|
+| Application server logs or metrics | Exact status codes, cheap | Requests that never reached the server (DNS, load balancer, crashed pods) |
+| Load balancer | Every request that reached your edge | Client-side rendering failures, network problems before the edge |
+| Synthetic probes | Whole path from outside, even at zero traffic | Only the few paths you script; not real user mix |
+| Real user monitoring (client telemetry) | What users actually saw | Noisy, delayed, affected by users' own bad networks |
+
+Most teams use the load balancer as the main SLI source and add probes for low-traffic paths. The further from the user you measure, the more failures you cannot see.
+
+### Latency SLIs need thresholds, not averages
+
+Write latency as a ratio too: "the fraction of requests served in under 300 ms". Averages hide the slow tail completely, and you cannot average <Term slug="percentile">percentiles</Term> across servers. In Prometheus, a histogram with a bucket boundary exactly at your threshold makes this a cheap counter ratio:
+
+```
+sum(rate(http_request_duration_seconds_bucket{job="checkout", le="0.3"}[5m]))
+/
+sum(rate(http_request_duration_seconds_count{job="checkout"}[5m]))
+```
+
+If the bucket boundaries are 0.25 and 0.5 and your SLO says 300 ms, you cannot compute the SLI accurately. Choose the buckets after the SLO, not before.
+
+### What counts as "bad"?
+
+- **5xx responses** are bad: the service failed.
+- **4xx responses** are usually excluded, because the client made the mistake. But a broken front-end deploy that sends malformed requests shows up as a 4xx spike that is your fault, and some teams count a 429 from their own overloaded rate limiter as bad.
+- **Slow successes** are bad for a latency SLI even though they are good for availability. Many teams use one combined SLI: "fraction of requests that succeeded and were faster than 300 ms".
+
+### Dependencies set a ceiling
+
+If checkout calls three services in series, each at 99.9% and failing independently, the best checkout can do is 0.999³ ≈ 99.7%. You cannot promise 99.95% on top of that without retries, caching or redundant paths. Ask for dependency SLOs before you set your own.
+
+## Error budgets
+
+<DepthStamp depth="deep" />
+
+The <Term slug="error-budget">error budget</Term> is simply 1 − SLO, measured over the SLO's window. A 99.9% SLO means 0.1% of valid events may be bad. The budget is the reason SLOs are useful: it turns the endless argument between "ship faster" and "be more careful" into arithmetic both sides agreed to in advance. If there is budget left, ship. If it is gone, slow down.
+
+### Worked example: a checkout API
+
+Checkout serves a steady **1,000 requests a second** with an availability SLO of **99.9% over 30 days**.
+
+- Valid events in the window: 1,000 × 86,400 s × 30 days = **2,592,000,000 requests**.
+- Error budget: 0.1% of that = **2,592,000 bad requests**.
+- An incident lasts **20 minutes** with **30% of requests failing**: 1,000 × 1,200 s × 0.30 = **360,000 bad requests**.
+- Budget spent: 360,000 / 2,592,000 ≈ **13.9%**.
+
+The same answer in time: 20 minutes at 30% errors is equivalent to 6 minutes of full outage, and 6 / 43.2 ≈ 13.9%. One 20-minute partial incident spent a seventh of the month. Two more like it and the team is near the edge.
+
+### Request-based vs time-based budgets
+
+There are two ways to count:
+
+- **Request-based** ("99.9% of requests succeed"): every bad request counts the same. An outage at 03:00 with little traffic costs little; one at peak costs a lot. This matches user pain well and is what the ratio form gives you.
+- **Time-based** ("99.9% of 1-minute intervals are good", where a minute is good if, say, its error rate is under 1%): easy to explain and to put in an SLA, but a 100% outage and a 2% error rate in the same minute count the same, and short blips inside a minute vanish.
+
+The workbook prefers request-based SLIs for request-driven services; time-based ones survive mostly in SLAs.
+
+### Rolling vs calendar windows
+
+A calendar month resets on the 1st, so an outage on the 30th is forgotten two days later. A **rolling 28-day** window always looks back four weeks, which the workbook recommends because it contains the same number of every weekday and matches what users remember. Calendar windows still suit business reporting and SLAs.
+
+### Burn rate
+
+<Term slug="burn-rate">Burn rate</Term> is how fast you are spending the budget relative to the pace that would use exactly all of it over the window:
+
+```
+burn rate = observed error rate / (1 − SLO)
+```
+
+At a 99.9% SLO, a 0.1% error rate is a burn rate of 1 (budget lasts exactly 30 days). A 1.44% error rate is a burn rate of 14.4. The checkout incident above, at 30% errors, burned at 300×: at that pace the whole month's budget would be gone in 30 days / 300 = 2.4 hours.
+
+```
+time to exhaust budget = SLO window / burn rate
+budget consumed       = burn rate × duration / SLO window
+```
+
+## Burn-rate alerts
+
+<DepthStamp depth="deep" />
+
+The SRE workbook's chapter 5, *Alerting on SLOs*, walks through six alerting strategies, judging each on four properties: **precision** (what share of alerts are real), **recall** (what share of real problems alert), **detection time** and **reset time** (how long it keeps firing after the problem stops).
+
+The naive strategy, "page when the error rate over the last 10 minutes exceeds 0.1%", has terrible precision: a 10-minute blip at 0.2% errors spends about 0.05% of a 30-day budget and wakes someone for nothing. The workbook's recommended end point is the <Term slug="multiwindow-multi-burn-rate-alert">multiwindow, multi-burn-rate alert</Term>.
+
+### The recommended thresholds
+
+| Severity | Long window | Short window | Burn rate | Budget spent when it fires |
+|---|---|---|---|---|
+| Page | 1 hour | 5 minutes | 14.4 | 14.4 × 1 h / 720 h = **2%** |
+| Page | 6 hours | 30 minutes | 6 | 6 × 6 h / 720 h = **5%** |
+| Ticket | 3 days | 6 hours | 1 | 1 × 72 h / 720 h = **10%** |
+
+(720 hours is the 30-day window.) For a 99.9% SLO, the burn-rate thresholds become error-rate thresholds by multiplying by 0.1%: page if the error rate exceeds 1.44% over both the last hour and the last 5 minutes, or 0.6% over both the last 6 hours and the last 30 minutes.
+
+- **Multiple burn rates** catch both fast disasters (the 14.4× rule) and slower leaks (the 6× and 1× rules). A single threshold is either too twitchy or too slow.
+- **The short window** (one twelfth of the long one in the workbook) fixes reset time. After an outage ends, the 1-hour average stays high for up to an hour, which would keep the alert firing and hide the next incident. Requiring the 5-minute window too means the alert clears within minutes of recovery.
+
+In Prometheus this is usually written with recording rules for each window, then:
+
+```yaml
+- alert: CheckoutErrorBudgetFastBurn
+  expr: |
+    (
+      job:slo_errors_per_request:ratio_rate1h{job="checkout"} > (14.4 * 0.001)
+      and
+      job:slo_errors_per_request:ratio_rate5m{job="checkout"} > (14.4 * 0.001)
+    )
+    or
+    (
+      job:slo_errors_per_request:ratio_rate6h{job="checkout"} > (6 * 0.001)
+      and
+      job:slo_errors_per_request:ratio_rate30m{job="checkout"} > (6 * 0.001)
+    )
+  labels:
+    severity: page
+```
+
+### Failure timeline: the 20-minute checkout incident
+
+Using the incident above (30% errors from 10:00 to 10:20, 99.9% SLO, threshold 1.44%):
+
+| Time | 5-min error rate | 1-hour error rate | Alert |
+|---|---|---|---|
+| 10:00:00 | 0% → rising | 0% | Errors start (a bad config push) |
+| 10:00:15 | 1.5% | 0.1% | Short window over 1.44%, long window not yet |
+| 10:02:53 | 17% | 1.44% | Both windows over threshold: fast-burn page fires (plus rule evaluation interval) |
+| 10:09 | 30% | 4.5% | On-call engineer identifies the config push and starts rollback |
+| 10:20 | falling | 10% | Rollback completes, errors stop |
+| 10:24:46 | 1.44% | 10% | Short window drops below threshold: alert resolves |
+| 11:17 | 0% | 1.44% | Without the short window, the alert would only now clear |
+
+The detection arithmetic: the 1-hour average after *t* minutes of 30% errors is 0.30 × *t* / 60, which passes 0.0144 at *t* ≈ 2.9 minutes. A more general rule from the same reasoning: with a 1-hour window, detection time ≈ (14.4 / actual burn rate) × 60 minutes. A total outage (burn rate 1,000) pages in under a minute; a 2% error rate (burn rate 20) takes about 43 minutes, by which point 2% of budget is gone, which is exactly the trade the rule was designed to make.
+
+### Failure timeline: the slow leak
+
+A new release adds a bug that fails **0.5%** of requests (burn rate 5). It never trips the 14.4× rule, and never trips the 6× rule. The 3-day ticket rule fires once the 3-day average passes 0.1%, which takes 0.1 / 0.5 × 72 h ≈ **14.4 hours**. At 5× the budget would be gone in 30 / 5 = **6 days**. So a ticket on the first day gives the team five days to fix it in working hours, which is exactly what a slow burn deserves: urgent enough to schedule, not urgent enough to wake anyone.
+
+### Low-traffic services
+
+At 10 requests an hour, one failure is a 10% error rate and a 100× burn rate, so burn-rate alerts become noise. The workbook's options: synthetic traffic, merging small services into one SLO, a minimum failure count before alerting, or a lower SLO or longer window.
+
+## The error budget policy
+
+<DepthStamp depth="tradeoffs" />
+
+An SLO with no consequences is a dashboard. The <Term slug="error-budget-policy">error budget policy</Term> is a document, agreed in advance by engineering, product and leadership, that says what changes when the budget is spent. Agreeing it before the incident is the whole point: nobody negotiates well at 03:00 or the day before a launch.
+
+The SRE workbook includes an example policy. Its core rules, paraphrased:
+
+- If the service has exceeded its error budget for the preceding four weeks, halt all changes and releases other than urgent fixes and security patches until it is back within SLO.
+- If a single incident consumes more than 20% of the budget over four weeks, the team must run a postmortem with at least one high-priority action item.
+- If one class of outage uses more than 20% of the budget in a quarter, it goes on the team's planning priorities for the next quarter.
+- Disagreements about the calculation or the policy go up to a named executive, so the argument has an end.
+
+<Figure caption="FIG. 4.1 · ERROR BUDGET STATES · WHAT THE TEAM DOES IN EACH">
+  <Diagram label="Healthy: budget remaining, feature work and normal releases proceed. When burn rate alerts or a big incident spend a large share, the service moves to At risk, where releases slow down and reliability work is prioritised. When the budget is exhausted, it moves to Frozen, where only fixes and security patches ship. As the rolling window moves past the bad days and the budget recovers, it returns to At risk and then Healthy." chart={`stateDiagram-v2
+    [*] --> Healthy
+    Healthy --> AtRisk: large share of budget spent
+    AtRisk --> Healthy: burn back to normal
+    AtRisk --> Frozen: budget exhausted
+    Frozen --> AtRisk: rolling window recovers budget
+    Healthy --> Healthy: ship features, take risks`} />
+</Figure>
+
+*Error budget states: the policy, not the on-call engineer, decides what each state means for releases.*
+
+### Where teams disagree
+
+A hard release freeze is the textbook policy, and it is controversial. For: it is unambiguous, forces reliability work up the list, and stops the most common cause of incidents, change. Against: a backlog of frozen changes later ships as one risky batch, it punishes a team for a dependency's outage, and fixed rules invite gaming (reclassifying errors as "invalid"). Many organisations use a softer policy: the next sprint goes to reliability work and risky launches need extra sign-off. Both agree on the essential point: the consequence is written down before it is needed.
+
+### Spending the surplus
+
+A budget that is never spent is also a signal. If checkout ends every month with 90% unused, either the SLO is too loose to matter or the team is too cautious and could ship faster or run chaos experiments. The Chubby planned outage is the extreme version.
+
+<TradeoffBox title="SLO design choices" items={[
+  { gain: "Tighter SLO (more nines): fewer user-visible failures", cost: "Ten times less budget per nine; slower releases, more redundancy and more pages" },
+  { gain: "Request-based SLI: matches real user pain, weighted by traffic", cost: "Noisy at low traffic; harder to explain in a contract" },
+  { gain: "Rolling 28-day window: no reset cliff, weekday mix constant", cost: "A bad day haunts the team for four weeks; harder for finance reporting" },
+  { gain: "Multiwindow multi-burn-rate alerts: high precision and fast reset", cost: "Six recording rules per SLO and a concept the whole team must learn" },
+  { gain: "Hard freeze policy: unambiguous and forces reliability work", cost: "Can batch up risk and punish teams for dependencies' failures" }
+]} />
+
+<NotWhenBox title="When SLOs are not worth the ceremony" items={[
+  "A prototype or internal tool with a handful of users: talk to them instead of computing burn rates.",
+  "A service with almost no traffic and no synthetic probes: the SLI will be noise.",
+  "As a per-engineer performance metric: it invites hiding incidents and reclassifying errors.",
+  "Copying another company's 99.99%: your users, dependencies and budget for redundancy are different."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="The SLO should be as high as the system can achieve." right="It should be the lowest level users are happy with. Any reliability above that is budget you could have spent shipping, and it trains other services to depend on it." />
+
+<Misconception wrong="An SLA and an SLO are the same number." right="The SLA is a contract with financial consequences and is set looser than the internal SLO, so the team fixes problems well before it owes credits." />
+
+<Misconception wrong="Page whenever the error rate is above the error budget, for example over 0.1% for 5 minutes." right="That has poor precision: short blips page for a tiny fraction of budget. Page on burn rate over multiple windows (14.4× over 1 hour with a 5-minute check)." />
+
+<Misconception wrong="Average latency is a fine latency SLI." right="Averages hide the slow tail. Use the fraction of requests faster than a threshold, measured with a histogram bucket at that threshold." />
+
+## Interview angle
+
+<InterviewAngle title="SLOs and error budgets" questions={[
+  "Define SLI, SLO and SLA and give an example of each for a payments API.",
+  "Your SLO is 99.9% over 30 days. How much downtime is that, and how much did a 20-minute incident at 30% errors cost?",
+  "Why page on a burn rate of 14.4 over one hour, and why also require a 5-minute window?",
+  "Your service depends on three others at 99.9% each. What SLO can you offer, and how could you offer more?",
+  "The budget is exhausted but product wants to launch next week. What happens?"
+]}>
+In design interviews, SLOs turn "make it reliable" into numbers you can design for. State an SLI as a ratio measured at the load balancer, pick a target and convert it to minutes (99.9% over 30 days is 43.2 minutes). For the follow-ups: burn rate 14.4 over an hour spends 2% of a 30-day budget, and the short window lets the alert reset minutes after recovery instead of an hour later. Serial dependencies multiply (0.999³ ≈ 99.7%), so exceeding them needs retries, caching or redundant providers. For the launch question, point to the pre-agreed error budget policy and the escalation path, and offer options: launch behind a feature flag to a small cohort, or fix the top budget consumer first.
+</InterviewAngle>
+
+## Practice
+
+1. A search API serves 400 requests a second with a 99.95% availability SLO over 30 days. How many failed requests is the budget? A 45-minute incident fails 8% of requests: what share of the budget did it spend, and what was its burn rate?
+2. For the same SLO, compute the error-rate thresholds for the 14.4× and 6× paging rules, and how long each would take to fire during a total outage and during a 1% error rate.
+3. Write SLIs for a photo-upload journey: one for availability, one for latency, and one for the background thumbnail pipeline. State the measurement point and what counts as valid for each.
+
+## Try it
+
+Set an SLO, run a month of incidents and watch the budget drain. See when the 14.4× and 6× pages and the 1× ticket would fire, then decide whether the risky release ships under the budget policy.
+
+<Simulator id="error-budget" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

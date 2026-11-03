@@ -118,3 +118,12 @@
 - Retry storm: with open-loop Poisson clients, the retry budget alone brings the system back; jitter does not, because arrivals are already random. Jitter matters for synchronised clients, so it is shown with the "restart all clients" fault, and the timeouts-retries lesson says so.
 - Several sims have more challenges than the minimum (up to four), kept because each tests a different idea.
 - Known limitation: in the saga sim the "Recover coordinator" button and the coordinator-crash fault toggle are independent, so the fault chip can stay on after recovery.
+
+## Prompt 14
+- Content and simulators were built at the same time by nine parallel subagents (six content, three simulator) from two shared briefs, each confined to its own folders; glossaries, registry entries, titles, lesson embeds, routes and verification were done here. All nine were interrupted once by the usage limit and resumed from their saved transcripts.
+- Review: all 52 resource URLs fetched (ACM Queue blocks curl; checked in a browser). Facts the agents flagged as from memory were checked here, among them Facebook's 2018 token reset, Storm-0558, Capital One dates, RFC 9700 (2025), Alertmanager defaults, Prometheus 2.42 keep_firing_for, Go 1.25 GOMAXPROCS, EKS pricing, Terraform 1.10 S3 lockfile, Google's 2016 flaky-test figures. Worked arithmetic was rechecked (burn rates and budget minutes, 0.995^200, histogram series count, KMS cost per day).
+- Observability lab has three challenges (one per tricky incident plus "solve all five") instead of the spec's one, and accepts payments or the payment provider as the component for the third-party timeout, since the spec names it "payments 3rd-party timeout".
+- Error budget simulates one window from day 0, not a rolling window, and adds "no shipping into an active page" to the workbook's freeze policy; 7- and 28-day windows scale thresholds with the workbook's formula.
+- JWT inspector keeps crypto in the view (Web Crypto) and feeds results to the pure model, so model tests are deterministic. alg: none and RS256→HS256 confusion are explained, not run.
+- The deployment simulator's title is "Release strategies" (its section); feature flags and dark launches stay in the lesson. A fully promoted bad build can't be rolled back in the sim.
+- The glossary e2e test filtered "jwt" and expected exactly one hit; definitions now mention JWT in four terms, so it checks the term appears and the list narrows instead.

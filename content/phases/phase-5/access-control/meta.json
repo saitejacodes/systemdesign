@@ -1,0 +1,18 @@
+{
+  "id": "p5-access-control",
+  "phase": 5,
+  "slug": "access-control",
+  "title": "Access Control",
+  "order": 7,
+  "week": 11,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "rbac", "title": "RBAC: role-based access control", "depth": "deep" },
+    { "id": "abac", "title": "ABAC and relationship-based access", "depth": "tradeoffs" },
+    { "id": "least-privilege", "title": "Least privilege", "depth": "deep" },
+    { "id": "service-auth", "title": "Service-to-service authentication", "depth": "deep" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p5-authn-authz", "p1-tls", "p1-reverse-proxy"]
+}

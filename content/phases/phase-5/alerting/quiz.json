@@ -1,0 +1,172 @@
+[
+  {
+    "id": "alerting-q1",
+    "type": "single",
+    "prompt": "Which of these is a symptom-based alert?",
+    "options": [
+      { "id": "a", "text": "Database primary disk usage has been above 85% for the last ten minutes" },
+      { "id": "b", "text": "Checkout requests are failing fast enough to spend 2% of the budget in an hour" },
+      { "id": "c", "text": "Average CPU on the checkout fleet has been above 90% for five minutes" },
+      { "id": "d", "text": "The Kafka consumer group for orders is lagging by more than 50,000 messages" }
+    ],
+    "correct": ["b"],
+    "explanation": "A symptom is what users experience: failed checkout requests burning the error budget. Disk usage, CPU and consumer lag are causes or internal signals; each can be high while users are fine (a batch job, a backlog that drains in seconds), and each misses failures that come from somewhere else.",
+    "topicId": "symptom-alerts",
+    "difficulty": 1
+  },
+  {
+    "id": "alerting-q2",
+    "type": "scenario",
+    "prompt": "What is the best change?",
+    "scenario": "A team pages on 'HighCPU: avg cpu by instance above 90% for 5m'. Last month it fired 31 times; 2 of those led to action, and both coincided with a raised checkout error rate.",
+    "options": [
+      { "id": "a", "text": "Raise the threshold to 98% and the for duration to 30 minutes so it fires less often" },
+      { "id": "b", "text": "Keep it as a page and add a runbook so responders can close false ones much faster" },
+      { "id": "c", "text": "Page on checkout burn rate instead; move CPU to dashboards and a capacity ticket" },
+      { "id": "d", "text": "Delete it and rely on customers to report problems through the support channel" }
+    ],
+    "correct": ["c"],
+    "explanation": "The two real cases both showed up as errors, so a burn-rate page catches them with a statement of user impact, and CPU stays useful for diagnosis and capacity planning. Raising the threshold and for duration still pages on a cause and now detects 30 minutes late. A runbook makes 29 false pages quicker to dismiss but they still wake people and erode trust. Relying on customers removes detection entirely.",
+    "topicId": "symptom-alerts",
+    "difficulty": 2
+  },
+  {
+    "id": "alerting-q3",
+    "type": "single",
+    "prompt": "In Prometheus, an alerting rule has for: 10m. The expression is true for 7 minutes, false for one evaluation, then true again. What happens?",
+    "options": [
+      { "id": "a", "text": "The alert fires at minute 10, since the 7 minutes and the later minutes are summed" },
+      { "id": "b", "text": "The alert returns to inactive, and the 10-minute pending clock restarts from zero" },
+      { "id": "c", "text": "The alert fires immediately at minute 8, as it was pending for most of the duration" },
+      { "id": "d", "text": "Alertmanager receives a resolved notice for the alert and then a new firing notice" }
+    ],
+    "correct": ["b"],
+    "explanation": "A pending alert that becomes false goes back to inactive, so it must be true for a fresh, unbroken 10 minutes to fire. Prometheus does not sum separate true periods. There is no partial-credit firing at minute 8. Nothing is sent to Alertmanager while an alert is only pending, so there is no resolved notice either.",
+    "topicId": "symptom-alerts",
+    "difficulty": 2
+  },
+  {
+    "id": "alerting-q4",
+    "type": "multi",
+    "prompt": "Which cause-based conditions can reasonably justify a page? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "A database disk that predict_linear says will be full within four hours" },
+      { "id": "b", "text": "The TLS certificate on the public API expires in less than two days" },
+      { "id": "c", "text": "One pod out of forty restarted once in the last hour and is healthy now" },
+      { "id": "d", "text": "Memory on a cache node is 85%, steady, with its eviction policy enabled" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "A disk about to fill and a certificate about to expire are predictable cliffs: once users notice, it is too late to fix quickly, so paging on the cause is justified. A single pod restart that healed itself needs nobody now; it belongs on a dashboard or in a review if it repeats. A cache at 85% with eviction enabled is working as designed.",
+    "topicId": "symptom-alerts",
+    "difficulty": 2
+  },
+  {
+    "id": "alerting-q5",
+    "type": "scenario",
+    "prompt": "Where should this alert go?",
+    "scenario": "A service with a 99.9% SLO over 30 days is burning its budget at 1.2x, as measured over the last three days and the last six hours. Users see an occasional error. At this rate the budget runs out in about 25 days.",
+    "options": [
+      { "id": "a", "text": "A page, because any burn above 1x means the SLO will be missed this month" },
+      { "id": "b", "text": "Nowhere: 1.2x is so close to normal that it is not worth a person's time" },
+      { "id": "c", "text": "A page with a for: 6h clause, so it waits to confirm before waking anyone" },
+      { "id": "d", "text": "A ticket for working hours, because there are days to act before harm" }
+    ],
+    "correct": ["d"],
+    "explanation": "This matches the workbook's ticket rule (1x over 3 days with a 6-hour check): real, worth fixing, but with weeks to act, so nobody needs waking. Paging on it fails the urgency test. Ignoring it lets a steady leak spend the budget. A page with a long for clause is still a page, and still arrives at 03:00 if the six hours end then.",
+    "topicId": "paging-vs-ticketing",
+    "difficulty": 2
+  },
+  {
+    "id": "alerting-q6",
+    "type": "single",
+    "prompt": "Why does the SRE book's on-call chapter aim for at most two incidents per 12-hour shift?",
+    "options": [
+      { "id": "a", "text": "Paging services charge per incident, so two per shift is the budgeted cost" },
+      { "id": "b", "text": "Each incident and its follow-up takes about six hours of engineering work" },
+      { "id": "c", "text": "Labour rules in most countries cap pages per shift for on-call employees" },
+      { "id": "d", "text": "Alertmanager cannot route more than two distinct incidents per receiver" }
+    ],
+    "correct": ["b"],
+    "explanation": "The book's reasoning is time: diagnosis, mitigation, postmortem and fixes average about six hours, so two incidents fill a 12-hour shift. Paging-service pricing, labour law and an Alertmanager routing limit are not the basis; Alertmanager has no such limit.",
+    "topicId": "paging-vs-ticketing",
+    "difficulty": 1
+  },
+  {
+    "id": "alerting-q7",
+    "type": "scenario",
+    "prompt": "Which Alertmanager configuration best turns this into a single useful notification?",
+    "scenario": "When the database primary in cluster eu-1 fails, 200 app hosts each fire DBConnectionErrors, and DatabasePrimaryDown also fires. The on-call engineer receives 201 separate pages.",
+    "options": [
+      { "id": "a", "text": "Raise repeat_interval to 24h so each of the alerts is only re-sent once per day" },
+      { "id": "b", "text": "Silence DBConnectionErrors permanently, because it always follows a DB failure" },
+      { "id": "c", "text": "Lower group_wait to 0s so every alert is delivered the instant it starts firing" },
+      { "id": "d", "text": "Group by alertname and cluster, inhibit DBConnectionErrors while the primary is down" }
+    ],
+    "correct": ["d"],
+    "explanation": "Grouping collapses the 200 host alerts into one notification, and an inhibition rule matched on cluster hides them while the cause alert fires, leaving one clear page. repeat_interval only controls re-sends of an unchanged group; the first 201 still arrive. A permanent silence hides connection errors from every other cause, such as a bad credentials deploy. group_wait 0s sends faster but makes grouping worse.",
+    "topicId": "alert-fatigue",
+    "difficulty": 2
+  },
+  {
+    "id": "alerting-q8",
+    "type": "multi",
+    "prompt": "Which changes reduce flapping on an alert whose metric hovers around its threshold? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Add a for duration so brief crossings never leave the pending state" },
+      { "id": "b", "text": "Fire above 90% but only clear once the value drops below 80%" },
+      { "id": "c", "text": "Shorten the evaluation window to 30 seconds so it reacts faster" },
+      { "id": "d", "text": "Send both firing and resolved notices to two receivers, not one" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "A for duration filters short crossings, and separate fire and clear levels (hysteresis) stop a value hovering at the line from toggling. A shorter window makes the signal noisier, so it flaps more. Sending notices to more receivers doubles the noise rather than reducing it.",
+    "topicId": "alert-fatigue",
+    "difficulty": 2
+  },
+  {
+    "id": "alerting-q9",
+    "type": "scenario",
+    "prompt": "What would have caught this soonest?",
+    "scenario": "For six hours overnight no alerts fired at all. In the morning the team found that Prometheus had run out of disk at 01:00 and stopped evaluating rules, while checkout was failing for 4% of users from 02:00.",
+    "options": [
+      { "id": "a", "text": "A for: 1m on all rules so that the alerts fire faster after a condition starts" },
+      { "id": "b", "text": "An always-firing Watchdog alert that an external service expects to receive" },
+      { "id": "c", "text": "A second Alertmanager replica in the same cluster with identical receivers" },
+      { "id": "d", "text": "A runbook explaining how to restart Prometheus when its data disk is full" }
+    ],
+    "correct": ["b"],
+    "explanation": "A dead man's switch is designed for this: when Prometheus stops evaluating, the always-firing alert stops arriving and the external service pages. Shorter for clauses do nothing if no rules are evaluated. A second Alertmanager does not help when Prometheus itself has stopped sending. A runbook helps only after someone knows to look.",
+    "topicId": "alert-fatigue",
+    "difficulty": 3
+  },
+  {
+    "id": "alerting-q10",
+    "type": "single",
+    "prompt": "What should come first in a runbook's response steps?",
+    "options": [
+      { "id": "a", "text": "Safe mitigations such as rolling back the last deploy or failing over to a replica" },
+      { "id": "b", "text": "A full root-cause investigation, so that the real fix is applied the first time" },
+      { "id": "c", "text": "A history of the service's architecture and the reasons behind its design choices" },
+      { "id": "d", "text": "Instructions to open an incident channel and wait for the service's owning team" }
+    ],
+    "correct": ["a"],
+    "explanation": "Stopping user impact comes first: rollback, failover, shedding load or a feature flag. Root-cause work happens after the bleeding stops. Architecture history belongs in design docs, not the first screen of a 03:00 runbook. Escalation has a place in the runbook, but waiting by default wastes the minutes that mitigation could save.",
+    "topicId": "runbooks",
+    "difficulty": 1
+  },
+  {
+    "id": "alerting-q11",
+    "type": "scenario",
+    "prompt": "What is the best next step for this alert?",
+    "scenario": "QueueWorkerStuck pages about twice a week. The runbook says: SSH to the worker host, run systemctl restart worker, confirm the queue drains. It has worked every time for a year.",
+    "options": [
+      { "id": "a", "text": "Keep the page and runbook as they are, because they reliably work" },
+      { "id": "b", "text": "Demote it to a ticket so the restart is done in working hours" },
+      { "id": "c", "text": "Automate the restart and page only if the automatic restart fails" },
+      { "id": "d", "text": "Lengthen for to an hour so most stuck workers recover by themselves" }
+    ],
+    "correct": ["c"],
+    "explanation": "A response that is the same mechanical steps every time fails the requires-intelligence test: it is toil, so automate it and keep a page only for when automation fails (and fix the underlying bug). Keeping it wastes about 100 interruptions a year. A ticket would leave the queue stuck for hours. A longer for just delays the fix when the worker does not recover.",
+    "topicId": "runbooks",
+    "difficulty": 2
+  }
+]

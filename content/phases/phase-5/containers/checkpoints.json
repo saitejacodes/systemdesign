@@ -1,0 +1,7 @@
+[
+  { "id": "containers-c1", "text": "I can explain a container as a process with namespaces and cgroups, and say when I would insist on a VM or micro-VM instead.", "topicId": "why-containers" },
+  { "id": "containers-c2", "text": "I can diagnose exit code 137 as an OOM kill and CPU-limit tail latency as CFS throttling, and name the fix for each.", "topicId": "isolation" },
+  { "id": "containers-c3", "text": "I can describe how layers, copy-on-write and digests work, and why a file deleted in a later layer still ships.", "topicId": "images-layers" },
+  { "id": "containers-c4", "text": "I can reorder a Dockerfile for cache hits, turn it into a multi-stage build and calculate the pull cost of a scale-out.", "topicId": "images-layers" },
+  { "id": "containers-c5", "text": "I can write a Dockerfile whose process receives SIGTERM, runs as non-root and takes its configuration at run time.", "topicId": "docker-basics" }
+]

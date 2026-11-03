@@ -1,0 +1,7 @@
+[
+  { "id": "authn-authz-c1", "text": "I can choose between server-side sessions and self-contained tokens for a given design and defend the choice in terms of revocation, latency and dependencies.", "topicId": "sessions-vs-tokens" },
+  { "id": "authn-authz-c2", "text": "I can draw the authorization code + PKCE flow step by step and explain what the code_verifier and state parameters each defend against.", "topicId": "oauth-flows" },
+  { "id": "authn-authz-c3", "text": "I can explain the difference between an ID token and an access token and list the ID token claims a client must validate.", "topicId": "oidc" },
+  { "id": "authn-authz-c4", "text": "I can decode a JWT by hand, estimate its size, and list the RFC 8725 verification checks including pinned algorithms and kid lookup in a JWKS.", "topicId": "jwt" },
+  { "id": "authn-authz-c5", "text": "I can compute the exposure window of a stolen token and compare short TTL + refresh rotation, a denylist and introspection as fixes.", "topicId": "revocation" }
+]

@@ -1,0 +1,187 @@
+[
+  {
+    "id": "q1",
+    "type": "scenario",
+    "prompt": "Why isn't the per-IP rate limit firing, and what helps most?",
+    "scenario": "A cacheable product page is hit by 200,000 requests a second from about 20,000 IPs. Your origin handles 20,000 rps in total. You have a per-IP limit of 100 rps, and it hasn't triggered once.",
+    "options": [
+      { "id": "a", "text": "Each IP sends only ~10 rps; cache the page at the CDN so the origin sees a small fraction" },
+      { "id": "b", "text": "The limit is too high; dropping it to 50 rps per IP will block the flood at the gateway" },
+      { "id": "c", "text": "Rate limiters can't see HTTP traffic; add SYN cookies so the bots can't finish handshakes" },
+      { "id": "d", "text": "The bots rotate IPs each second; autoscale the origin tenfold until the attack ends" }
+    ],
+    "correct": ["a"],
+    "explanation": "200,000 ÷ 20,000 = 10 rps per IP, far under any sane per-IP limit, so the flood looks like normal users. Caching at the CDN (99% hit rate leaves 2,000 rps) absorbs it without classifying anyone. Lowering to 50 (b) still never fires at 10 rps and hurts shared-IP users. These bots complete real HTTP requests, so SYN cookies (c) are irrelevant. Autoscaling (d) makes you pay for the attack and usually saturates the database.",
+    "topicId": "ddos",
+    "difficulty": 2
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "In a reflection/amplification attack, why does the traffic reach the victim instead of the attacker?",
+    "options": [
+      { "id": "a", "text": "The attacker forges the victim's address as the source of small UDP requests" },
+      { "id": "b", "text": "The reflecting servers are compromised and have been told to target the victim" },
+      { "id": "c", "text": "TCP handshakes are hijacked so replies are redirected to the victim's address" },
+      { "id": "d", "text": "The victim's DNS resolver forwards every reply to its own upstream links" }
+    ],
+    "correct": ["a"],
+    "explanation": "UDP has no handshake, so a server replies to whatever source address the packet claims. The attacker spoofs the victim's address, and services such as DNS, NTP or memcached send much larger replies there. The reflectors are usually just misconfigured, not compromised (b); TCP's handshake is exactly what prevents this (c); and the victim's resolver plays no part (d).",
+    "topicId": "ddos",
+    "difficulty": 1
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "An attacker sends 1 Gbps of spoofed DNS queries with a 50× amplification factor at a site with a 10 Gbps uplink. What's the right defence?",
+    "options": [
+      { "id": "a", "text": "Add firewall rules on the origin servers to drop DNS responses from unknown sources" },
+      { "id": "b", "text": "Absorb it on an anycast scrubbing network whose capacity exceeds the 50 Gbps attack" },
+      { "id": "c", "text": "Enable SYN cookies on every origin server so that the UDP flood can't fill their tables" },
+      { "id": "d", "text": "Scale out to five times as many web servers so the load per server becomes manageable" }
+    ],
+    "correct": ["b"],
+    "explanation": "1 Gbps × 50 = 50 Gbps, five times the uplink, so the link is full before any packet reaches your firewall (a) or servers (d). The flood must land on a network with more capacity, such as an anycast scrubbing provider, which filters it near its sources. SYN cookies (c) defend TCP connection tables, not saturated links from UDP.",
+    "topicId": "ddos",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "What is the most important missing control?",
+    "scenario": "After moving behind a large CDN with DDoS protection, a company is still taken down by an HTTP flood. Logs show the flood arriving at the origin load balancer directly, with no CDN headers.",
+    "options": [
+      { "id": "a", "text": "A larger CDN plan, because the current one isn't absorbing enough of the traffic" },
+      { "id": "b", "text": "A WAF on the origin load balancer that blocks requests missing a user agent string" },
+      { "id": "c", "text": "Origin cloaking: accept traffic only from the CDN's ranges or an authenticated tunnel" },
+      { "id": "d", "text": "A shorter DNS TTL, so the flood follows the CDN address changes more quickly" }
+    ],
+    "correct": ["c"],
+    "explanation": "The attacker found the origin's address and bypassed the CDN entirely. Restricting inbound traffic to the CDN's address ranges (or using an authenticated tunnel) closes that path. A bigger CDN plan (a) does nothing for traffic that never touches it, a user-agent rule (b) is trivially bypassed, and DNS TTLs (d) don't matter when the attacker targets the IP directly.",
+    "topicId": "ddos",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "scenario",
+    "prompt": "What is the correct assessment?",
+    "scenario": "A search endpoint builds `SELECT ... ORDER BY ` + the `sort` query parameter. Every value in the WHERE clause is passed as a bound parameter. The team says: 'we use prepared statements, so it's safe'.",
+    "options": [
+      { "id": "a", "text": "Safe: prepared statements escape every part of the query, including the ORDER BY" },
+      { "id": "b", "text": "Unsafe: identifiers can't be bound, so map `sort` through a fixed allowlist instead" },
+      { "id": "c", "text": "Unsafe: fix it by escaping quote characters in `sort` before it is concatenated in" },
+      { "id": "d", "text": "Safe, as long as the database user is read-only and can't modify any of the data" }
+    ],
+    "correct": ["b"],
+    "explanation": "Only values can be bound parameters; column names and ORDER BY clauses are part of the SQL text, so concatenating `sort` is injectable. Map user input to an allowlist of known column names. Prepared statements don't escape concatenated text (a). Escaping quotes (c) doesn't help, since an identifier needs no quotes to inject. Read-only access (d) limits damage but still allows reading other tables.",
+    "topicId": "injection",
+    "difficulty": 3
+  },
+  {
+    "id": "q6",
+    "type": "single",
+    "prompt": "Why is a parameterised query more reliable than escaping user input?",
+    "options": [
+      { "id": "a", "text": "The database parses the SQL before the value arrives, so the value is only ever data" },
+      { "id": "b", "text": "Parameterised queries encrypt the value in transit so the database can't misread it" },
+      { "id": "c", "text": "The driver strips all punctuation from the value before sending it to the database" },
+      { "id": "d", "text": "Parameterised queries run with lower privileges than ordinary SQL strings are given" }
+    ],
+    "correct": ["a"],
+    "explanation": "With a prepared statement the query structure is fixed at parse time and the value is bound afterwards, so no character in it can change the structure. Escaping must get every dialect and character set right. Parameters aren't about encryption (b), drivers don't strip punctuation (names like O'Brien still work) (c), and privileges come from the database user, not the query form (d).",
+    "topicId": "injection",
+    "difficulty": 1
+  },
+  {
+    "id": "q7",
+    "type": "multi",
+    "prompt": "Which are effective defences against stored cross-site scripting? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Contextual output encoding by a framework that escapes by default" },
+      { "id": "b", "text": "A Content Security Policy that only allows nonce-tagged scripts" },
+      { "id": "c", "text": "Sanitising HTML with a library like DOMPurify before inserting it" },
+      { "id": "d", "text": "Parameterised SQL queries when saving the comment to the database" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "XSS is injection into HTML, so it is fixed where data is placed into the page: encoding by default, sanitising any HTML you must render, and CSP as a backstop that blocks injected script. Parameterised queries (d) prevent SQL injection when saving, but the stored text is still dangerous when rendered unencoded.",
+    "topicId": "injection",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "prompt": "Which single change most directly stops this attack path?",
+    "scenario": "A link-preview feature fetches any URL a user posts. A researcher shows it can be made to fetch `http://169.254.169.254/latest/meta-data/iam/security-credentials/` on your EC2 instance, returning the role's temporary keys. The fetcher sends only GET requests and doesn't let users set headers.",
+    "options": [
+      { "id": "a", "text": "Rotate the instance role's keys, since they rotate on a schedule anyway" },
+      { "id": "b", "text": "Require IMDSv2, so credentials need a token from a PUT with a header" },
+      { "id": "c", "text": "Block URLs containing the string 169.254 in the preview service code" },
+      { "id": "d", "text": "Move the metadata endpoint to a secret port that attackers can't guess" }
+    ],
+    "correct": ["b"],
+    "explanation": "IMDSv2 requires a session token obtained with an HTTP PUT carrying a custom header, which a GET-only fetcher can't send, so the credentials request fails. You should also restrict destinations, but string matching (c) is bypassed by DNS names that resolve to the address, redirects and alternative IP notations. Rotating keys (a) doesn't close the path. The metadata endpoint's address is fixed by AWS (d).",
+    "topicId": "ssrf",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "single",
+    "prompt": "A webhook fetcher resolves the hostname, checks the IP is public, then lets the HTTP library resolve it again to connect. What attack does this still allow?",
+    "options": [
+      { "id": "a", "text": "DNS rebinding: the name resolves to a public IP for the check, then a private one" },
+      { "id": "b", "text": "SQL injection through the hostname when it is written into the webhook audit log" },
+      { "id": "c", "text": "A SYN flood, because the fetcher opens a new TCP connection for every webhook" },
+      { "id": "d", "text": "Amplification, because webhook responses are larger than the requests sent out" }
+    ],
+    "correct": ["a"],
+    "explanation": "Checking one resolution and connecting with another lets an attacker-controlled DNS server answer differently each time (DNS rebinding). Resolve once, validate, and connect to that exact IP, or use an egress proxy that does so. SQL injection via logs (b) is a separate issue handled by parameterised queries; the fetcher opening connections (c) and response size (d) don't create a path to internal services.",
+    "topicId": "ssrf",
+    "difficulty": 3
+  },
+  {
+    "id": "q10",
+    "type": "multi",
+    "prompt": "In the 2019 Capital One breach, which controls would each, on its own, have broken the attack chain? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Fixing the WAF misconfiguration that allowed SSRF" },
+      { "id": "b", "text": "A metadata service that refuses plain GET requests" },
+      { "id": "c", "text": "An IAM role for the WAF without broad S3 read access" },
+      { "id": "d", "text": "Disk encryption on the S3 buckets holding the data" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "The chain was SSRF through the WAF, then credentials from IMDSv1, then a role that could read customer buckets. Removing any link stops it, which is why defence in depth matters. Server-side encryption of S3 (d) is transparent to a caller with valid credentials, so it would not have helped.",
+    "topicId": "ssrf",
+    "difficulty": 2
+  },
+  {
+    "id": "q11",
+    "type": "single",
+    "prompt": "Which statement about the OWASP Top 10 is accurate?",
+    "options": [
+      { "id": "a", "text": "It is a certification: passing all ten categories means an application is secure" },
+      { "id": "b", "text": "It is an awareness ranking; Broken Access Control was A01 in the 2021 edition" },
+      { "id": "c", "text": "It is a list of the ten specific CVEs most exploited during the previous year" },
+      { "id": "d", "text": "In 2021 SSRF was merged into Injection, so it no longer has its own category" }
+    ],
+    "correct": ["b"],
+    "explanation": "The Top 10 is an awareness document of risk categories; in 2021 Broken Access Control ranked first. It's not a certification or testing standard (a; OWASP ASVS is the verification standard), it lists categories rather than CVEs (c), and in 2021 SSRF was a category of its own, A10 (d).",
+    "topicId": "owasp-top-10",
+    "difficulty": 1
+  },
+  {
+    "id": "q12",
+    "type": "scenario",
+    "prompt": "Which category of the 2021 OWASP Top 10 best describes this bug, and what is the design-level fix?",
+    "scenario": "Changing the number in `/api/invoices/1043` to `/api/invoices/1044` returns another customer's invoice. The user is properly logged in, and the IDs are sequential.",
+    "options": [
+      { "id": "a", "text": "A07 Authentication Failures: require MFA before any invoice can be viewed" },
+      { "id": "b", "text": "A02 Cryptographic Failures: encrypt invoice IDs so they can't be guessed" },
+      { "id": "c", "text": "A01 Broken Access Control: check on the server that the caller owns it" },
+      { "id": "d", "text": "A03 Injection: parameterise the ID before it is used in the SQL query" }
+    ],
+    "correct": ["c"],
+    "explanation": "The user is authenticated; the server just never checks whether this user may see this object (an insecure direct object reference, part of A01). The fix is an ownership or policy check on every request. MFA (a) proves who the user is, not what they may access. Unguessable IDs (b) only hide the bug. Parameterising (d) prevents injection but the query is valid, just unauthorised.",
+    "topicId": "owasp-top-10",
+    "difficulty": 2
+  }
+]

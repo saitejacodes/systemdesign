@@ -1,0 +1,172 @@
+[
+  {
+    "id": "tracing-q1",
+    "type": "single",
+    "prompt": "What links the spans of one trace into a tree?",
+    "options": [
+      { "id": "a", "text": "A shared trace ID, plus each span's parent span ID pointing at its caller" },
+      { "id": "b", "text": "Matching start timestamps, since child spans begin at the same instant as parents" },
+      { "id": "c", "text": "The service name, because each service writes exactly one span for every trace" },
+      { "id": "d", "text": "A shared span ID that every service reuses so the back end can group them later" }
+    ],
+    "correct": ["a"],
+    "explanation": "Every span in a trace carries the same trace ID, and its parent span ID names the span that caused it, which gives the tree. Timestamps cannot link spans: children start later than parents, and clocks differ between hosts. A service often writes several spans per trace (server span, client spans, internal spans). Span IDs are unique per span; reusing one would make the tree impossible to build.",
+    "topicId": "spans-traces",
+    "difficulty": 1
+  },
+  {
+    "id": "tracing-q2",
+    "type": "single",
+    "prompt": "Why is it fine to put an order ID in a span attribute but not in a Prometheus metric label?",
+    "options": [
+      { "id": "a", "text": "Spans are always encrypted at rest, so order IDs in them are never considered sensitive" },
+      { "id": "b", "text": "A span is one stored record, while each new label value creates a new time series" },
+      { "id": "c", "text": "Trace back ends delete attributes after one hour, so cardinality never accumulates" },
+      { "id": "d", "text": "Span attributes are hashed to 8 bytes, so every order ID costs the same small amount" }
+    ],
+    "correct": ["b"],
+    "explanation": "Traces store individual records, so an extra attribute value costs a few bytes on that span. A metric label value creates a new series that the metrics database keeps in memory and indexes, so unbounded values explode series counts. Encryption is unrelated to cardinality and does not make data non-sensitive. Back ends do not routinely strip attributes after an hour. Attributes are stored as values, not hashed to a fixed size.",
+    "topicId": "spans-traces",
+    "difficulty": 2
+  },
+  {
+    "id": "tracing-q3",
+    "type": "single",
+    "prompt": "In traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01, what is 00f067aa0ba902b7?",
+    "options": [
+      { "id": "a", "text": "The trace ID shared by every span in the whole request across all services" },
+      { "id": "b", "text": "The span ID of the caller, which becomes the parent of the receiving span" },
+      { "id": "c", "text": "The trace-flags field, whose lowest bit says whether the trace was sampled" },
+      { "id": "d", "text": "A vendor-specific value that belongs in the tracestate header, not traceparent" }
+    ],
+    "correct": ["b"],
+    "explanation": "The third field is the 8-byte (16 hex) parent ID: the caller's current span ID, which the receiver uses as its new span's parent. The trace ID is the 16-byte (32 hex) second field, 4bf9... The trace flags are the last field, 01, meaning sampled. Vendor-specific data goes in tracestate and is never part of traceparent's fixed format.",
+    "topicId": "context-propagation",
+    "difficulty": 1
+  },
+  {
+    "id": "tracing-q4",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "Traces from the API service end at a CLIENT span called 'publish order.created'. The fulfilment worker that consumes from Kafka produces its own root traces with no parent, even though both services use OpenTelemetry.",
+    "options": [
+      { "id": "a", "text": "Kafka cannot carry headers, so traces can never continue across a topic" },
+      { "id": "b", "text": "The worker's clock is skewed, so the back end refuses to attach its spans" },
+      { "id": "c", "text": "Context is not injected into message headers or not extracted by the consumer" },
+      { "id": "d", "text": "The worker is sampling at 100% while the API samples 1%, so trees cannot join" }
+    ],
+    "correct": ["c"],
+    "explanation": "Propagation across a queue needs the producer to inject traceparent into message headers and the consumer to extract it before starting its span; if either side is missing, the consumer starts a new root. Kafka has supported record headers since version 0.11. Clock skew distorts the waterfall but does not stop spans with the right parent ID from joining. Different sample rates produce missing traces or orphaned fragments, but the symptom here is that every consumer trace is a root, which points at missing context.",
+    "topicId": "context-propagation",
+    "difficulty": 2
+  },
+  {
+    "id": "tracing-q5",
+    "type": "scenario",
+    "prompt": "Roughly how many failed requests per second end up as stored traces?",
+    "scenario": "An API handles 30,000 requests a second. 0.4% fail. Tracing uses head-based sampling at 1%, and the decision is made at the root before the request runs.",
+    "options": [
+      { "id": "a", "text": "About 1.2" },
+      { "id": "b", "text": "About 120" },
+      { "id": "c", "text": "About 12" },
+      { "id": "d", "text": "About 300" }
+    ],
+    "correct": ["a"],
+    "explanation": "Failures are 30,000 × 0.004 = 120 a second. Head sampling does not know which requests will fail, so it keeps 1% of them: 1.2 a second. 120 is the total number of failures, which only tail-based sampling that keeps all errors would store. 12 would be a 10% sample. 300 is 1% of all requests, the total traces kept, not the failed ones.",
+    "topicId": "trace-sampling",
+    "difficulty": 2
+  },
+  {
+    "id": "tracing-q6",
+    "type": "scenario",
+    "prompt": "What does switching to tail-based sampling require that head-based did not?",
+    "scenario": "A team wants to keep every error trace and every trace over 1 s. They run a fleet of eight OpenTelemetry Collectors behind a round-robin load balancer and plan to add the tail_sampling processor.",
+    "options": [
+      { "id": "a", "text": "Every service must switch to a 0% sampler so collectors receive no spans until judged" },
+      { "id": "b", "text": "All spans of a trace must reach one collector, so spans are routed by trace ID" },
+      { "id": "c", "text": "Each collector must be given a different random sample rate to avoid duplicates" },
+      { "id": "d", "text": "The W3C traceparent header must be replaced by the older B3 propagation format" }
+    ],
+    "correct": ["b"],
+    "explanation": "A tail sampler can only judge a trace it sees whole, so with several collectors the spans must be routed by trace ID (commonly a load-balancing exporter tier in front), and the collectors must buffer spans for the decision window. A 0% sampler in services would mean no spans are sent at all; tail sampling needs services to send everything. Different random rates per collector would produce inconsistent, partial traces. Tail sampling works with W3C Trace Context; the header format is unrelated.",
+    "topicId": "trace-sampling",
+    "difficulty": 3
+  },
+  {
+    "id": "tracing-q7",
+    "type": "multi",
+    "prompt": "Which statements about OpenTelemetry are accurate? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Libraries can depend on the API alone, which does nothing until an SDK is installed" },
+      { "id": "b", "text": "The Collector can batch, redact and tail-sample telemetry before exporting it" },
+      { "id": "c", "text": "OTLP is its wire protocol, carried over gRPC or HTTP" },
+      { "id": "d", "text": "It is a hosted storage back end that every vendor resells under its own name" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "OpenTelemetry separates a no-op-by-default API from language SDKs, provides the Collector for processing and routing, and defines OTLP (gRPC on 4317 and HTTP on 4318 by default). It is not a storage back end: it produces and transports telemetry, and you choose where to store it, such as Jaeger, Tempo or a commercial vendor.",
+    "topicId": "opentelemetry",
+    "difficulty": 1
+  },
+  {
+    "id": "tracing-q8",
+    "type": "single",
+    "prompt": "What is the strongest argument for instrumenting with OpenTelemetry rather than a vendor's proprietary agent?",
+    "options": [
+      { "id": "a", "text": "OpenTelemetry instrumentation is guaranteed to add zero overhead to every request" },
+      { "id": "b", "text": "Proprietary agents cannot record spans for HTTP or database calls in most languages" },
+      { "id": "c", "text": "You instrument once and can change or add back ends by reconfiguring the Collector" },
+      { "id": "d", "text": "It removes the need for sampling, because OTLP compresses spans to almost nothing" }
+    ],
+    "correct": ["c"],
+    "explanation": "Vendor neutrality is the main value: code and libraries emit OTel, and the destination is a Collector configuration change. No instrumentation is free; auto-instrumentation in particular can add measurable overhead and noise. Proprietary agents do instrument HTTP and database calls; that is their core feature. OTLP is efficient, but volume still scales with QPS × spans, so sampling is still needed at scale.",
+    "topicId": "opentelemetry",
+    "difficulty": 2
+  },
+  {
+    "id": "tracing-q9",
+    "type": "scenario",
+    "prompt": "Where is the extra time most likely being spent?",
+    "scenario": "In a slow checkout trace, the orders service's CLIENT span 'POST /charge' lasts 1,800 ms. The payments service's matching SERVER span lasts 140 ms, and its child spans look normal. The CLIENT span has three 'retry' events.",
+    "options": [
+      { "id": "a", "text": "Inside payments' database queries, which the SERVER span hides from view" },
+      { "id": "b", "text": "Outside payments: orders retried, so earlier attempts timed out before reaching it" },
+      { "id": "c", "text": "In the gateway, because the root span always absorbs time lost in children" },
+      { "id": "d", "text": "Nowhere; clock skew between hosts makes the CLIENT span look 1.6 s too long" }
+    ],
+    "correct": ["b"],
+    "explanation": "The SERVER span covers payments' own work and is only 140 ms; the rest of the 1,800 ms is outside it, and the retry events say orders made several attempts, with earlier ones timing out (for example at a proxy, a dead connection or a pool wait). Payments' database work would appear inside its 140 ms SERVER span. The gateway's root span contains its children; it does not absorb their missing time. Both CLIENT span timestamps come from one clock in orders, so skew cannot stretch its duration.",
+    "topicId": "slow-hop",
+    "difficulty": 3
+  },
+  {
+    "id": "tracing-q10",
+    "type": "single",
+    "prompt": "A request calls inventory (300 ms) and pricing (900 ms) in parallel, then writes to the database (50 ms). Which change shortens the request?",
+    "options": [
+      { "id": "a", "text": "Making inventory twice as fast, since it is the first call made in the request" },
+      { "id": "b", "text": "Making pricing faster, since it is on the critical path and inventory is not" },
+      { "id": "c", "text": "Running the database write in parallel with inventory to overlap the two steps" },
+      { "id": "d", "text": "Caching inventory results, since cache hits always cut a request's end-to-end time" }
+    ],
+    "correct": ["b"],
+    "explanation": "With parallel calls, the request waits for the slower one, so the critical path is pricing (900 ms) then the write (50 ms). Speeding up inventory saves nothing while pricing still takes 900 ms. The write depends on both results, so it cannot run in parallel with them, and overlapping it with inventory would still leave pricing on the path. Caching inventory is the same mistake as the first option: it is off the critical path.",
+    "topicId": "slow-hop",
+    "difficulty": 2
+  },
+  {
+    "id": "tracing-q11",
+    "type": "scenario",
+    "prompt": "Which signal would have caught this break earliest?",
+    "scenario": "After a new internal proxy is added in front of payments, checkout traces stop at the orders CLIENT span and payments' spans appear as separate root traces. Nobody notices for two hours.",
+    "options": [
+      { "id": "a", "text": "A jump in root spans from payments, a service that is never an entry point" },
+      { "id": "b", "text": "Payments' CPU utilization, since dropping headers costs the proxy a lot of CPU" },
+      { "id": "c", "text": "The error rate on checkout, because broken propagation always causes HTTP 500s" },
+      { "id": "d", "text": "Disk usage on the trace store, which halves when traces split into fragments" }
+    ],
+    "correct": ["a"],
+    "explanation": "Payments should only ever have child spans; a sudden rise in payments root spans means context is being lost on the way in. Header stripping is cheap and would not show in CPU. Broken propagation does not break requests, so error rates stay flat, which is why it goes unnoticed. Splitting traces does not reduce span volume; storage stays roughly the same.",
+    "topicId": "context-propagation",
+    "difficulty": 3
+  }
+]

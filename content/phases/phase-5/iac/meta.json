@@ -1,0 +1,18 @@
+{
+  "id": "p5-iac",
+  "phase": 5,
+  "slug": "iac",
+  "title": "Infrastructure as Code",
+  "order": 14,
+  "week": 12,
+  "estimatedMinutes": 55,
+  "topics": [
+    { "id": "declarative-infra", "title": "Declarative infrastructure", "depth": "tradeoffs" },
+    { "id": "terraform-concepts", "title": "Terraform concepts", "depth": "deep" },
+    { "id": "state", "title": "State", "depth": "deep" },
+    { "id": "drift", "title": "Drift", "depth": "awareness" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p5-ci-cd"]
+}

@@ -1,0 +1,19 @@
+[
+  { "id": "alerting-f1", "front": "Symptom vs cause?", "back": "Symptom: what is broken for users (5xx, slow requests). Cause: why (full disk, high CPU). Page on symptoms; diagnose with causes.", "topicId": "symptom-alerts" },
+  { "id": "alerting-f2", "front": "Four golden signals?", "back": "Latency, traffic, errors, saturation (Google SRE book, chapter 6).", "topicId": "symptom-alerts" },
+  { "id": "alerting-f3", "front": "Why symptom alerts catch more?", "back": "Any cause, including ones nobody predicted, shows up as failed or slow requests. Cause rules only cover causes you imagined.", "topicId": "symptom-alerts" },
+  { "id": "alerting-f4", "front": "Cause alerts that still page?", "back": "Predictable cliffs you cannot fix once the symptom arrives: disk full within hours, certificate expiring in days, last replica at risk.", "topicId": "symptom-alerts" },
+  { "id": "alerting-f5", "front": "Prometheus alert states?", "back": "Inactive → Pending (expression true) → Firing (true for the whole for duration). Back to Inactive when false.", "topicId": "symptom-alerts" },
+  { "id": "alerting-f6", "front": "Page, ticket or dashboard?", "back": "Page: act within minutes. Ticket: act within days. Dashboard/log: context, nobody needs to act now.", "topicId": "paging-vs-ticketing" },
+  { "id": "alerting-f7", "front": "Tests every page should pass?", "back": "Urgent, actionable, user-visible or imminent, requires human intelligence, and about a novel problem.", "topicId": "paging-vs-ticketing" },
+  { "id": "alerting-f8", "front": "Google's on-call load target?", "back": "At most two incidents per 12-hour shift, because one incident with follow-up takes about six hours.", "topicId": "paging-vs-ticketing" },
+  { "id": "alerting-f9", "front": "Alert fatigue?", "back": "Responders stop trusting and reading alerts after too many false or unactionable ones, so real alerts get missed.", "topicId": "alert-fatigue" },
+  { "id": "alerting-f10", "front": "Alertmanager grouping?", "back": "Merges alerts sharing group_by labels into one notification. Defaults: group_wait 30s, group_interval 5m, repeat_interval 4h.", "topicId": "alert-fatigue" },
+  { "id": "alerting-f11", "front": "Alertmanager inhibition?", "back": "Mutes target alerts while a source alert fires, e.g. hide DB connection errors while DatabasePrimaryDown fires in that cluster.", "topicId": "alert-fatigue" },
+  { "id": "alerting-f12", "front": "Cures for flapping?", "back": "A for duration, keep_firing_for, separate fire and clear thresholds (hysteresis), longer windows.", "topicId": "alert-fatigue" },
+  { "id": "alerting-f13", "front": "Dead man's switch?", "back": "An always-firing alert an external service expects to receive; if it stops arriving, the alerting pipeline is broken and someone is paged.", "topicId": "alert-fatigue" },
+  { "id": "alerting-f14", "front": "Page precision?", "back": "Share of pages that led to real action. 4 actionable of 20 = 20%; fix, demote or delete the rest.", "topicId": "alert-fatigue" },
+  { "id": "alerting-f15", "front": "Runbook contents?", "back": "User impact, how to confirm, mitigations in order of safety, escalation, known causes, owner and last-reviewed date.", "topicId": "runbooks" },
+  { "id": "alerting-f16", "front": "Playbook effect on MTTR (SRE book)?", "back": "Roughly a 3x improvement in mean time to repair versus improvising.", "topicId": "runbooks" },
+  { "id": "alerting-f17", "front": "Runbook step is always the same script?", "back": "That is toil: automate it, and page only if the automation fails.", "topicId": "runbooks" }
+]

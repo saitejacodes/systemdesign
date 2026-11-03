@@ -1,0 +1,329 @@
+[
+  {
+    "id": "ci-cd-q1",
+    "type": "single",
+    "prompt": "Which statement describes **continuous delivery** (not continuous deployment)?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Every change that passes the pipeline is releasable, and a person chooses when to deploy it"
+      },
+      {
+        "id": "b",
+        "text": "Every change that passes the pipeline is deployed to production automatically with no gate"
+      },
+      {
+        "id": "c",
+        "text": "Developers merge to a shared mainline at least daily and each merge is built and tested"
+      },
+      {
+        "id": "d",
+        "text": "Releases are cut from a release branch on a fixed schedule after a manual regression test cycle"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Continuous delivery means every passing change could be deployed with one action; a human or a schedule still decides when. Automatic deployment of every passing change is continuous deployment, one step further. Daily merging with automated build and test is continuous integration, the practice both build on. A scheduled release branch with manual regression is the traditional model CD replaces: changes are not releasable until the cycle finishes.",
+    "topicId": "pipeline-stages",
+    "difficulty": 1
+  },
+  {
+    "id": "ci-cd-q2",
+    "type": "scenario",
+    "prompt": "Roughly what fraction of pipeline runs fail with no real bug?",
+    "scenario": "An end-to-end suite has 200 tests. Each one independently fails 0.5% of the time because of timing issues, even when the code is correct.",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 0.5%"
+      },
+      {
+        "id": "b",
+        "text": "About 10%"
+      },
+      {
+        "id": "c",
+        "text": "About 63%"
+      },
+      {
+        "id": "d",
+        "text": "About 100%"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "The suite is green only if all 200 pass: 0.995^200 ≈ e^-1 ≈ 0.37, so about 63% of runs fail spuriously. 0.5% is the per-test rate, ignoring that failures compound across tests. 10% is roughly what you get from 20 tests, not 200. 100% would require a near-certain failure; the expected number of flaky failures per run is 1, but some runs still have zero.",
+    "topicId": "testing-pyramid",
+    "difficulty": 2
+  },
+  {
+    "id": "ci-cd-q3",
+    "type": "scenario",
+    "prompt": "What is the main risk of this process?",
+    "scenario": "The pipeline builds an image for staging, runs tests against it, then runs `docker build` again with the production Dockerfile target and deploys that new image to production.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Production runs bytes that were never tested, since a rebuild can resolve different dependencies"
+      },
+      {
+        "id": "b",
+        "text": "Building twice doubles registry storage, which is the main cost the team should be worried about"
+      },
+      {
+        "id": "c",
+        "text": "The production image will be larger because multi-stage builds cannot remove build-time tools"
+      },
+      {
+        "id": "d",
+        "text": "Two builds make the pipeline slower, but production still runs exactly the code that was tested"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "A rebuild is a new artifact: floating dependency ranges, a moved base image tag or a different build cache can all change the bytes, so production runs something staging never saw. The fix is build once and promote by digest. Registry storage is cheap and not the issue. Multi-stage builds do strip build tools, so size is not inherent. Option d is the exact false belief: same source code does not guarantee the same artifact.",
+    "topicId": "artifact-promotion",
+    "difficulty": 2
+  },
+  {
+    "id": "ci-cd-q4",
+    "type": "single",
+    "prompt": "Why should a pipeline deploy `registry/api@sha256:…` rather than `registry/api:prod`?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Digests pull faster because the registry can skip the authentication step for them"
+      },
+      {
+        "id": "b",
+        "text": "A digest is the content hash, so it always names the same bytes, while a tag can move"
+      },
+      {
+        "id": "c",
+        "text": "Tags are limited to staging use by most container registries and cannot reach production"
+      },
+      {
+        "id": "d",
+        "text": "A digest also encodes the environment config, so the same reference carries prod settings"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A digest is derived from the image content, so it is immutable; a tag is a pointer someone can re-push, so two deploys of :prod can run different code. Digests do not bypass authentication. Registries do not restrict tags by environment. Config is not in the digest; it is injected at runtime, which is precisely why one digest can run in every environment.",
+    "topicId": "artifact-promotion",
+    "difficulty": 1
+  },
+  {
+    "id": "ci-cd-q5",
+    "type": "scenario",
+    "prompt": "What happens next, and what would have prevented it?",
+    "scenario": "v2 shipped with a migration that renamed `users.name` to `users.full_name` in the same release. Ten minutes later v2 shows an unrelated bug, and on-call rolls back to v1.",
+    "options": [
+      {
+        "id": "a",
+        "text": "v1 runs fine because Kubernetes rollback also reverts the database migration automatically"
+      },
+      {
+        "id": "b",
+        "text": "v1 fails on every query that reads users.name; ship schema changes separately via expand/contract"
+      },
+      {
+        "id": "c",
+        "text": "Only new signups fail; restarting the database connection pool will clear the stale column cache"
+      },
+      {
+        "id": "d",
+        "text": "v1 runs but writes go to the wrong column; a blue-green switch would have avoided this problem"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Rollback reverts code, not data. v1 still queries users.name, which no longer exists, so requests fail and the rollback makes things worse. Expand/contract keeps both columns until no running version needs the old one. Kubernetes rollout undo only changes the ReplicaSet; it knows nothing about your schema. The failure is not limited to signups and is not a cache problem. Blue-green shares the same database, so switching back to blue hits the same missing column.",
+    "topicId": "rollback",
+    "difficulty": 2
+  },
+  {
+    "id": "ci-cd-q6",
+    "type": "multi",
+    "prompt": "Which changes shorten the critical path of a slow pipeline **without** reducing confidence before production? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Shard the unit and integration suites across parallel runners"
+      },
+      {
+        "id": "b",
+        "text": "Move the full E2E suite to run against staging after merge"
+      },
+      {
+        "id": "c",
+        "text": "Turn on automatic retries for every failing test, three times"
+      },
+      {
+        "id": "d",
+        "text": "Delete the integration tests and rely on unit tests plus E2E"
+      }
+    ],
+    "correct": [
+      "a",
+      "b"
+    ],
+    "explanation": "Sharding runs the same tests in less wall time. Running the full E2E suite against staging after merge (keeping a short smoke subset before) still blocks the production stage, so nothing reaches users untested. Blanket retries hide real failures and flakiness, so confidence drops. Deleting the integration layer removes the tests that catch wiring and SQL bugs and pushes the pyramid toward the slow, flaky ice-cream cone.",
+    "topicId": "pipeline-stages",
+    "difficulty": 2
+  },
+  {
+    "id": "ci-cd-q7",
+    "type": "single",
+    "prompt": "What does the test pyramid recommend?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Equal numbers of unit, integration and E2E tests so each layer gets the same attention"
+      },
+      {
+        "id": "b",
+        "text": "Mostly E2E tests, since they exercise real user journeys and catch the most real bugs"
+      },
+      {
+        "id": "c",
+        "text": "Many fast unit tests, fewer integration tests and only a handful of end-to-end tests"
+      },
+      {
+        "id": "d",
+        "text": "Only unit tests in CI, with integration and E2E checks done manually before a release"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "The pyramid follows cost: unit tests are fast, deterministic and precise, E2E tests are slow, flaky and vague about where a failure is. Equal counts ignore that cost difference. Mostly-E2E is the ice-cream cone anti-pattern. Manual integration testing gives up the automated feedback CI exists to provide.",
+    "topicId": "testing-pyramid",
+    "difficulty": 1
+  },
+  {
+    "id": "ci-cd-q8",
+    "type": "scenario",
+    "prompt": "Which test catches this before the provider deploys?",
+    "scenario": "The users service renames the `email` field to `emailAddress` in its JSON response. Its own unit tests are updated and pass. The billing service, which reads `email`, breaks in production.",
+    "options": [
+      {
+        "id": "a",
+        "text": "A consumer-driven contract test that billing publishes and the users pipeline must verify"
+      },
+      {
+        "id": "b",
+        "text": "More unit tests in the users service covering the response serialiser's field mapping"
+      },
+      {
+        "id": "c",
+        "text": "A load test of the users service run in staging before every production deployment"
+      },
+      {
+        "id": "d",
+        "text": "A static type check in billing's pipeline, which compiles against its own model classes"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "A contract test encodes billing's expectation (the response has email) and runs in the users service's pipeline, so the rename fails the provider's build. More users-service unit tests would be updated along with the rename, since they test what the provider intends, not what consumers need. A load test checks capacity, not schema. Billing's type check compiles against its own idea of the response, which is exactly what drifted.",
+    "topicId": "testing-pyramid",
+    "difficulty": 2
+  },
+  {
+    "id": "ci-cd-q9",
+    "type": "multi",
+    "prompt": "Which practices reduce the risk of a compromised CI job reaching production? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Short-lived cloud credentials via OIDC instead of stored keys"
+      },
+      {
+        "id": "b",
+        "text": "Sign images and refuse unsigned ones at production admission"
+      },
+      {
+        "id": "c",
+        "text": "Pin third-party actions and dependencies to an exact hash"
+      },
+      {
+        "id": "d",
+        "text": "Store deploy keys as plain CI variables visible to all jobs"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "OIDC credentials expire within the job, so a leaked token is worth little. Signing plus admission control means only artifacts your pipeline built can run. Pinning by hash stops a moved tag or hijacked release from injecting code. Plain, widely visible deploy keys are the opposite: exactly what the 2021 Codecov uploader compromise harvested from CI environments.",
+    "topicId": "artifact-promotion",
+    "difficulty": 2
+  },
+  {
+    "id": "ci-cd-q10",
+    "type": "scenario",
+    "prompt": "What is the best first action?",
+    "scenario": "A deploy finished at 14:00. By 14:06 the 5xx rate is 4% (normally 0.1%). The release contained only code changes; its schema migration shipped, additively, a week earlier. The cause is not obvious.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Keep v2 live while the team debugs, since rolling back loses the new feature for users"
+      },
+      {
+        "id": "b",
+        "text": "Write a hotfix and push it through the pipeline, because roll-forward is always safer"
+      },
+      {
+        "id": "c",
+        "text": "Scale v2 up to twice its replicas so the extra capacity absorbs the error spike"
+      },
+      {
+        "id": "d",
+        "text": "Roll back to the previous artifact now, then investigate v2 with traffic restored"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "The release is code-only and the earlier migration was additive, so v1 is compatible and rollback is the fastest path to recovery; debug afterwards. Keeping v2 live burns error budget while you investigate. Roll-forward is right when rollback is unsafe, but here it is slower (a full pipeline run) and the cause is unknown. Errors from a bug are not a capacity problem, so more replicas just serve more errors.",
+    "topicId": "rollback",
+    "difficulty": 2
+  },
+  {
+    "id": "ci-cd-q11",
+    "type": "single",
+    "prompt": "Why does trunk-based development fit continuous integration better than long-lived feature branches?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It removes code review, because merging directly to main makes reviews unnecessary"
+      },
+      {
+        "id": "b",
+        "text": "Changes integrate in small daily pieces, so conflicts and breakage surface in minutes"
+      },
+      {
+        "id": "c",
+        "text": "It lets unfinished features reach users sooner because nothing can be hidden on main"
+      },
+      {
+        "id": "d",
+        "text": "Long-lived branches cannot be built by most CI servers, so trunk is the only workable option"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "CI means integrating continuously; long branches integrate once, at the end, when conflicts are largest. Trunk-based teams still review, often via short-lived pull requests. Unfinished features hide behind flags on main, so users do not see them early. CI servers can build any branch; the problem is integration timing, not tooling.",
+    "topicId": "pipeline-stages",
+    "difficulty": 1
+  }
+]

@@ -1,0 +1,18 @@
+[
+  { "id": "ci-cd-f1", "front": "Continuous integration?", "back": "A practice: everyone merges small changes into the shared mainline at least daily, and every merge is automatically built and tested.", "topicId": "pipeline-stages" },
+  { "id": "ci-cd-f2", "front": "Continuous delivery vs continuous deployment?", "back": "Delivery: every passing change is releasable with one action; a human chooses when. Deployment: every passing change goes to production automatically.", "topicId": "pipeline-stages" },
+  { "id": "ci-cd-f3", "front": "Deployment pipeline?", "back": "An automated sequence of stages each commit passes through, cheapest first; a failure at any stage stops the change.", "topicId": "pipeline-stages" },
+  { "id": "ci-cd-f4", "front": "Time budget for the commit stage?", "back": "Under about 10 minutes, so developers wait for the result instead of starting the next task and batching changes.", "topicId": "pipeline-stages" },
+  { "id": "ci-cd-f5", "front": "The four DORA metrics?", "back": "Deployment frequency, lead time for changes, change failure rate, and time to restore service.", "topicId": "pipeline-stages" },
+  { "id": "ci-cd-f6", "front": "Trunk-based development?", "back": "Everyone merges into one main branch at least daily, via branches that live hours not weeks; unfinished work hides behind feature flags.", "topicId": "pipeline-stages" },
+  { "id": "ci-cd-f7", "front": "Test pyramid shape?", "back": "Many fast unit tests, fewer integration tests, very few end-to-end tests. The inverted version is the ice-cream cone anti-pattern.", "topicId": "testing-pyramid" },
+  { "id": "ci-cd-f8", "front": "200 tests, each 0.5% flaky. Chance the suite is green?", "back": "0.995^200 ≈ e^-1 ≈ 37%. So 63% of runs fail with no real bug.", "topicId": "testing-pyramid" },
+  { "id": "ci-cd-f9", "front": "Consumer-driven contract test?", "back": "A consumer publishes what it expects from a provider's API; the provider's pipeline verifies every published contract still holds. Pact is the well-known tool.", "topicId": "testing-pyramid" },
+  { "id": "ci-cd-f10", "front": "What to do with a flaky test?", "back": "Quarantine it out of the blocking path with an owner and deadline, fix the cause, and push the check down the pyramid. Do not just add retries.", "topicId": "testing-pyramid" },
+  { "id": "ci-cd-f11", "front": "Build once, deploy many?", "back": "Build one immutable artifact per commit and promote the same bytes through every environment, changing only config.", "topicId": "artifact-promotion" },
+  { "id": "ci-cd-f12", "front": "Image tag vs image digest?", "back": "A tag (api:prod) is a mutable pointer that can move. A digest (sha256:…) is the content hash and always means the same bytes. Deploy by digest.", "topicId": "artifact-promotion" },
+  { "id": "ci-cd-f13", "front": "Why use OIDC federation in CI?", "back": "The job exchanges a signed identity token for short-lived cloud credentials, so no long-lived keys sit in CI secrets to be stolen.", "topicId": "artifact-promotion" },
+  { "id": "ci-cd-f14", "front": "Roll back vs roll forward?", "back": "Roll back: redeploy the previous artifact (fast, if compatible). Roll forward: ship a fix through the pipeline (needed when rollback is unsafe).", "topicId": "rollback" },
+  { "id": "ci-cd-f15", "front": "What makes a rollback unsafe?", "back": "Changes the old code cannot handle: a dropped or renamed column, a new message or cache format, or side effects like emails and payments.", "topicId": "rollback" },
+  { "id": "ci-cd-f16", "front": "kubectl rollout undo?", "back": "Scales the Deployment's previous ReplicaSet revision back up. Kubernetes keeps revisionHistoryLimit old revisions, 10 by default.", "topicId": "rollback" }
+]

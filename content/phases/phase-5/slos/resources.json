@@ -1,0 +1,42 @@
+[
+  {
+    "id": "sre-book-slos",
+    "title": "Site Reliability Engineering, chapter 4: Service Level Objectives",
+    "author": "Chris Jones, John Wilkes, Niall Murphy and Cody Smith (Google)",
+    "kind": "free-book",
+    "url": "https://sre.google/sre-book/service-level-objectives/",
+    "why": "The primary source for the SLI, SLO and SLA definitions, including the Chubby planned-outage story.",
+    "topicIds": ["sli-slo-sla", "choosing-slis"],
+    "free": true
+  },
+  {
+    "id": "sre-workbook-implementing-slos",
+    "title": "The Site Reliability Workbook, chapter 2: Implementing SLOs",
+    "author": "Google SRE",
+    "kind": "free-book",
+    "url": "https://sre.google/workbook/implementing-slos/",
+    "why": "The good-events-over-valid-events SLI form, the SLI menu by system type, and worked SLO documents.",
+    "topicIds": ["choosing-slis", "error-budgets"],
+    "free": true
+  },
+  {
+    "id": "sre-workbook-alerting-on-slos",
+    "title": "The Site Reliability Workbook, chapter 5: Alerting on SLOs",
+    "author": "Google SRE",
+    "kind": "free-book",
+    "url": "https://sre.google/workbook/alerting-on-slos/",
+    "why": "Six alerting strategies compared on precision, recall, detection and reset time, ending at multiwindow multi-burn-rate alerts.",
+    "topicIds": ["burn-rate-alerts"],
+    "free": true
+  },
+  {
+    "id": "sre-workbook-error-budget-policy",
+    "title": "The Site Reliability Workbook: Example Error Budget Policy",
+    "author": "Google SRE",
+    "kind": "free-book",
+    "url": "https://sre.google/workbook/error-budget-policy/",
+    "why": "A complete, short policy document you can adapt: freeze rules, postmortem thresholds and escalation.",
+    "topicIds": ["budget-policy"],
+    "free": true
+  }
+]

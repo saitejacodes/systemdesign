@@ -1,0 +1,19 @@
+{
+  "id": "p5-tracing",
+  "phase": 5,
+  "slug": "tracing",
+  "title": "Distributed Tracing",
+  "order": 3,
+  "week": 11,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "spans-traces", "title": "Spans and traces", "depth": "deep" },
+    { "id": "context-propagation", "title": "Trace context propagation", "depth": "deep" },
+    { "id": "trace-sampling", "title": "Sampling", "depth": "tradeoffs" },
+    { "id": "opentelemetry", "title": "OpenTelemetry", "depth": "tradeoffs" },
+    { "id": "slow-hop", "title": "Finding the slow hop", "depth": "deep" }
+  ],
+  "simulatorIds": ["observability-lab"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p5-logging", "p5-metrics", "p4-timeouts-retries"]
+}

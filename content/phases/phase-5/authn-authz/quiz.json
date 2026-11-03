@@ -1,0 +1,188 @@
+[
+  {
+    "id": "authn-authz-q1",
+    "type": "single",
+    "prompt": "A logged-in user calls `DELETE /invoices/9001` for an invoice that belongs to another company. Which status code fits best?",
+    "options": [
+      { "id": "a", "text": "401, because the user is not authorized for that invoice" },
+      { "id": "b", "text": "403, because the user is known but not allowed to act" },
+      { "id": "c", "text": "400, because the request body failed schema validation" },
+      { "id": "d", "text": "407, because the gateway needs fresh proxy credentials" }
+    ],
+    "correct": ["b"],
+    "explanation": "403 Forbidden means the caller is authenticated but the action is not permitted, which is an authorization failure. 401 (despite its name, Unauthorized) means the caller is not authenticated at all, which is not the case here. 400 is for malformed requests, and nothing about the request shape is wrong. 407 is for proxy authentication and has nothing to do with resource permissions.",
+    "topicId": "sessions-vs-tokens",
+    "difficulty": 1
+  },
+  {
+    "id": "authn-authz-q2",
+    "type": "scenario",
+    "prompt": "Which design best fits this team?",
+    "scenario": "A team runs one web app with its own back end: about 2,000 requests a second, a single Redis already in place, and a compliance rule that disabling an employee's account must take effect immediately.",
+    "options": [
+      { "id": "a", "text": "24-hour JWTs in localStorage, so no request needs a lookup" },
+      { "id": "b", "text": "15-minute JWTs with no refresh token and no other state" },
+      { "id": "c", "text": "An HttpOnly session cookie whose ID is checked in Redis" },
+      { "id": "d", "text": "OAuth client credentials tokens issued to each browser" }
+    ],
+    "correct": ["c"],
+    "explanation": "A server-side session is revoked by deleting one Redis record, which meets the immediate-disable rule, and 2,000 lookups a second is trivial for Redis. 24-hour JWTs leave a disabled account working for up to a day and expose tokens to any XSS bug via localStorage. 15-minute JWTs still allow up to 15 minutes of access after disabling, which breaks the rule. Client credentials is for machines with no user, so it cannot represent a logged-in employee.",
+    "topicId": "sessions-vs-tokens",
+    "difficulty": 2
+  },
+  {
+    "id": "authn-authz-q3",
+    "type": "single",
+    "prompt": "What specific attack does PKCE prevent in the authorization code flow?",
+    "options": [
+      { "id": "a", "text": "Phishing pages that trick the user into typing their password" },
+      { "id": "b", "text": "An intercepted authorization code being redeemed by another app" },
+      { "id": "c", "text": "A stolen access token being replayed against the resource API" },
+      { "id": "d", "text": "A forged ID token signed with an attacker-controlled RSA key" }
+    ],
+    "correct": ["b"],
+    "explanation": "PKCE binds the code to a code_verifier only the real client holds; the token endpoint checks SHA-256(verifier) against the challenge sent earlier, so an intercepted code cannot be exchanged. It does nothing against phishing, which happens before any code exists. It does not constrain access tokens after issue; that is DPoP or mTLS binding. Forged ID tokens are stopped by verifying signatures against the issuer's JWKS, not by PKCE.",
+    "topicId": "oauth-flows",
+    "difficulty": 2
+  },
+  {
+    "id": "authn-authz-q4",
+    "type": "scenario",
+    "prompt": "Which grant should the job use?",
+    "scenario": "A nightly reconciliation job runs in your cluster and calls the internal payments API. No human is involved and the job runs under its own identity with read-only permissions.",
+    "options": [
+      { "id": "a", "text": "Authorization code + PKCE, run once by an engineer at deploy" },
+      { "id": "b", "text": "Resource owner password grant with a service user's password" },
+      { "id": "c", "text": "Implicit grant, since the job is a public client with no secret" },
+      { "id": "d", "text": "Client credentials, authenticating with a key or certificate" }
+    ],
+    "correct": ["d"],
+    "explanation": "Client credentials is the machine-to-machine grant: the job authenticates as itself (ideally with private_key_jwt or mTLS rather than a shared secret) and gets a token for its own permissions. Authorization code needs a user in a browser and would tie the job to one engineer's identity. The password grant is deprecated by RFC 9700 and needs a stored password. Implicit is for old browser apps, is deprecated, and returns tokens in a URL.",
+    "topicId": "oauth-flows",
+    "difficulty": 1
+  },
+  {
+    "id": "authn-authz-q5",
+    "type": "multi",
+    "prompt": "Which checks must a client perform on an OIDC ID token before trusting it? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "`iss` exactly equals the expected issuer URL" },
+      { "id": "b", "text": "`aud` contains this client's own client ID" },
+      { "id": "c", "text": "`nonce` matches the value sent in the request" },
+      { "id": "d", "text": "`email` matches an existing account in the DB" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "OIDC Core requires validating the issuer, that the audience includes your client ID, expiry, and the nonce you sent (which defeats replay). Matching on email is not a validation step and is dangerous as an account key: emails can change or be reassigned, so users should be keyed by iss + sub.",
+    "topicId": "oidc",
+    "difficulty": 2
+  },
+  {
+    "id": "authn-authz-q6",
+    "type": "scenario",
+    "prompt": "What is the core mistake?",
+    "scenario": "A mobile app signs users in with an OIDC provider. To call its own orders API it sends the ID token in the Authorization header, and the API accepts any validly signed token from that provider.",
+    "options": [
+      { "id": "a", "text": "ID tokens must be encrypted with JWE before being sent anywhere" },
+      { "id": "b", "text": "The ID token is meant for the client, so the API needs its own token" },
+      { "id": "c", "text": "Mobile apps may not use OIDC and should use the password grant" },
+      { "id": "d", "text": "The API should call UserInfo instead of checking any signature" }
+    ],
+    "correct": ["b"],
+    "explanation": "The ID token's aud is the client ID: it tells the app who logged in. APIs should accept access tokens issued for them (aud = the API) and check typ, otherwise any ID token minted for any app at that provider becomes a key to this API. Encryption is unrelated to the audience problem. The password grant is deprecated and mobile apps should use authorization code + PKCE. Calling UserInfo on every request adds latency and still does not establish that the token was meant for this API.",
+    "topicId": "oidc",
+    "difficulty": 3
+  },
+  {
+    "id": "authn-authz-q7",
+    "type": "single",
+    "prompt": "Why is putting a user's home address in a signed JWT payload a mistake?",
+    "options": [
+      { "id": "a", "text": "Anyone holding the token can base64url-decode and read it" },
+      { "id": "b", "text": "RFC 7519 forbids any claim names it does not register" },
+      { "id": "c", "text": "Address strings break the HMAC calculation for HS256" },
+      { "id": "d", "text": "Verifiers drop claims they don't know, so it is lost" }
+    ],
+    "correct": ["a"],
+    "explanation": "A signed JWT is encoded, not encrypted: the payload is readable by the client, any proxy that logs headers, and anyone who steals it. RFC 7519 explicitly allows private claim names. HMAC works over arbitrary bytes, so content does not break it. Verifiers ignore unknown claims for their own decisions but they remain in the token for anyone to read.",
+    "topicId": "jwt",
+    "difficulty": 1
+  },
+  {
+    "id": "authn-authz-q8",
+    "type": "scenario",
+    "prompt": "What should the fix be?",
+    "scenario": "A security review finds your API gateway's JWT library picks the verification algorithm from the token header. The issuer signs with RS256 and the gateway is configured with the issuer's RSA public key.",
+    "options": [
+      { "id": "a", "text": "Move the RSA public key into a secret store so attackers can't learn it" },
+      { "id": "b", "text": "Pin the allowed algorithm to RS256 on the gateway and reject the rest" },
+      { "id": "c", "text": "Switch the issuer to HS256 so header and key always agree on type" },
+      { "id": "d", "text": "Shorten token lifetime to five minutes to shrink the forgery window" }
+    ],
+    "correct": ["b"],
+    "explanation": "Trusting the header enables alg none and algorithm confusion: an attacker sends an HS256 token signed with the public key as the HMAC secret. RFC 8725 says verifiers must allow only the algorithms they expect. Hiding the public key is not a fix: it is public by design and is usually published in a JWKS. Moving to HS256 means every verifier holds a secret that can mint tokens. Shorter TTLs do nothing, because the attacker can forge a fresh token whenever they like.",
+    "topicId": "jwt",
+    "difficulty": 3
+  },
+  {
+    "id": "authn-authz-q9",
+    "type": "single",
+    "prompt": "A JWT has a 2,000-byte payload of group names and an RS256 signature. Roughly how long is the encoded token, and what is the first limit it threatens?",
+    "options": [
+      { "id": "a", "text": "About 900 characters; well within every cookie or header limit" },
+      { "id": "b", "text": "About 3,100 characters; close to the ~4 KB per-cookie limit" },
+      { "id": "c", "text": "About 2,300 characters; base64url makes the payload smaller" },
+      { "id": "d", "text": "About 12,000 characters; over the 8 KB header limit already" }
+    ],
+    "correct": ["b"],
+    "explanation": "Base64url grows data by 4/3: 2,000 bytes becomes about 2,670 characters, plus about 342 for the RS256 signature and ~64 for the header, roughly 3,100. Browsers are only required to store about 4 KB per cookie, so it is close. 900 characters ignores the payload growth. Base64url never shrinks data. 12,000 characters would need a payload about four times larger.",
+    "topicId": "jwt",
+    "difficulty": 2
+  },
+  {
+    "id": "authn-authz-q10",
+    "type": "scenario",
+    "prompt": "How long can the attacker keep using the stolen token, and what single change shrinks that most cheaply?",
+    "scenario": "Access tokens live 8 hours and are verified locally by every service. At 10:00 an attacker steals one; at 10:02 the user notices and logs out, which deletes the token on the device. There is no refresh token and no denylist.",
+    "options": [
+      { "id": "a", "text": "Until 10:02, since logout ends the session on every service" },
+      { "id": "b", "text": "Until the token's exp; enable TLS 1.3 between the services" },
+      { "id": "c", "text": "Until exp, near 18:00; cut TTL to 15 min and add refresh tokens" },
+      { "id": "d", "text": "Until the signing key rotates; rotate keys every few minutes" }
+    ],
+    "correct": ["c"],
+    "explanation": "Local verification consults nothing, so logout on the device has no effect on the copy: the token works until exp, about 8 hours after issue. Short access tokens plus revocable refresh tokens bound the window to minutes at low cost. Logout does not reach other services' verifiers. TLS between services protects transport but does nothing about a token already stolen. Rotating keys every few minutes would invalidate every user's tokens constantly and is not how revocation is done.",
+    "topicId": "revocation",
+    "difficulty": 2
+  },
+  {
+    "id": "authn-authz-q11",
+    "type": "multi",
+    "prompt": "Which approaches can make a revoked JWT stop working before its exp? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "A jti denylist that every verifier checks" },
+      { "id": "b", "text": "A per-user revoked-before time vs `iat`" },
+      { "id": "c", "text": "Deleting the token from the user's device" },
+      { "id": "d", "text": "Re-signing the same token with HS512 instead" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "A denylist of token IDs and a per-user revoked-before timestamp both add a small piece of state that verifiers check, which is the only way to reject a still-valid signature early. Deleting the device's copy does nothing about a stolen copy. Re-signing creates a different token and leaves the original's signature just as valid.",
+    "topicId": "revocation",
+    "difficulty": 2
+  },
+  {
+    "id": "authn-authz-q12",
+    "type": "scenario",
+    "prompt": "What should the authorization server conclude, and do?",
+    "scenario": "Your authorization server rotates refresh tokens. At 14:00 refresh token RT7 is exchanged for RT8. At 14:20 a request arrives presenting RT7 again, from a different IP range.",
+    "options": [
+      { "id": "a", "text": "A client retried a lost response; issue a new RT8 again" },
+      { "id": "b", "text": "RT7 was copied; revoke the whole family, force a login" },
+      { "id": "c", "text": "The new IP is the attacker; revoke RT7 but keep RT8 alive" },
+      { "id": "d", "text": "Nothing is wrong; rotation only matters for access tokens" }
+    ],
+    "correct": ["b"],
+    "explanation": "Reuse of an already-rotated refresh token means two parties hold it, and the server cannot tell which is the thief, so it revokes every token in the family and the user logs in again. A retry 20 minutes later is not a lost response; grace windows for retries are seconds long. Keeping RT8 alive assumes the server knows which party is legitimate, but the attacker might be the one holding RT8. Rotation applies to refresh tokens specifically.",
+    "topicId": "revocation",
+    "difficulty": 3
+  }
+]

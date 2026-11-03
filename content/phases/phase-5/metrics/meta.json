@@ -1,0 +1,18 @@
+{
+  "id": "p5-metrics",
+  "phase": 5,
+  "slug": "metrics",
+  "title": "Metrics",
+  "order": 2,
+  "week": 11,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "metric-types", "title": "Counters, gauges and histograms", "depth": "deep" },
+    { "id": "histograms-percentiles", "title": "Histograms and percentiles", "depth": "deep" },
+    { "id": "red-use", "title": "RED and USE methods", "depth": "deep" },
+    { "id": "cardinality", "title": "Cardinality and cardinality explosions", "depth": "deep" }
+  ],
+  "simulatorIds": ["observability-lab"],
+  "practiceCaseStudyIds": ["metrics-monitoring"],
+  "prerequisites": ["p5-logging", "p1-latency-throughput"]
+}

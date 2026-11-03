@@ -24,4 +24,8 @@ export const SIM_TITLES: Record<string, string> = {
   "retry-storm": "Retry storm",
   "circuit-breaker": "Circuit breaker",
   "availability-calculator": "Availability calculator",
+  "observability-lab": "Observability lab",
+  "error-budget": "Error budget",
+  "deployment": "Release strategies",
+  "jwt-inspector": "JWT inspector",
 };

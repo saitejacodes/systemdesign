@@ -1,0 +1,236 @@
+## Why it matters
+
+Before containers, "deploy" meant copying code onto a server that already had *some* version of Python, OpenSSL and a dozen system libraries, configured by hand or by a script that had drifted since it was written. The code worked on the laptop and failed on the server, and nobody could say exactly which difference mattered. Docker, released by dotCloud in 2013, did not invent the kernel features underneath it; it made them usable by packaging an application together with its whole userland into one file you can build once, ship anywhere, and run the same way on a laptop, a CI runner and a production fleet. Almost every modern deployment platform, Kubernetes, AWS ECS, Google Cloud Run, Fly.io, runs this same unit. In a system design interview you rarely design containers, but you are expected to know what they isolate, what they do not, what an image is made of, and where they hurt: memory limits that kill processes, CPU limits that throttle them, and images that are slow to pull at the worst moment.
+
+<Callout type="analogy" title="A hotel, not a street of houses">
+A virtual machine is a detached house: its own foundations, plumbing and boiler (its own kernel). A <Term slug="container">container</Term> is a hotel room. Every room shares the building's plumbing and electricity (the host kernel), but each guest gets their own key, their own view of the room and no view of anyone else's (namespaces), and a meter on the minibar and the hot water (cgroups). The image is the room's furnishing kit: a stack of transparent sheets laid on top of each other, the bed on one sheet, the desk on the next, and a fresh blank sheet on top for whatever the guest scribbles during the stay. Check out, and the scribble sheet goes in the bin; the furniture sheets are reused for the next guest. Where the analogy breaks: a hotel's walls are concrete. A container's walls are bookkeeping inside one shared kernel, so a single kernel bug is a master key to every room. That is why multi-tenant clouds wrap containers in a lightweight VM.
+</Callout>
+
+## Why containers: the packaging problem and containers vs VMs
+
+<DepthStamp depth="tradeoffs" />
+
+Containers solve three problems at once:
+
+1. **Packaging.** The application, its language runtime, its system libraries and its default configuration travel as one immutable artifact. The difference between "my laptop" and "production" shrinks to the kernel and the injected configuration.
+2. **Density.** A container is an ordinary Linux process with a restricted view of the system. There is no guest operating system to boot or to hold in memory, so one host can run dozens or hundreds of them, and starting one costs about as much as starting the process itself, typically well under a second if the image is already on the host.
+3. **A standard unit for schedulers.** Because every application looks the same from the outside (an image, a command, some ports, some resource limits), a platform like Kubernetes can place, restart and scale any of them without knowing what is inside.
+
+| | Virtual machine | Container |
+|---|---|---|
+| What is isolated | A whole computer: guest kernel on virtual hardware | A process tree, by the host kernel |
+| Kernel | One per VM | Shared with the host and every other container |
+| Boot time | Seconds to minutes (a full OS boot) | Roughly process start time |
+| Memory overhead | A guest OS per VM | Close to zero beyond the app itself |
+| Isolation strength | Strong: a hypervisor boundary | Weaker: a kernel bug can cross it |
+| Runs another OS? | Yes (Windows guest on a Linux host) | No: Linux containers need a Linux kernel |
+
+The last two rows are the honest cost. Containers trade isolation strength for density and speed. For your own services on your own hosts that is usually a good trade. For running *strangers'* code side by side, it is not, which is why AWS built Firecracker (open-sourced in 2018), a minimal VM monitor that starts micro-VMs fast enough to give every AWS Lambda function its own kernel, and why Google's gVisor puts a user-space kernel between the container and the host.
+
+Containers also do not make an application **stateless** or **portable across CPU architectures**. An image built for `amd64` will not run natively on an `arm64` host; you build multi-architecture images for that. And a container writing data into its own filesystem loses it when the container is removed, so state belongs in volumes, databases or object storage, exactly as the <Term slug="twelve-factor-app">twelve-factor app</Term> recommends.
+
+## What a container really is: namespaces and cgroups
+
+<DepthStamp depth="deep" />
+
+There is no "container" object in the Linux kernel. A container is a normal process that the runtime starts with two kinds of restriction: **what it can see** and **how much it can use**.
+
+**What it can see: namespaces.** A <Term slug="linux-namespace">Linux namespace</Term> gives a process its own private copy of one kind of global system resource. The main ones:
+
+| Namespace | What the container gets its own copy of |
+|---|---|
+| PID | Process IDs: the app sees itself as PID 1 and cannot see host processes |
+| Network | Interfaces, IP addresses, routing table, ports: two containers can both listen on port 8080 |
+| Mount | The filesystem tree: the image's files appear as `/` |
+| UTS | Hostname |
+| IPC | Shared memory and message queues |
+| User | User IDs: root inside can map to an unprivileged user outside |
+| Cgroup | Its view of the cgroup hierarchy |
+
+**How much it can use: cgroups.** A <Term slug="cgroup">cgroup</Term> (control group) puts a process tree under resource accounting and limits, for memory, CPU time, I/O and process count. Cgroups were contributed by Google engineers and merged into Linux 2.6.24 in 2008; most current distributions use the unified cgroup v2 hierarchy. Two limits matter most in production, and both fail in ways that surprise people.
+
+**Memory limits kill.** When the processes in a cgroup try to use more memory than the limit, the kernel's OOM killer kills one of them. There is no slowdown first and no exception in your code; the process gets `SIGKILL`. Docker and Kubernetes report it as exit code **137** (128 + signal 9) and, in Kubernetes, the reason `OOMKilled`.
+
+**CPU limits throttle.** A CPU limit is enforced as a quota of CPU time per scheduling period, by default 100 ms. A limit of 2 CPUs means 200 ms of CPU time every 100 ms of wall-clock time, shared by all threads. A process with 8 busy threads burns that 200 ms in the first 25 ms of the period, then **every thread is paused for the remaining 75 ms**. Average CPU usage looks fine; tail latency does not.
+
+### Failure timeline: the JVM that did not know it was in a box
+
+Older JVMs (before JDK 10, and before 8u191 on Java 8) sized their default heap from the *host's* memory, not the container's limit, because they read it from the host's `/proc` view.
+
+| Time | Event |
+|---|---|
+| 10:00 | Service deployed to 64 GB hosts with a 2 GB container memory limit. JVM picks a default max heap of 1/4 of host RAM: 16 GB. |
+| 10:00–10:40 | Traffic is light; heap stays near 1 GB. Everything looks healthy. |
+| 10:41 | Lunchtime load. Heap grows past 1.8 GB; with thread stacks and native memory the process crosses 2 GB. |
+| 10:41 | Kernel OOM killer sends SIGKILL. Exit code 137. No Java stack trace, no `OutOfMemoryError` in the logs. |
+| 10:42 | Orchestrator restarts the container; it is killed again under the same load. The service flaps. |
+| Fix | Upgrade to a container-aware JVM (which reads cgroup limits) and set heap explicitly, e.g. `-XX:MaxRAMPercentage=75`, leaving headroom for non-heap memory. |
+
+The general lesson outlives the JVM: **any runtime that sizes itself from "the machine" must be told the size of the box.** Thread pools sized from the visible CPU count, Node.js heap defaults and Go's `GOMAXPROCS` (which, before Go 1.25, defaulted to the host's core count rather than the container's CPU limit) all have the same shape of bug.
+
+### Failure timeline: the CPU limit that caused a latency spike
+
+| Time | Event |
+|---|---|
+| 14:00 | API pod has a 1-CPU limit. Average usage is 40%, so the dashboard says there is headroom. |
+| 14:05 | A burst of requests arrives together; 6 worker threads each want 30 ms of CPU, 180 ms in total. |
+| 14:05 +0–17 ms | The 100 ms quota (1 CPU) is used up in about 17 ms of wall time across the 6 threads. |
+| 14:05 +17–100 ms | All threads throttled. Requests that needed 30 ms of CPU now finish in the next period, after more than 100 ms. In this illustration p99 jumps from 40 ms to over 100 ms, and repeated bursts push it higher. |
+| Detect | The cgroup's `nr_throttled` and throttled-time counters rise (cAdvisor exposes them to Prometheus as `container_cpu_cfs_throttled_periods_total`). |
+
+The fixes are a higher limit, fewer threads per CPU, or no CPU limit at all with a CPU *request* for scheduling. Practitioners genuinely disagree here: some teams remove CPU limits for latency-sensitive services and rely on requests for fair sharing, while others keep limits to stop one noisy service from starving its neighbours. Both positions are defensible; what is not defensible is setting a limit without watching throttling.
+
+**Security follows from the shared kernel.** Root inside a container is root on the shared kernel unless a user namespace remaps it, so the baseline is: run as a non-root user, drop Linux capabilities you do not need, use a read-only root filesystem where possible, never mount the Docker socket into an app container (that is equivalent to root on the host), and keep the host kernel patched.
+
+## Images, layers and digests
+
+<DepthStamp depth="deep" />
+
+A <Term slug="container-image">container image</Term> is a read-only template for a container's filesystem plus metadata: the default command, environment variables, exposed ports and the user to run as. Images follow the Open Container Initiative (OCI) image specification, so an image built by Docker runs on containerd, CRI-O or Podman.
+
+An image is not one big file. It is an ordered list of <Term slug="image-layer">image layers</Term>, each a compressed tarball of the files that one build step added, changed or deleted, plus a JSON manifest that lists them. At run time the runtime stacks the layers with a union filesystem (overlayfs, Docker's default `overlay2` driver on Linux) and adds one thin writable layer on top. Reads fall through the stack to the topmost layer that has the file. A write to a file from a lower layer uses <Term slug="copy-on-write">copy-on-write</Term>: the file is copied up into the writable layer first, then changed. Delete the container and the writable layer is gone.
+
+<Figure caption="FIG. 10.1 · IMAGE LAYERS · SHARED BELOW, PRIVATE ON TOP">
+  <Diagram label="Two containers share the same three read-only image layers: a base OS layer, a runtime layer and an application layer. Each container has its own thin writable layer on top. Writes copy files up into the writable layer." chart={`flowchart TB
+    W1[Writable layer: container A]
+    W2[Writable layer: container B]
+    L3[Layer 3: app code, 15 MB]
+    L2[Layer 2: language runtime, 60 MB]
+    L1[Layer 1: base OS userland, 30 MB]
+    W1 --> L3
+    W2 --> L3
+    L3 --> L2
+    L2 --> L1`} />
+</Figure>
+
+*Layers are read-only and shared; only the top writable layer belongs to one container.*
+
+Three consequences matter in practice.
+
+**Layers are content-addressed.** Each layer is identified by the SHA-256 hash of its contents, and the whole image by the hash of its manifest, its <Term slug="image-digest">digest</Term> (`sha256:3f1a…`). Two images that share a base share those layers on disk and over the network: a host that already has layers 1 and 2 pulls only layer 3. A tag such as `myapp:1.4` or `myapp:latest` is just a movable pointer to a digest. Anyone with push rights can move it. Production deploys should pin the digest (`myapp@sha256:3f1a…`) or use tags your pipeline treats as immutable, so that "what is running" has one exact answer and a rollback returns to exactly the old bytes.
+
+**Deleting a file in a later layer does not shrink the image.** The lower layer still contains it; the upper layer only records a "whiteout" that hides it. A secret copied in step 3 and deleted in step 4 is still in the image for anyone who pulls it. Use build secrets or multi-stage builds instead.
+
+**Layer order decides build cache hits.** The builder reuses a cached layer only if the instruction and every layer beneath it are unchanged. Anything that changes invalidates every layer after it.
+
+### Worked example: layer order and image size at fleet scale
+
+A Node.js service's Dockerfile copies the whole source tree, then installs dependencies:
+
+```dockerfile
+FROM node:20
+COPY . .
+RUN npm ci
+```
+
+Every code change invalidates the `COPY` layer, so `npm ci` re-runs on every build. Say that takes 90 seconds. Reordering so the dependency manifest is copied first means the install layer is reused until `package-lock.json` changes:
+
+```dockerfile
+FROM node:20-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build && npm prune --omit=dev
+
+FROM node:20-slim
+WORKDIR /app
+COPY --from=build /app /app
+USER node
+CMD ["node", "dist/server.js"]
+```
+
+The second version is also a <Term slug="multi-stage-build">multi-stage build</Term>: compilers, dev dependencies and build caches stay in the `build` stage, and only the output is copied into the final image.
+
+Now the fleet arithmetic. Suppose the first image is **1.1 GB** and the second is **120 MB**, and an autoscaling event starts the service on **200 fresh nodes** at once, all pulling from one registry endpoint that can serve about 10 Gbit/s (1.25 GB/s):
+
+| | 1.1 GB image | 120 MB image | Only a 15 MB app layer changed |
+|---|---|---|---|
+| Total bytes pulled | 200 × 1.1 GB = 220 GB | 200 × 0.12 GB = 24 GB | 200 × 15 MB = 3 GB |
+| Time at 1.25 GB/s | 220 ÷ 1.25 ≈ 176 s | 24 ÷ 1.25 ≈ 19 s | 3 ÷ 1.25 ≈ 2.4 s |
+
+Three minutes of pulling before a single new pod can serve traffic is exactly when you needed the capacity. Small images and stable base layers are not tidiness; they are scale-out latency. Registry mirrors, pull-through caches and pre-pulling the base image onto node templates help further.
+
+## Docker basics: Dockerfile, build, run, registry
+
+<DepthStamp depth="deep" />
+
+Docker is a toolchain around these kernel features. The `docker` CLI talks to the `dockerd` daemon, which delegates container lifecycle to containerd, which uses a low-level <Term slug="container-runtime">container runtime</Term>, usually `runc`, to set up the namespaces and cgroups and start the process. Kubernetes removed its built-in Docker integration ("dockershim") in version 1.24 in 2022 and talks to containerd or CRI-O directly; images built with Docker run unchanged because they are OCI images.
+
+The everyday workflow:
+
+| Step | Command | What happens |
+|---|---|---|
+| Describe | `Dockerfile` | `FROM` picks a base image; `RUN`, `COPY` and `ADD` each add a layer; `CMD`, `ENV`, `EXPOSE`, `USER` set metadata |
+| Build | `docker build -t registry.example.com/shop/api:1.4.2 .` | Runs each step, caches layers, produces an image with a digest |
+| Push | `docker push registry.example.com/shop/api:1.4.2` | Uploads only the layers the <Term slug="container-registry">registry</Term> does not already have |
+| Run | `docker run -d -p 8080:3000 -e DB_URL=… api:1.4.2` | Creates the writable layer and namespaces, maps host port 8080 to container port 3000, injects config as environment variables |
+| Persist | `docker run -v pgdata:/var/lib/postgresql/data postgres:16` | Mounts a named volume that outlives the container |
+| Stop | `docker stop` | Sends SIGTERM, waits (10 s by default), then SIGKILL |
+
+### Failure timeline: the app that never heard SIGTERM
+
+Write `CMD npm start` (the shell form) and Docker runs `/bin/sh -c "npm start"`. The shell becomes PID 1, and npm and your server run as children. On Linux, PID 1 in a namespace ignores any signal it has not installed a handler for, and `sh` does not forward SIGTERM to its children.
+
+| Time | Event |
+|---|---|
+| 0 s | Deploy begins; the orchestrator sends SIGTERM to the old container. |
+| 0 s | PID 1 is `sh`; it neither exits nor forwards the signal. The server keeps accepting requests and never starts draining. |
+| 10 s | Grace period ends; SIGKILL. In-flight requests are cut mid-response; open database transactions are aborted. |
+| Per deploy | Every container adds 10 s to the rollout, and every rollout drops some requests. |
+
+The fix is the exec form, `CMD ["node", "dist/server.js"]`, so your process is PID 1 and receives the signal, plus a SIGTERM handler that stops accepting new work, finishes in-flight requests and exits. For processes that spawn children, run a tiny init such as tini (`docker run --init`) to forward signals and reap zombie processes.
+
+### Configuration and the image
+
+Build the image once and promote the **same digest** through staging and production; inject everything that differs (URLs, feature switches, credentials) at run time as environment variables or mounted files. Baking `config.prod.json` into the image means staging tests a different artifact from the one production runs. Secrets passed with `-e` are visible to anyone who can run `docker inspect`, so production platforms mount them from a secrets store instead.
+
+<TradeoffBox title="Containers" items={[
+  { gain: "One immutable artifact from laptop to production; rollback is a digest", cost: "Another layer to learn, build, scan and store; registries become critical infrastructure" },
+  { gain: "Near-zero overhead and sub-second start compared with VMs", cost: "Shared kernel: weaker isolation, and Linux images need a Linux kernel" },
+  { gain: "Memory and CPU limits stop one service starving its neighbours", cost: "Limits fail sharply: OOM kills and CPU throttling show up as crashes and tail latency" },
+  { gain: "Shared, content-addressed layers make pulls and storage cheap", cost: "Large or badly ordered images make every build and every scale-out slow" }
+]} />
+
+<NotWhenBox title="When containers are the wrong tool" items={[
+  "Running untrusted, multi-tenant code with plain containers: use micro-VMs (Firecracker) or a sandbox like gVisor.",
+  "A single small app on one server with a managed runtime (for example a PaaS that builds from source): an image pipeline may add work without adding value.",
+  "Workloads that need a different kernel, kernel modules or a different OS than the host: use a VM.",
+  "Treating the container filesystem as storage: anything written there disappears with the container; use volumes or a database."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A container is a lightweight virtual machine." right="It is a host process with namespaces (what it can see) and cgroups (what it can use). There is no guest kernel, which is why it is fast and why its isolation is weaker." />
+
+<Misconception wrong="Deleting a file in a later Dockerfile step removes it from the image." right="Lower layers are immutable; the later layer only hides the file. A secret copied and then deleted is still in the image. Use build secrets or multi-stage builds." />
+
+<Misconception wrong="Hitting a memory limit makes the container slow down or throw an out-of-memory error." right="The kernel OOM killer sends SIGKILL: exit code 137, no stack trace. CPU limits are the ones that slow you down, by throttling." />
+
+<Misconception wrong="The :latest tag means the newest version and is safe to deploy." right="A tag is a movable pointer that anyone with push rights can change. Deploy by digest, or by tags your pipeline never moves, so you know exactly what runs." />
+
+## Interview angle
+
+<InterviewAngle title="Containers" questions={[
+  "What is the difference between a container and a VM, and when would you insist on a VM?",
+  "A container keeps restarting with exit code 137 and no error in the logs. What is happening and how do you fix it?",
+  "Our p99 latency spikes but CPU usage averages 40%. What could the container limits have to do with it?",
+  "Why are our builds slow and our scale-outs slower? Walk me through what you would change in the Dockerfile.",
+  "How do you make sure staging and production run exactly the same code?"
+]}>
+Containers come up as a supporting detail rather than a design question: "how do you deploy this?" Strong answers are short and mechanical. A container is a process with namespaces and cgroups, so it shares the kernel (fast, dense, weaker isolation). Exit 137 is SIGKILL, almost always the OOM killer: raise the limit or make the runtime respect it. Latency spikes at modest average CPU suggest CFS throttling: check throttled periods, then raise the limit, cut threads, or drop the limit and rely on requests. Slow builds mean cache-busting layer order; slow scale-outs mean big images, so use multi-stage builds and small bases. Same code everywhere means one build, one digest, promoted through environments, with configuration injected at run time.
+</InterviewAngle>
+
+## Practice
+
+1. A service runs 12 worker threads with a 3-CPU limit and a 100 ms CFS period. If all 12 threads are busy, after how many milliseconds of each period are they throttled, and for how long?
+2. Your image is 900 MB, of which 850 MB are the base OS, runtime and dependencies and 50 MB is application code. Calculate the bytes pulled by 150 nodes for a code-only release when the lower layers are cached, and when they are not.
+3. Rewrite a Dockerfile that uses `COPY . .` before installing dependencies, runs as root and uses the shell form of `CMD`. List each change and the failure it prevents.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

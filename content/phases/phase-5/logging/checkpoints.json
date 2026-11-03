@@ -1,0 +1,7 @@
+[
+  { "id": "logging-c1", "text": "I can rewrite a free-text log line as a structured JSON event with a stable message and named fields, and say which fields must never be logged.", "topicId": "structured-logs" },
+  { "id": "logging-c2", "text": "I can pick the right level for a handled retry, a failed request and a process crash, and explain why I alert on error rates rather than log lines.", "topicId": "log-levels" },
+  { "id": "logging-c3", "text": "I can trace how a correlation ID is generated, stored in request context and carried across HTTP calls and a queue hop.", "topicId": "correlation-ids" },
+  { "id": "logging-c4", "text": "I can sketch a centralized logging pipeline (emit, collect, buffer, process, store) and compare a full-text index with a label-only index.", "topicId": "centralized-logging" },
+  { "id": "logging-c5", "text": "I can estimate daily log volume and cost from QPS, lines per request and bytes per line, and design a sampling policy that keeps every error and whole requests.", "topicId": "log-cost-sampling" }
+]

@@ -1,0 +1,252 @@
+## Why it matters
+
+On 28 February 2018 GitHub was hit by 1.35 terabits per second of traffic, at the time the largest DDoS attack publicly recorded. It came from misconfigured memcached servers on the internet, each turning a tiny spoofed request into a huge reply aimed at GitHub. GitHub detected it at 17:21 UTC and had fully recovered by 17:30, because it could reroute its traffic through a DDoS mitigation provider with far more edge capacity. A year later, in March 2019, an attacker sent requests through a misconfigured web application firewall at Capital One, made the server fetch its own cloud credentials from the instance metadata endpoint, and used them to copy personal data on about 100 million people in the US and 6 million in Canada. The first attack was about *volume*: you can't out-code 1.35 Tbps, you absorb it in layers. The second was about *trust*: the server did for the attacker what the attacker could never do directly. This section covers DDoS, injection and SSRF, with the OWASP Top 10 as a map of the rest, and teaches defence, not attack.
+
+<Callout type="analogy" title="The castle, the forged letter and the gullible clerk">
+Picture a castle. A **DDoS** is ten thousand people crowding the drawbridge: none of them is a soldier, but nobody with real business can get in. You don't fight a crowd at the throne room door; you thin it out miles away (the CDN and scrubbing centres), at the outer gate (rate limits) and at the inner gate (load shedding). **Injection** is a letter that says "Please deliver grain to the north tower. Also, open the vault." The clerk can't tell where your request ends and the forged instruction begins, because both are written in the same ink on the same page. The fix is a form with boxes: data goes in the boxes and is never read as orders (a parameterised query). **SSRF** is the gullible clerk who fetches any document you name, including "the key ring hanging behind the guard room door", a room you could never enter yourself. Where it breaks down: a castle sees the crowd coming, while a DDoS from 20,000 machines looks, request by request, like normal visitors, so defences must work on patterns, not individuals.
+</Callout>
+
+## DDoS and mitigation layers
+
+<DepthStamp depth="deep" />
+
+A <Term slug="ddos">distributed denial-of-service (DDoS)</Term> attack exhausts some resource (link bandwidth, packet processing, connection tables, CPU, database capacity) using traffic from many sources at once, so blocking one source achieves nothing. Attacks fall into three families, and each is absorbed at a different layer:
+
+| Family | Exhausts | Example | Main defence |
+|---|---|---|---|
+| Volumetric (L3/L4) | Network links | UDP reflection and amplification (DNS, NTP, memcached) | <Term slug="anycast">Anycast</Term> networks and <Term slug="scrubbing-center">scrubbing centres</Term> with more capacity than the attack |
+| Protocol (L4) | Connection state in servers, firewalls and load balancers | SYN floods | <Term slug="syn-cookie">SYN cookies</Term>, load balancers and proxies that absorb handshakes |
+| Application (L7) | CPU, threads, database | HTTP floods, expensive search queries, HTTP/2 Rapid Reset | Caching, a <Term slug="waf">WAF</Term>, rate limits, bot detection, load shedding |
+
+### Volumetric attacks and amplification
+
+In an <Term slug="amplification-attack">amplification attack</Term> the attacker sends small UDP requests to public servers with the source address forged as the victim's. The servers send their (much larger) responses to the victim. UDP has no handshake, so the server never checks that the requester is real. CISA's alert TA14-017A (first published by US-CERT in 2014 and updated since) lists bandwidth amplification factors of 28 to 54× for DNS, about 557× for NTP and 10,000 to 51,000× for memcached.
+
+The arithmetic is why you cannot defend this at your own servers: an attacker sending 1 Gbps of spoofed DNS queries at 50× produces **50 Gbps** at the victim. A typical origin data centre uplink of 10 Gbps is full long before any packet reaches your firewall, and a full link drops legitimate traffic too. The only defence is to have the traffic land somewhere with **more capacity than the attack**: an anycast network (Cloudflare, Akamai Prolexic, AWS Shield, Google Cloud Armor) announces your addresses from hundreds of locations, so the flood is split across all of them and filtered near its sources. AWS Shield Standard applies this to L3/L4 attacks on AWS at no extra charge; dedicated services add L7 protection and response teams.
+
+### Failure timeline: GitHub, 28 February 2018
+
+From GitHub's own incident report (times UTC):
+
+| Time | Event |
+|---|---|
+| 17:21 | Monitoring detects an anomaly in the ratio of inbound to outbound traffic and pages the on-call engineer. The attack comes from tens of thousands of memcached endpoints across over a thousand networks, and peaks at 1.35 Tbps and 126.9 million packets per second |
+| 17:21–17:26 | Inbound transit bandwidth at one facility exceeds 100 Gbps; the team decides to move traffic to Akamai for extra edge capacity |
+| 17:26 | A ChatOps command withdraws GitHub's BGP announcements from its transit providers and announces them only via Akamai. Routes reconverge over the next few minutes and Akamai's access control lists drop the attack at its border |
+| 17:30 | Full recovery, judged by transit bandwidth and load balancer response codes |
+| ~18:00 | A second, 400 Gbps spike arrives and is absorbed |
+
+The lesson: the mitigation provider was pre-arranged, so switching took minutes, not a procurement cycle (GitHub's follow-up was to automate it). Upstream, memcached 1.5.6 disabled UDP by default.
+
+### Protocol attacks: SYN floods
+
+A TCP server normally stores state for each half-open connection after the SYN of the <Term slug="three-way-handshake">three-way handshake</Term>. A SYN flood sends millions of SYNs from spoofed addresses that never complete, filling that table. **SYN cookies** remove the state: the server encodes the connection's details in the sequence number it sends back and only allocates memory when a valid ACK returns with that number. Linux enables them under pressure (`net.ipv4.tcp_syncookies`), and cloud load balancers absorb handshakes for you.
+
+### Application-layer attacks: where per-IP limits fail
+
+L7 attacks send real, complete HTTP requests, so they look like users. In October 2023 Google, Cloudflare and AWS disclosed **HTTP/2 Rapid Reset** (CVE-2023-44487): clients opened HTTP/2 streams and cancelled them at once, so servers did the work of each request while the concurrent-stream limit never filled. Google reported a peak of 398 million requests per second. The fix was patched servers and proxies: protocol features are attack surface too.
+
+**Worked example.** Your origin serves a product page at 5,000 requests per second per server and you run 4 servers: 20,000 rps capacity. An attack sends **200,000 rps from 20,000 bots**.
+
+- Per bot: 200,000 ÷ 20,000 = **10 rps**. Your <Term slug="rate-limiter">rate limit</Term> of 100 rps per IP never fires. Per-IP limits stop single noisy clients, not distributed floods.
+- Autoscaling to absorb it needs 200,000 ÷ 5,000 = **40 servers**, ten times your fleet, paid for by you, and the database behind them probably can't scale tenfold anyway.
+- Caching the page at the <Term slug="cdn">CDN</Term> with a 99% hit rate leaves 2,000 rps for the origin: **10% of capacity**. The attack is absorbed without anyone deciding which requests are bad.
+
+So the layered L7 defence is: **cache everything you can** at the edge; put a WAF and bot detection (reputation, browser challenges, request fingerprints) in front of what you can't cache; rate-limit by **user, API key or session**, not only IP, and especially on expensive endpoints (search, login, checkout); and **shed load** at the origin so overload degrades gracefully instead of collapsing. Finally, **cloak the origin**: if attackers can find your origin's IP, they bypass the CDN entirely. Allow inbound traffic only from the CDN's address ranges, or use an authenticated tunnel.
+
+<Figure caption="FIG. 9.1 · DDOS DEFENCE IN LAYERS · EACH LAYER REMOVES WHAT IT CAN SEE">
+  <Diagram label="Flowchart: attack and user traffic enter an anycast edge that absorbs volumetric floods, then a WAF and bot detection layer, then CDN cache, then per-key rate limiting at the API gateway, then load shedding at the origin, which reaches the database." chart={`flowchart LR
+    T[Users and attack traffic] --> E[Anycast edge and scrubbing: drops L3/L4 floods]
+    E --> W[WAF and bot detection: drops known-bad L7]
+    W --> C[CDN cache: serves cacheable pages]
+    C --> G[API gateway: per user and per key rate limits]
+    G --> O[Origin: load shedding and timeouts]
+    O --> D[(Database)]`} />
+</Figure>
+
+*Defence in layers: each layer removes the traffic it can recognise, so the origin sees only what it can serve.*
+
+## Injection
+
+<DepthStamp depth="deep" />
+
+Injection happens whenever **untrusted data is combined with code and sent to an interpreter**: a SQL engine, a shell, an HTML page, an LDAP server, a template engine, even a logging library. The interpreter can't tell which part was meant as data, so the attacker's data becomes instructions. OWASP's 2021 Top 10 lists it as A03 and folds cross-site scripting into it.
+
+### SQL injection
+
+<Term slug="sql-injection">SQL injection</Term> is the classic case. The vulnerable pattern builds the query by pasting user input into a string:
+
+```python
+# Vulnerable: the input becomes part of the SQL text
+cur.execute("SELECT * FROM orders WHERE customer = '" + name + "'")
+
+# Safe: the SQL text is fixed, the value travels separately
+cur.execute("SELECT * FROM orders WHERE customer = %s", (name,))
+```
+
+In the first line, input containing a quote character closes the string literal early, and whatever follows is parsed as SQL: an extra condition that is always true, or a second clause that reads another table. In the second line, a <Term slug="parameterized-query">parameterised query</Term> (prepared statement), the database parses the SQL **before** it sees the value, so the value can only ever be data. No escaping function is as reliable, because escaping depends on getting every character set, quoting rule and database dialect right.
+
+Where teams still get caught:
+
+- **Identifiers can't be parameters.** Table names, column names and `ORDER BY` directions can't be bound. Map user input to an **allowlist** (`{"price": "price", "date": "created_at"}`) and never paste raw input.
+- **ORMs have escape hatches.** Django, Rails, Hibernate and others parameterise by default, but raw-query and string-fragment APIs (`raw()`, `where("...")` with interpolation) bring the bug back.
+- **Stored procedures aren't automatically safe** if they concatenate dynamic SQL.
+- **NoSQL is not immune.** In MongoDB, passing a parsed JSON body straight into a query lets a client send an operator object where you expected a string. Validate types against a schema before building queries.
+
+Defence in depth limits the damage when a bug slips through: a least-privilege database user (no `DROP`, no other schemas), field-level encryption for sensitive columns, and errors that never echo SQL.
+
+### Command, template and log injection
+
+The same rule applies everywhere: keep code and data in separate channels.
+
+- **OS commands:** don't invoke a shell. Pass an argument array (`subprocess.run(["convert", path, out])` in Python, `execFile` rather than `exec` in Node.js), so the input is one argument, not shell syntax.
+- **Server-side templates:** render user input as template *variables*, never compile user input as a template.
+- **Logging:** Log4Shell (CVE-2021-44228, December 2021) was injection into a logging library: Log4j 2 interpreted lookup expressions inside logged strings, so a crafted header or username made the server fetch and run remote code. The fix was upgrading Log4j. It is also a supply-chain lesson: you must answer "where do we run Log4j?" within hours.
+
+### Cross-site scripting (XSS)
+
+<Term slug="xss">Cross-site scripting</Term> is injection into a web page: untrusted data is placed into HTML or JavaScript without encoding, so it runs as script in other users' browsers, with their session. Stored XSS (saved in a comment, shown to everyone) is the most damaging. Defences, in order:
+
+1. **Contextual output encoding** by a template engine or framework that escapes by default. React escapes text in JSX; the danger is the escape hatch, `dangerouslySetInnerHTML`, which should only receive HTML from a sanitiser such as DOMPurify.
+2. **Content Security Policy** (CSP), a response header that restricts which scripts may run (for example only scripts carrying a per-response nonce), so injected script is blocked even if encoding fails.
+3. **`HttpOnly` cookies**, so script can't read the session cookie (it can still act as the user, so this limits harm).
+
+<Figure caption="FIG. 9.2 · PARAMETERISED QUERY · CODE AND DATA TRAVEL SEPARATELY">
+  <Diagram label="Sequence diagram: the app sends a SQL statement with a placeholder; the database parses and plans it; the app then sends the value separately; the database binds it as data and executes the already-parsed plan, so the value cannot change the query's structure." chart={`sequenceDiagram
+    participant A as App
+    participant D as Database
+    A->>D: PREPARE: SELECT ... WHERE customer = $1
+    D->>D: Parse and plan. Structure is now fixed
+    A->>D: EXECUTE with $1 = user input
+    D->>D: Bind value as a string literal, never as SQL
+    D-->>A: Rows for that exact customer name`} />
+</Figure>
+
+*A prepared statement fixes the query's structure before the value arrives, which is why it beats escaping.*
+
+## Server-side request forgery (SSRF)
+
+<DepthStamp depth="deep" />
+
+<Term slug="ssrf">Server-side request forgery (SSRF)</Term> happens when an attacker can make your server send a request to a destination they choose. Any feature that fetches a URL is a candidate: link previews, webhooks, "import from URL", PDF renderers, image resizers. Your server sits **inside** the trust boundary: it can reach internal admin panels, databases and, in the cloud, the **instance metadata service**.
+
+On AWS EC2 the metadata service lives at the link-local address `169.254.169.254` (and `fd00:ec2::254` over IPv6 on Nitro instances). Among other things it hands out the temporary credentials of the IAM role attached to the instance. In the original version (IMDSv1), any plain HTTP GET from the instance gets them. So an SSRF bug that can fetch arbitrary GET URLs can fetch the server's cloud credentials.
+
+### Failure timeline: Capital One, 2019
+
+| Date | Event |
+|---|---|
+| 22–23 March 2019 | Through a misconfigured web application firewall running on EC2, an attacker makes the server request its own instance metadata and obtains temporary credentials for the WAF's IAM role |
+| Same days | The role has far broader S3 permissions than a WAF needs. The attacker uses the credentials to list buckets and copy their contents |
+| 17 July 2019 | Someone emails Capital One's responsible-disclosure address pointing to the data posted on GitHub |
+| 19 July 2019 | Capital One confirms the intrusion |
+| 29 July 2019 | Public announcement; the FBI arrests a suspect. About 100 million US and 6 million Canadian individuals affected |
+| August 2020 | The US Office of the Comptroller of the Currency fines Capital One $80 million, citing failures in its cloud risk management |
+
+Three independent controls would each have broken this chain: no SSRF in the WAF, a metadata service that refuses simple GETs, and a least-privilege role. Good security design trusts no single control to hold.
+
+### Why IMDSv2 helps
+
+AWS's IMDSv2 makes credential theft through typical SSRF much harder:
+
+<Figure caption="FIG. 9.3 · IMDSv2 · A SESSION TOKEN BEFORE ANY METADATA">
+  <Diagram label="Sequence diagram: a legitimate SDK on the instance sends a PUT to the token endpoint with a TTL header and gets a token, then sends GET requests with the token header. A typical SSRF bug can only make a GET without custom headers, so the metadata service rejects it." chart={`sequenceDiagram
+    participant S as SDK on instance
+    participant M as IMDS 169.254.169.254
+    participant X as SSRF via vulnerable app
+    S->>M: PUT /latest/api/token with TTL header
+    M-->>S: session token (hop limit 1 by default)
+    S->>M: GET credentials with token header
+    M-->>S: temporary role credentials
+    X->>M: GET credentials, no token
+    M-->>X: 401 Unauthorized`} />
+</Figure>
+
+*IMDSv2 requires a PUT with a custom header to get a token first, which most SSRF bugs cannot send.*
+
+- Credentials require a **session token** obtained with an HTTP **PUT** carrying a custom header (`X-aws-ec2-metadata-token-ttl-seconds`). Most SSRF bugs only let the attacker choose a URL for a GET, not the method or headers.
+- The token response has an **IP hop limit** (1 by default), so it can't travel beyond the instance; containers behind an extra network hop need the limit raised to 2 deliberately.
+- IMDSv2 refuses token requests that carry an `X-Forwarded-For` header, which blocks many misconfigured reverse proxies from relaying them.
+
+Require IMDSv2 on every instance (in launch templates, or as the account-level default) and turn IMDSv1 off. Google Cloud and Azure have similar protections: their metadata servers require a special request header (`Metadata-Flavor: Google`, `Metadata: true`).
+
+### Defending URL-fetching features
+
+1. **Allowlist destinations** when you can (webhooks only to customer-verified domains; imports only from known hosts).
+2. **Resolve, then check, then connect to the checked IP.** Block loopback, private, link-local and unique-local ranges (`127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `::1`, `fc00::/7`, `fe80::/10`). Validating the hostname string alone fails to <Term slug="dns-rebinding">DNS rebinding</Term>, where a name resolves to a public IP when checked and a private one when fetched, and to unusual IP notations that a naive parser misreads.
+3. **Don't follow redirects blindly**; re-validate every hop, because a public URL can redirect to an internal one.
+4. **Send fetches through an egress proxy** that enforces these rules in one place (Stripe open-sourced one for this, Smokescreen), and run the fetcher in a network segment that cannot reach internal services at all.
+5. **Least privilege for the instance role**, so even stolen credentials open few doors.
+
+## The OWASP Top 10
+
+<DepthStamp depth="awareness" />
+
+The OWASP Top 10 is an **awareness document**: a ranking of web application risk categories built from contributed vulnerability data and a community survey. It is not a testing standard (OWASP's ASVS is), and "we covered the Top 10" doesn't mean an application is secure. The 2021 list, with the design-level defence for each:
+
+| Rank (2021) | Category | Design-level defence |
+|---|---|---|
+| A01 | Broken Access Control | Deny by default; check authorisation on the server for every object (see Access Control). OWASP found some form of it in 94% of applications tested |
+| A02 | Cryptographic Failures | TLS everywhere, strong algorithms, keys in a KMS (see Data Protection) |
+| A03 | Injection (including XSS) | Parameterised queries, contextual encoding, CSP |
+| A04 | Insecure Design | Threat modelling during design, abuse cases, rate limits on business flows |
+| A05 | Security Misconfiguration | Hardened defaults, infrastructure as code, no debug endpoints or default credentials in production |
+| A06 | Vulnerable and Outdated Components | Dependency inventory (SBOM), automated update and scanning |
+| A07 | Identification and Authentication Failures | MFA, rate-limited login, secure session handling (see AuthN and AuthZ) |
+| A08 | Software and Data Integrity Failures | Signed artefacts and updates, protected CI/CD, no unsafe deserialisation |
+| A09 | Security Logging and Monitoring Failures | Log authentication and authorisation events, alert on them, keep them tamper-resistant |
+| A10 | Server-Side Request Forgery | Egress allowlists, IMDSv2, network segmentation |
+
+OWASP has since published a 2025 edition that reorders and renames several categories; check owasp.org before quoting rankings.
+
+<TradeoffBox title="Attack defences" items={[
+  { gain: "Anycast scrubbing and CDN: absorbs floods far larger than your origin", cost: "Ongoing cost, vendor dependency, and it only works if the origin is cloaked" },
+  { gain: "Per-user and per-key rate limits: stop abuse of expensive endpoints", cost: "Need authentication first; anonymous floods still need edge defences" },
+  { gain: "Autoscaling through an L7 flood: no false positives", cost: "You pay for the attack, and the database usually can't scale with it" },
+  { gain: "Parameterised queries: remove SQL injection structurally", cost: "Identifiers still need allowlists; raw-query escape hatches must be policed" },
+  { gain: "CSP: blocks injected script even when encoding fails", cost: "Strict policies take work to roll out and break inline scripts until refactored" },
+  { gain: "Egress proxy for URL fetches: one enforced SSRF policy", cost: "Another component on the fetch path, and allowlists to maintain" }
+]} />
+
+<NotWhenBox title="When not to over-invest" items={[
+  "A paid DDoS service for an internal tool on a private network: there is no public surface to flood.",
+  "A WAF as the main defence against injection: it is a safety net for known patterns, not a substitute for parameterised queries.",
+  "Building your own scrubbing or bot detection: the providers see attacks across thousands of customers and you can't match that.",
+  "Treating the OWASP Top 10 as a checklist that certifies security: use ASVS and threat modelling for that."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Autoscaling protects us from DDoS." right="Autoscaling turns an attack into a bill, and the database or a dependency usually saturates first. Absorb at the edge, cache, rate-limit and shed load; scale only within a cost cap." />
+
+<Misconception wrong="Escaping user input is as good as parameterised queries." right="Escaping must get every dialect, character set and context right, and one miss is a breach. Parameters keep data out of the parser entirely; allowlist what can't be parameterised." />
+
+<Misconception wrong="Our WAF stops injection, so the code doesn't need fixing." right="A WAF matches known patterns and can be bypassed by encoding tricks, and Capital One's breach went through a misconfigured WAF. Fix the code; keep the WAF as one layer." />
+
+<Misconception wrong="SSRF only matters if the server returns the response to the attacker." right="Blind SSRF still lets attackers hit internal admin endpoints, trigger actions and probe the network. Restrict destinations whether or not the response is returned." />
+
+## Interview angle
+
+<InterviewAngle title="Common attacks" questions={[
+  "Your API is being hit by 200,000 requests a second from 20,000 IPs. Per-IP rate limiting isn't firing. What do you do, layer by layer?",
+  "How would you design a 'fetch a link preview' feature so it can't be used for SSRF?",
+  "Why is a parameterised query safer than escaping, and what can't it protect?",
+  "Walk me through the Capital One breach. Which three controls would each have stopped it?",
+  "A critical vulnerability like Log4Shell is announced. How do you find and patch every affected service within a day?"
+]}>
+Security usually appears as a deep-dive ("how do you protect this from abuse?"). Strong answers are layered and specific. For DDoS, name the three families and the layer that handles each, do the per-IP arithmetic to show why distributed floods evade it, and say "cache, cloak the origin, rate-limit per key, shed load". For injection, say parameterised queries, allowlisted identifiers, least-privilege database users and contextual encoding plus CSP. For SSRF, explain the metadata service, IMDSv2's PUT-plus-header token, resolving and pinning IPs, and an egress proxy. Staff-level signals: no single control trusted to hold, cost awareness (autoscaling pays for the attack), and an inventory story for the next Log4Shell.
+</InterviewAngle>
+
+## Practice
+
+1. An attacker can send 2 Gbps of spoofed DNS queries with a 40× amplification factor. Your origin uplink is 10 Gbps and your CDN's network is far larger. How much traffic hits you with and without the CDN in front, and what must you change so the attacker can't bypass it?
+2. Review this design: a webhook service lets customers enter any URL, validates that the hostname doesn't contain "localhost" or "169.254", then fetches it with redirects enabled. List every way it can still be abused and the fix for each.
+3. A product search endpoint accepts `sort=<column>` from the query string and builds `ORDER BY` with it. The team says "we use prepared statements, so it's safe". Explain the gap and write the fix in words.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

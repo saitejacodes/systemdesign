@@ -1,0 +1,42 @@
+[
+  {
+    "id": "owasp-top-10-2021",
+    "title": "OWASP Top 10:2021",
+    "author": "OWASP",
+    "kind": "docs",
+    "url": "https://owasp.org/Top10/",
+    "why": "The official category pages, each with its data, examples and prevention guidance.",
+    "topicIds": ["owasp-top-10", "injection", "ssrf"],
+    "free": true
+  },
+  {
+    "id": "owasp-ssrf-cheat-sheet",
+    "title": "OWASP Server-Side Request Forgery Prevention Cheat Sheet",
+    "author": "OWASP",
+    "kind": "docs",
+    "url": "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+    "why": "Allowlisting, IP validation, redirects and DNS pitfalls in more depth, alongside the SQL injection and XSS cheat sheets in the same series.",
+    "topicIds": ["ssrf", "injection"],
+    "free": true
+  },
+  {
+    "id": "aws-imdsv2",
+    "title": "Use the Instance Metadata Service to access instance metadata (IMDSv2)",
+    "author": "Amazon Web Services",
+    "kind": "docs",
+    "url": "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html",
+    "why": "How IMDSv2 tokens, hop limits and enforcement work, and how to require IMDSv2.",
+    "topicIds": ["ssrf"],
+    "free": true
+  },
+  {
+    "id": "github-ddos-2018",
+    "title": "February 28th DDoS Incident Report",
+    "author": "GitHub",
+    "kind": "blog",
+    "url": "https://github.blog/news-insights/company-news/ddos-incident-report/",
+    "why": "A short primary account of the 1.35 Tbps memcached attack and the move to a scrubbing provider.",
+    "topicIds": ["ddos"],
+    "free": true
+  }
+]

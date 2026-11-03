@@ -1,0 +1,7 @@
+[
+  { "id": "metrics-c1", "text": "I can choose between a counter, gauge, histogram and summary for a given measurement and write the matching Prometheus query.", "topicId": "metric-types" },
+  { "id": "metrics-c2", "text": "I can estimate a p99 from cumulative histogram buckets the way histogram_quantile does, and explain why percentiles must not be averaged.", "topicId": "histograms-percentiles" },
+  { "id": "metrics-c3", "text": "I can list the RED metrics for a service and the USE checks for its resources, and use them together to go from symptom to bottleneck.", "topicId": "red-use" },
+  { "id": "metrics-c4", "text": "I can compute the series count of a metric as the product of its label cardinalities, including histogram buckets.", "topicId": "cardinality" },
+  { "id": "metrics-c5", "text": "I can diagnose and prevent a cardinality explosion with label allow-lists, relabelling, sample limits and an alert on active series.", "topicId": "cardinality" }
+]

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "twelve-factor-logs",
+    "title": "The Twelve-Factor App: XI. Logs",
+    "author": "Adam Wiggins",
+    "kind": "docs",
+    "url": "https://12factor.net/logs",
+    "why": "The short, original argument for treating logs as an event stream on stdout and leaving routing to the environment.",
+    "topicIds": ["structured-logs", "centralized-logging"],
+    "free": true
+  },
+  {
+    "id": "otel-logs-data-model",
+    "title": "OpenTelemetry Logs Data Model",
+    "author": "OpenTelemetry",
+    "kind": "docs",
+    "url": "https://opentelemetry.io/docs/specs/otel/logs/data-model/",
+    "why": "A vendor-neutral schema for log records, including severity numbers and the TraceId and SpanId fields that join logs to traces.",
+    "topicIds": ["structured-logs", "log-levels", "correlation-ids"],
+    "free": true
+  },
+  {
+    "id": "stripe-canonical-log-lines",
+    "title": "Fast and flexible observability with canonical log lines",
+    "author": "Brandur Leach (Stripe)",
+    "kind": "blog",
+    "url": "https://stripe.com/blog/canonical-log-lines",
+    "why": "How Stripe writes one wide, structured event per request and why that answers most production questions cheaply.",
+    "topicIds": ["structured-logs", "log-cost-sampling"],
+    "free": true
+  },
+  {
+    "id": "owasp-logging-cheatsheet",
+    "title": "OWASP Logging Cheat Sheet",
+    "author": "OWASP",
+    "kind": "docs",
+    "url": "https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html",
+    "why": "What to log, what never to log, and how to defend against log injection.",
+    "topicIds": ["structured-logs", "centralized-logging"],
+    "free": true
+  }
+]

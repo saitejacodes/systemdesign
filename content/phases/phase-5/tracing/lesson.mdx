@@ -1,0 +1,217 @@
+## Why it matters
+
+A checkout request that takes 2.4 seconds might pass through a gateway, an orders service, inventory, payments, a fraud check, a cache and two databases. The metrics say checkout is slow. The logs of each service say each one did its job. Neither says **where the 2.4 seconds went**. Distributed tracing answers that: it records the path of one request through every service as a tree of timed operations, so the slow hop is visible at a glance. Google described its internal tracing system in the 2010 Dapper paper (Sigelman et al.), which shaped open-source tracers such as Twitter's Zipkin and Uber's Jaeger. Today the vendor-neutral standard is OpenTelemetry, and the W3C Trace Context specification defines the header that carries a trace from one service to the next. This section covers spans and traces, context propagation, sampling, OpenTelemetry, and how to find the slow hop in a real waterfall.
+
+<Callout type="analogy" title="Parcel tracking with a scan at every depot">
+Send a parcel across the country and the tracking page shows every scan: collected 09:02, arrived at the sorting hub 11:40, left the hub 18:15, out for delivery 07:30 next day. One tracking number ties the scans together (the trace ID). Each scan records where the parcel was and when it arrived and left (a span with start and end times). If the parcel is late, you do not ask every depot; you look for the long gap, here the 6.5 hours sitting at the hub (the slow hop). The tracking number is printed on the label so each depot can read it and pass it on (context propagation). If a depot peels the label off, the history breaks into two unrelated parcels. And the courier cannot afford to photograph every parcel at every depot, so it keeps the full history only for some (sampling). Where the analogy breaks: a request fans out in parallel to several services at once, so a trace is a tree, not a single line of scans, and the depots' clocks are not perfectly in sync.
+</Callout>
+
+## Spans and traces
+
+<DepthStamp depth="deep" />
+
+<Term slug="distributed-tracing">Distributed tracing</Term> records how a single request flows through a distributed system. The building block is the <Term slug="span">span</Term>: one named, timed operation, such as "HTTP GET /inventory" handled by the inventory service or "SELECT orders" sent to Postgres. A **trace** is the set of spans that share one trace ID, linked into a tree by parent IDs.
+
+Each span carries, in OpenTelemetry's model:
+
+| Field | Example | Purpose |
+|---|---|---|
+| Trace ID | `4bf92f3577b34da6a3ce929d0e0e4736` (16 bytes) | Same for every span in the trace |
+| Span ID | `00f067aa0ba902b7` (8 bytes) | Unique to this span |
+| Parent span ID | ID of the caller's span | Builds the tree; empty for the root span |
+| Name | `POST /checkout`, `charge card` | Low-cardinality operation name |
+| Start and end time | `02:14:07.412`, `02:14:09.801` | Duration, and position in the waterfall |
+| Kind | SERVER, CLIENT, PRODUCER, CONSUMER, INTERNAL | Which side of a call this is |
+| Attributes | `http.response.status_code=402`, `db.system=postgresql` | Searchable key-value detail |
+| Events | `retry`, `exception` with timestamp | Point-in-time annotations inside the span |
+| Status | OK, ERROR | Whether the operation failed |
+| Links | Other spans' context | Relate spans across traces, for example a batch job consuming many messages |
+
+A call between two services produces **two** spans: a CLIENT span in the caller (from sending the request to receiving the response) and a SERVER span in the callee (from receiving the request to sending the response). The gap between them is network time, queueing, connection setup or time in a proxy. That gap is often where the answer is.
+
+Spans are high-cardinality by design. Unlike metric labels, span attributes can safely hold an order ID or user ID, because each span is one stored record, not a new time series. That is why traces answer "which one?" questions that metrics cannot.
+
+## Trace context propagation
+
+<DepthStamp depth="deep" />
+
+<Term slug="context-propagation">Context propagation</Term> is how a service tells the next one which trace it belongs to and which span is the parent. Without it, every service starts its own trace and you get disconnected fragments. The W3C Trace Context specification defines the standard HTTP header, `traceparent`:
+
+```
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+             |  |                                |                |
+             |  trace-id (32 hex = 16 bytes)     parent-id        trace-flags
+             version (00)                        (16 hex = 8 bytes, the caller's span ID)
+```
+
+The last field is the **trace flags**; the lowest bit is the "sampled" flag, so `01` means the caller is recording this trace and `00` means it is not. An all-zero trace ID or parent ID is invalid. A second header, `tracestate`, carries vendor-specific key-value pairs alongside it. A separate W3C header, `baggage`, carries application-defined key-value pairs (such as a tenant ID) that every downstream service can read; anything put in baggage travels in every request header, so keep it small and never put secrets in it.
+
+<Figure caption="FIG. 1 · ONE TRACE ID, NEW PARENT ID AT EVERY HOP">
+  <Diagram label="The gateway starts a trace with ID 4bf9 and span A. It calls orders with parent A; orders creates span B and calls payments with parent B; payments creates span C. Every span shares trace ID 4bf9." chart={`sequenceDiagram
+    participant G as Gateway
+    participant O as Orders
+    participant P as Payments
+    Note over G: new trace 4bf9, root span A
+    G->>O: traceparent 00-4bf9...-A-01
+    Note over O: server span B, parent A
+    O->>P: traceparent 00-4bf9...-B-01
+    Note over P: server span C, parent B
+    P-->>O: 200
+    O-->>G: 200
+    Note over G,P: all spans exported with trace 4bf9`} />
+</Figure>
+
+*The trace ID never changes; the parent ID is replaced at each hop with the caller's current span ID.*
+
+Inside a process, the current span lives in the same kind of request-scoped context used for log correlation IDs (thread-local, `contextvars`, Go's `context.Context`). OpenTelemetry calls the code that writes and reads headers a **propagator**: on an outgoing call it injects the current context into headers; on an incoming call it extracts it and makes it the parent of the new server span.
+
+Where propagation breaks in real systems:
+
+- **Message queues.** The producer must inject `traceparent` into message headers and the consumer must extract it. OpenTelemetry's messaging conventions use PRODUCER and CONSUMER spans for this, and links when one consumer processes a batch of messages from many traces.
+- **Thread pools and async callbacks** that do not carry context to the worker thread.
+- **Proxies, gateways and third-party services** that strip unknown headers, or legacy services that only understand an older format such as Zipkin's B3 headers. OpenTelemetry SDKs can be configured with several propagators at once during a migration.
+- **Untrusted edges.** A public client can send any `traceparent` it likes. Many teams start a new trace at the edge (optionally linking to the client's) rather than letting the internet choose trace IDs and sampling decisions.
+
+Log the trace ID and span ID on every log line. Then a slow span in the trace view links straight to its logs, and the trace ID doubles as the correlation ID from the logging section.
+
+## Sampling
+
+<DepthStamp depth="tradeoffs" />
+
+Tracing every request is usually too expensive. <Term slug="head-based-sampling">Head-based sampling</Term> decides at the start of a trace, at the root, whether to record it, and propagates the decision in the sampled flag so every downstream service agrees. <Term slug="tail-based-sampling">Tail-based sampling</Term> records every span, buffers them, and decides after the trace is complete, so it can keep traces that turned out to be slow or failed.
+
+### Worked example: storage at 20,000 requests a second
+
+Assume **20,000 requests a second**, an average of **25 spans** per trace, and **300 bytes** per span after encoding.
+
+- All traces: 20,000 × 25 × 300 = **150 MB/s**, or 150 MB × 86,400 ≈ **13 TB a day**.
+- Head-based at 1%: **130 GB a day**. Affordable.
+- But suppose 0.5% of requests fail. That is 100 failed requests a second, and a 1% sample keeps only **one** of them per second. A rare endpoint called once a minute is traced about once every 100 minutes. The failures and the rare paths are exactly what you wanted to see.
+
+Tail-based policy, for example: keep 100% of traces with an error, 100% slower than 1 second (say 1% of traffic), and 0.1% of everything else. Kept share ≈ 0.5% + 1% + 0.1% ≈ **1.6%** (a little less, since some slow traces are also errors), about **210 GB a day**, and every interesting trace is complete. The cost moves elsewhere: the collectors must hold every span until the trace is judged complete. With a 30-second wait, that is 150 MB/s × 30 s = **4.5 GB of spans in memory** across the collector fleet at any moment, and all spans of one trace must reach the **same** collector, so the fleet routes spans by trace ID. In the OpenTelemetry Collector this is the `tail_sampling` processor, usually behind a load-balancing exporter keyed on trace ID.
+
+| Approach | Decided | Keeps errors and slow traces? | Cost | Failure mode |
+|---|---|---|---|---|
+| Head-based probabilistic | At the root, before anything happens | Only at the sample rate | Lowest; nothing buffered | Misses rare and failing requests |
+| Head-based, rate-limited | At the root, N traces per second | Only at the sample rate | Low, predictable | Same, but bounded volume |
+| Tail-based | After the trace completes | Yes, by policy | Buffer memory, routing by trace ID, every span sent to collectors | Late or very long traces judged incomplete |
+
+In OpenTelemetry SDKs, the common head-based setup is `ParentBased(TraceIdRatioBased(0.01))`: the root samples 1% by trace ID, and every other service follows the parent's sampled flag so traces are never half-recorded. Because the ratio sampler decides from the trace ID itself, any service seeing the same ID makes the same decision. Dapper reported that sampling as low as one trace in 1,024 still gave enough data for Google's high-volume services, which is the case for head sampling at scale: common paths are seen thousands of times a minute anyway. The case for tail sampling is everything uncommon.
+
+## OpenTelemetry
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="opentelemetry">OpenTelemetry</Term> (OTel) is a Cloud Native Computing Foundation project that defines vendor-neutral APIs, SDKs, a wire protocol and a collector for traces, metrics and logs. It formed in 2019 by merging two earlier projects, OpenTracing and OpenCensus. Its pieces:
+
+- **API**: what library and application code calls to create spans and record metrics. Libraries depend only on the API, which does nothing unless an SDK is installed.
+- **SDK**: the implementation in each language, with samplers, processors that batch spans, and exporters.
+- **Instrumentation**: ready-made hooks for common frameworks and clients (HTTP servers, gRPC, database drivers, Kafka clients). Auto-instrumentation, such as the Java agent, adds spans without code changes.
+- **OTLP**: the OpenTelemetry Protocol, over gRPC (port 4317 by default) or HTTP (port 4318).
+- **Collector**: a separate process that receives telemetry, processes it (batching, attribute redaction, tail sampling) and exports it to one or more back ends. Run as an agent on each node, as a central gateway, or both.
+- **Semantic conventions**: standard attribute names such as `http.request.method`, `http.response.status_code` and `db.system`, so dashboards and queries work across languages and vendors.
+
+Back ends that store and display traces include open-source Jaeger, Zipkin and Grafana Tempo, and most commercial observability vendors, which accept OTLP directly.
+
+The staff-level judgement: OTel's main value is **not being locked in**. You instrument once and can change back ends by changing collector configuration. The costs are real too. The SDKs and collector are another moving part to upgrade and tune; auto-instrumentation can add measurable overhead and produce very noisy traces (a span per cache call adds up); and parts of the project have matured at different speeds, so check the stability status of the signal and language you depend on. Field opinion genuinely differs on the "three pillars" framing of logs, metrics and traces: OTel treats them as three correlated signals, while some practitioners argue for wide structured events (one rich record per request per service) as the primary data, with metrics and traces derived from them. Both camps agree on the practical point: every signal should carry the same trace ID so you can move between them.
+
+## Finding the slow hop
+
+<DepthStamp depth="deep" />
+
+A trace view draws spans as a **waterfall**: one row per span, indented by depth, with bars placed on a shared time axis. The skill is reading it quickly. The <Term slug="critical-path">critical path</Term> is the chain of spans that determined the end-to-end latency: the sequence where each step had to finish before the request could. Shortening any span not on the critical path does not make the request faster.
+
+### Worked example: a 2.4 s checkout
+
+```
+span                                     0 ms        800        1600       2400
+gateway  POST /checkout       [SERVER]   |=========================================| 2,400
+  orders  POST /orders        [SERVER]    |=======================================|  2,360
+    orders  SELECT cart       [CLIENT]    |=|                                            40
+    inventory  reserve        [SERVER]       |==|                                       110
+    payments  charge          [CLIENT]           |==============================|     1,950
+      payments  charge        [SERVER]                     |================|       1,100
+        fraud  score          [CLIENT]                     |===============|        1,020
+    email  publish            [PRODUCER]                                    |=|        30
+```
+
+Reading it:
+
+1. **Start at the root and follow the widest child.** Orders takes 2,360 of the 2,400 ms; inside it, the payments CLIENT span takes 1,950 ms. Cart, inventory and email are small and sequential; together they cost about 180 ms.
+2. **Compare the CLIENT and SERVER spans of the same call.** Orders waited 1,950 ms, but the payments service only spent 1,100 ms handling it. **850 ms vanished between them.** That is time outside payments' code: a connection pool wait in the orders client, a TLS handshake on a new connection, a retry after a timeout, or a queue in a sidecar proxy or load balancer. Look at the span's events (a `retry` event would explain it) and the client's connection-pool metrics.
+3. **Inside payments, the fraud call is 1,020 of 1,100 ms.** That is a third-party dependency, so the fix is a tighter timeout with a fallback, a cached score, or making the call in parallel with something else.
+4. **Ignore parallel work that finished early.** If inventory had run in parallel with payments, shrinking it would gain nothing, because it is off the critical path.
+
+Then **go from one trace to many**. One trace can mislead. Group by span name and compare durations across thousands of traces (most back ends can do this), or use exemplars on the latency histogram to open representative slow traces. If 90% of slow checkouts show the same CLIENT-to-SERVER gap on payments, you have a pattern, not an anecdote.
+
+### Failure timeline: the trace that broke in two
+
+| Time | Event | What the traces show |
+|---|---|---|
+| 09:00 | A team puts a new internal proxy in front of payments | Proxy forwards only known headers; `traceparent` is dropped |
+| 09:05 | Checkout traces now end at the orders CLIENT span; payments starts its own root traces | Two fragments per request; payments traces have no parent |
+| 11:30 | Payments p99 rises; on-call opens a slow checkout trace and sees a 1.9 s CLIENT span with nothing under it | Cannot see inside payments from the checkout trace |
+| 11:50 | Someone searches payments traces by time window and guesses which fragment matches | Slow, error-prone correlation |
+| 12:20 | Root cause found: the proxy's header allow-list. `traceparent`, `tracestate` and `baggage` added | Traces reconnect from 12:25 |
+
+Two lessons. Monitor trace health, not just service health: a sudden rise in root spans from a service that is never an entry point means propagation broke upstream. And put trace headers on the standard allow-list of every proxy and gateway you run.
+
+### Clock skew
+
+Spans are timestamped by different machines whose clocks can differ by milliseconds or more. A child span may appear to start before its parent, or a 2 ms gap may be fiction. Trust durations measured within one span (taken from one clock) more than gaps between spans on different hosts, and treat negative-looking gaps as <Term slug="clock-skew">clock skew</Term>, not time travel.
+
+<TradeoffBox title="Tracing choices" items={[
+  { gain: "Head-based sampling: cheap, simple, consistent across services", cost: "Rare paths and most errors are never recorded" },
+  { gain: "Tail-based sampling: keeps every error and slow trace", cost: "Collectors buffer all spans and must route by trace ID; more infrastructure" },
+  { gain: "Auto-instrumentation: traces with almost no code", cost: "Overhead and noisy spans; misses business-level operations" },
+  { gain: "Manual spans around key operations: meaningful names and attributes", cost: "Engineering time; inconsistent across teams without conventions" },
+  { gain: "OpenTelemetry and OTLP: instrument once, change back ends freely", cost: "Another component to run and upgrade; maturity varies by language and signal" },
+  { gain: "Rich span attributes (order ID, tenant): answer which-request questions", cost: "Storage cost; risk of personal data in traces without redaction" }
+]} />
+
+<NotWhenBox title="When tracing is not worth it (yet)" items={[
+  "A monolith with one database: a profiler and good logs explain latency more cheaply.",
+  "Alerting: alert on metrics; traces are sampled and arrive late.",
+  "Exact counts of requests or errors: sampled traces cannot give totals; use counters.",
+  "Teams that cannot propagate context through their queues and proxies: fix propagation first, or every trace will be a fragment."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Tracing 1% of requests is enough to debug any problem." right="Head sampling at 1% keeps about 1% of errors and almost none of the rare paths. Keep errors and slow traces with tail sampling, or raise the rate for low-traffic endpoints." />
+
+<Misconception wrong="The longest span in a trace is always the one to optimise." right="Only spans on the critical path set the latency. A long span that runs in parallel and finishes early costs nothing; and a long CLIENT span may hide time spent outside the callee entirely." />
+
+<Misconception wrong="Each service can make its own sampling decision independently." right="Independent decisions produce half-recorded traces. Decide at the root and propagate the sampled flag, or sample on the complete trace in the collector." />
+
+## Interview angle
+
+<InterviewAngle title="Tracing" questions={[
+  "Checkout p99 doubled after a release that touched three services. How do you find which hop got slower?",
+  "What does a traceparent header contain, and how does the trace survive a Kafka hop?",
+  "Head or tail sampling for a 50,000 request-per-second API where you care most about errors?",
+  "Why might a CLIENT span be much longer than the matching SERVER span?",
+  "How do you connect a spike on a latency graph to the logs of the requests that caused it?"
+]}>
+Tracing usually appears when an interviewer asks how you would debug latency across microservices. Strong answers define spans and traces precisely, describe W3C `traceparent` (version, 16-byte trace ID, 8-byte parent span ID, sampled flag) and where propagation breaks (queues, thread pools, proxies), and do the sampling arithmetic: QPS × spans per trace × bytes per span, then what a 1% head sample does to error coverage. For the slow-hop question, walk the critical path, compare CLIENT and SERVER durations to find time outside the callee, then confirm across many traces with grouped span durations or exemplars. Name OpenTelemetry for instrumentation and the Collector for tail sampling, and mention putting the trace ID on every log line.
+</InterviewAngle>
+
+## Practice
+
+1. A system serves 5,000 requests a second with 40 spans per trace at 250 bytes per span. Compute daily trace volume unsampled, with 5% head sampling, and with a tail policy that keeps all errors (1%), all traces over 800 ms (2%) and 0.5% of the rest. How much memory does a 20-second tail-sampling buffer need?
+2. Draw the spans (names, kinds and parent links) for a request that goes gateway → orders → publishes to Kafka → a fulfilment consumer that batches 50 messages and calls a shipping API. Where do you use a parent link and where a span link?
+3. In a trace, the orders CLIENT span for `GET /inventory` is 600 ms and the inventory SERVER span is 90 ms. List four possible causes of the 510 ms gap and the metric or span event that would confirm each.
+
+## Try it
+
+Open a slow trace in the waterfall and find the span with the most self time, not just the longest bar. Switch from head to tail sampling and check that the error traces you need are still kept.
+
+<Simulator id="observability-lab" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

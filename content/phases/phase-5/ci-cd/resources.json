@@ -1,0 +1,42 @@
+[
+  {
+    "id": "fowler-ci",
+    "title": "Continuous Integration",
+    "author": "Martin Fowler",
+    "kind": "blog",
+    "url": "https://martinfowler.com/articles/continuousIntegration.html",
+    "why": "The standard description of CI as a practice: mainline integration at least daily, self-testing builds, and fixing broken builds immediately.",
+    "topicIds": ["pipeline-stages"],
+    "free": true
+  },
+  {
+    "id": "practical-test-pyramid",
+    "title": "The Practical Test Pyramid",
+    "author": "Ham Vocke (on martinfowler.com)",
+    "kind": "blog",
+    "url": "https://martinfowler.com/articles/practical-test-pyramid.html",
+    "why": "A long, concrete walk through unit, integration, contract and end-to-end tests and how many of each to write.",
+    "topicIds": ["testing-pyramid"],
+    "free": true
+  },
+  {
+    "id": "continuous-delivery-book",
+    "title": "Continuous Delivery",
+    "author": "Jez Humble and David Farley",
+    "kind": "book",
+    "url": "https://continuousdelivery.com/",
+    "why": "The book that defined the deployment pipeline, build-once artifact promotion and the commit stage; the site summarises its principles.",
+    "topicIds": ["pipeline-stages", "artifact-promotion", "rollback"],
+    "free": false
+  },
+  {
+    "id": "slsa-spec",
+    "title": "SLSA: Supply-chain Levels for Software Artifacts",
+    "author": "OpenSSF",
+    "kind": "docs",
+    "url": "https://slsa.dev/",
+    "why": "The framework for build provenance: how to prove a production artifact was built by your pipeline from a given commit.",
+    "topicIds": ["artifact-promotion"],
+    "free": true
+  }
+]

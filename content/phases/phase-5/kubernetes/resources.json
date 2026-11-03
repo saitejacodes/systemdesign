@@ -1,0 +1,42 @@
+[
+  {
+    "id": "k8s-concepts",
+    "title": "Kubernetes documentation: Concepts",
+    "author": "The Kubernetes Authors",
+    "kind": "docs",
+    "url": "https://kubernetes.io/docs/concepts/",
+    "why": "The primary source for pods, Deployments, Services, Ingress and the control plane, including rolling-update and termination behaviour.",
+    "topicIds": ["k8s-architecture", "pods-deployments", "services-ingress"],
+    "free": true
+  },
+  {
+    "id": "k8s-probes",
+    "title": "Configure Liveness, Readiness and Startup Probes",
+    "author": "The Kubernetes Authors",
+    "kind": "docs",
+    "url": "https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/",
+    "why": "Exact probe semantics and defaults, with examples of each probe type.",
+    "topicIds": ["probes"],
+    "free": true
+  },
+  {
+    "id": "k8s-hpa",
+    "title": "Horizontal Pod Autoscaling",
+    "author": "The Kubernetes Authors",
+    "kind": "docs",
+    "url": "https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/",
+    "why": "The scaling algorithm, tolerance, stabilisation windows and how missing or unready pods are handled.",
+    "topicIds": ["hpa"],
+    "free": true
+  },
+  {
+    "id": "borg-omega-k8s",
+    "title": "Borg, Omega, and Kubernetes",
+    "author": "Burns, Grant, Oppenheimer, Brewer and Wilkes (ACM Queue, 2016)",
+    "kind": "paper",
+    "url": "https://queue.acm.org/detail.cfm?id=2898444",
+    "why": "Google's own account of the lessons from Borg that shaped pods, labels, controllers and reconciliation.",
+    "topicIds": ["k8s-architecture", "interview-scope"],
+    "free": true
+  }
+]

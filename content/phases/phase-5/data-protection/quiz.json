@@ -1,0 +1,358 @@
+[
+  {
+    "id": "q1",
+    "type": "scenario",
+    "prompt": "What does the encrypted volume protect against in this incident?",
+    "scenario": "Your Postgres instance runs on an encrypted cloud volume (AES-256, keys in the provider's KMS). An attacker finds a SQL injection bug in the search endpoint and dumps the `users` table, including phone numbers and dates of birth.",
+    "options": [
+      {
+        "id": "a",
+        "text": "It means the dumped rows arrive as ciphertext, so the leak is harmless"
+      },
+      {
+        "id": "b",
+        "text": "Nothing here: the database decrypts transparently for the app's queries"
+      },
+      {
+        "id": "c",
+        "text": "It blocks the query, because the KMS refuses reads from unknown callers"
+      },
+      {
+        "id": "d",
+        "text": "It limits the leak to rows written after the volume was first encrypted"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Volume encryption is decrypted below the database, so any query the app runs, injected or not, sees plaintext. It defends against stolen disks and snapshots. The dump is not ciphertext (a); the KMS is used by the storage layer when the volume is attached, not per query, so it cannot block SQL (c); and encryption state has nothing to do with which rows are exposed (d). Field-level encryption with the key outside the database is what would have helped.",
+    "topicId": "encryption-at-rest",
+    "difficulty": 2
+  },
+  {
+    "id": "q2",
+    "type": "single",
+    "prompt": "Why do systems use envelope encryption instead of sending every record to the KMS `Encrypt` API?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Bulk data is encrypted locally with a data key; only the small wrapped key goes to the KMS"
+      },
+      {
+        "id": "b",
+        "text": "KMS master keys are too weak for bulk data, so a second, stronger cipher layer is added"
+      },
+      {
+        "id": "c",
+        "text": "The KMS stores every ciphertext for you, so envelope encryption is needed to retrieve it"
+      },
+      {
+        "id": "d",
+        "text": "It lets the application export the master key once and then encrypt without any network calls"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Remote KMS calls are size-limited (AWS KMS `Encrypt` takes at most 4 KB), slow and billed per request, so you encrypt data locally with a DEK and only wrap the DEK under the KMS-held KEK. Master keys are not weak (b), the KMS does not store your ciphertext (c), and a defining property of a KMS is that master keys are never exported (d).",
+    "topicId": "envelope-encryption",
+    "difficulty": 1
+  },
+  {
+    "id": "q3",
+    "type": "scenario",
+    "prompt": "What is the least disruptive way to satisfy the auditor?",
+    "scenario": "An auditor asks you to rotate the master key protecting a 2 PB object store that uses envelope encryption, with one wrapped DEK stored beside each object. The DEKs themselves have not been exposed.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Decrypt and re-encrypt all 2 PB under a new DEK per object over a weekend window"
+      },
+      {
+        "id": "b",
+        "text": "Rotate the KEK, and re-wrap the stored DEKs if old key material must be retired"
+      },
+      {
+        "id": "c",
+        "text": "Delete the old KEK right away so that nothing can use the old key material again"
+      },
+      {
+        "id": "d",
+        "text": "Switch the store to disk-level encryption, which does not need key rotation at all"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "KEK rotation means new key material for wrapping; services such as AWS KMS keep old material so old wrapped DEKs still decrypt. If policy requires retiring the old material, you re-wrap each small DEK, never the bulk data. Re-encrypting 2 PB (a) is only needed if DEKs leaked. Deleting the old KEK (c) crypto-shreds every object. Disk encryption (d) still has keys that need rotation and protects against a different threat.",
+    "topicId": "envelope-encryption",
+    "difficulty": 2
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "Roughly what does the read path cost per day in KMS requests, and what is the standard fix?",
+    "scenario": "A service decrypts objects 10,000 times a second, calling KMS `Decrypt` for the wrapped DEK on every read. KMS list price is $0.03 per 10,000 requests.",
+    "options": [
+      {
+        "id": "a",
+        "text": "About $26 a day; nothing to fix, since KMS calls are effectively free at this volume"
+      },
+      {
+        "id": "b",
+        "text": "About $2,592 a day; switch to one DEK for the whole store so one call is enough"
+      },
+      {
+        "id": "c",
+        "text": "About $2,592 a day; cache plaintext DEKs in memory briefly, bounded by age and use"
+      },
+      {
+        "id": "d",
+        "text": "About $259 a day; move decryption into the database so the KMS is bypassed"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "10,000 × 86,400 = 864 million calls a day; ÷ 10,000 × $0.03 = $2,592. A short-lived, bounded DEK cache (as in the AWS Encryption SDK) cuts calls by the hit rate, at the cost of plaintext keys in memory and slower revocation. $26 (a) and $259 (d) are arithmetic slips, and moving decryption into the database defeats the point of keeping keys outside it. One DEK for everything (b) destroys the small blast radius and hits AES-GCM nonce limits.",
+    "topicId": "envelope-encryption",
+    "difficulty": 3
+  },
+  {
+    "id": "q5",
+    "type": "scenario",
+    "prompt": "What should happen first?",
+    "scenario": "At 10:00 an engineer pushed a commit containing the production database password to a public repository. At 10:20 they noticed and force-pushed a commit that removes the file from history.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Nothing more: the force-push removed it from history before anyone could clone it"
+      },
+      {
+        "id": "b",
+        "text": "Make the repository private, since that removes the exposure from forks and caches"
+      },
+      {
+        "id": "c",
+        "text": "Rotate the password now, then check database logs for logins from unknown sources"
+      },
+      {
+        "id": "d",
+        "text": "Open a ticket to move the secret into a secrets manager during the next sprint"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Assume a secret pushed publicly is compromised immediately: scanners watch public pushes continuously, and forks, clones and caches keep the old history. Rotation removes the attacker's access; audit logs tell you whether it was used. Force-pushing (a) and making the repo private (b) don't recall copies already taken. Moving to a secrets manager (d) is the right long-term fix but leaves the live credential valid today.",
+    "topicId": "secrets-management",
+    "difficulty": 1
+  },
+  {
+    "id": "q6",
+    "type": "single",
+    "prompt": "What problem do dynamic secrets (for example Vault's database secrets engine) solve that a stored static password does not?",
+    "options": [
+      {
+        "id": "a",
+        "text": "They encrypt the password with a stronger cipher than the database itself supports"
+      },
+      {
+        "id": "b",
+        "text": "Each requester gets short-lived credentials that expire on their own and are attributable"
+      },
+      {
+        "id": "c",
+        "text": "They remove the need for the service to authenticate to the secrets manager at all"
+      },
+      {
+        "id": "d",
+        "text": "They let many services share one credential, so any rotation needs only a single change"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Dynamic secrets are generated per request with a lease, revoked when the lease ends, and each maps to one requester in the audit log, so a leak is short-lived and traceable. They are not about cipher strength (a). The service still must authenticate, ideally with workload identity (c). Sharing one credential across services (d) is the opposite of what they do.",
+    "topicId": "secrets-management",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "multi",
+    "prompt": "Which statements about Kubernetes Secrets are true by default? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Their values are base64-encoded, which is an encoding, not encryption"
+      },
+      {
+        "id": "b",
+        "text": "They are stored in etcd unencrypted unless API-server encryption is set up"
+      },
+      {
+        "id": "c",
+        "text": "Anyone who can create a pod that mounts a Secret can read its value"
+      },
+      {
+        "id": "d",
+        "text": "They are encrypted with a per-namespace key held in an external KMS"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "Kubernetes Secrets are base64-encoded and stored in etcd in plaintext unless you configure encryption at rest (optionally with a KMS provider). RBAC matters because getting a Secret, or creating a pod that mounts it, reveals it. There is no default per-namespace KMS encryption (d); that requires explicit EncryptionConfiguration.",
+    "topicId": "secrets-management",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "single",
+    "prompt": "A PostgreSQL client connects with `sslmode=require`. What is the remaining risk?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Traffic is encrypted but the server certificate isn't verified, so a man-in-the-middle works"
+      },
+      {
+        "id": "b",
+        "text": "Traffic is only encrypted after login, so the password crosses the network in plaintext"
+      },
+      {
+        "id": "c",
+        "text": "It forces TLS 1.0, which has known weaknesses and is disabled by modern servers"
+      },
+      {
+        "id": "d",
+        "text": "None: `require` both encrypts the connection and checks the server's hostname"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "In libpq, `require` encrypts but does not verify the certificate chain or hostname; `verify-full` does both. Without verification an attacker in the path can present any certificate. Encryption begins before authentication (b), `require` does not pin a protocol version (c), and the claim in (d) describes `verify-full`, not `require`.",
+    "topicId": "encryption-in-transit",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "single",
+    "prompt": "Why is TLS between internal services now the recommended default rather than terminating at the edge?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Internal TLS is needed because load balancers cannot forward encrypted traffic"
+      },
+      {
+        "id": "b",
+        "text": "Being on the internal network grants no trust: an intruder can sniff or spoof it"
+      },
+      {
+        "id": "c",
+        "text": "TLS on internal hops is required to compress payloads sent between microservices"
+      },
+      {
+        "id": "d",
+        "text": "Edge TLS termination is deprecated by RFC 8446 and browsers now block it"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Zero-trust thinking (BeyondCorp, NIST SP 800-207) treats the internal network as hostile: an attacker on one host can read tokens and passwords in plain internal traffic and move laterally. Load balancers can pass TLS through or re-encrypt (a); TLS has nothing to do with compression (c); and edge termination is still normal, it's just not enough on its own (d).",
+    "topicId": "encryption-in-transit",
+    "difficulty": 1
+  },
+  {
+    "id": "q10",
+    "type": "scenario",
+    "prompt": "What is the best review comment?",
+    "scenario": "A pull request copies user records into the analytics warehouse, replacing the email column with `sha256(email)`. The description says: 'emails are hashed, so this data is anonymous and out of GDPR scope'.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Approve: SHA-256 is a one-way function, so the original emails cannot be recovered"
+      },
+      {
+        "id": "b",
+        "text": "Swap SHA-256 for MD5 to keep it shorter, since any hash makes the data anonymous"
+      },
+      {
+        "id": "c",
+        "text": "Unkeyed hashes of guessable emails can be matched; use a keyed HMAC or drop the field"
+      },
+      {
+        "id": "d",
+        "text": "Encrypt the hashes with the warehouse's disk encryption so they become anonymous"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Emails are guessable, so anyone can hash candidate lists and match them; the result is pseudonymised, which GDPR says is still personal data. A keyed HMAC (key in KMS) resists matching, and dropping the field (minimisation) is better still if analytics doesn't need it. One-wayness doesn't help against guessing (a), MD5 is weaker and no more anonymous (b), and disk encryption is transparent to queries (d).",
+    "topicId": "pii-handling",
+    "difficulty": 2
+  },
+  {
+    "id": "q11",
+    "type": "multi",
+    "prompt": "A user asks to be erased, but database backups are immutable for 35 days. Which approaches work? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Encrypt each user's data with a per-user key and delete that key on request"
+      },
+      {
+        "id": "b",
+        "text": "Delete live copies now and let backups age out within the stated retention"
+      },
+      {
+        "id": "c",
+        "text": "Edit the immutable backup files in place to remove the user's rows directly"
+      },
+      {
+        "id": "d",
+        "text": "Keep the data but mark the user's row as deleted with a boolean flag column"
+      }
+    ],
+    "correct": [
+      "a",
+      "b"
+    ],
+    "explanation": "Crypto-shredding with per-user keys makes all copies, including backups, unreadable at once; short, documented backup retention combined with deleting live copies (and not restoring the user's data from backup) is the other common answer. Immutable backups can't be edited (c), which is the whole point of them. A soft-delete flag (d) leaves the personal data stored and readable.",
+    "topicId": "pii-handling",
+    "difficulty": 3
+  },
+  {
+    "id": "q12",
+    "type": "single",
+    "prompt": "How does tokenization reduce PCI DSS scope for card numbers?",
+    "options": [
+      {
+        "id": "a",
+        "text": "It encrypts card numbers with a key every service holds, so all of them stay compliant"
+      },
+      {
+        "id": "b",
+        "text": "Other systems store random tokens; only the vault and its callers see real card numbers"
+      },
+      {
+        "id": "c",
+        "text": "It hashes card numbers, which PCI DSS treats as deleted data under its retention rules"
+      },
+      {
+        "id": "d",
+        "text": "It compresses card data so that it falls below the size threshold that PCI DSS audits"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Tokens have no mathematical relationship to the card number, so systems that only hold tokens hold nothing worth stealing and fall out of scope; the vault is the small, heavily controlled exception. Sharing one key with every service (a) keeps them all in scope. Hashing is not deletion (c), and PCI DSS has no size threshold (d).",
+    "topicId": "pii-handling",
+    "difficulty": 1
+  }
+]

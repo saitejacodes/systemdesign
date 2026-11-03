@@ -1,0 +1,211 @@
+## Why it matters
+
+Most data breaches are not cryptography being broken. They are keys, passwords and plaintext copies left where an attacker could reach them. In 2016 attackers found cloud credentials in a private GitHub repository used by Uber engineers, used them to read an Amazon S3 datastore, and took personal data on about 57 million riders and drivers (the US Federal Trade Commission's complaint describes it). In 2013 Adobe lost a database in which tens of millions of passwords had been *encrypted* with one 3DES key in ECB mode instead of hashed, next to plaintext password hints, so identical passwords produced identical ciphertext and the hints gave many of them away. Both companies "used encryption". Neither had protected the data. This section is about the difference: what encryption in transit and at rest actually defend against, how keys are organised so one leak doesn't expose everything, where secrets should live, and how to handle personal data so that the most damaging copy is the one you never stored.
+
+<Callout type="analogy" title="The hotel with a key cabinet in the basement">
+Think of a hotel. Every guest's valuables go in their own little lockbox (data encrypted with its own data key). The lockbox keys are not hung by the front desk: each one is sealed in an envelope that only the manager's master key can open (the data key wrapped by a key-encryption key). The master key never leaves a steel cabinet bolted to the basement floor, and the cabinet won't hand it out: you pass envelopes through a slot and it passes opened ones back, writing every visit in a log book (a KMS backed by hardware). A thief who steals a lockbox gets a locked box. A thief who steals the envelope box gets sealed envelopes. To get anything they must persuade the cabinet, which checks their badge and logs the attempt. Where it breaks down: in a real system the "opened envelope" (the plaintext data key) sits in your server's memory while it works, so a thief who controls the running server can read what that server can read. Encryption protects data from people who are *not* your application, never from your application itself.
+</Callout>
+
+## Encryption in transit
+
+<DepthStamp depth="deep" />
+
+Encryption in transit means every hop that carries data uses <Term slug="tls">TLS</Term> (or an equivalent such as an IPsec or WireGuard tunnel), so anyone on the network path sees only ciphertext and cannot modify it undetected. The handshake and certificates are covered in the TLS section. Here the questions are architectural: **which hops**, and **who holds the keys**.
+
+The old model encrypted the public hop (browser to load balancer), did <Term slug="tls-termination">TLS termination</Term> at the edge, and sent plain HTTP inside the "trusted" data centre. That model is now considered unsafe for three reasons:
+
+- **The network is not trusted.** Google's internal traffic was reported in 2013 to have been tapped between its own data centres, which led Google to encrypt those links. Cloud networks are shared infrastructure, and an attacker who gets onto one host can often sniff or spoof traffic to its neighbours.
+- **Lateral movement.** Once inside, an attacker who can read service-to-service traffic collects tokens and passwords as they fly past.
+- **Zero trust.** Google's BeyondCorp papers and NIST SP 800-207 (Zero Trust Architecture) argue that network location should grant no trust at all, and enterprise customers' security reviews increasingly ask whether internal hops carrying sensitive data are encrypted.
+
+The modern default is **TLS on every hop**, and <Term slug="mtls">mutual TLS (mTLS)</Term> between services so each side proves its identity, not just the server. A service mesh (Istio, Linkerd) or SPIFFE-issued workload certificates make this practical by issuing short-lived certificates automatically, so nobody hand-manages hundreds of keys.
+
+Settings that matter in practice:
+
+| Setting | Recommended | Why |
+|---|---|---|
+| Protocol | TLS 1.3 (RFC 8446), TLS 1.2 as the floor | 1.3 removes legacy ciphers and always has <Term slug="forward-secrecy">forward secrecy</Term> |
+| Cipher suites (1.2) | ECDHE with AES-GCM or ChaCha20-Poly1305 | Authenticated encryption plus forward secrecy |
+| HSTS (RFC 6797) | `Strict-Transport-Security: max-age=31536000; includeSubDomains` | Browsers refuse plain HTTP to your domain, defeating downgrade to `http://` |
+| Certificate lifetime | Short and automated (ACME, mesh-issued) | A leaked key is useful only until expiry; automation prevents outage-by-expiry |
+| Database and cache clients | TLS with certificate verification on | Many drivers default to "encrypt but don't verify", which permits man-in-the-middle |
+
+That last row is the classic silent failure: a PostgreSQL client with `sslmode=require` encrypts but does **not** verify the server's certificate, so an attacker in the path can present any certificate. `sslmode=verify-full` checks both the chain and the hostname.
+
+**Cost.** TLS 1.3 adds one round trip to a new connection and a little CPU. The real cost is operational: issuing, rotating and monitoring certificates, which is why automation is part of the defence.
+
+## Encryption at rest and its threat model
+
+<DepthStamp depth="deep" />
+
+Encryption at rest means data is stored as ciphertext on disk, in backups and in object storage. The crucial question, which interviewers love, is **"encrypted against whom?"** The answer depends on the layer at which you encrypt, because each layer decrypts transparently for everything above it.
+
+| Layer | Example | Protects against | Does NOT protect against |
+|---|---|---|---|
+| Disk or volume | AWS EBS encryption, LUKS, a cloud provider's default storage encryption | Stolen or improperly wiped physical disks; snapshots copied to the wrong account (if the key is not shared) | Anyone who can query the running database, SQL injection, a compromised app server, a malicious DBA |
+| Database (TDE) | Transparent data encryption in SQL Server, Oracle; encrypted RDS instances | Stolen data files and backup files | The same list: the database decrypts for any authenticated query |
+| Application or field level | The app encrypts `ssn` before `INSERT`, using a key from KMS | DBAs, database backups, SQL injection that dumps tables, analytics copies | A compromised app server with access to the key; it can decrypt everything it is allowed to |
+
+Disk encryption is cheap and often on by default, so always use it, but it mostly defends against physical theft. A breach through the application sees plaintext. **Field-level encryption** is what actually shrinks the blast radius: an attacker who dumps the `users` table gets ciphertext for the sensitive columns, and must also compromise the key service, which logs every use.
+
+Field-level encryption has real costs:
+
+- **You can't query it.** `WHERE ssn = ?` on randomised ciphertext doesn't work, nor do range queries or indexes. Options are a separate keyed hash (an HMAC of the value, stored alongside, for exact-match lookups) or deterministic encryption (same input gives same ciphertext). Both leak equality: an attacker can see which rows share a value. SQL Server's Always Encrypted exposes exactly this choice as "deterministic" versus "randomized" encryption.
+- **Key access on every read.** Each decrypt needs the data key, which is why envelope encryption and key caching (next topic) exist.
+- **Use authenticated encryption.** AES-GCM or ChaCha20-Poly1305, never ECB (Adobe's mistake) or unauthenticated CBC. With AES-GCM the 96-bit nonce must never repeat under the same key; NIST SP 800-38D limits random nonces to 2³² encryptions per key, which is another reason to use many data keys rather than one.
+
+**Passwords are not encrypted at all.** They are hashed with a slow, salted password-hashing function (OWASP's Password Storage Cheat Sheet recommends Argon2id, then scrypt, bcrypt or PBKDF2), so even you cannot recover them. Encryption is reversible by design; for passwords reversibility is the bug.
+
+## Key management and envelope encryption
+
+<DepthStamp depth="deep" />
+
+The hard part of encryption is not the algorithm. It is the key: where it lives, who can use it, how it is rotated, and what happens when it leaks. A <Term slug="kms">key management service (KMS)</Term> such as AWS KMS, Google Cloud KMS or Azure Key Vault holds master keys inside hardware security modules (HSMs, tamper-resistant devices validated under FIPS 140) and **never exports them**. You send data to the key; the key never comes to you. Every use is checked against an access policy and written to an audit log (CloudTrail in AWS).
+
+But you can't send terabytes through a remote API. AWS KMS's `Encrypt` call, for example, accepts at most 4,096 bytes of plaintext. So everyone uses <Term slug="envelope-encryption">envelope encryption</Term>:
+
+1. Generate a fresh <Term slug="data-encryption-key">data encryption key (DEK)</Term>, for example with AWS KMS `GenerateDataKey`, which returns the DEK twice: once in plaintext and once encrypted ("wrapped") under a <Term slug="key-encryption-key">key-encryption key (KEK)</Term> that stays inside the KMS.
+2. Encrypt the data locally with the plaintext DEK (AES-256-GCM). This is fast and has no size limit.
+3. Store the **wrapped DEK next to the ciphertext**, and erase the plaintext DEK from memory.
+4. To read: send the wrapped DEK (a few hundred bytes) to the KMS `Decrypt` call, get the plaintext DEK back if your policy allows, decrypt locally.
+
+<Figure caption="FIG. 8.1 · ENVELOPE ENCRYPTION · ONLY THE SMALL KEY TRAVELS TO THE KMS">
+  <Diagram label="Sequence diagram: on write the app asks KMS for a data key, gets plaintext and wrapped copies, encrypts the object locally and stores ciphertext plus wrapped key. On read it sends only the wrapped key to KMS, gets the plaintext data key, and decrypts locally." chart={`sequenceDiagram
+    participant A as App server
+    participant K as KMS (KEK in HSM)
+    participant S as Object store
+    Note over A,S: Write
+    A->>K: GenerateDataKey(KEK id)
+    K-->>A: DEK plaintext + DEK wrapped under KEK
+    A->>A: AES-GCM encrypt object with DEK, then wipe DEK
+    A->>S: PUT ciphertext + wrapped DEK
+    Note over A,S: Read
+    A->>S: GET object
+    S-->>A: ciphertext + wrapped DEK
+    A->>K: Decrypt(wrapped DEK) policy check, audit log
+    K-->>A: DEK plaintext
+    A->>A: AES-GCM decrypt locally`} />
+</Figure>
+
+*Envelope encryption: bulk data never leaves your service; only a small wrapped key goes to the KMS, which can refuse and always logs.*
+
+This hierarchy buys four things:
+
+- **Rotation is cheap.** Rotating the KEK means new DEKs are wrapped with new key material; old wrapped DEKs still decrypt because AWS KMS, for example, keeps previous key material under the same key ID. You never re-encrypt petabytes to rotate the master key. If you need old data under the new KEK, you **re-wrap** the DEKs (a few hundred bytes each), not the data.
+- **Blast radius is small.** One leaked DEK exposes one object or one tenant, not the whole store.
+- **Access is centralised and audited.** Revoking a role's permission on the KEK instantly stops it decrypting anything, everywhere.
+- <Term slug="crypto-shredding">Crypto-shredding</Term>: give each user or tenant their own key; deleting that key makes all their ciphertext, including copies in backups you can't edit, permanently unreadable. It is the practical way to honour deletion requests against <Term slug="immutable-backup">immutable backups</Term>.
+
+### Worked example: what per-object keys cost
+
+A document service stores 50 million objects. It handles **2,000 writes/s** and **20,000 reads/s**, using a fresh DEK per object and calling KMS on every operation. Using AWS KMS's published list price of $0.03 per 10,000 symmetric requests (check the current pricing page; it changes):
+
+- Writes: 2,000 × 86,400 s = 172.8 million `GenerateDataKey` calls a day → 17,280 × $0.03 ≈ **$518/day**.
+- Reads: 20,000 × 86,400 = 1.728 billion `Decrypt` calls a day → ≈ **$5,184/day**, about $155,000 a month.
+- Latency: every read waits on a network call to KMS (typically single-digit milliseconds within a region) and the 20,000/s rate may exceed the account's per-region request quota, so requests get throttled.
+
+The fix is **caching plaintext DEKs in memory** for a short time, keyed by the wrapped DEK. If 95% of reads hit a 5-minute cache, KMS sees 1,000 decrypts/s instead of 20,000: **≈ $260/day**, inside quota, with lower latency. The AWS Encryption SDK has this built in (its "data key caching" with limits on age, bytes and messages per key). The price: a plaintext key sits in memory for up to 5 minutes, and a KMS revocation takes up to 5 minutes to bite.
+
+A middle ground is **one DEK per tenant per day**: small blast radius, few KMS calls, and per-tenant crypto-shredding still works.
+
+## Secrets management
+
+<DepthStamp depth="tradeoffs" />
+
+A secret is any credential that grants access: database passwords, API keys, signing keys, OAuth client secrets, TLS private keys. The failure mode is **secret sprawl**: copies in Git history, CI variables, wiki pages, Slack messages, laptop `.env` files, container images and crash dumps, each one a way in, and nobody knows how many exist.
+
+### Failure timeline: a password in a commit
+
+An illustrative but very common sequence:
+
+| Time | Event |
+|---|---|
+| 10:00 | An engineer commits `config/prod.env`, including the production database password, to a repository that is (or later becomes) public |
+| 10:00+ | Automated scanners that watch public GitHub pushes see the commit. Attackers run these scanners continuously; assume the secret is compromised the moment it is pushed |
+| 10:20 | The engineer notices and force-pushes a commit that deletes the file |
+| 10:20 | The secret is still in forks, clones, CI caches and the history of anyone who pulled. Deleting it changed nothing |
+| 10:45 | Correct response: **rotate the credential first**, then check database audit logs for logins from unknown addresses, then clean history |
+
+GitHub's secret scanning recognises many providers' key formats, notifies partners such as AWS, and can block such pushes. Useful, but a backstop, not a design.
+
+### Where secrets should live
+
+A **secrets manager** (HashiCorp Vault, AWS Secrets Manager, Google Secret Manager, Azure Key Vault) stores secrets encrypted (with envelope encryption under a KMS key), controls access per identity, audits every read and supports rotation. The application fetches secrets at start-up or on demand, rather than having them baked into code or images.
+
+Better still are <Term slug="dynamic-secret">dynamic secrets</Term>: Vault's database secrets engine, for example, creates a fresh database user with a lease (say one hour) when a service asks, and drops that user when the lease expires. A leaked credential is useless after an hour, and every credential maps to exactly one requester in the audit log.
+
+That leaves **secret zero**: how does the service prove who it is to the secrets manager without... a secret? The modern answer is **workload identity**: the platform vouches for the workload. An EC2 instance or EKS pod gets an IAM role; a Kubernetes service account gets a projected, short-lived token; SPIFFE issues a workload certificate. The service authenticates with that identity, and no long-lived bootstrap secret exists to leak.
+
+**Environment variables: the honest disagreement.** The Twelve-Factor App says store config, including credentials, in environment variables, and that is still the most portable mechanism. Critics point out that environment variables are inherited by every child process, often appear in crash reports and debug endpoints, and can be read from `/proc/<pid>/environ` by anyone with sufficient access on the host. A reasonable middle ground: inject secrets at runtime (from a secrets manager, as env vars or a mounted file), never bake them into images, scrub them from error reporting, and prefer short-lived credentials so a leak expires quickly.
+
+**Kubernetes Secrets are not encrypted by default.** They are base64-encoded (which is encoding, not encryption) and stored in etcd in plaintext unless you configure encryption at rest for the API server, ideally with a KMS provider. Restrict who can `get` Secrets with RBAC, because anyone who can read them, or create a pod that mounts them, has them.
+
+## Handling PII
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="pii">Personally identifiable information (PII)</Term> is any data that identifies a person directly (name, email, phone, government ID) or in combination (date of birth plus postcode plus gender narrows most people to a handful). The EU's GDPR uses the broader term "personal data", and fines for the most serious breaches reach €20 million or 4% of worldwide annual turnover, whichever is higher. The best protection is engineering discipline, applied in this order:
+
+**1. Don't collect it (minimisation).** GDPR Article 5 makes data minimisation a principle. Every field you don't store is a field you can't leak, don't need to encrypt and never have to delete. Ask "what decision does this field drive?" before adding it.
+
+**2. Classify it.** Label fields as public, internal, confidential or restricted (government IDs, card numbers, health data), and attach rules to each class: who can read it, whether it is encrypted at field level, whether it may enter logs or analytics, and how long it is kept.
+
+**3. Isolate the most sensitive data.** <Term slug="data-tokenization">Tokenization</Term> replaces a sensitive value with a random token; the real value lives only in a small, heavily guarded token vault. The orders database, the analytics warehouse and the logs hold `tok_8f3a...`, which is worthless if stolen. This is how card payments shrink PCI DSS scope: only the vault and the services that call it handle real card numbers. Unlike encryption, the token has no mathematical relationship to the value, so there is no key to steal; the cost is a lookup service on the critical path that must be highly available.
+
+**4. Understand pseudonymisation versus anonymisation.** <Term slug="pseudonymization">Pseudonymisation</Term> replaces identifiers with stand-ins that can be linked back with extra information kept separately. GDPR (Recital 26) is explicit that pseudonymised data is **still personal data**. Truly anonymous data is out of scope, but anonymisation is much harder than it looks. A plain SHA-256 of an email address is not anonymous: emails are guessable, so anyone can hash a list of candidates and match them. Use a keyed HMAC (with the key in KMS) if you need stable pseudonyms.
+
+**5. Keep it out of logs.** Logs are copied to more systems, with weaker access controls and longer retention, than any database. Redact at the source with structured logging (log `user_id`, not email; mask card numbers to the last four digits), and add a scrubbing stage in the pipeline as a safety net.
+
+**6. Plan deletion from day one.** A right-to-erasure request (GDPR Article 17) has to reach the primary database, replicas, caches, search indexes, the warehouse, event streams, logs and backups. Keep a map of where each PII class flows. For data you can't rewrite (backups, append-only event logs), use crypto-shredding with per-user keys, or set retention short enough that it ages out within the time you've committed to.
+
+<TradeoffBox title="Data protection choices" items={[
+  { gain: "Disk or volume encryption: free, transparent, satisfies auditors", cost: "Protects only against physical theft; any query through the app sees plaintext" },
+  { gain: "Field-level encryption: a table dump yields ciphertext", cost: "No range queries or ordinary indexes; every read needs key access" },
+  { gain: "Per-object data keys: tiny blast radius, easy crypto-shredding", cost: "KMS calls and cost scale with traffic unless you cache keys" },
+  { gain: "Cached data keys: cheap and fast", cost: "Plaintext keys in memory; revocation is delayed by the cache lifetime" },
+  { gain: "Dynamic secrets: leaks expire, every credential is attributable", cost: "The secrets manager becomes a critical dependency for start-up" },
+  { gain: "Tokenization: most systems never touch the real value", cost: "A highly available vault on the critical path, and lookups add latency" }
+]} />
+
+<NotWhenBox title="When not to reach for the heavy tools" items={[
+  "Field-level encryption for data that isn't sensitive: you lose querying for no gain.",
+  "Per-object KMS calls at high request rates without a data key cache: you pay for it in money, latency and throttling.",
+  "Your own crypto or key storage: use a KMS and a vetted library (AWS Encryption SDK, Google Tink, libsodium) instead.",
+  "Tokenization for data you never need to recover: if nobody needs the original, don't store it at all."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Our database is encrypted at rest, so a SQL injection can't leak data." right="Disk and TDE encryption decrypt transparently for every authenticated query. Injection runs as your app and sees plaintext. Only field-level encryption, with the key outside the database, helps here." />
+
+<Misconception wrong="Hashing an email address anonymises it." right="Emails are guessable, so an unkeyed hash can be reversed by hashing candidate lists. It's pseudonymisation at best, and still personal data under GDPR. Use a keyed HMAC if you need stable pseudonyms." />
+
+<Misconception wrong="Rotating the master key means re-encrypting all the data." right="With envelope encryption you rotate the KEK and, if needed, re-wrap the small DEKs. Bulk data is re-encrypted only if a DEK itself is compromised." />
+
+<Misconception wrong="Kubernetes Secrets are encrypted." right="By default they are base64-encoded and stored in etcd in plaintext. Enable API-server encryption at rest (ideally with a KMS provider) and lock down RBAC." />
+
+## Interview angle
+
+<InterviewAngle title="Data protection" questions={[
+  "You say the data is encrypted at rest. Against which attacker, exactly?",
+  "Why not just call KMS to encrypt every record? What does envelope encryption buy you?",
+  "How would you rotate the master key for a 2 PB object store without downtime?",
+  "A user asks to be deleted, but your backups are immutable for 35 days. What do you do?",
+  "How does a new service get its database password without a secret baked into the image?"
+]}>
+Security usually appears as a deep-dive in a design interview: "how do you protect this PII?" Strong answers name the threat first, then the layer that defends against it. Say TLS on every hop with mTLS between services; disk encryption as a baseline and field-level encryption for the restricted columns; envelope encryption with a KMS-held KEK, per-tenant or per-object DEKs, and a bounded DEK cache (do the cost arithmetic); secrets from a secrets manager via workload identity, preferably dynamic; and PII minimised, tokenized or crypto-shreddable, and kept out of logs. For rotation, explain that KEK rotation re-wraps keys rather than re-encrypting data. For deletion against immutable backups, answer crypto-shredding with per-user keys. The staff-level signal is saying what each control does *not* protect against and what it costs.
+</InterviewAngle>
+
+## Practice
+
+1. A payments service decrypts a card token mapping 8,000 times a second. With per-request KMS calls at $0.03 per 10,000 requests, what is the daily cost? What DEK cache hit rate gets it under $50 a day, and how long does a revoked role keep working with a 2-minute cache?
+2. Draw the key hierarchy for a multi-tenant SaaS where any tenant can demand deletion of all their data, including from 30-day backups. Where do the KEK, the tenant keys and the wrapped DEKs live?
+3. A teammate wants to store user emails as SHA-256 hashes in the analytics warehouse "so it's anonymous". Write a short review comment: what is wrong, and what would you do instead?
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

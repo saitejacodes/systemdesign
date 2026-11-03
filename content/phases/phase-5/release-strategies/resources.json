@@ -1,0 +1,42 @@
+[
+  {
+    "id": "hodgson-toggles",
+    "title": "Feature Toggles (aka Feature Flags)",
+    "author": "Pete Hodgson (on martinfowler.com)",
+    "kind": "blog",
+    "url": "https://martinfowler.com/articles/feature-toggles.html",
+    "why": "The four toggle categories, how long each should live, and how to keep flags from becoming debt.",
+    "topicIds": ["feature-flags", "dark-launches"],
+    "free": true
+  },
+  {
+    "id": "fowler-canary",
+    "title": "CanaryRelease",
+    "author": "Danilo Sato (on martinfowler.com)",
+    "kind": "blog",
+    "url": "https://martinfowler.com/bliki/CanaryRelease.html",
+    "why": "The concise definition of a canary release, with how it relates to blue-green and feature flags.",
+    "topicIds": ["canary", "blue-green"],
+    "free": true
+  },
+  {
+    "id": "fowler-parallel-change",
+    "title": "ParallelChange",
+    "author": "Danilo Sato (on martinfowler.com)",
+    "kind": "blog",
+    "url": "https://martinfowler.com/bliki/ParallelChange.html",
+    "why": "The expand, migrate, contract pattern for backward-incompatible changes to interfaces and schemas.",
+    "topicIds": ["zero-downtime-migrations"],
+    "free": true
+  },
+  {
+    "id": "k8s-deployments",
+    "title": "Deployments",
+    "author": "Kubernetes documentation",
+    "kind": "docs",
+    "url": "https://kubernetes.io/docs/concepts/workloads/controllers/deployment/",
+    "why": "The exact semantics of RollingUpdate, maxSurge, maxUnavailable, progress deadlines and rollout undo.",
+    "topicIds": ["rolling"],
+    "free": true
+  }
+]

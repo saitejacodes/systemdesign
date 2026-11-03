@@ -1,0 +1,215 @@
+## Why it matters
+
+Authentication tells you who is calling. Access control decides what they may touch, and it is where most real damage is done. In the OWASP Top 10 for 2021, *Broken Access Control* moved to the number one spot. The Capital One breach disclosed in July 2019 is the textbook case: an attacker used a server-side request forgery flaw in a misconfigured web application firewall to obtain the temporary credentials of the IAM role attached to that server, and the role was allowed to list and read far more S3 data than a firewall ever needed. Data on roughly 100 million people in the US and 6 million in Canada was taken. The initial bug got the attacker in; excessive privilege decided how much they could carry out. This section covers how to model permissions (RBAC, ABAC and relationship-based models), how to keep them small, and how services prove *their* identity to each other without long-lived secrets.
+
+<Callout type="analogy" title="The hotel key card">
+A hotel key card does not know your name. It knows *rules*: floor 7, room 712, the gym, until 11:00 on Sunday. Housekeeping cards open every room on one floor during working hours; the manager's card opens everything. That is role-based access: rooms are grouped, and cards are grouped. Now the hotel wants "guests on the loyalty programme get the lounge, but only during their stay, and only if they're over 18." Suddenly the card can't express it with groups alone, and the lock needs to check attributes: dates, age, tier. That is attribute-based access. And the best hotels never hand housekeeping the master key "just in case": that is least privilege. The analogy breaks at the end: a lost hotel card is cancelled at the front desk within minutes, while a leaked cloud access key keeps working until someone notices, which is why the service-identity part of this section is about making credentials expire on their own.
+</Callout>
+
+Every access decision has the same shape: may **subject** (a user or a service) perform **action** (read, delete, approve) on **resource** (invoice 9001, the `payments` bucket) in this **context** (time, network, device)? The models below differ in what information they use to answer it.
+
+## RBAC: role-based access control
+
+<DepthStamp depth="deep" />
+
+<Term slug="rbac">Role-based access control</Term> (RBAC) puts a layer between users and permissions. Permissions (action + resource type) are granted to **roles** such as `viewer`, `editor`, `billing-admin`; users are assigned roles. The NIST model (Ferraiolo, Kuhn and Sandhu, later the ANSI INCITS 359 standard) adds two important extensions: **role hierarchies** (an `admin` inherits everything an `editor` can do) and **separation of duty** constraints (the person who creates a payment cannot also hold the role that approves it).
+
+Kubernetes is a clean real example. A `Role` lists allowed verbs on resources in a namespace, and a `RoleBinding` attaches it to users, groups or service accounts:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: { namespace: payments, name: pod-reader }
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: { namespace: payments, name: oncall-reads-pods }
+subjects:
+  - kind: Group
+    name: payments-oncall
+    apiGroup: rbac.authorization.k8s.io
+roleRef: { kind: Role, name: pod-reader, apiGroup: rbac.authorization.k8s.io }
+```
+
+Kubernetes RBAC is purely additive: there are no deny rules, and anything not granted is refused. That default-deny stance is the right one for any system.
+
+**Why teams like RBAC.** It is easy to audit ("who has `billing-admin`?"), it matches how organisations think (job functions), and checks are cheap: look up the user's roles once, cache them, and test set membership.
+
+**How it fails: role explosion.** RBAC has no way to say "editors, but only for documents in their own department" except by making a role per department. Worked numbers: 6 departments × 4 job levels × 3 regions is already **72 roles**, and adding "contractor vs employee" doubles it to **144**. Each new rule multiplies rather than adds. Teams end up with thousands of roles nobody can explain, and people accumulate them as they change jobs (*privilege creep*). RBAC also cannot answer "may Alice edit *this* document?" when the answer depends on who owns it. For that you need data about the resource.
+
+## ABAC and relationship-based access
+
+<DepthStamp depth="tradeoffs" />
+
+<Term slug="abac">Attribute-based access control</Term> (ABAC), as defined in NIST SP 800-162, grants or denies a request based on attributes of the **subject** (department, clearance, employment type), the **object** (owner, classification, region), the **environment** (time, device posture, network), and a set of **policies** over them. The 72 roles above collapse into one rule:
+
+```text
+allow edit on document
+  if subject.department == resource.department
+  and subject.level >= resource.min_level
+  and subject.region == resource.region
+```
+
+AWS IAM supports this style directly: a policy can compare the caller's tag with the resource's tag (`aws:PrincipalTag/team` against `aws:ResourceTag/team`), so one policy covers every team.
+
+NIST SP 800-162 also names the moving parts, which are worth knowing because every policy engine uses them:
+
+| Component | Job | Example |
+|---|---|---|
+| PEP (enforcement point) | Intercepts the request and enforces the answer | API gateway, service middleware, sidecar |
+| <Term slug="policy-decision-point">PDP (decision point)</Term> | Evaluates policy and returns allow or deny | Open Policy Agent (OPA), AWS Cedar, a central authz service |
+| PIP (information point) | Supplies attributes the policy needs | User directory, resource metadata store |
+| PAP (administration point) | Where policies are written and versioned | Git repo of policy files |
+
+**Relationship-based access (ReBAC).** Many products' permissions are really a graph: Alice is a member of team X, team X is an editor of folder F, document D is in folder F, so Alice may edit D. Google's Zanzibar paper (USENIX ATC 2019) describes the global system behind permissions in Drive, Calendar, YouTube and other products, which stores relationships as tuples like `doc:D#editor@team:X#member` and answers "check" queries by walking them. Open-source systems inspired by it include OpenFGA and SpiceDB. ReBAC is excellent for sharing-heavy products ("anyone with the link", "shared with my team") and overkill for an internal tool with four job roles.
+
+| | RBAC | ABAC | ReBAC |
+|---|---|---|---|
+| Decides on | Roles assigned to users | Attributes and policy rules | Relationships in a graph |
+| Good for | Job functions, admin consoles | Context rules: region, time, classification | Sharing, ownership, nested groups |
+| Audit "who can access X?" | Easy | Hard: must evaluate policies against all subjects | Moderate: reverse graph walk |
+| Typical failure | Role explosion, privilege creep | Unreadable policies, missing or stale attributes | Graph consistency and check latency |
+
+Most real systems are hybrids: RBAC for coarse "can use the billing console", ABAC or ReBAC for "this invoice, this region". The field doesn't agree on a single winner, and it shouldn't: the right model is the one whose failure mode you can afford.
+
+**Where to put the decision.** Calling a central PDP costs a network round trip on every check: three checks at 2 ms each add 6 ms to a request. Running the PDP as a library or sidecar next to the service (OPA's common deployment) makes checks sub-millisecond but means pushing policies and attribute data to every instance, so a revoked permission takes as long as that push. The same freshness-versus-latency trade from token revocation appears again.
+
+## Least privilege
+
+<DepthStamp depth="deep" />
+
+<Term slug="least-privilege">Least privilege</Term> is the principle, stated by Saltzer and Schroeder in their 1975 paper *The Protection of Information in Computer Systems*, that every program and user should run with the smallest set of privileges needed for the job. It is the single most effective way to shrink the **blast radius** of any bug, because it limits what an attacker can do *after* the first mistake.
+
+**Failure timeline: an over-privileged role**, modelled on the public accounts of the Capital One incident
+
+| Step | What happened | What least privilege would have changed |
+|---|---|---|
+| 1 | A web application firewall on EC2 is misconfigured and can be made to send requests on an attacker's behalf (SSRF) | Nothing yet: the bug exists either way |
+| 2 | The attacker makes it request the EC2 instance metadata service at 169.254.169.254 and receives temporary credentials for the attached IAM role | IMDSv2's session-token requirement makes this simple SSRF much harder (covered in common attacks) |
+| 3 | With those credentials, the attacker lists S3 buckets | A role scoped to the one bucket the firewall needs returns AccessDenied |
+| 4 | The attacker syncs bucket contents out | No `s3:GetObject` on customer data means nothing to copy |
+| 5 | Months later, the data is reported and found | Alerting on unusual `ListBuckets` from a role that never lists would have flagged step 3 |
+
+The lesson is not "never have bugs". It is that the role turned a bug in a perimeter device into a mass data theft.
+
+### Least privilege in practice
+
+- **Default deny, explicit allow.** In AWS IAM, a request is denied unless a policy allows it, and an explicit `Deny` anywhere overrides every `Allow`. Kubernetes RBAC refuses anything not granted. Build your own systems the same way.
+- **Scope every grant on three axes:** actions (`s3:GetObject`, not `s3:*`), resources (one bucket ARN, not `*`), and conditions (from this VPC, with MFA, before this date).
+- **Use what you can measure.** Grant broadly in a sandbox, then trim to what is actually used. AWS IAM Access Analyzer can generate a policy from CloudTrail activity and report unused permissions; the same idea works with any audit log.
+- **Just-in-time elevation.** Engineers hold read-only access by default and request time-boxed admin (say, 1 hour, with approval and logging) when on call.
+- **Check object ownership, not only role.** The most common web flaw is not a missing role check but a missing *ownership* check: `GET /invoices/9001` returns invoice 9001 to any logged-in user. OWASP's API Security Top 10 (2023) lists this as API1, Broken Object Level Authorization (often called IDOR, insecure direct object reference). Every handler that takes an ID must verify the caller may see *that* object.
+
+**Blast radius, in numbers.** Suppose a long-lived access key for a CI deploy user is leaked in a public repository. If it has `AdministratorAccess` in the production account, the blast radius is everything. If it can only push images to one container registry, the attacker can at worst push a bad image, which signed-image checks at deploy can catch. Same leak, completely different incident.
+
+**The cost.** Tight permissions break things. A new feature needs a permission nobody granted, and the deploy fails at 17:00 on a Friday. Teams that are punished for this widen grants to `*` and never narrow them again. The staff-level answer is to make least privilege cheap: policies in code review, generated from observed use, with fast self-service requests, rather than relying on people to get it right by hand.
+
+## Service-to-service authentication
+
+<DepthStamp depth="deep" />
+
+Inside a data centre it is tempting to trust anything on the internal network. Google's BeyondCorp work, published from 2014, made the opposite case, now usually called **zero trust**: the network location of a caller is not an identity. An attacker who lands one compromised pod is "on the internal network" too. So each service should prove who it is, and each receiver should authorize the caller, on every call.
+
+### mTLS
+
+In ordinary TLS only the server presents a certificate. With <Term slug="mtls">mTLS</Term> both sides do, so the payments service knows the caller really is the orders service and not just something that reached its port. mTLS gives you encryption and authenticated identity in one handshake. The hard parts are operational: issuing a certificate to every instance, rotating them before they expire, and agreeing on what the identity inside a certificate *means*.
+
+### Workload identity and SPIFFE
+
+<Term slug="workload-identity">Workload identity</Term> means a running service gets a credential because of *what it is*, attested by the platform it runs on, instead of a secret someone copied into its config. Examples: an AWS IAM role attached to an EC2 instance or a Kubernetes service account (IRSA or EKS Pod Identity), GKE Workload Identity, and Kubernetes' own projected service account tokens, which are bound to an audience and expire.
+
+<Term slug="spiffe">SPIFFE</Term> (Secure Production Identity Framework for Everyone, a CNCF project) standardises this across platforms. A workload's identity is a URI such as `spiffe://prod.example.com/ns/payments/sa/api`. The credential proving it is an **SVID**, either an X.509 certificate carrying the ID in its URI SAN field (used for mTLS) or a JWT-SVID. SPIRE, the reference implementation, attests a workload (which node, which Kubernetes service account, which container image) before issuing a short-lived SVID, and rotates it automatically. Istio uses SPIFFE-format identities for its sidecars in the same way, so a <Term slug="service-mesh">service mesh</Term> can enforce "only `orders` may call `payments` `POST /charges`" without any application code.
+
+<Figure caption="FIG. 7.1 · WORKLOAD IDENTITY · ATTEST, ISSUE, CALL, AUTHORIZE">
+  <Diagram label="The orders workload is attested by the local identity agent and receives a short-lived certificate containing its SPIFFE ID. It opens an mTLS connection to payments, which verifies the certificate chain, reads the SPIFFE ID and checks policy before serving the request." chart={`sequenceDiagram
+    participant O as orders workload
+    participant A as Identity agent on node
+    participant S as Identity server
+    participant P as payments service
+    O->>A: request identity over local socket
+    A->>A: attest caller: node, namespace, service account
+    A->>S: sign SVID for spiffe://prod/ns/orders/sa/api
+    S-->>A: X.509 SVID valid 1 hour
+    A-->>O: SVID and trust bundle
+    O->>P: mTLS handshake with SVID
+    P->>P: verify chain against trust bundle
+    P->>P: policy check: orders may POST /charges?
+    P-->>O: 200 OK
+    Note over A,O: agent rotates the SVID well before it expires`} />
+</Figure>
+
+*No secret ever lives in the orders service's config: its identity comes from where and how it runs, and expires on its own.*
+
+**Why short-lived beats long-lived, in numbers.** A static API key that leaks is useful to an attacker until a human notices and rotates it, which in practice can be weeks or months. An SVID with a 1-hour lifetime that leaks is useful for at most an hour, with no human in the loop. The cost moves to the issuer: 10,000 pods rotating hourly certificates at half their lifetime means 20,000 signings an hour, about **5.6 a second**, which is trivial for a certificate authority but makes the issuer a dependency you must run highly available (agents cache SVIDs so a short issuer outage does not break running services).
+
+### Carrying the user's identity too
+
+Service identity answers "is this the orders service?" but not "on whose behalf?" If payments only checks the service, then a bug in orders lets any user's request charge any account. This is the <Term slug="confused-deputy">confused deputy</Term> problem (named by Norm Hardy in 1988): a privileged service tricked into using its authority for a caller who lacks it. Two common fixes:
+
+- **Propagate the user's token** (or a narrowed one obtained via OAuth token exchange, RFC 8693) alongside the mTLS identity, and have payments check both: "the caller is `orders` *and* the end user owns account 77".
+- **Check the resource at the edge of each service**, using the user identity, never trusting a `user_id` field in a request body that an upstream could have set.
+
+AWS documents the same problem for cross-service access in IAM and recommends condition keys such as `aws:SourceArn` and `aws:SourceAccount` so a service can only act for the resource that invoked it.
+
+<TradeoffBox title="Access-control choices" items={[
+  { gain: "RBAC: simple, auditable, cheap to check", cost: "Role explosion once rules depend on resource or context" },
+  { gain: "ABAC: one policy replaces dozens of roles", cost: "Hard to audit who can access what; depends on correct, fresh attributes" },
+  { gain: "ReBAC: models sharing and ownership naturally", cost: "A graph store on the critical path, with consistency and latency to manage" },
+  { gain: "Local policy engine: sub-millisecond checks", cost: "Policy and attribute data must be pushed to every instance" },
+  { gain: "Least privilege: small blast radius for any bug or leak", cost: "Friction and broken deploys unless granting is fast and policy is in code" },
+  { gain: "mTLS with short-lived workload identity: no static secrets", cost: "A certificate issuer to run, plus rotation and trust-bundle management" }
+]} />
+
+<NotWhenBox title="When not to go further" items={[
+  "ABAC or ReBAC for an internal tool with a handful of job roles: RBAC plus ownership checks is enough.",
+  "A central PDP call on every hot-path request when a local policy library would do.",
+  "A full service mesh for three services: platform workload identity (cloud IAM roles, service account tokens) may be all you need.",
+  "Treating mTLS as authorization: it proves who called, not whether they may perform this action on this resource.",
+  "Writing your own policy language or certificate authority: OPA, Cedar, SPIRE and cloud CAs exist and are reviewed."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Requests from inside our VPC are trusted, so internal APIs don't need auth." right="Network location is not identity. One compromised pod or SSRF bug is inside too. Authenticate every call (mTLS or tokens) and authorize it." />
+
+<Misconception wrong="If the user has the right role, the request is authorized." right="Role checks are necessary but not sufficient: the handler must also check that the caller may act on this specific object, or you get broken object-level authorization (IDOR)." />
+
+<Misconception wrong="mTLS between services solves access control." right="mTLS authenticates the calling service and encrypts the link. You still need policy on which service may call which endpoint, and on whose behalf." />
+
+<Misconception wrong="Least privilege is a one-time setup task." right="Permissions drift as people change roles and features ship. It needs measurement (unused-access reports), regular review and time-boxed elevation." />
+
+## Interview angle
+
+<InterviewAngle title="Access control" questions={[
+  "How would you model permissions for a document product with folders, teams and link sharing?",
+  "Your company has 3,000 IAM roles nobody understands. How do you get back to least privilege without breaking production?",
+  "How does the payments service know a request really came from the orders service?",
+  "Orders calls payments with its own mTLS identity. What can still go wrong?",
+  "Where does the authorization check run, and what happens to latency and freshness?"
+]}>
+Access control appears in design interviews as "how do you secure this?" and in deep dives on multi-tenant systems. Strong answers:
+
+- **Document product:** "ReBAC: relationships like folder editor and team member, checked by graph walk, in the style of Zanzibar. RBAC alone explodes once sharing is per document."
+- **3,000 roles:** "Measure first: generate policies from access logs, remove unused permissions in stages with alarms on AccessDenied, add time-boxed elevation so nobody needs standing admin."
+- **Service identity:** "mTLS with short-lived workload certificates (SPIFFE IDs via SPIRE or the mesh). No static secrets in config."
+- **Still wrong:** "Confused deputy. Propagate the user's identity, via the original token or token exchange, and have payments check both the calling service and the user's right to that account."
+- **Where it runs:** "A policy library or sidecar for hot-path checks, a central service for audits and rare decisions. Freshness is bounded by how fast policy and attributes are pushed."
+</InterviewAngle>
+
+## Practice
+
+1. Your SaaS has 8 departments, 5 levels and 4 regions, and documents may only be edited within the same department and region by level 3 and above. Count the RBAC roles you'd need, then write the same rule as one ABAC policy.
+2. Write the least-privilege IAM policy, in words, for a service that thumbnails images: what it may read, what it may write, and one condition you'd add. List two permissions it must *not* have.
+3. Design service-to-service auth for 12 microservices on Kubernetes: how each gets an identity, how long credentials live, how calls are authorized, and how a user's identity reaches the payments service.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

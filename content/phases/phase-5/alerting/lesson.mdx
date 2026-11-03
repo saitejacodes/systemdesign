@@ -1,0 +1,222 @@
+## Why it matters
+
+Monitoring that nobody looks at is a hobby; alerting is what turns it into operations. An alert is a promise that a human will be interrupted, often at night, because something needs them right now. Get it wrong in one direction and real outages go unnoticed until customers tweet. Get it wrong in the other and the on-call engineer receives forty pages a night, learns that most of them mean nothing, and starts acknowledging without reading. That second failure is the more common one, and it is how real alerts get missed: in the widely reported 2013 Target breach, security alerts about the intrusion were raised by the company's monitoring tools but not acted on in time. Google's SRE book (chapter 6, *Monitoring Distributed Systems*, built on Rob Ewaschuk's earlier essay *My Philosophy on Alerting*) sets the standard most teams now aim for: page only on symptoms users feel, make every page urgent and actionable, and send everything else somewhere that does not wake people up. This section covers symptom-based alerts, paging versus ticketing, alert fatigue and how to cure it, and the runbooks that make a page solvable.
+
+<Callout type="analogy" title="The smoke detector that cries wolf">
+A good smoke detector has one job: scream when there is a fire you must act on now. It does not beep because the oven is warm, the battery is at 80%, or someone is making toast. If it did, within a week you would pull the battery out, and the night there is a real fire it would be silent. Alerting works the same way. A symptom alert is "there is smoke in the bedroom". A cause alert is "the oven is at 230 °C", which is fine while you are baking and only matters if it produces smoke. The low-battery chirp is a ticket: it needs fixing this week, not at 03:00. And the card stuck to the detector saying "get out, call this number, the extinguisher is under the sink" is the runbook. Where the analogy breaks: a smoke detector cannot tell how bad the fire is, while a good alert should carry severity, scope and a link to the dashboard that shows how fast things are getting worse.
+</Callout>
+
+## Symptom-based alerts
+
+<DepthStamp depth="deep" />
+
+The SRE book frames monitoring around two questions: **what is broken** (the symptom) and **why** (the cause). "Checkout is returning 5xx to 3% of users" is a symptom. "The database primary's disk is 95% full" is a cause. <Term slug="symptom-based-alerting">Symptom-based alerting</Term> means you page on the first kind and use the second kind for diagnosis, dashboards and tickets.
+
+### Why page on symptoms
+
+| Property | Symptom alert ("checkout 5xx above SLO burn") | Cause alert ("CPU above 90% on db-3") |
+|---|---|---|
+| Fires when users hurt | Always, whatever the cause | Only for the causes you predicted |
+| Fires when users are fine | Rarely | Often: high CPU during a batch job is normal |
+| Number of rules | A few per user journey | Grows with every component and failure you imagine |
+| Catches novel failures | Yes: a bug you never imagined still makes requests fail | No: there is no rule for a cause you did not foresee |
+| Tells you where to look | No, needs dashboards and traces | Yes, if it is the right cause |
+
+The last row is the honest trade. Symptom alerts tell you *that* something is wrong; finding *why* is the job of dashboards, traces and logs (the earlier sections in this phase). That is a good division of labour. A cause alert that fires correctly saves a few minutes of diagnosis; a hundred cause alerts that fire incorrectly cost you the on-call engineer's trust.
+
+### What a symptom looks like
+
+The SRE book's **four golden signals** are the usual place to start for a user-facing service: **latency** (how long requests take, with failed requests tracked separately so fast errors do not flatter the number), **traffic** (demand, such as requests per second), **errors** (the rate of failed requests, including wrong answers and responses that broke a latency promise) and **saturation** (how full the most constrained resource is). Latency and errors are the symptoms users feel. Traffic and saturation are early warnings and context.
+
+The best symptom alert of all is the burn-rate alert from the SLO section: page when the error budget is being spent fast enough to matter (14.4× over one hour with a 5-minute check spends 2% of a 30-day budget). It ties the page to a number product and engineering already agreed users care about.
+
+### Cause alerts that still earn a page
+
+The rule is "page on symptoms", not "never page on causes". A small number of causes deserve a page because they predict a symptom that will be too late to fix once it arrives:
+
+- **A disk that will be full within hours.** Prometheus's `predict_linear` makes this a prediction rather than a fixed threshold: `predict_linear(node_filesystem_avail_bytes[6h], 4 * 3600) < 0` fires if the last six hours' trend reaches zero within four hours. A database with a full disk stops accepting writes, and you cannot fix it in the minute between the symptom and the outage.
+- **A certificate expiring in days**, which is a ticket at 30 days and a page at 2.
+- **Losing redundancy**: one of three replicas down does not hurt users yet, but the next failure will. Usually a ticket during working hours, a page if the second one goes.
+
+### How Prometheus evaluates an alert
+
+In Prometheus an alerting rule has an expression and an optional `for` duration. Each evaluation the rule is in one of three states.
+
+<Figure caption="FIG. 5.1 · PROMETHEUS ALERT STATES · INACTIVE, PENDING, FIRING">
+  <Diagram label="Inactive: the expression returns no result. When it starts returning a result the alert moves to Pending. If the expression stays true for the whole for duration, the alert moves to Firing and is sent to Alertmanager. If it becomes false while Pending, it returns to Inactive without notifying anyone. When a Firing alert's expression becomes false, it returns to Inactive and a resolved notification is sent, optionally after keep_firing_for." chart={`stateDiagram-v2
+    [*] --> Inactive
+    Inactive --> Pending: expression true
+    Pending --> Inactive: false before for elapses
+    Pending --> Firing: true for the whole for duration
+    Firing --> Inactive: false (after keep_firing_for)
+    Firing --> Firing: re-sent to Alertmanager each evaluation`} />
+</Figure>
+
+*Prometheus alert states: the `for` clause filters blips; `keep_firing_for` (added in Prometheus 2.42) stops a recovering alert from flapping.*
+
+The `for` clause is a trade: `for: 10m` removes most one-scrape blips but adds ten minutes to detection. Burn-rate alerts already average over windows, so they usually need only a short `for` (one or two minutes) or none.
+
+## Paging vs ticketing
+
+<DepthStamp depth="tradeoffs" />
+
+Every alert needs a destination, and the destination is a statement about urgency. The SRE book's guidance boils down to three tiers.
+
+| Tier | Meaning | Example | Delivered to |
+|---|---|---|---|
+| **Page** | A human must act within minutes, or users will be hurt (or already are) | Fast error-budget burn; checkout down; disk full in under 4 hours | On-call phone, through a paging service, at any hour |
+| **Ticket** | Needs a human within days, not minutes | Slow budget burn (1× over 3 days); one replica of three down; certificate expiring in 30 days | Team's ticket queue, picked up in working hours |
+| **Log or dashboard** | Useful context, needs nobody right now | CPU of one pod at 95%; a single 5xx; a retry storm that self-healed | Dashboards, logs, a weekly review |
+
+The SRE book sets tests that every page should pass, paraphrased:
+
+- **Urgent:** it requires action now, not tomorrow morning.
+- **Actionable:** there is something the responder can do; if the only response is "wait and watch", it is not a page.
+- **User-visible or imminent:** it describes real or soon-real user impact.
+- **Requires intelligence:** if a script could do the response, a script should, and the page should not exist.
+- **Novel:** a page that fires every week for the same known issue is a bug report that nobody filed.
+
+### The arithmetic of an on-call shift
+
+The SRE book (chapter 11, *Being On-Call*) reports that one incident, counting diagnosis, mitigation, the postmortem and follow-up fixes, takes about six hours of engineering time on average, so Google aims for at most **two incidents per 12-hour shift**. Turn that around: a team receiving 20 pages a week with a primary on-call rotation cannot possibly be giving each one six hours. Most of those pages are being acknowledged and ignored, which means they are training people to ignore pages.
+
+### Routing: who gets paged
+
+A page should reach the team that can fix it, with enough context to start. In Prometheus's Alertmanager, alerts carry labels (`team="payments"`, `severity="page"`), and a routing tree matches those labels to receivers: a paging integration for `severity="page"`, a ticket queue or chat channel for `severity="ticket"`. Keep the label set small and consistent across teams so the routing tree stays readable.
+
+## Alert fatigue
+
+<DepthStamp depth="deep" />
+
+<Term slug="alert-fatigue">Alert fatigue</Term> is the loss of attention that comes from too many alerts, especially false or unactionable ones. Hospitals call the same thing alarm fatigue: when monitors beep constantly, staff stop responding to them. The mechanism is simple: every false alarm lowers the responder's estimate that the next alarm is real, and their behaviour follows the estimate.
+
+### Failure timeline: the 03:00 alert storm
+
+A team has 120 cause-based rules across 200 hosts. The database primary loses its network at 03:00.
+
+| Time | Event | Pages sent |
+|---|---|---|
+| 03:00:00 | Database primary becomes unreachable | 0 |
+| 03:00:30 | 200 app hosts fire "DB connection errors" (one alert per host) | 200 |
+| 03:00:45 | Queue-depth, latency and "health check failed" rules fire per host and per service | 350 more |
+| 03:01 | On-call's phone is unusable; the real cause is one line among 550 | 550 |
+| 03:04 | Replica promotion runs automatically; most symptoms clear | resolved notices start |
+| 03:05 | Connection-pool rules on 30 hosts flap between firing and resolved as pools reconnect | 60 more |
+| 03:20 | On-call finally finds the one alert that mattered ("db-primary down"), already fixed | |
+| 09:00 | Team agrees "the alerts are noisy" and mutes two rules, which hides the next real problem | |
+
+Each fix below removes a row from that table.
+
+### Fix 1: page on the symptom, not every host
+
+Replace the per-host rules with one burn-rate rule per user journey. The storm becomes **one page**: "checkout fast burn, 2% of budget spent". The 550 cause alerts still exist as dashboard panels and tickets for whoever investigates.
+
+### Fix 2: group, inhibit, silence
+
+Prometheus's Alertmanager has three tools aimed directly at storms:
+
+- <Term slug="alert-grouping">Alert grouping</Term> merges related alerts into one notification. With `group_by: ['alertname', 'cluster']`, 200 "DB connection errors" alerts from one cluster become one message listing 200 hosts. `group_wait` (30 seconds by default) is how long Alertmanager waits to collect a group before the first notification; `group_interval` (5 minutes by default) spaces follow-ups for new alerts in the same group; `repeat_interval` (4 hours by default) sets how often an unchanged, still-firing group is re-sent.
+- <Term slug="alert-inhibition">Inhibition</Term> mutes some alerts while another is firing. A rule that says "while `DatabasePrimaryDown` fires in a cluster, suppress `DBConnectionErrors` in the same cluster" turns the downstream noise off and leaves the cause visible.
+- **Silences** mute matching alerts for a fixed time, for planned maintenance or a known issue someone is already working on. Always give a silence an end time and an owner, or it outlives the reason for it.
+
+### Fix 3: stop flapping
+
+An <Term slug="alert-flapping">alert flaps</Term> when its condition hovers around the threshold and the alert fires and resolves repeatedly, sending a notification each time. Cures: a `for` duration so brief dips do not start the alert, `keep_firing_for` so brief recoveries do not resolve it, thresholds with separate fire and clear levels (hysteresis, for example fire above 90% and clear below 80%), and longer evaluation windows.
+
+### Fix 4: measure the alerts themselves
+
+Treat alerts like code with a quality bar:
+
+- **Precision of pages**: the share that led to real action. Track it in a weekly review. If 4 of 20 pages last week were actionable, precision is 20%; each of the other 16 rules must be fixed, demoted to a ticket or deleted.
+- **Pages per shift**, against the two-incidents budget above.
+- **Repeat offenders**: the five noisiest rules usually cause most of the noise. Delete or rewrite them first.
+
+### Monitor the monitoring
+
+Silence is ambiguous: it means either "all is well" or "the alerting pipeline is broken". A <Term slug="dead-mans-switch">dead man's switch</Term> is an alert that is always firing on purpose (the kube-prometheus project ships one called `Watchdog`). An external service expects to receive it every few minutes and pages if it stops arriving, which catches a crashed Prometheus, a broken Alertmanager or an expired paging-service credential.
+
+## Runbooks
+
+<DepthStamp depth="tradeoffs" />
+
+A <Term slug="runbook">runbook</Term> (also called a playbook) is a short document linked from an alert that tells the responder what the alert means and what to do. The SRE book's introduction reports that recording best practices ahead of time in a playbook gives roughly a three-times improvement in mean time to repair compared with improvising. The reason is simple: at 03:00 nobody reasons well, and the engineer paged may never have touched this service.
+
+### What a good runbook contains
+
+1. **What fired and what it means for users**, in one sentence: "Checkout is failing for more than 1.44% of requests; at this rate the month's error budget lasts about two days."
+2. **How to confirm it**: a dashboard link and the one query to run.
+3. **Mitigations first, in order of safety**: roll back the last deploy, fail over, shed load, turn off a feature flag. Stopping the bleeding beats finding the root cause.
+4. **How to escalate**: who owns the dependencies, when to declare an incident.
+5. **Known causes and their fixes**, with dates of past incidents.
+6. **Owner and last-reviewed date**, so stale runbooks are visible.
+
+Put the link in the alert itself (in Prometheus, a `runbook_url` annotation is the common convention) so the responder never has to search a wiki.
+
+### Runbooks decay, and some should become code
+
+A runbook that says "SSH to the box and restart the worker" is a script waiting to be written. If the response to a page is the same mechanical steps every time, the page fails the "requires intelligence" test: automate the steps and delete the page, or have automation try first and page only if it fails. That repetitive, automatable operational work is what the SRE book calls toil, and it recommends keeping it under half of an SRE's time. The opposite failure is the runbook that has not been touched in two years and refers to servers that no longer exist; review runbooks after every incident that used one, and in game days.
+
+### Worked example: rewriting a noisy alert
+
+Before: `HighCPU: avg(cpu_usage) by (instance) > 0.9 for 5m`, severity page, no runbook. It fired 31 times last month; 2 led to action.
+
+After:
+
+- Page: checkout fast burn (14.4× over 1 hour and 5 minutes) and slow burn (6× over 6 hours and 30 minutes), each with a runbook link.
+- Ticket: checkout 3-day burn above 1×.
+- Ticket: CPU saturation predicted to hit 100% within 24 hours using `predict_linear`, for capacity planning.
+- Dashboard only: per-instance CPU.
+
+The two incidents that HighCPU caught both raised the error rate, so the burn-rate pages would have caught them too, with a clear statement of user impact.
+
+<TradeoffBox title="Alerting design choices" items={[
+  { gain: "Symptom-based pages: catch any cause, few rules", cost: "Do not say where to look; need good dashboards and traces" },
+  { gain: "Cause-based pages for predictable cliffs (disk, certs)", cost: "Each one is another rule to tune and another chance for noise" },
+  { gain: "Long for durations and windows: fewer false pages", cost: "Slower detection; an outage may run minutes before anyone knows" },
+  { gain: "Grouping and inhibition: one page per incident", cost: "A misconfigured inhibition can hide a second, unrelated failure" },
+  { gain: "Runbook per alert: faster, calmer response", cost: "Must be maintained, or it confidently misleads the responder" }
+]} />
+
+<NotWhenBox title="When not to page" items={[
+  "The only action is to wait and watch: make it a dashboard or a ticket.",
+  "A script could do the fix: automate it, page only if automation fails.",
+  "One instance of many is unhealthy but users are fine: let the load balancer and a ticket handle it.",
+  "The same known issue every week: fix the cause or delete the rule, do not keep acknowledging it.",
+  "A metric crosses a threshold nobody can explain the reason for: an alert without a user impact story is noise."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="More alerts means better coverage." right="Past a point, more alerts means less coverage, because responders stop trusting and reading them. A few symptom alerts cover more failure modes than hundreds of cause alerts." />
+
+<Misconception wrong="High CPU should page someone." right="High CPU is a cause that is often harmless. Page on the symptom (errors and latency burning the error budget) and send CPU saturation to dashboards or capacity tickets." />
+
+<Misconception wrong="If no alerts fired, nothing was wrong." right="Silence can mean the alerting pipeline itself is broken. An always-firing dead man's switch, checked by an external service, catches that." />
+
+<Misconception wrong="A long for duration on every rule is a free way to cut noise." right="It delays every real page by that duration. Fix noise with better signals (burn rates, windows, hysteresis) first, and keep for short on urgent alerts." />
+
+## Interview angle
+
+<InterviewAngle title="Alerting" questions={[
+  "What would you page on for this design, and what would you only put on a dashboard?",
+  "The on-call engineer gets 40 pages a night. How do you fix it in the next two weeks?",
+  "The database primary fails and 500 alerts fire. How should the alerting system behave?",
+  "How do you know your alerting itself is working?",
+  "When is it right to page on a cause rather than a symptom?"
+]}>
+Interviewers ask about alerting as the operations follow-up to a design: "how would you know it is broken?" A strong answer names one or two symptom alerts per critical user journey, tied to the SLO through burn rates, and routes everything else to tickets or dashboards. For the noisy-pager question, measure first (which rules fired, how many led to action), then delete or demote the noisiest, replace per-host cause alerts with symptom alerts, and add grouping and inhibition in Alertmanager. For the storm, one grouped page naming the cause, downstream alerts inhibited. For "is alerting working", a dead man's switch checked from outside. For causes, page only on predictable cliffs you cannot fix after the symptom appears, such as a disk filling within hours. Mention runbooks linked from every page, and the two-incidents-per-shift budget as the reason noise is a reliability problem, not an annoyance.
+</InterviewAngle>
+
+## Practice
+
+1. List the alerts for a URL shortener with a 99.9% availability SLO on redirects: which page, which are tickets, which are dashboard only. Give the error-rate threshold for each burn-rate page.
+2. Write the Alertmanager grouping and inhibition you would use so that a lost database primary in one cluster produces a single notification, and say what risk your inhibition rule introduces.
+3. A rule fired 25 times last month and led to action twice. Write the before-and-after version of it, and the runbook outline for the replacement.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

@@ -1,0 +1,329 @@
+[
+  {
+    "id": "metrics-q1",
+    "type": "single",
+    "prompt": "Which metric type fits the number of messages currently waiting in a queue?",
+    "options": [
+      {
+        "id": "a",
+        "text": "A counter, because messages are counted as they are added to the queue"
+      },
+      {
+        "id": "b",
+        "text": "A gauge, because the depth rises and falls as messages arrive and are consumed"
+      },
+      {
+        "id": "c",
+        "text": "A histogram, because the queue length must be bucketed to compute a percentile"
+      },
+      {
+        "id": "d",
+        "text": "A summary, because only one process owns the queue and can compute it exactly"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Queue depth is a current level that goes up and down, which is the definition of a gauge. A counter only increases; messages enqueued would be a counter, but depth is not. A histogram records the distribution of many observations, such as latencies, not one current level. A summary computes quantiles of observations and does not fit a single current value either.",
+    "topicId": "metric-types",
+    "difficulty": 1
+  },
+  {
+    "id": "metrics-q2",
+    "type": "scenario",
+    "prompt": "What does the dashboard most likely show, and what is the fix?",
+    "scenario": "A dashboard graphs the raw value of http_requests_total. After each deploy the line drops to near zero and climbs again. A new engineer thinks traffic collapses on every deploy.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Traffic really drops after deploys; add a readiness delay so pods warm up first"
+      },
+      {
+        "id": "b",
+        "text": "The counter is being scraped too rarely; lower the scrape interval to 5 seconds"
+      },
+      {
+        "id": "c",
+        "text": "Counters reset when processes restart; graph rate(http_requests_total[5m])"
+      },
+      {
+        "id": "d",
+        "text": "The metric should be a gauge so restarts keep the last value it reported"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "A counter restarts from zero with a new process, so its raw value saws down on each deploy. rate() turns it into requests per second and treats a decrease as a reset, so the graph stays smooth. Real traffic did not drop, so readiness delays do not help. Scrape frequency does not change the reset. A gauge would lose increments between scrapes and still restart at zero in a new process.",
+    "topicId": "metric-types",
+    "difficulty": 1
+  },
+  {
+    "id": "metrics-q3",
+    "type": "single",
+    "prompt": "Why can't you get a fleet-wide p99 by combining Prometheus summaries from 40 instances?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Summaries are stored as gauges and Prometheus refuses to aggregate gauge series at all"
+      },
+      {
+        "id": "b",
+        "text": "Each summary quantile is precomputed in one process, and quantiles cannot be added or averaged"
+      },
+      {
+        "id": "c",
+        "text": "Summaries reset on every scrape, so only the most recently scraped instance's quantile is visible"
+      },
+      {
+        "id": "d",
+        "text": "Summaries record only the mean latency, never any percentile of the request durations"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A summary's p99 is computed inside each process from that process's observations; there is no mathematically valid way to merge forty p99s into one. Prometheus can aggregate gauges with sum, avg and max, it just would not give a correct quantile here. Summaries do not reset on scrape. They do export precomputed quantiles, plus _sum and _count.",
+    "topicId": "metric-types",
+    "difficulty": 2
+  },
+  {
+    "id": "metrics-q4",
+    "type": "scenario",
+    "prompt": "Roughly what p99 does histogram_quantile report?",
+    "scenario": "Over five minutes, a service records 20,000 requests. Cumulative buckets: le=0.1: 15,000; le=0.25: 19,000; le=0.5: 19,700; le=1: 20,000.",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 0.25 s"
+      },
+      {
+        "id": "b",
+        "text": "About 0.67 s"
+      },
+      {
+        "id": "c",
+        "text": "About 0.5 s"
+      },
+      {
+        "id": "d",
+        "text": "About 1.0 s"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "p99 is rank 19,800 (20,000 × 0.99). That falls in the 0.5–1 s bucket, which holds requests 19,701 to 20,000 (300 requests). Interpolating: (19,800 − 19,700) / 300 = 0.33 of the way, so 0.5 + 0.33 × 0.5 ≈ 0.67 s. 0.25 s is the boundary below which only 95% of requests fall. 0.5 s is the bottom of the right bucket, which would ignore interpolation. 1.0 s is the top of the bucket, the worst-case bound rather than the estimate.",
+    "topicId": "histograms-percentiles",
+    "difficulty": 3
+  },
+  {
+    "id": "metrics-q5",
+    "type": "single",
+    "prompt": "Your target is that 99% of checkout requests finish within 300 ms. What is the best histogram design choice?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Use the default buckets and compute the p99 with histogram_quantile on each pod"
+      },
+      {
+        "id": "b",
+        "text": "Add a bucket boundary at exactly 0.3 s so the share under target is an exact ratio"
+      },
+      {
+        "id": "c",
+        "text": "Switch to a summary with a 0.99 quantile, which is always more accurate for fleets"
+      },
+      {
+        "id": "d",
+        "text": "Record the average latency as a gauge, refreshed every second, and alert above 300 ms"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "With a boundary at 0.3 s, rate(bucket le=0.3) divided by rate(count) is the exact share of fast requests, with no interpolation error. The default buckets have no 0.3 boundary, so the estimate depends on interpolation between 0.25 and 0.5, and per-pod quantiles miss the fleet view. A summary cannot be aggregated across pods. An average gauge hides the tail entirely and says nothing about the 99% target.",
+    "topicId": "histograms-percentiles",
+    "difficulty": 2
+  },
+  {
+    "id": "metrics-q6",
+    "type": "scenario",
+    "prompt": "What is the fleet p99 really likely to be, and why is the dashboard wrong?",
+    "scenario": "A dashboard shows 'p99 latency' as avg(p99) across 20 pods: 210 ms. Users are complaining. One pod is on a degraded node with a p99 of 3 s; the others are around 70 ms.",
+    "options": [
+      {
+        "id": "a",
+        "text": "It really is 210 ms; the complaints must come from network issues outside the service"
+      },
+      {
+        "id": "b",
+        "text": "Above 210 ms; averaging per-pod p99s is invalid, so sum the buckets and compute it once"
+      },
+      {
+        "id": "c",
+        "text": "Exactly 3 s, since the fleet p99 is always equal to the single worst pod's p99 value"
+      },
+      {
+        "id": "d",
+        "text": "Below 70 ms, because averaging always overstates percentiles when one pod is an outlier"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Percentiles do not average. With one pod in twenty serving about 5% of traffic at multi-second latency, well over 1% of all requests are slow, so the true fleet p99 is far above 210 ms, probably near the bad pod's latency. Summing buckets across pods and calling histogram_quantile once gives the correct value. The dashboard number is an artefact, not evidence that the service is fine. The fleet p99 is not automatically the worst pod's p99; it depends on traffic shares. Averaging does not systematically overstate.",
+    "topicId": "histograms-percentiles",
+    "difficulty": 3
+  },
+  {
+    "id": "metrics-q7",
+    "type": "multi",
+    "prompt": "Which of these are part of the RED method? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Requests per second for each service"
+      },
+      {
+        "id": "b",
+        "text": "Failed requests per second, or the error ratio"
+      },
+      {
+        "id": "c",
+        "text": "The latency distribution as a histogram"
+      },
+      {
+        "id": "d",
+        "text": "Disk utilization on each database host"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "c"
+    ],
+    "explanation": "RED is Rate, Errors and Duration for request-driven services. Disk utilization is a resource measurement from the USE method (utilization, saturation, errors); it helps find a cause but is not one of the RED signals.",
+    "topicId": "red-use",
+    "difficulty": 1
+  },
+  {
+    "id": "metrics-q8",
+    "type": "scenario",
+    "prompt": "Which USE signal best explains the incident?",
+    "scenario": "Checkout p99 jumps from 150 ms to 2 s and errors rise to 3%, at flat traffic. The orders service's CPU is at 30% and memory is steady. Its Postgres connection pool has 40 connections, all in use, with about 250 requests waiting to acquire one.",
+    "options": [
+      {
+        "id": "a",
+        "text": "CPU utilization, because 30% shows the service is idle and cannot be the cause"
+      },
+      {
+        "id": "b",
+        "text": "Memory errors, because steady memory usage on a JVM usually hides a slow garbage-collection leak"
+      },
+      {
+        "id": "c",
+        "text": "Connection-pool saturation, since requests queue for a connection and then time out"
+      },
+      {
+        "id": "d",
+        "text": "Network utilization, because flat traffic proves the network link must be full"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "The pool is at full utilization and, more tellingly, saturated: 250 requests are waiting, which adds queueing delay and produces acquire timeouts. Low CPU rules the CPU out as a bottleneck but does not explain the latency. Steady memory gives no evidence of a leak. Flat traffic says nothing about the network being full; no network signal is given at all.",
+    "topicId": "red-use",
+    "difficulty": 2
+  },
+  {
+    "id": "metrics-q9",
+    "type": "single",
+    "prompt": "A counter has labels route (40 values), status (6), method (3) and pod (50). What is the upper bound on its series count?",
+    "options": [
+      {
+        "id": "a",
+        "text": "99"
+      },
+      {
+        "id": "b",
+        "text": "36,000"
+      },
+      {
+        "id": "c",
+        "text": "12,000"
+      },
+      {
+        "id": "d",
+        "text": "720"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Series multiply: 40 × 6 × 3 × 50 = 36,000. 99 is the sum of the cardinalities, which would be right only if labels did not combine. 12,000 leaves out the method label (40 × 6 × 50). 720 leaves out the pod label (40 × 6 × 3), forgetting that each instance exports its own series.",
+    "topicId": "cardinality",
+    "difficulty": 2
+  },
+  {
+    "id": "metrics-q10",
+    "type": "scenario",
+    "prompt": "What is the best immediate fix and the best long-term guard?",
+    "scenario": "Two hours after a deploy that added a session_id label to a latency histogram, Prometheus starts crash-looping with out-of-memory errors. All dashboards and alerts for every team are down.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Double Prometheus's memory now, and plan to keep scaling it as user numbers grow"
+      },
+      {
+        "id": "b",
+        "text": "Delete the whole data directory now, and lower retention from 15 days to 2 days"
+      },
+      {
+        "id": "c",
+        "text": "Lower the scrape interval to 60 s now, and remove the bucket boundaries from histograms"
+      },
+      {
+        "id": "d",
+        "text": "Revert or drop the label by relabelling now; add sample limits and an active-series alert"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "The label is the cause: removing it (revert, or a relabel rule that drops session_id at scrape time) stops new series, and sample limits plus an alert on active series catch the next one early. More memory only delays the next crash, since series grow with sessions without bound. Deleting data loses history, and retention does not limit the in-memory head where active series live. A longer scrape interval reduces samples, not series, and removing buckets breaks latency percentiles.",
+    "topicId": "cardinality",
+    "difficulty": 2
+  },
+  {
+    "id": "metrics-q11",
+    "type": "multi",
+    "prompt": "Which labels are safe, bounded choices for a request-latency histogram? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Route template, such as /orders/:id"
+      },
+      {
+        "id": "b",
+        "text": "HTTP status code returned"
+      },
+      {
+        "id": "c",
+        "text": "Raw request path, such as /orders/55812"
+      },
+      {
+        "id": "d",
+        "text": "The authenticated user's email address"
+      }
+    ],
+    "correct": [
+      "a",
+      "b"
+    ],
+    "explanation": "Route templates and status codes come from small fixed sets, so they multiply series by a known amount. A raw path embeds IDs, so it grows without bound and creates a new series per order. An email address is both unbounded and personal data, which the Prometheus naming guidance explicitly warns against using as a label.",
+    "topicId": "cardinality",
+    "difficulty": 1
+  }
+]

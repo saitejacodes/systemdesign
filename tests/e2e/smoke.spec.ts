@@ -35,5 +35,7 @@ test("search finds lesson content and the glossary filters", async ({ page }) =>
   await expect(page.getByRole("link", { name: /Sticky session/ }).first()).toBeVisible();
   await page.goto("/glossary");
   await page.getByLabel("Filter terms").fill("jwt");
-  await expect(page.getByText("1 of")).toBeVisible();
+  // Definitions match too, so later phases add hits; check the term shows and the list narrowed.
+  await expect(page.locator("dt").filter({ hasText: "JSON Web Token (JWT)" }).first()).toBeVisible();
+  expect(await page.locator("dt").count()).toBeLessThan(10);
 });

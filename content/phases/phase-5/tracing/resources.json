@@ -1,0 +1,32 @@
+[
+  {
+    "id": "dapper-paper",
+    "title": "Dapper, a Large-Scale Distributed Systems Tracing Infrastructure",
+    "author": "Sigelman et al. (Google, 2010)",
+    "kind": "paper",
+    "url": "https://research.google/pubs/dapper-a-large-scale-distributed-systems-tracing-infrastructure/",
+    "why": "The paper behind modern tracing: spans, trace trees, low-overhead instrumentation and why aggressive sampling still works at scale.",
+    "topicIds": ["spans-traces", "trace-sampling"],
+    "free": true
+  },
+  {
+    "id": "w3c-trace-context",
+    "title": "Trace Context",
+    "author": "W3C",
+    "kind": "docs",
+    "url": "https://www.w3.org/TR/trace-context/",
+    "why": "The specification for the traceparent and tracestate headers, including field sizes and the sampled flag.",
+    "topicIds": ["context-propagation"],
+    "free": true
+  },
+  {
+    "id": "otel-docs-concepts",
+    "title": "OpenTelemetry documentation: Concepts",
+    "author": "OpenTelemetry",
+    "kind": "docs",
+    "url": "https://opentelemetry.io/docs/concepts/",
+    "why": "Official explanations of signals, context propagation, sampling and the Collector.",
+    "topicIds": ["opentelemetry", "trace-sampling", "context-propagation"],
+    "free": true
+  }
+]

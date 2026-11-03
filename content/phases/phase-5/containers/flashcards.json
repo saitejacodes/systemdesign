@@ -1,0 +1,20 @@
+[
+  { "id": "containers-f1", "front": "What is a container, mechanically?", "back": "A normal host process started with namespaces (what it can see) and cgroups (how much it can use). No guest kernel.", "topicId": "isolation" },
+  { "id": "containers-f2", "front": "Container vs VM: the core trade?", "back": "Containers share the host kernel: near-zero overhead and fast start, but weaker isolation. VMs have their own kernel behind a hypervisor.", "topicId": "why-containers" },
+  { "id": "containers-f3", "front": "Name five Linux namespaces.", "back": "PID, network, mount, UTS (hostname), IPC, user, cgroup. Each gives the process a private copy of one global resource.", "topicId": "isolation" },
+  { "id": "containers-f4", "front": "What happens when a container exceeds its memory limit?", "back": "The kernel OOM killer sends SIGKILL. Exit code 137 (128 + 9), reason OOMKilled, no stack trace.", "topicId": "isolation" },
+  { "id": "containers-f5", "front": "How is a CPU limit enforced?", "back": "As a CFS quota per period (default 100 ms). 2 CPUs = 200 ms per 100 ms; once used, all threads pause until the next period.", "topicId": "isolation" },
+  { "id": "containers-f6", "front": "Symptom of CPU throttling?", "back": "Tail latency spikes while average CPU looks fine. Check the cgroup throttled-period counters.", "topicId": "isolation" },
+  { "id": "containers-f7", "front": "Why did old JVMs get OOM-killed in containers?", "back": "They sized the default heap from host RAM (1/4 of 64 GB = 16 GB) and ignored the cgroup limit. Fixed in JDK 10 and 8u191.", "topicId": "isolation" },
+  { "id": "containers-f8", "front": "What is an image made of?", "back": "An ordered list of read-only, content-addressed layer tarballs plus a manifest and config (command, env, user, ports), per the OCI image spec.", "topicId": "images-layers" },
+  { "id": "containers-f9", "front": "How does a container write to a file from a lower layer?", "back": "Copy-on-write: overlayfs copies the file up into the container's thin writable layer, then modifies it there.", "topicId": "images-layers" },
+  { "id": "containers-f10", "front": "Tag vs digest?", "back": "A tag (:1.4, :latest) is a movable pointer. A digest (sha256:...) is the hash of the manifest and names exact bytes. Deploy by digest.", "topicId": "images-layers" },
+  { "id": "containers-f11", "front": "Does deleting a file in a later layer shrink the image?", "back": "No. The earlier layer still holds it; the later layer only adds a whiteout. Secrets leak this way.", "topicId": "images-layers" },
+  { "id": "containers-f12", "front": "Rule for Dockerfile layer order?", "back": "Least-changing first: base, then dependency manifest and install, then source. A change invalidates its layer and every layer after it.", "topicId": "images-layers" },
+  { "id": "containers-f13", "front": "Multi-stage build?", "back": "Compile in a build stage with all the tools, then COPY --from=build only the output into a small final image.", "topicId": "images-layers" },
+  { "id": "containers-f14", "front": "Image pull cost at scale-out?", "back": "nodes × image size ÷ registry bandwidth. 200 × 1.1 GB ÷ 1.25 GB/s ≈ 176 s before new capacity serves.", "topicId": "images-layers" },
+  { "id": "containers-f15", "front": "Docker's stack from CLI to kernel?", "back": "docker CLI → dockerd → containerd → runc, which sets up namespaces and cgroups and starts the process.", "topicId": "docker-basics" },
+  { "id": "containers-f16", "front": "What does docker stop do?", "back": "Sends SIGTERM, waits the grace period (10 s by default), then SIGKILL.", "topicId": "docker-basics" },
+  { "id": "containers-f17", "front": "Why prefer exec-form CMD [\"node\", \"server.js\"]?", "back": "Shell form makes /bin/sh PID 1, which does not forward SIGTERM, so the app never drains and is SIGKILLed.", "topicId": "docker-basics" },
+  { "id": "containers-f18", "front": "Where does environment config go?", "back": "Injected at run time (env vars, mounted files, secrets store). Build one image and promote the same digest everywhere.", "topicId": "docker-basics" }
+]

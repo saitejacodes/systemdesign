@@ -1,0 +1,8 @@
+[
+  { "id": "data-protection-c1", "text": "I can explain why internal service traffic needs TLS or mTLS and spot a client that encrypts without verifying the certificate.", "topicId": "encryption-in-transit" },
+  { "id": "data-protection-c2", "text": "I can say which attacker disk, database and field-level encryption each defend against, and which they don't.", "topicId": "encryption-at-rest" },
+  { "id": "data-protection-c3", "text": "I can draw envelope encryption with a KMS-held KEK and wrapped DEKs, and explain cheap KEK rotation.", "topicId": "envelope-encryption" },
+  { "id": "data-protection-c4", "text": "I can compute the KMS request cost of a read path and size a data key cache, stating the revocation delay it adds.", "topicId": "envelope-encryption" },
+  { "id": "data-protection-c5", "text": "I can design how a service gets short-lived credentials via workload identity, and respond correctly to a leaked secret.", "topicId": "secrets-management" },
+  { "id": "data-protection-c6", "text": "I can plan PII handling for a feature: minimisation, tokenization or HMAC pseudonyms, log redaction and erasure across backups.", "topicId": "pii-handling" }
+]

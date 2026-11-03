@@ -1,0 +1,19 @@
+{
+  "id": "p5-slos",
+  "phase": 5,
+  "slug": "slos",
+  "title": "SLIs, SLOs and Error Budgets",
+  "order": 4,
+  "week": 11,
+  "estimatedMinutes": 65,
+  "topics": [
+    { "id": "sli-slo-sla", "title": "SLI vs SLO vs SLA", "depth": "deep" },
+    { "id": "choosing-slis", "title": "Choosing good SLIs", "depth": "tradeoffs" },
+    { "id": "error-budgets", "title": "Error budgets", "depth": "deep" },
+    { "id": "burn-rate-alerts", "title": "Burn-rate alerts", "depth": "deep" },
+    { "id": "budget-policy", "title": "The error budget policy", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["error-budget"],
+  "practiceCaseStudyIds": ["metrics-monitoring"],
+  "prerequisites": ["p5-metrics", "p1-latency-throughput", "p4-high-availability"]
+}

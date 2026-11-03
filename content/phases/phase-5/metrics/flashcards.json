@@ -1,0 +1,20 @@
+[
+  { "id": "metrics-f1", "front": "Time series?", "back": "One unique combination of metric name and label values, stored as a sequence of (timestamp, value) samples.", "topicId": "metric-types" },
+  { "id": "metrics-f2", "front": "Counter?", "back": "A value that only increases, resetting to zero on restart. Query its rate: rate(http_requests_total[5m]).", "topicId": "metric-types" },
+  { "id": "metrics-f3", "front": "Gauge?", "back": "A value that goes up and down, such as memory in use or queue depth. Read it directly; never rate() it.", "topicId": "metric-types" },
+  { "id": "metrics-f4", "front": "What series make up a Prometheus histogram?", "back": "One cumulative counter per bucket (_bucket with an le label, including +Inf), plus _sum and _count.", "topicId": "metric-types" },
+  { "id": "metrics-f5", "front": "Why prefer histograms over summaries?", "back": "Summary quantiles are computed per process and cannot be combined; histogram buckets are counters that can be summed across instances.", "topicId": "metric-types" },
+  { "id": "metrics-f6", "front": "Pull vs push metrics?", "back": "Prometheus pulls by scraping /metrics, which shows dead targets clearly. StatsD and OTLP push, which suits short-lived jobs.", "topicId": "metric-types" },
+  { "id": "metrics-f7", "front": "Fleet-wide p99 in PromQL?", "back": "histogram_quantile(0.99, sum by (le) (rate(x_bucket[5m]))): sum the buckets first, then compute the quantile once.", "topicId": "histograms-percentiles" },
+  { "id": "metrics-f8", "front": "How does histogram_quantile estimate inside a bucket?", "back": "It finds the bucket holding the target rank and interpolates linearly, assuming values are spread evenly within it.", "topicId": "histograms-percentiles" },
+  { "id": "metrics-f9", "front": "Where should bucket boundaries go?", "back": "At your thresholds (for example le=0.3 for a 300 ms target), so 'share under target' is an exact ratio with no interpolation.", "topicId": "histograms-percentiles" },
+  { "id": "metrics-f10", "front": "Can you average p99s across instances?", "back": "No. One instance at 4 s and 39 at 0.1 s averages to about 0.2 s, which describes no real request.", "topicId": "histograms-percentiles" },
+  { "id": "metrics-f11", "front": "RED method?", "back": "Tom Wilkie's checklist for request-driven services: Rate, Errors, Duration (as a histogram).", "topicId": "red-use" },
+  { "id": "metrics-f12", "front": "USE method?", "back": "Brendan Gregg's checklist for every resource: Utilization, Saturation (waiting work), Errors.", "topicId": "red-use" },
+  { "id": "metrics-f13", "front": "Four golden signals?", "back": "From the Google SRE book: latency, traffic, errors, saturation.", "topicId": "red-use" },
+  { "id": "metrics-f14", "front": "RED vs USE in one line?", "back": "RED shows that users are hurting (symptom); USE shows which resource is full or failing (cause).", "topicId": "red-use" },
+  { "id": "metrics-f15", "front": "Upper bound on series for a metric?", "back": "The product of its labels' cardinalities, times bucket count plus 2 for a histogram. 50 × 3 × 8 × 40 = 48,000.", "topicId": "cardinality" },
+  { "id": "metrics-f16", "front": "Cardinality explosion?", "back": "A sudden jump in active series from a label with unbounded values (user ID, raw URL, request ID), which can exhaust the metrics database's memory.", "topicId": "cardinality" },
+  { "id": "metrics-f17", "front": "Defences against cardinality explosions?", "back": "Bounded label allow-lists, route templates, relabelling to drop labels, sample_limit per scrape, per-tenant series limits, and an alert on active series.", "topicId": "cardinality" },
+  { "id": "metrics-f18", "front": "Exemplar?", "back": "A trace ID attached to a metric sample, such as a histogram bucket, linking a graph spike to a real slow trace.", "topicId": "cardinality" }
+]

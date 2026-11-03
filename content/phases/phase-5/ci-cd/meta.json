@@ -1,0 +1,18 @@
+{
+  "id": "p5-ci-cd",
+  "phase": 5,
+  "slug": "ci-cd",
+  "title": "CI/CD Pipelines",
+  "order": 12,
+  "week": 12,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "pipeline-stages", "title": "Pipeline stages", "depth": "deep" },
+    { "id": "testing-pyramid", "title": "Testing pyramid", "depth": "deep" },
+    { "id": "artifact-promotion", "title": "Artifact promotion", "depth": "deep" },
+    { "id": "rollback", "title": "Rollback", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p5-containers", "p5-kubernetes"]
+}

@@ -1,0 +1,7 @@
+[
+  { "id": "tracing-c1", "text": "I can name the fields of a span and explain why one service call produces a CLIENT span and a SERVER span.", "topicId": "spans-traces" },
+  { "id": "tracing-c2", "text": "I can decode a W3C traceparent header and explain how context crosses HTTP calls, thread pools and a message queue.", "topicId": "context-propagation" },
+  { "id": "tracing-c3", "text": "I can compute trace storage from QPS, spans per trace and bytes per span, and compare head-based and tail-based sampling for error coverage and cost.", "topicId": "trace-sampling" },
+  { "id": "tracing-c4", "text": "I can describe OpenTelemetry's API, SDK, OTLP and Collector, and say what it costs to adopt.", "topicId": "opentelemetry" },
+  { "id": "tracing-c5", "text": "I can read a waterfall, follow the critical path, and use the CLIENT-to-SERVER gap to find time spent outside the callee.", "topicId": "slow-hop" }
+]

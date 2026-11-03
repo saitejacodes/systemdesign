@@ -1,0 +1,18 @@
+{
+  "id": "p5-alerting",
+  "phase": 5,
+  "slug": "alerting",
+  "title": "Alerting and On-Call",
+  "order": 5,
+  "week": 11,
+  "estimatedMinutes": 55,
+  "topics": [
+    { "id": "symptom-alerts", "title": "Symptom-based alerts", "depth": "deep" },
+    { "id": "paging-vs-ticketing", "title": "Paging vs ticketing", "depth": "tradeoffs" },
+    { "id": "alert-fatigue", "title": "Alert fatigue", "depth": "deep" },
+    { "id": "runbooks", "title": "Runbooks", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": ["metrics-monitoring"],
+  "prerequisites": ["p5-slos", "p5-metrics"]
+}

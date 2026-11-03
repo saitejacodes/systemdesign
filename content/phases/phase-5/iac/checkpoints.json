@@ -1,0 +1,7 @@
+[
+  { "id": "iac-c1", "text": "I can explain declarative vs imperative infrastructure and why Terraform reconciles only on apply while Kubernetes controllers reconcile continuously.", "topicId": "declarative-infra" },
+  { "id": "iac-c2", "text": "I can read a Terraform plan and spot a destroy-and-replace (-/+) on a stateful resource before it is applied.", "topicId": "terraform-concepts" },
+  { "id": "iac-c3", "text": "I can refactor a resource address safely with a moved block and protect databases with prevent_destroy and deletion protection.", "topicId": "terraform-concepts" },
+  { "id": "iac-c4", "text": "I can set up remote, versioned, encrypted and locked state, and split it per environment and layer to limit blast radius.", "topicId": "state" },
+  { "id": "iac-c5", "text": "I can detect drift on a schedule with plan -detailed-exitcode and decide whether to codify or revert a manual change.", "topicId": "drift" }
+]

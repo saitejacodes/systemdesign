@@ -1,0 +1,18 @@
+{
+  "id": "p5-containers",
+  "phase": 5,
+  "slug": "containers",
+  "title": "Containers, Images and Docker",
+  "order": 10,
+  "week": 12,
+  "estimatedMinutes": 55,
+  "topics": [
+    { "id": "why-containers", "title": "Why containers: the packaging problem and containers vs VMs", "depth": "tradeoffs" },
+    { "id": "isolation", "title": "What a container really is: namespaces and cgroups", "depth": "deep" },
+    { "id": "images-layers", "title": "Images, layers and digests", "depth": "deep" },
+    { "id": "docker-basics", "title": "Docker basics: Dockerfile, build, run, registry", "depth": "deep" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-monolith-vs-microservices", "p1-scaling"]
+}

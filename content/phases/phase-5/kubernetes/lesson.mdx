@@ -1,0 +1,214 @@
+## Why it matters
+
+Once you have containers, you need something to decide which machine each one runs on, restart it when it dies, give the fleet one stable address, roll out new versions without downtime and add copies when load rises. Kubernetes, open-sourced by Google in 2014 and shaped by a decade of running its internal Borg cluster manager, became the standard answer; every major cloud sells it as a managed service (Amazon EKS, Google GKE, Azure AKS). In a design interview you will not be asked to write YAML, but "we deploy on Kubernetes" invites precise follow-ups: what happens to traffic during a rolling deploy, what a readiness probe is for, why the autoscaler did not save you from a spike, and how a request finds a pod whose IP changes every time it restarts. This section teaches the handful of objects that answer those questions, and is explicit about which parts of the platform you can safely leave to the platform team.
+
+<Callout type="analogy" title="The restaurant manager with a clipboard">
+Kubernetes is an obsessive restaurant manager with a clipboard. The clipboard says "six waiters on the floor, wearing the spring menu". She never takes orders herself. Every few seconds she counts: five waiters? Hire one. One in the old uniform? Swap him, one at a time, so the floor is never short. Customers never ring a waiter's personal phone; they ring the restaurant's number, and whoever is free answers (a Service). A waiter is only sent to tables once their apron is on (readiness); a waiter who collapses is replaced (liveness). When the dining room fills up, she calls the agency for more staff, but they take a while to arrive (the autoscaler). Where the analogy breaks: the manager only checks what you told her to check. A waiter who is upright and aproned but serving everyone the wrong dish passes every inspection. Probes measure what you configure, not whether your service is correct.
+</Callout>
+
+## Control plane, nodes and the reconciliation loop
+
+<DepthStamp depth="tradeoffs" />
+
+A Kubernetes cluster has two halves.
+
+- The <Term slug="control-plane">control plane</Term> holds the cluster's desired and observed state and makes decisions. The **API server** is the only front door: every client, from `kubectl` to the controllers, reads and writes objects through it. **etcd**, a key-value store replicated with <Term slug="raft">Raft</Term>, stores every object. The **scheduler** picks a node for each new pod. The **controller manager** runs the built-in controllers (Deployment, ReplicaSet, node, endpoints and others).
+- **Worker nodes** run the workloads. On each node the **kubelet** starts and stops containers through the container runtime (containerd or CRI-O) and runs health probes, and **kube-proxy** programs the node's networking so Service addresses reach pods.
+
+The idea that ties it together is the <Term slug="reconciliation-loop">reconciliation loop</Term>. You do not tell Kubernetes "start three containers". You write a desired state ("three replicas of image X") into the API server. Each controller repeatedly compares desired state with observed state and takes one step to close the gap, forever. A crashed pod, a lost node and a new image version are all the same event to a controller: the world differs from the spec, so act. This is why Kubernetes heals itself, and also why it is eventually consistent: changes converge over seconds, they do not happen atomically.
+
+| Component | If it is down |
+|---|---|
+| API server | No changes, no scheduling, no scaling; running pods keep serving |
+| etcd (quorum lost) | Same as above; the cluster's state cannot be written |
+| Scheduler | New pods stay `Pending`; existing pods unaffected |
+| kubelet on a node | That node's pods keep running but are not restarted or probed; after a timeout the node is marked not ready and its pods are replaced elsewhere |
+
+That table is the static-stability argument for Kubernetes: the <Term slug="data-plane">data plane</Term> keeps serving when the control plane is unavailable. You lose the ability to change things, not the things themselves.
+
+## Pods, ReplicaSets and Deployments
+
+<DepthStamp depth="deep" />
+
+A <Term slug="pod">pod</Term> is the smallest thing Kubernetes schedules: one or more containers that always run together on one node, share one network namespace (one IP address, and they reach each other on `localhost`) and can share volumes. Most pods have one application container; a second "sidecar" container (a log shipper, a <Term slug="sidecar-proxy">sidecar proxy</Term>) is the main reason for more. Pods are **disposable**. They are never moved or repaired: a replacement is a new pod with a new name and a new IP.
+
+Each container declares **requests** and **limits** for CPU and memory. The scheduler places pods by **requests** only: a node with 4 CPUs fits pods whose CPU requests sum to 4, whatever they actually use. Limits are enforced at run time by cgroups, with the consequences from the containers section: memory over the limit is an OOM kill, CPU over the limit is throttling. Requests that are too low pack nodes so tightly that they run out of real capacity; requests that are too high waste money on idle reserved cores.
+
+A **ReplicaSet** keeps N identical pods running. A <Term slug="kubernetes-deployment">Deployment</Term> manages ReplicaSets to roll out new versions: change the image and it creates a new ReplicaSet, scales it up and the old one down in steps, and keeps old ReplicaSets around (10 by default) so `kubectl rollout undo` can scale an old one back up.
+
+The pace of a rolling update is set by two knobs:
+
+- `maxSurge`: how many pods *above* the desired count may exist during the rollout (default 25%, rounded **up**).
+- `maxUnavailable`: how many pods *below* the desired count may be unavailable (default 25%, rounded **down**).
+
+### Worked example: rollout time and capacity
+
+A Deployment has **20 replicas**. Each pod serves 500 requests a second at target utilisation, so the fleet serves 10,000/s, and peak traffic is 9,000/s. A new pod takes about 40 seconds from creation to ready (10 s image pull, 20 s start-up, 10 s until the readiness probe passes).
+
+**Defaults** (25% / 25%): surge = ceil(5) = 5, unavailable = floor(5) = 5. Kubernetes may run up to 25 pods and as few as 15 available ones. It immediately terminates 5 old pods and creates 10 new ones, so the rollout takes roughly two 40-second waves, **about 80 seconds**. But at its low point only 15 pods are available: 15 × 500 = **7,500/s against a 9,000/s peak**. A deploy at peak overloads the fleet.
+
+**Safe for peak** (`maxSurge: 5`, `maxUnavailable: 0`): never fewer than 20 available pods, at the cost of needing room for 5 extra pods (25% more requested capacity) during the rollout, and 20 ÷ 5 = 4 waves × 40 s ≈ **160 seconds**. The trade is explicit: speed versus capacity headroom versus spare cluster resources.
+
+If a new version never becomes ready, the Deployment stops progressing and, after `progressDeadlineSeconds` (600 s by default), reports the rollout as failed. It does **not** roll back automatically; your pipeline or a person must run the undo.
+
+## Services and Ingress
+
+<DepthStamp depth="deep" />
+
+Pod IPs change every time a pod is replaced, so clients cannot use them. A <Term slug="kubernetes-service">Service</Term> gives a set of pods one stable name and address. It selects pods by label (`app: checkout`), and the control plane keeps an up-to-date list of the matching pods that are **ready** in EndpointSlice objects.
+
+| Service type | What you get |
+|---|---|
+| ClusterIP (default) | A stable <Term slug="virtual-ip">virtual IP</Term> and DNS name (`checkout.shop.svc.cluster.local`) reachable only inside the cluster |
+| NodePort | ClusterIP plus a port opened on every node |
+| LoadBalancer | NodePort plus a cloud load balancer provisioned in front of it |
+| Headless (`clusterIP: None`) | No virtual IP; DNS returns the pod IPs directly, used by StatefulSets and client-side balancing |
+
+A ClusterIP is not a running proxy. On every node, kube-proxy programs iptables or IPVS rules so a connection to the Service IP is rewritten to one of the ready pods' IPs, chosen at random in iptables mode. That is layer 4 balancing **per connection**, and it has a sharp edge: long-lived connections stick to one pod. A gRPC client multiplexes every request over one HTTP/2 connection, so it can send all its traffic to whichever pod it connected to first, and pods the autoscaler adds later get nothing until clients reconnect. The fixes are client-side balancing over a headless Service, a <Term slug="service-mesh">service mesh</Term> that balances per request, or forcing periodic reconnection (for example a maximum connection age on the server).
+
+An <Term slug="ingress">Ingress</Term> is a set of <Term slug="l7-load-balancing">layer 7</Term> HTTP routing rules for traffic entering the cluster: host `shop.example.com`, path `/api` goes to Service `api`, path `/` goes to Service `web`, with TLS terminated at the edge. The Ingress object does nothing by itself; an **ingress controller** (NGINX, HAProxy, Traefik, a cloud load balancer integration) watches Ingress objects and configures a real proxy. The newer Gateway API (v1.0 released in 2023) is the more expressive successor, with separate objects for the infrastructure owner (Gateway) and the application team (HTTPRoute), and support for traffic splitting by weight.
+
+<Figure caption="FIG. 11.1 · REQUEST PATH · INGRESS TO POD">
+  <Diagram label="A client request reaches the cloud load balancer, then the ingress controller, which routes by host and path to a Service. The Service's virtual IP is translated by kube-proxy rules to one of three ready pods; a fourth pod that is not ready is excluded." chart={`flowchart LR
+    C[Client] --> LB[Cloud load balancer]
+    LB --> IC[Ingress controller: host and path rules]
+    IC --> S[Service api: ClusterIP]
+    S --> P1[Pod api-1 ready]
+    S --> P2[Pod api-2 ready]
+    S --> P3[Pod api-3 ready]
+    S -. excluded .-> P4[Pod api-4 not ready]`} />
+</Figure>
+
+*Only ready pods are in a Service's endpoints; that single rule is what makes rolling deploys safe.*
+
+## Liveness, readiness and startup probes
+
+<DepthStamp depth="deep" />
+
+The kubelet runs three kinds of <Term slug="health-check">health check</Term> on each container, each an HTTP GET, TCP connect, gRPC health call or command. They answer different questions and trigger different actions.
+
+| Probe | Question | On failure |
+|---|---|---|
+| <Term slug="readiness-probe">Readiness</Term> | Should this pod receive traffic right now? | Pod removed from Service endpoints. Not restarted. |
+| <Term slug="liveness-probe">Liveness</Term> | Is this process stuck beyond recovery? | kubelet kills the container and restarts it. |
+| <Term slug="startup-probe">Startup</Term> | Has the app finished starting? | Liveness and readiness are not run until it passes; if it never passes, the container is restarted. |
+
+Defaults: a probe runs every 10 seconds (`periodSeconds`), times out after 1 second and needs 3 consecutive failures (`failureThreshold`) to count as failed, so detecting a dead pod takes about 30 seconds unless you tune it.
+
+The rules of thumb that prevent most incidents:
+
+- **Readiness** checks whether *this pod* can serve: initialised, caches warm, not draining. It may check a hard dependency the pod cannot work without, but think about what happens if every pod fails it together: the Service has no endpoints and every request fails fast instead of degrading.
+- **Liveness** must check only the process itself (an event loop that answers, a thread that is not deadlocked). **Never put a database or downstream call in a liveness probe.** If the dependency is slow, restarting every pod cannot fix it and adds cold starts to the outage.
+- **Startup** probes exist for slow starters, so you do not need a long `initialDelaySeconds` on liveness that also delays detecting real hangs later.
+
+### Failure timeline: a rolling deploy without a readiness probe
+
+| Time | Event |
+|---|---|
+| 12:00:00 | New image rolled out to a 10-pod Deployment. The new version needs 25 s to load its model file and open database connections. No readiness probe is defined. |
+| 12:00:05 | First new pods' containers start. With no readiness probe, a running container counts as ready, so the pods join the Service endpoints immediately. |
+| 12:00:05–12:00:30 | Requests routed to new pods get connection refused or 503s. The Deployment controller, seeing "ready" pods, terminates more old pods. |
+| 12:00:40 | All 10 pods are new and most are still initialising. Error rate is near 100% for about 20 seconds. |
+| 12:01:00 | Pods finish starting; errors stop. The dashboard shows a one-minute outage on a "zero-downtime" deploy. |
+| Fix | A readiness probe on an endpoint that returns 200 only after initialisation; `maxUnavailable: 0`; optionally `minReadySeconds` so a pod must stay ready a while before it counts. |
+
+### Failure timeline: liveness probe that checks the database
+
+| Time | Event |
+|---|---|
+| 09:00 | Database latency rises to 2 s during a batch job. The liveness endpoint runs `SELECT 1` with a 1 s probe timeout. |
+| 09:00:30 | Three failures in a row on every pod. kubelet restarts all 30 containers. |
+| 09:01 | 30 cold starts open fresh connection pools at once, adding load to the struggling database. Restarts repeat; pods enter `CrashLoopBackOff` with growing back-off delays. |
+| 09:10 | The batch job ends and the database recovers, but pods are still in back-off. Recovery takes minutes longer than the database incident itself. |
+
+### Graceful shutdown
+
+When a pod is deleted, two things happen **in parallel**: the kubelet sends SIGTERM to the containers, and the pod is removed from the endpoints, which every node's kube-proxy and every ingress controller learns about a moment later. For a second or two, new requests can still arrive at a pod that has started shutting down. The standard pattern is a short `preStop` sleep (a few seconds) before the app begins draining, then finishing in-flight requests, all within `terminationGracePeriodSeconds` (30 s by default) before SIGKILL.
+
+## The Horizontal Pod Autoscaler
+
+<DepthStamp depth="tradeoffs" />
+
+The <Term slug="horizontal-pod-autoscaler">Horizontal Pod Autoscaler</Term> (HPA) is a controller that changes a Deployment's replica count to hold a metric near a target. Its core rule, from the Kubernetes documentation:
+
+```
+desiredReplicas = ceil( currentReplicas × currentMetricValue / desiredMetricValue )
+```
+
+CPU and memory utilisation are measured **as a percentage of the pods' requests**, not of the node, so requests that are wrong make the autoscaler wrong. The HPA evaluates every 15 seconds by default, ignores changes within a 10% tolerance, and by default waits for a 5-minute scale-down stabilisation window so it does not remove pods during a brief dip and add them back a minute later. It can also scale on custom or external metrics such as requests per second or queue depth, which are often better signals than CPU.
+
+### Worked example: a lunchtime spike
+
+Six pods each request 500 millicores of CPU and the target is 60% utilisation. Traffic rises and average usage reaches 450m, which is 90% of the request.
+
+- desired = ceil(6 × 90 / 60) = ceil(9) = **9 pods**.
+- If the cluster has room, the 3 new pods take the same ~40 s to pull, start and pass readiness as before. Including the metrics scrape and HPA sync interval, new capacity arrives roughly a minute after the spike begins.
+- If the nodes are full, the new pods are `Pending` until a node autoscaler (the Cluster Autoscaler or Karpenter) provisions a VM, which typically adds a few more minutes.
+- After lunch, usage falls to 30% across 9 pods: ceil(9 × 30 / 60) = ceil(4.5) = **5 pods**, applied only once the 5-minute window shows the lower recommendation has held.
+
+The lesson for design: **the HPA handles ramps, not cliffs.** A spike that doubles traffic in ten seconds is absorbed by headroom (a lower target such as 50–60%, a minimum replica count sized for the morning peak) and by load shedding, not by the autoscaler. Also note the HPA and a Deployment must agree: if your manifest hard-codes `replicas: 6`, every deploy resets the count the HPA chose, so leave `replicas` unset once an HPA owns it.
+
+## What to know for interviews, and what not to
+
+<DepthStamp depth="awareness" />
+
+| Know cold | Know it exists | Leave to the platform team |
+|---|---|---|
+| Pods, Deployments and rolling updates (surge, unavailable) | StatefulSets: stable names and per-pod volumes for databases and brokers | YAML syntax and `kubectl` flags |
+| Services, DNS names and per-connection balancing | DaemonSets (one pod per node: log agents) and Jobs/CronJobs | CNI plugin internals and iptables rules |
+| Readiness vs liveness vs startup probes, graceful shutdown | ConfigMaps and Secrets for run-time configuration | etcd tuning and backup procedure |
+| Requests, limits, OOM kills and throttling | Operators: controllers that run stateful software for you | Admission webhooks, RBAC policy details |
+| HPA formula, its lag and node autoscaling | Ingress vs Gateway API, service mesh | Cluster upgrades and version skew rules |
+
+Whether a team should run Kubernetes at all is a genuine disagreement. **For:** it is the closest thing to a standard deployment API across clouds, managed offerings remove most control-plane work, and the ecosystem (autoscaling, rollouts, observability, policy) is unmatched. **Against:** it is a large distributed system in its own right; upstream ships roughly three minor releases a year, each supported for only about a year, so upgrades never stop; networking, security and cost tuning need specialists; and for a small team running a few stateless services, a managed container platform (AWS ECS or App Runner, Google Cloud Run) or a PaaS gives deploys, scaling and health checks with far less to own. The control plane alone has a price (Amazon EKS charges $0.10 per cluster-hour under standard support, about $73 a month per cluster) before any nodes. A good interview answer names the trade rather than assuming Kubernetes.
+
+<TradeoffBox title="Kubernetes" items={[
+  { gain: "Declarative desired state with self-healing reconciliation", cost: "Eventually consistent: changes converge over seconds, and debugging means reading controller behaviour" },
+  { gain: "Rolling updates with readiness gating and one-command rollback", cost: "Safe rollouts depend on probes, surge settings and spare capacity you must configure" },
+  { gain: "Stable Service names over disposable pods", cost: "Per-connection L4 balancing; long-lived connections like gRPC need extra work" },
+  { gain: "Autoscaling of pods and nodes on real metrics", cost: "Minute-scale lag; only as accurate as your resource requests" },
+  { gain: "A portable, standard platform with a vast ecosystem", cost: "A complex system to operate, upgrade and secure; real cost for small teams" }
+]} />
+
+<NotWhenBox title="When Kubernetes is the wrong tool" items={[
+  "A small team with a handful of stateless services: a managed container platform or PaaS delivers the same outcomes with much less to run.",
+  "Workloads that need sub-second scale-from-zero bursts: pod start plus node provisioning is too slow; use serverless functions or pre-provisioned capacity.",
+  "Running your main database on it without people who know StatefulSets, storage classes and the database's failover: use a managed database.",
+  "When nobody owns the platform: an unmaintained cluster drifts out of support and becomes the riskiest system you run."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A failing readiness probe restarts the pod." right="Readiness only removes the pod from Service endpoints; it keeps running and rejoins when the probe passes. Liveness is the probe that restarts containers." />
+
+<Misconception wrong="A liveness probe should check the database so broken pods get restarted." right="Restarting every pod cannot fix a slow database and adds cold starts to the outage. Liveness checks only the process; dependencies belong, carefully, in readiness." />
+
+<Misconception wrong="The HPA protects you from sudden traffic spikes." right="It reacts on 15-second evaluation cycles and new pods take tens of seconds (minutes if nodes must be added). Spikes are absorbed by headroom and load shedding; the HPA handles ramps." />
+
+<Misconception wrong="A Kubernetes Service load-balances every request across pods." right="ClusterIP balances per connection at layer 4. Long-lived HTTP/2 or gRPC connections stay on one pod; use client-side balancing or a mesh for per-request balancing." />
+
+## Interview angle
+
+<InterviewAngle title="Kubernetes" questions={[
+  "Walk me through what happens, step by step, when you change the image of a 20-replica Deployment.",
+  "Users see errors for a minute during every deploy even though it is a rolling update. What do you check?",
+  "What is the difference between liveness and readiness, and what would you put in each for this service?",
+  "Traffic triples in thirty seconds. Does the HPA save you? What does?",
+  "After a scale-out, the new pods of our gRPC service receive almost no traffic. Why?"
+]}>
+Strong answers trace the mechanism. A Deployment change creates a new ReplicaSet; the controller surges new pods, waits for readiness, removes them from or adds them to endpoints, and scales the old ReplicaSet down within maxSurge and maxUnavailable. Deploy-time errors usually mean no readiness probe, a probe that passes before the app can serve, or no graceful shutdown (fix with a preStop pause and SIGTERM draining). Liveness checks only that the process is not wedged; readiness checks that this pod can serve now. The HPA computes ceil(current × metric ÷ target) every 15 seconds and new pods take tens of seconds, so sudden spikes need headroom, minimum replicas and load shedding. New gRPC pods are idle because kube-proxy balances connections, not requests. Finish with the honest trade: Kubernetes is worth it when a team runs many services and has people to own the platform.
+</InterviewAngle>
+
+## Practice
+
+1. A Deployment has 40 replicas, `maxSurge: 25%` and `maxUnavailable: 10%`. What are the maximum total pods and minimum available pods during a rollout? If each pod serves 300 requests a second and peak is 11,000 a second, is a deploy at peak safe?
+2. An HPA targets 70% CPU. Eight pods are averaging 105% of their CPU request. How many replicas does it ask for? If pods take 45 seconds to become ready and nodes take 3 minutes to provision, how long until the new capacity serves traffic in each case?
+3. Write the liveness, readiness and startup probe design (endpoint, what it checks, period, threshold) for a service that takes 90 seconds to load a cache at start-up and depends on Postgres and Redis.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

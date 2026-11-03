@@ -1,0 +1,187 @@
+[
+  {
+    "id": "containers-q1",
+    "type": "single",
+    "prompt": "What, mechanically, is a running Linux container?",
+    "options": [
+      { "id": "a", "text": "A small virtual machine with its own stripped-down guest kernel and virtual hardware" },
+      { "id": "b", "text": "A host process started with namespaces limiting its view and cgroups limiting its use" },
+      { "id": "c", "text": "A compressed archive of an application that the kernel unpacks and emulates" },
+      { "id": "d", "text": "A chroot jail: the only thing it changes is the process's root directory" }
+    ],
+    "correct": ["b"],
+    "explanation": "A container is an ordinary process on the host kernel, restricted by namespaces (what it can see) and cgroups (how much it can use). It is not a VM: there is no guest kernel or virtual hardware, which is why it starts fast and isolates less. The image is an archive, but the kernel does not emulate anything; it runs the process natively. chroot changes only the root directory; containers also isolate PIDs, networking, hostnames, users and resources.",
+    "topicId": "isolation",
+    "difficulty": 1
+  },
+  {
+    "id": "containers-q2",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "A Java service in a container with a 2 GB memory limit restarts every afternoon at peak load. The orchestrator shows exit code 137. The application logs end abruptly with no OutOfMemoryError and no stack trace. The hosts have 64 GB of RAM and the JVM version predates container support.",
+    "options": [
+      { "id": "a", "text": "The JVM threw OutOfMemoryError but the logging library dropped the final lines" },
+      { "id": "b", "text": "A liveness probe timed out, so the orchestrator sent SIGTERM and the app exited" },
+      { "id": "c", "text": "The kernel OOM killer sent SIGKILL because the JVM sized its heap from host RAM" },
+      { "id": "d", "text": "CPU throttling stalled garbage collection long enough for the process to crash" }
+    ],
+    "correct": ["c"],
+    "explanation": "Exit code 137 is 128 + 9, SIGKILL, and the classic source is the cgroup OOM killer. A JVM without container support picks a default heap from host memory (a quarter of 64 GB is 16 GB), so it happily grows past the 2 GB limit and is killed with no Java-level error. An OutOfMemoryError would be a JVM exception with a trace and usually a different exit code. A SIGTERM-driven exit would normally be 143, and the app would have a chance to log. Throttling slows a process but does not crash it.",
+    "topicId": "isolation",
+    "difficulty": 2
+  },
+  {
+    "id": "containers-q3",
+    "type": "scenario",
+    "prompt": "What should you check first?",
+    "scenario": "An API container has a 1-CPU limit. Dashboards show average CPU at 35% and no restarts, yet p99 latency jumps from 40 ms to over 200 ms whenever a burst of requests arrives. The service uses a pool of 8 worker threads.",
+    "options": [
+      { "id": "a", "text": "Whether the container is being OOM-killed and silently restarted during each burst" },
+      { "id": "b", "text": "The cgroup's throttled-period counters, since 8 threads can exhaust the CPU quota early" },
+      { "id": "c", "text": "Whether the image is too large, since big images slow down every single incoming request" },
+      { "id": "d", "text": "Whether the host kernel version differs from the one the image was built against" }
+    ],
+    "correct": ["b"],
+    "explanation": "A CPU limit is a quota per 100 ms period. Eight busy threads can burn 100 ms of CPU in about 12.5 ms of wall time, then every thread is paused until the next period. Averages look fine while tail latency explodes; throttled-period metrics confirm it. OOM kills would show as restarts, and there are none. Image size affects pull and start time, not request latency once running. The kernel version does not affect request latency this way; images do not bind to a specific kernel build.",
+    "topicId": "isolation",
+    "difficulty": 2
+  },
+  {
+    "id": "containers-q4",
+    "type": "single",
+    "prompt": "A Dockerfile copies a credentials file in one RUN step and deletes it in the next. What is true of the final image?",
+    "options": [
+      { "id": "a", "text": "The file is gone, because the final filesystem is the merge of all the layers" },
+      { "id": "b", "text": "The file is gone, because Docker squashes adjacent RUN layers when pushing" },
+      { "id": "c", "text": "The file is still in the earlier layer and anyone who pulls the image can extract it" },
+      { "id": "d", "text": "The file is encrypted at rest by the registry, so only the image owner can read it" }
+    ],
+    "correct": ["c"],
+    "explanation": "Layers are immutable tarballs. The later layer only records a whiteout that hides the file in the merged view; the earlier layer still contains it and can be extracted from the pulled image. The merged view hides it but does not remove it. Docker does not squash layers on push by default. Registries do not encrypt layers per owner; anyone with pull access gets the bytes. Use build secrets or a multi-stage build so the secret never lands in a shipped layer.",
+    "topicId": "images-layers",
+    "difficulty": 2
+  },
+  {
+    "id": "containers-q5",
+    "type": "scenario",
+    "prompt": "Why does every build take so long, and what is the fix?",
+    "scenario": "A Node.js Dockerfile reads: FROM node:20, then COPY . . , then RUN npm ci, then CMD. Developers change only application code, yet every CI build spends about 90 seconds in npm ci.",
+    "options": [
+      { "id": "a", "text": "CI runners never keep a layer cache, so the fix is a bigger runner with faster disks" },
+      { "id": "b", "text": "npm ci always ignores lockfiles; switching to npm install will make it cache" },
+      { "id": "c", "text": "The base image changes daily; pinning node:20 to a digest will stop the reinstall" },
+      { "id": "d", "text": "Code edits bust the COPY layer and all after it; copy the lockfile and install first" }
+    ],
+    "correct": ["d"],
+    "explanation": "The builder reuses a layer only if the instruction and everything below it are unchanged. Copying the whole tree first means any code change invalidates the COPY layer and therefore the npm ci layer above it. Copying package.json and the lockfile, installing, then copying the source keeps the install cached until dependencies change. Runner size does not address the cache miss. npm ci uses the lockfile; that is its purpose. Pinning the base helps reproducibility, but the reinstall here is caused by the code COPY, not the base.",
+    "topicId": "images-layers",
+    "difficulty": 2
+  },
+  {
+    "id": "containers-q6",
+    "type": "scenario",
+    "prompt": "Roughly how long does the registry spend serving the pull, assuming it is the bottleneck?",
+    "scenario": "An autoscaling event starts a service on 200 fresh nodes at once. Its image is 1.1 GB and none of its layers are cached on the new nodes. The registry endpoint can serve about 10 Gbit/s (1.25 GB/s) in total.",
+    "options": [
+      { "id": "a", "text": "About 1 second" },
+      { "id": "b", "text": "About 18 seconds" },
+      { "id": "c", "text": "About 3 minutes" },
+      { "id": "d", "text": "About 30 minutes" }
+    ],
+    "correct": ["c"],
+    "explanation": "200 nodes × 1.1 GB = 220 GB; 220 GB ÷ 1.25 GB/s ≈ 176 seconds, about 3 minutes before new capacity can serve. About 1 second is the time for one node's share of bandwidth to deliver a fraction of the image, ignoring the other 199. About 18 seconds is roughly the answer for a 120 MB image, not 1.1 GB. 30 minutes would need ten times more data or a tenth of the bandwidth.",
+    "topicId": "images-layers",
+    "difficulty": 2
+  },
+  {
+    "id": "containers-q7",
+    "type": "single",
+    "prompt": "Why should a production deploy reference an image by digest (sha256:...) rather than by a tag such as :latest?",
+    "options": [
+      { "id": "a", "text": "Digests download faster because the registry can skip checking the layers" },
+      { "id": "b", "text": "A digest names exact bytes; a tag is a pointer that a later push can move" },
+      { "id": "c", "text": "Tags are only for local builds; registries reject tag-based pulls in production" },
+      { "id": "d", "text": "A digest encrypts the image so it cannot be tampered with while in transit" }
+    ],
+    "correct": ["b"],
+    "explanation": "The digest is a content hash of the manifest, so it identifies exactly one image forever; a tag can be repointed by any push, so two nodes pulling the same tag at different times may run different code, and rollbacks become ambiguous. Pull speed is the same either way, since layers are content-addressed in both cases. Registries happily serve tags. A digest lets you verify integrity, but it is a hash, not encryption; TLS protects transit.",
+    "topicId": "images-layers",
+    "difficulty": 1
+  },
+  {
+    "id": "containers-q8",
+    "type": "scenario",
+    "prompt": "What explains the behaviour?",
+    "scenario": "A Dockerfile ends with CMD npm start (shell form). On every deploy, each old container takes exactly 10 seconds to stop, and a few in-flight requests fail with connection resets. The server has a correct SIGTERM handler that drains requests.",
+    "options": [
+      { "id": "a", "text": "The shell is PID 1, does not pass SIGTERM on, so the handler never runs before SIGKILL" },
+      { "id": "b", "text": "The SIGTERM handler takes 10 s to drain, and Docker always waits out the full period" },
+      { "id": "c", "text": "Docker sends SIGKILL first and only sends SIGTERM if the process is still alive" },
+      { "id": "d", "text": "Shell-form CMD runs as root, and root processes are not allowed to catch SIGTERM" }
+    ],
+    "correct": ["a"],
+    "explanation": "Shell form runs /bin/sh -c, so sh becomes PID 1. PID 1 in a namespace ignores signals it has no handler for, and sh does not forward SIGTERM to npm or node, so the drain handler never runs; after the 10 s default grace period Docker sends SIGKILL and in-flight requests are cut. If draining were the cause, stop time would vary and requests would complete. Docker sends SIGTERM first, then SIGKILL. Root processes can catch SIGTERM like any other. Fix it with the exec form or an init like tini.",
+    "topicId": "docker-basics",
+    "difficulty": 3
+  },
+  {
+    "id": "containers-q9",
+    "type": "multi",
+    "prompt": "Which practices reduce the security risk of running containers on a shared host? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Run the process as a non-root user" },
+      { "id": "b", "text": "Drop Linux capabilities the app does not need" },
+      { "id": "c", "text": "Mount the Docker socket so the app can self-update" },
+      { "id": "d", "text": "Use micro-VMs such as Firecracker for untrusted code" }
+    ],
+    "correct": ["a", "b", "d"],
+    "explanation": "Containers share the host kernel, so you shrink what a compromised process can do: a non-root user and dropped capabilities limit what it can touch, and micro-VMs give untrusted tenants their own kernel. Mounting the Docker socket does the opposite: anything that can talk to dockerd can start a privileged container, which is equivalent to root on the host.",
+    "topicId": "isolation",
+    "difficulty": 2
+  },
+  {
+    "id": "containers-q10",
+    "type": "single",
+    "prompt": "When is a virtual machine a better choice than a container?",
+    "options": [
+      { "id": "a", "text": "When the service is stateless and needs to scale out quickly under load" },
+      { "id": "b", "text": "When you need many copies of one service packed as densely as possible on one host" },
+      { "id": "c", "text": "When you run untrusted tenants' code or need a different kernel than the host" },
+      { "id": "d", "text": "When builds must be reproducible and promoted unchanged through environments" }
+    ],
+    "correct": ["c"],
+    "explanation": "A VM has its own kernel behind a hypervisor boundary, so it isolates untrusted tenants better and can run a different kernel or OS. Fast scale-out and dense packing are exactly where containers win, because there is no guest OS to boot or hold in memory. Reproducible, promotable artifacts are a strength of images, not a reason to pick a VM.",
+    "topicId": "why-containers",
+    "difficulty": 1
+  },
+  {
+    "id": "containers-q11",
+    "type": "multi",
+    "prompt": "Which statements about the Docker toolchain are true? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "dockerd delegates container lifecycle to containerd, which uses runc" },
+      { "id": "b", "text": "Kubernetes removed dockershim, yet Docker-built images still run" },
+      { "id": "c", "text": "docker push re-uploads every layer even if the registry has it" },
+      { "id": "d", "text": "A named volume keeps its data after the container is removed" }
+    ],
+    "correct": ["a", "b", "d"],
+    "explanation": "The CLI talks to dockerd, which hands lifecycle to containerd and the low-level runtime runc. Kubernetes 1.24 removed dockershim, but Docker builds OCI images, which containerd and CRI-O run unchanged. Named volumes live outside the container's writable layer and survive its removal. Push is incremental: layers are content-addressed, so only layers the registry lacks are uploaded.",
+    "topicId": "docker-basics",
+    "difficulty": 2
+  },
+  {
+    "id": "containers-q12",
+    "type": "single",
+    "prompt": "Where should environment-specific configuration such as database URLs live?",
+    "options": [
+      { "id": "a", "text": "Injected at run time as environment variables or mounted files, one image for all" },
+      { "id": "b", "text": "In a separate image per environment, so each build is tailored exactly to its target" },
+      { "id": "c", "text": "In a config file baked into the image, since images are immutable and safe" },
+      { "id": "d", "text": "Hard-coded in the source, since containers make every environment identical" }
+    ],
+    "correct": ["a"],
+    "explanation": "Build once, promote the same digest, and inject what differs at run time; that way staging tests the exact artifact production runs. A separate image per environment means production runs bytes nobody tested. Baking config into the image has the same problem and leaks secrets to anyone with pull access. Containers make the userland identical, not the environment: URLs and credentials still differ.",
+    "topicId": "docker-basics",
+    "difficulty": 1
+  }
+]

@@ -1,0 +1,19 @@
+[
+  { "id": "tracing-f1", "front": "Span?", "back": "One named, timed operation (an HTTP handler, a DB query) with trace ID, span ID, parent ID, start and end time, kind, attributes, events and status.", "topicId": "spans-traces" },
+  { "id": "tracing-f2", "front": "Trace?", "back": "All spans sharing one trace ID, linked into a tree by parent span IDs: the full path of one request.", "topicId": "spans-traces" },
+  { "id": "tracing-f3", "front": "Why does one service call make two spans?", "back": "A CLIENT span in the caller and a SERVER span in the callee. The difference is time outside the callee's code: network, pools, proxies, retries.", "topicId": "spans-traces" },
+  { "id": "tracing-f4", "front": "Why can spans hold an order ID when metric labels can't?", "back": "Each span is one stored record, not a new time series, so high-cardinality attributes don't multiply storage.", "topicId": "spans-traces" },
+  { "id": "tracing-f5", "front": "traceparent format?", "back": "version-traceid-parentid-flags, e.g. 00-<32 hex trace ID>-<16 hex parent span ID>-01. The low flag bit means sampled.", "topicId": "context-propagation" },
+  { "id": "tracing-f6", "front": "tracestate vs baggage?", "back": "tracestate carries vendor-specific trace data next to traceparent. baggage (a separate W3C header) carries app key-values to every downstream service.", "topicId": "context-propagation" },
+  { "id": "tracing-f7", "front": "Propagator?", "back": "OpenTelemetry code that injects the current context into outgoing headers and extracts it from incoming ones.", "topicId": "context-propagation" },
+  { "id": "tracing-f8", "front": "Where does trace propagation usually break?", "back": "Message queues, thread pools and async callbacks, proxies that strip unknown headers, and services using a different header format such as B3.", "topicId": "context-propagation" },
+  { "id": "tracing-f9", "front": "Head-based sampling?", "back": "The root decides whether to record the trace and propagates the sampled flag. Cheap and consistent, but keeps errors only at the sample rate.", "topicId": "trace-sampling" },
+  { "id": "tracing-f10", "front": "Tail-based sampling?", "back": "Record every span, buffer, decide when the trace is complete: keep errors and slow traces. Costs buffer memory and routing by trace ID.", "topicId": "trace-sampling" },
+  { "id": "tracing-f11", "front": "Trace volume formula?", "back": "QPS × spans per trace × bytes per span × 86,400. 20,000 × 25 × 300 B ≈ 13 TB/day unsampled.", "topicId": "trace-sampling" },
+  { "id": "tracing-f12", "front": "ParentBased(TraceIdRatioBased(0.01))?", "back": "The common OTel head sampler: roots sample 1% by trace ID; every other span follows its parent's decision, so traces are never half-recorded.", "topicId": "trace-sampling" },
+  { "id": "tracing-f13", "front": "OpenTelemetry's parts?", "back": "API, SDK, instrumentation libraries, OTLP (gRPC 4317, HTTP 4318), the Collector, and semantic conventions.", "topicId": "opentelemetry" },
+  { "id": "tracing-f14", "front": "Main reason to adopt OpenTelemetry?", "back": "Vendor neutrality: instrument once and change back ends via Collector config. Costs: another component to run, tuning, overhead.", "topicId": "opentelemetry" },
+  { "id": "tracing-f15", "front": "Critical path?", "back": "The chain of spans that determined end-to-end latency. Speeding up spans off it, such as parallel work that finished early, gains nothing.", "topicId": "slow-hop" },
+  { "id": "tracing-f16", "front": "CLIENT span 1,950 ms, SERVER span 1,100 ms. Where did 850 ms go?", "back": "Outside the callee: connection-pool wait, TLS handshake, retries, proxy or load-balancer queueing, or network.", "topicId": "slow-hop" },
+  { "id": "tracing-f17", "front": "A child span starts before its parent. Why?", "back": "Clock skew between hosts. Trust durations within one span over gaps between spans on different machines.", "topicId": "slow-hop" }
+]

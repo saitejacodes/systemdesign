@@ -1,0 +1,7 @@
+[
+  { "id": "common-attacks-c1", "text": "I can name the three DDoS families and design the layer that absorbs each, with amplification arithmetic.", "topicId": "ddos" },
+  { "id": "common-attacks-c2", "text": "I can show with numbers why per-IP rate limits miss a distributed L7 flood and what to do instead.", "topicId": "ddos" },
+  { "id": "common-attacks-c3", "text": "I can explain why parameterised queries prevent SQL injection and how to handle identifiers that can't be bound.", "topicId": "injection" },
+  { "id": "common-attacks-c4", "text": "I can design a URL-fetching feature that resists SSRF, including IMDSv2, IP validation after resolution and an egress proxy.", "topicId": "ssrf" },
+  { "id": "common-attacks-c5", "text": "I can list the 2021 OWASP Top 10 categories and a design-level defence for each.", "topicId": "owasp-top-10" }
+]

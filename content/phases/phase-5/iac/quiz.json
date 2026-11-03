@@ -1,0 +1,172 @@
+[
+  {
+    "id": "iac-q1",
+    "type": "single",
+    "prompt": "What makes infrastructure **declarative**?",
+    "options": [
+      { "id": "a", "text": "It is written in YAML or HCL rather than in a general-purpose language" },
+      { "id": "b", "text": "It lists the API calls to run in order, each one guarded by an existence check" },
+      { "id": "c", "text": "It describes the desired end state and the tool computes what must change" },
+      { "id": "d", "text": "It is applied automatically on every commit by the CI system without review" }
+    ],
+    "correct": ["c"],
+    "explanation": "Declarative means you state what should exist and the tool diffs it against reality; running it twice changes nothing the second time. The file format does not decide it: Pulumi uses TypeScript or Python yet still has a declarative engine. A guarded list of steps is imperative, however careful. Automatic application is a workflow choice, not a property of the language.",
+    "topicId": "declarative-infra",
+    "difficulty": 1
+  },
+  {
+    "id": "iac-q2",
+    "type": "scenario",
+    "prompt": "What will happen if this plan is applied?",
+    "scenario": "For readability, a pull request renames `resource \"aws_db_instance\" \"main\"` to `resource \"aws_db_instance\" \"orders\"`. Nothing else changes. CI posts: `Plan: 1 to add, 0 to change, 1 to destroy.`",
+    "options": [
+      { "id": "a", "text": "Terraform renames the RDS instance in place, since only the label in code changed" },
+      { "id": "b", "text": "Nothing happens, because the cloud identifier orders-db is the same in both blocks" },
+      { "id": "c", "text": "Terraform creates a second database and leaves the original running alongside it" },
+      { "id": "d", "text": "Terraform destroys the existing database and creates a new, empty one in its place" }
+    ],
+    "correct": ["d"],
+    "explanation": "The address is Terraform's identity for a resource. A new address with no state looks like a new resource, and the old address with no code looks like one to delete, hence 1 to add and 1 to destroy. A moved block would turn this into a no-op move. Terraform does not rename in place without a moved block. It matches by address, not by the cloud identifier. The plan explicitly says 1 to destroy, so the original will not survive.",
+    "topicId": "terraform-concepts",
+    "difficulty": 2
+  },
+  {
+    "id": "iac-q3",
+    "type": "multi",
+    "prompt": "Which safeguards would stop an accidental Terraform destroy of a production database? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "lifecycle prevent_destroy on the database resource" },
+      { "id": "b", "text": "Deletion protection enabled on the RDS instance itself" },
+      { "id": "c", "text": "A CI policy blocking plans that destroy any database" },
+      { "id": "d", "text": "Running terraform apply with -parallelism=1 in prod" }
+    ],
+    "correct": ["a", "b", "c"],
+    "explanation": "prevent_destroy makes any plan that would destroy the resource fail. RDS deletion protection is enforced by AWS, so even a bad apply's delete call is refused. A policy check on the plan blocks destructive changes before apply. Lower parallelism only slows the apply; the destroy still happens, just one resource at a time.",
+    "topicId": "terraform-concepts",
+    "difficulty": 2
+  },
+  {
+    "id": "iac-q4",
+    "type": "single",
+    "prompt": "What does Terraform state contain?",
+    "options": [
+      { "id": "a", "text": "A mapping from each resource address to its real ID, plus last-seen attributes" },
+      { "id": "b", "text": "Only a cache of provider downloads, which terraform init can always rebuild" },
+      { "id": "c", "text": "The plan output from the last run, kept so the next apply can be reviewed" },
+      { "id": "d", "text": "A list of the commands Terraform ran, used to undo the last apply if needed" }
+    ],
+    "correct": ["a"],
+    "explanation": "State is the mapping from code to real objects, with the attributes Terraform last saw, which can include secrets. Providers live in the .terraform directory, not in state. Plans are separate files you save with -out. Terraform has no undo log; rolling back means applying the previous code.",
+    "topicId": "state",
+    "difficulty": 1
+  },
+  {
+    "id": "iac-q5",
+    "type": "scenario",
+    "prompt": "What is the most likely cause?",
+    "scenario": "Two engineers run `terraform apply` on the same configuration within seconds of each other. State is kept in an S3 bucket with no locking configured. Afterwards, Terraform thinks a security group does not exist, but it is running in AWS.",
+    "options": [
+      { "id": "a", "text": "S3 buckets lose writes under load, so state should be kept in a database" },
+      { "id": "b", "text": "Both runs wrote state and the second overwrote the first run's changes" },
+      { "id": "c", "text": "AWS eventual consistency hid the security group from the second refresh" },
+      { "id": "d", "text": "The provider version differed between laptops and dropped the resource" }
+    ],
+    "correct": ["b"],
+    "explanation": "Without a lock, both applies read the same starting state and write their own result; the last write wins and loses the other run's record of the resources it created. State locking prevents concurrent applies. S3 does not lose acknowledged writes. Eventual consistency might delay a read briefly, but the state file itself was overwritten. A provider version mismatch can cause other errors but does not explain two simultaneous applies racing.",
+    "topicId": "state",
+    "difficulty": 2
+  },
+  {
+    "id": "iac-q6",
+    "type": "scenario",
+    "prompt": "What is the best change?",
+    "scenario": "A single Terraform state manages 3,000 resources across dev, staging and production. Each plan takes several minutes, and last month a typo in a dev variable changed a production load balancer.",
+    "options": [
+      { "id": "a", "text": "Raise -parallelism to 100 so refresh is quicker, and keep one shared state" },
+      { "id": "b", "text": "Skip refresh with -refresh=false on every plan to cut the time to seconds" },
+      { "id": "c", "text": "Split state per environment and per layer, wiring them through outputs" },
+      { "id": "d", "text": "Move to a general-purpose IaC language so loops reduce the resource count" }
+    ],
+    "correct": ["c"],
+    "explanation": "Splitting by environment and layer shrinks each plan and makes it impossible for a dev change to touch production. Higher parallelism may hit cloud API rate limits and does nothing for blast radius. Skipping refresh makes plans blind to drift, so they can be wrong. A different language produces the same resources; loops shorten code, not the number of real objects to refresh.",
+    "topicId": "state",
+    "difficulty": 2
+  },
+  {
+    "id": "iac-q7",
+    "type": "scenario",
+    "prompt": "What is the right follow-up?",
+    "scenario": "During a 03:00 incident, on-call scaled the orders database from db.r6g.large to db.r6g.2xlarge in the AWS console, which fixed it. The Terraform code still says db.r6g.large.",
+    "options": [
+      { "id": "a", "text": "Nothing, because Terraform will notice the change and update the code to match" },
+      { "id": "b", "text": "Update the code to db.r6g.2xlarge in a reviewed pull request and apply it" },
+      { "id": "c", "text": "Run terraform apply immediately so production matches the code base again" },
+      { "id": "d", "text": "Add ignore_changes on every attribute of the database so drift never matters" }
+    ],
+    "correct": ["b"],
+    "explanation": "The console change was right, so codify it; otherwise the next unrelated apply quietly shrinks the database and the incident returns. Terraform never edits your code; it would revert reality to the code. Applying now undoes the fix during the same week's traffic. Ignoring every attribute makes Terraform useless for this resource; ignore_changes is for attributes another system legitimately owns.",
+    "topicId": "drift",
+    "difficulty": 2
+  },
+  {
+    "id": "iac-q8",
+    "type": "single",
+    "prompt": "What does `terraform plan -detailed-exitcode` returning **2** mean in a nightly drift job on an unchanged repository?",
+    "options": [
+      { "id": "a", "text": "The plan failed because a provider or credential is misconfigured" },
+      { "id": "b", "text": "Changes are pending, which with no new commits usually means drift" },
+      { "id": "c", "text": "No changes are needed and the infrastructure matches the code exactly" },
+      { "id": "d", "text": "The state is locked by another run and the plan could not be computed" }
+    ],
+    "correct": ["b"],
+    "explanation": "With -detailed-exitcode, 0 means no changes, 1 means an error and 2 means the plan has changes. If no code changed, the difference came from the real world: drift. A misconfiguration or a held lock is an error, exit 1. Matching infrastructure is exit 0.",
+    "topicId": "drift",
+    "difficulty": 1
+  },
+  {
+    "id": "iac-q9",
+    "type": "single",
+    "prompt": "Why do many teams use Terraform for networks and clusters but not for each application release?",
+    "options": [
+      { "id": "a", "text": "Terraform cannot create Kubernetes objects, so releases need a separate tool" },
+      { "id": "b", "text": "Application releases need imperative scripts, which declarative tools forbid" },
+      { "id": "c", "text": "State files grow too large once they store container images for every release" },
+      { "id": "d", "text": "Terraform only reconciles on apply; deploy pipelines suit fast, frequent change" }
+    ],
+    "correct": ["d"],
+    "explanation": "Terraform is built for slow-changing foundations: a reviewed plan and apply per change is fine for a VPC, not for twenty deploys a day with canaries and rollbacks, which deploy pipelines and Kubernetes controllers handle. A Kubernetes provider exists, so it can create objects. Releases are themselves declarative in Kubernetes. State stores resource attributes, not images.",
+    "topicId": "declarative-infra",
+    "difficulty": 2
+  },
+  {
+    "id": "iac-q10",
+    "type": "scenario",
+    "prompt": "What is the right fix?",
+    "scenario": "An autoscaling group's desired capacity is managed by a scaling policy. Every Terraform apply resets it from the current 14 instances back to the 4 written in code, briefly cutting capacity.",
+    "options": [
+      { "id": "a", "text": "Add lifecycle ignore_changes for the desired capacity attribute" },
+      { "id": "b", "text": "Set the desired capacity in code to 14 and update it each week" },
+      { "id": "c", "text": "Remove the scaling policy so Terraform is the only owner again" },
+      { "id": "d", "text": "Run apply with -refresh=false so Terraform never sees the 14" }
+    ],
+    "correct": ["a"],
+    "explanation": "The autoscaler legitimately owns desired capacity, so tell Terraform to stop managing that one attribute. Hard-coding 14 still fights the autoscaler as load changes. Removing the scaling policy throws away autoscaling to fix a tooling conflict. Skipping refresh hides reality from the plan and can produce wrong changes elsewhere.",
+    "topicId": "drift",
+    "difficulty": 2
+  },
+  {
+    "id": "iac-q11",
+    "type": "multi",
+    "prompt": "Which are good practices for Terraform state? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Keep it in a remote backend with versioning on" },
+      { "id": "b", "text": "Encrypt it and restrict read access, like secrets" },
+      { "id": "c", "text": "Commit it to Git so changes get code review too" },
+      { "id": "d", "text": "Hand-edit the JSON to rename resources quickly" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "A versioned remote backend gives shared access, locking and recovery from corruption. State can contain plaintext secrets, so encrypt it and limit who can read it. Committing it to Git spreads those secrets to every clone and gives no locking. Hand-editing risks corrupting the mapping; use moved blocks or terraform state mv.",
+    "topicId": "state",
+    "difficulty": 1
+  }
+]

@@ -1,0 +1,20 @@
+{
+  "id": "p5-release-strategies",
+  "phase": 5,
+  "slug": "release-strategies",
+  "title": "Release Strategies",
+  "order": 13,
+  "week": 12,
+  "estimatedMinutes": 75,
+  "topics": [
+    { "id": "rolling", "title": "Rolling deployments", "depth": "deep" },
+    { "id": "blue-green", "title": "Blue-green deployments", "depth": "tradeoffs" },
+    { "id": "canary", "title": "Canary releases", "depth": "deep" },
+    { "id": "feature-flags", "title": "Feature flags", "depth": "tradeoffs" },
+    { "id": "dark-launches", "title": "Dark launches", "depth": "awareness" },
+    { "id": "zero-downtime-migrations", "title": "Database migrations without downtime", "depth": "deep" }
+  ],
+  "simulatorIds": ["deployment"],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p5-ci-cd", "p5-kubernetes", "p5-slos"]
+}

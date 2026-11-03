@@ -1,0 +1,19 @@
+[
+  { "id": "slos-f1", "front": "SLI?", "back": "Service level indicator: a quantitative measure of service, best written as good events / valid events.", "topicId": "sli-slo-sla" },
+  { "id": "slos-f2", "front": "SLO?", "back": "Service level objective: a target for an SLI over a window, e.g. 99.9% of requests succeed over a rolling 28 days.", "topicId": "sli-slo-sla" },
+  { "id": "slos-f3", "front": "SLA?", "back": "A contract with consequences (credits, termination) if missed. No consequence means it is an SLO. Set looser than the internal SLO.", "topicId": "sli-slo-sla" },
+  { "id": "slos-f4", "front": "99.9% over 30 days, in minutes?", "back": "0.1% × 43,200 min = 43.2 minutes of full outage.", "topicId": "error-budgets" },
+  { "id": "slos-f5", "front": "99.99% over 30 days, in minutes?", "back": "4.32 minutes. Each extra nine divides the budget by ten.", "topicId": "error-budgets" },
+  { "id": "slos-f6", "front": "Why not a 100% SLO?", "back": "Users cannot see past their own networks' unreliability, and 100% leaves zero budget for any change.", "topicId": "sli-slo-sla" },
+  { "id": "slos-f7", "front": "Why is CPU usage not an SLI?", "back": "Users do not experience CPU; they experience failed or slow requests. CPU is a cause signal for capacity and debugging.", "topicId": "choosing-slis" },
+  { "id": "slos-f8", "front": "Good latency SLI form?", "back": "Fraction of valid requests faster than a threshold (e.g. 300 ms), from a histogram with a bucket boundary at that threshold.", "topicId": "choosing-slis" },
+  { "id": "slos-f9", "front": "Three serial dependencies at 99.9% each?", "back": "0.999³ ≈ 99.7% is the best you can offer without retries, caching or redundancy.", "topicId": "choosing-slis" },
+  { "id": "slos-f10", "front": "Burn rate formula?", "back": "Observed error rate / (1 − SLO). Burn rate 1 spends exactly the whole budget over the window.", "topicId": "error-budgets" },
+  { "id": "slos-f11", "front": "Budget consumed by a burn?", "back": "Burn rate × duration / SLO window. 14.4 × 1 h / 720 h = 2%.", "topicId": "burn-rate-alerts" },
+  { "id": "slos-f12", "front": "Workbook paging rules (30-day SLO)?", "back": "14.4× over 1 h (5 min short window) = 2% of budget; 6× over 6 h (30 min) = 5%. Ticket: 1× over 3 days (6 h) = 10%.", "topicId": "burn-rate-alerts" },
+  { "id": "slos-f13", "front": "Why the short window?", "back": "Reset time: the alert clears minutes after recovery instead of waiting for the 1-hour average to fall.", "topicId": "burn-rate-alerts" },
+  { "id": "slos-f14", "front": "Fast-burn error threshold at 99.9%?", "back": "14.4 × 0.1% = 1.44% error rate over both 1 hour and 5 minutes.", "topicId": "burn-rate-alerts" },
+  { "id": "slos-f15", "front": "Rolling 28-day vs calendar month?", "back": "Rolling: no reset cliff, same weekday mix, matches user memory. Calendar: simpler for business reporting and SLAs.", "topicId": "error-budgets" },
+  { "id": "slos-f16", "front": "Error budget policy?", "back": "Pre-agreed rules for when the budget is spent, e.g. freeze non-urgent releases, postmortem any incident over 20% of budget, named escalation.", "topicId": "budget-policy" },
+  { "id": "slos-f17", "front": "Budget always 90% unspent?", "back": "The SLO is too loose to matter or the team is too cautious: ship faster, run experiments, or tighten the target.", "topicId": "budget-policy" }
+]

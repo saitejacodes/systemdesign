@@ -1,0 +1,216 @@
+## Why it matters
+
+When a payment fails at 02:14 for one customer out of millions, the only witness is usually a log line. Logs are the most detailed record a system keeps of what it did: one event, one moment, with whatever context the developer thought to attach. They are also the easiest signal to get wrong. Unstructured text that only a regular expression can parse, lines from twenty services with no way to join them, debug output left on in production, a bill that grows faster than traffic, and personal data written where it never should have been. Logging libraries are also code that runs on untrusted input: in December 2021 the Log4Shell vulnerability (CVE-2021-44228) let attackers trigger remote code execution in Java services simply by getting a crafted string written to a log through Apache Log4j 2's message lookup feature. This section covers how to write logs a machine can query, which level to use, how a request ID ties a request together across services, how centralized logging works, and how to keep the cost under control.
+
+<Callout type="analogy" title="The ship's logbook, written by a hundred crews">
+A ship's logbook works because every entry has the same shape: time, position, heading, weather, who wrote it. Now imagine a fleet of a hundred ships, each with a crew that writes in its own style, in its own language, on paper that is thrown overboard every night unless someone collects it. To reconstruct what happened to one cargo container you need three things: every entry in a fixed format (structured logs), the container's number written in every entry that mentions it (a correlation ID), and a harbour office that collects every logbook each evening and files it by date and ship (centralized logging). The office charges by the page, so crews must decide what is worth writing down (levels and sampling). Where the analogy breaks: real logs arrive in milliseconds, not nightly, and a ship's log is never read by an attacker hoping to inject a command into the clerk who files it.
+</Callout>
+
+## Structured logs
+
+<DepthStamp depth="deep" />
+
+<Term slug="structured-logging">Structured logging</Term> means writing each log event as a set of named fields, usually one JSON object per line, instead of a sentence of free text. Compare:
+
+```
+2026-11-03 02:14:07 ERROR Payment failed for user 8812 order 55-A after 3 retries (card_declined)
+```
+
+```json
+{"ts":"2026-11-03T02:14:07.412Z","level":"error","service":"payments","msg":"payment failed","user_id":"8812","order_id":"55-A","attempts":3,"reason":"card_declined","request_id":"7f3c9a2e","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736"}
+```
+
+Both say the same thing to a human. Only the second can be queried reliably: "count `reason` by value where `service=payments` and `level=error` in the last hour" works without a regex, survives someone rewording the message, and lets the log store index the fields it needs. The message becomes a stable event name (`payment failed`), and the variable parts move into fields.
+
+Rules that hold up in production:
+
+- **One event per line.** A multi-line stack trace split into ten lines becomes ten unrelated events in most log shippers. Put the stack trace in a single `stack` field.
+- **A consistent schema across services.** Agree on field names (`service`, `level`, `request_id`, `trace_id`, `user_id`, `duration_ms`) so one query works everywhere. The OpenTelemetry logs data model and the Elastic Common Schema are two published schemas you can adopt instead of inventing one.
+- **Timestamps in UTC with milliseconds** (ISO 8601). Local time zones and second-level precision make it impossible to order events across machines.
+- **Write to standard output.** The Twelve-Factor App (factor XI) says an app should treat logs as an event stream written unbuffered to stdout and leave routing and storage to the environment. In Kubernetes, the container runtime captures stdout to a file on the node, where an agent picks it up.
+- **Never log secrets or raw personal data.** Passwords, tokens, full card numbers and session cookies must never appear. Redact in the logging library (an allow-list of fields is safer than a deny-list), because once a secret is in a log it has been copied to every system downstream of it, including backups.
+- **Treat logged values as untrusted.** Log4Shell is the extreme case, but even plain text logs can be forged: if a username containing a newline is written raw, an attacker can inject a fake second line. JSON encoding escapes this; so does keeping the logging library patched and its lookup features off.
+
+### What to log
+
+A useful default is one **canonical log line** per request at the edge of each service: a single wide event written when the request finishes, carrying the route, status, duration, user or tenant, request ID, upstream calls and their timings, and key business fields. Stripe described this pattern publicly as "canonical log lines". It answers most questions with one query and costs one line per request instead of fifteen. Add separate lines only for events that matter on their own: a retry, a fallback, a state change, an error with its stack.
+
+## Log levels
+
+<DepthStamp depth="tradeoffs" />
+
+A <Term slug="log-level">log level</Term> is a severity tag on each event that lets you filter and route by importance. Syslog (RFC 5424) defines eight severities from 0 Emergency to 7 Debug; most application libraries use a smaller set:
+
+| Level | Meaning | Who reads it | Typical production setting |
+|---|---|---|---|
+| TRACE / DEBUG | Internal detail for a developer stepping through logic | The developer, during investigation | Off, or on for one service or one request at a time |
+| INFO | Normal, meaningful events: request served, job finished, config loaded | On-call and analysts | On, often sampled at high volume |
+| WARN | Something unexpected happened but the request succeeded: a retry, a fallback, a slow dependency | On-call, in aggregate | On, never sampled |
+| ERROR | The operation failed and a user or caller saw a failure | On-call, and alerting via counts | On, never sampled |
+| FATAL | The process cannot continue and is exiting | On-call | On |
+
+The judgement calls:
+
+- **An error that you handled is not an ERROR.** If the retry succeeded, that is a WARN at most. Teams that log every caught exception at ERROR train everyone to ignore ERROR.
+- **Do not page on log lines.** Count errors as a metric and alert on the rate (the metrics and alerting sections cover this). Log lines are the evidence you read after the alert fires.
+- **Make the level changeable at runtime.** Being able to switch one service, or one request carrying a debug header, to DEBUG for ten minutes is far more useful than leaving DEBUG on everywhere. Most libraries (Logback, log4j2, Python's logging, Zap in Go) support changing levels without a restart if you wire it up.
+- **Guard expensive debug statements.** In many languages the arguments to a log call are evaluated even when the level is disabled. Building a large string or serialising an object for a DEBUG line that is then discarded still burns CPU.
+
+## Correlation and request IDs
+
+<DepthStamp depth="deep" />
+
+A <Term slug="correlation-id">correlation ID</Term> (often called a request ID) is a unique identifier assigned to a request when it enters the system and passed along to every service, queue message and job that the request causes. Every log line any of them writes includes it. Without it, "show me everything that happened for this failed checkout" is a guessing game of timestamps across twenty services; with it, it is one query: `request_id = "7f3c9a2e"`.
+
+How it works:
+
+1. The edge (load balancer, API gateway or first service) checks for an incoming ID header. If there is none, or the request comes from the public internet and cannot be trusted, it generates one (a random 128-bit value or a UUID).
+2. The ID is stored in request-scoped context: a thread-local or Mapped Diagnostic Context (MDC) in Java, `contextvars` in Python, `context.Context` in Go, AsyncLocalStorage in Node.js. The logging library reads it from there, so developers never pass it by hand.
+3. Every outgoing call copies it into a header. Every message published to a queue carries it as a message attribute, and the consumer restores it into its context before processing.
+4. The ID is returned to the client in a response header, so a support ticket can quote it.
+
+<Figure caption="FIG. 1 · ONE ID, FOUR SERVICES, ONE QUERY">
+  <Diagram label="The gateway assigns request ID 7f3c9a2e, passes it to the orders service, which passes it to payments and to a queue consumer. Every service logs with the same ID." chart={`sequenceDiagram
+    participant C as Client
+    participant G as Gateway
+    participant O as Orders
+    participant P as Payments
+    participant Q as Queue
+    participant E as Email worker
+    C->>G: POST /checkout
+    Note over G: no ID header, generate 7f3c9a2e
+    G->>O: X-Request-ID 7f3c9a2e
+    O->>P: X-Request-ID 7f3c9a2e
+    P-->>O: 402 card_declined
+    Note over P: log error request_id=7f3c9a2e
+    O->>Q: publish OrderFailed with request_id attribute
+    O-->>G: 402
+    G-->>C: 402 plus X-Request-ID 7f3c9a2e
+    Q->>E: deliver OrderFailed
+    Note over E: restore 7f3c9a2e into context, log sent email`} />
+</Figure>
+
+*A correlation ID is generated once at the edge, carried in headers and message attributes, and written into every log line.*
+
+There is no single standard header for request IDs: `X-Request-ID` and `X-Correlation-ID` are both common conventions. If you use distributed tracing, the W3C `traceparent` header already carries a globally unique trace ID, and the simplest design is to log the trace ID in every line and treat it as the correlation ID. The tracing section covers that header in detail. Where propagation usually breaks: asynchronous hops (queues, cron jobs triggered by a request, thread pools that lose thread-local context) and third-party calls that drop unknown headers.
+
+## Centralized logging
+
+<DepthStamp depth="tradeoffs" />
+
+Logs written to a container's stdout disappear when the container is replaced. <Term slug="log-aggregation">Log aggregation</Term> (centralized logging) collects every service's logs into one searchable store. A typical pipeline:
+
+| Stage | What it does | Examples |
+|---|---|---|
+| Emit | The app writes JSON lines to stdout | Any structured logging library |
+| Collect | A <Term slug="log-shipper">log shipper</Term> on each node tails files, adds metadata (pod, node, region), buffers | Fluent Bit, Fluentd, Vector, the OpenTelemetry Collector, Filebeat |
+| Buffer | A durable queue absorbs bursts so a slow store does not block shippers | Kafka, or the shipper's own disk buffer |
+| Process | Parse, drop, sample, redact, route by level or tenant | Logstash, Vector, Collector processors |
+| Store and index | Make logs searchable by time and fields | Elasticsearch or OpenSearch, Grafana Loki, Splunk, cloud services such as CloudWatch Logs |
+| Query and archive | Search UI; old logs move to cheap object storage | Kibana, Grafana; S3-compatible storage |
+
+The biggest design choice is **how much to index**. Elasticsearch and OpenSearch build a full-text inverted index over log content, so arbitrary text search is fast but storage and memory are expensive. Grafana Loki deliberately indexes only a small set of labels (service, namespace, level) and stores the log lines as compressed chunks, scanning them at query time; it is much cheaper to run but slow for needle-in-a-haystack searches across a wide time range. Columnar stores such as ClickHouse sit between the two and suit wide structured events well.
+
+Three operational facts staff engineers keep in mind:
+
+- **The logging pipeline must never take the app down.** Apps should write to stdout asynchronously or to a local buffer; if the pipeline is slow, drop or spill to disk rather than block request threads. A synchronous network appender is how a logging outage becomes a production outage.
+- **Logs arrive late and out of order.** Shippers batch and retry, so a line written at 02:14:07 may be searchable at 02:14:40. Do not build real-time alerting that assumes logs are complete within seconds.
+- **Retention is a policy decision.** Hot searchable storage for 7–30 days, cheaper archive for months, deletion after that unless regulation or audit requires longer. Personal data in logs makes retention a legal question too (for example, GDPR's storage-limitation principle).
+
+## Cost and sampling
+
+<DepthStamp depth="tradeoffs" />
+
+Log volume grows with traffic multiplied by verbosity, and log storage is usually priced per gigabyte ingested and per gigabyte retained. It is common for logging to become one of the largest lines on an observability bill.
+
+### Worked example: what a busy API logs per day
+
+Assume an API serving **20,000 requests a second**, where each request produces **5 log lines** across the services it touches, and each JSON line averages **500 bytes**.
+
+- Bytes per second: 20,000 × 5 × 500 = **50 MB/s**.
+- Per day: 50 MB/s × 86,400 s = **4.32 TB/day** (4,320 GB).
+- 30 days of hot retention: 4.32 × 30 ≈ **130 TB** before compression and replicas.
+- If your vendor or internal chargeback is **$0.50 per GB ingested** (an assumption for the arithmetic; real prices vary widely by vendor and contract), ingestion alone is 4,320 × 0.50 = **$2,160 a day**, about **$65,000 a month**, before storage.
+
+Now apply a policy. Suppose 98% of lines are INFO lines about successful requests, and 2% are WARN or ERROR. Keep every WARN and ERROR, and keep 1% of INFO:
+
+- Kept share: 2% + (98% × 1%) = 2% + 0.98% = **2.98%**.
+- New volume: 4,320 GB × 0.0298 ≈ **129 GB/day**, about $64 a day at the same assumed price. A 33× reduction.
+
+### Sampling without losing the story
+
+<Term slug="log-sampling">Log sampling</Term> keeps only a fraction of log events. Done naively (drop 99% of lines at random) it destroys the very thing correlation IDs give you, because you keep line 2 of a request and lose lines 1, 3 and 4. Better options:
+
+- **Sample by request, not by line.** Hash the request ID or trace ID and keep all lines for requests whose hash falls in the kept 1%. Every kept request is complete.
+- **Never sample errors and warnings.** Keep 100% of anything above INFO, and keep 100% of any request that ended in an error (this needs the decision at the end of the request, which canonical log lines make easy).
+- **Rate-limit repeats.** If the same message from the same place fires 10,000 times a second, keep the first few per second and a count of how many were suppressed.
+- **Turn counts into metrics.** If you only ever count a log line, it should be a metric: a counter costs a few bytes per scrape regardless of traffic, while the log line costs 500 bytes per occurrence.
+- **Drop at the source, not the store.** Filtering in the shipper saves network and ingest; filtering in the store only saves query time.
+
+### Failure timeline: debug left on
+
+| Time | Event | Log volume |
+|---|---|---|
+| Tue 14:00 | Engineer enables DEBUG on the orders service to chase a bug, intending to turn it off | 50 MB/s becomes 400 MB/s |
+| Tue 14:20 | Bug found; the DEBUG flag is part of a config change that is never reverted | 400 MB/s |
+| Tue 18:00 | Node disks fill where the shipper buffers to disk; the log store's ingestion is throttled | Shippers fall behind, new logs delayed by 40 minutes |
+| Wed 02:10 | Real payment incident; on-call searches logs and sees nothing after 01:30 | Logs are present but not yet indexed |
+| Wed 09:00 | Finance flags a day of ingest roughly eight times normal | Cost spike |
+
+The fixes are boring and effective: debug levels that expire automatically, per-service ingest quotas with alerts, shipper buffers sized and monitored, and a dashboard of log volume per service so a jump is visible within minutes.
+
+<TradeoffBox title="Logging choices" items={[
+  { gain: "Structured JSON logs: queryable fields, stable across rewording", cost: "Bigger lines than terse text; needs an agreed schema across teams" },
+  { gain: "Canonical log line per request: one query answers most questions", cost: "Must be written at request end, so a crash mid-request can lose it" },
+  { gain: "Full-text index (Elasticsearch, OpenSearch): fast arbitrary search", cost: "High storage and memory cost per GB" },
+  { gain: "Label-only index (Loki): cheap storage and ingest", cost: "Slow scans for searches across many streams and long time ranges" },
+  { gain: "Request-based sampling: complete stories at a fraction of the cost", cost: "Rare non-error events may be missed; needs a hashable ID everywhere" },
+  { gain: "Long retention: answers questions months later", cost: "Linear storage cost and a larger legal surface for personal data" }
+]} />
+
+<NotWhenBox title="When logs are the wrong tool" items={[
+  "Counting things or alerting on rates: use a metric; a counter is cheaper and complete.",
+  "Following one request's latency across services: use a trace; logs show events, not the timing tree.",
+  "Business analytics or billing: use an event pipeline with delivery guarantees; log pipelines may drop or sample.",
+  "Audit trails required by regulation: use an append-only audit store with access controls, not the general log store anyone can query."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="More logs means better observability." right="Unqueryable, unsampled, uncorrelated logs are noise you pay for. A few well-structured events per request, each with a request ID, beat thousands of free-text lines." />
+
+<Misconception wrong="Random sampling of log lines is a safe way to cut cost." right="It keeps fragments of many requests and the whole story of none. Sample by request or trace ID, and keep every error." />
+
+<Misconception wrong="Alerting on ERROR log lines is good alerting." right="Count errors as a metric and alert on the rate against a threshold or SLO. Logs are slow to arrive and their volume tracks traffic, not user pain." />
+
+## Interview angle
+
+<InterviewAngle title="Logging" questions={[
+  "A request failed and touched eight services. How would you find every log line for it?",
+  "Your logging bill doubled last month with flat traffic. How do you investigate and fix it?",
+  "How do you keep a correlation ID across a Kafka hop or a background job?",
+  "What would you never write to a log, and how do you enforce that across fifty teams?",
+  "Elasticsearch or Loki for a 5 TB/day log volume? What decides it?"
+]}>
+Logging comes up inside almost every design once the interviewer asks "how would you debug this in production?" Strong answers say: structured JSON with a shared schema; a request or trace ID generated at the edge, stored in request context, propagated in headers and message attributes, and logged on every line; a shipper per node feeding a buffered pipeline into a store with tiered retention; and a cost model (QPS × lines per request × bytes per line × 86,400). For the bill question, find the top services and message templates by volume, move counts to metrics, sample INFO by request ID and keep every error. For the secrets question, redact in the shared logging library with an allow-list, add a scanner in the pipeline, and treat a leaked secret as rotated.
+</InterviewAngle>
+
+## Practice
+
+1. A service handles 8,000 requests a second, writes 3 lines per request at 700 bytes each. Compute GB per day and the 14-day hot storage before compression. Then apply "keep all errors (1.5% of lines), 5% of the rest" and recompute.
+2. Design request-ID propagation for a flow that goes gateway → orders → Kafka topic → fulfilment worker → a third-party shipping API. Name where the ID lives at each hop and the two places it is most likely to be lost.
+3. Write the field list for a canonical log line for a checkout endpoint. Mark which fields are safe to index, which are high-cardinality, and which must never appear.
+
+## Try it
+
+Start an incident and work it from the logs alone: filter by service and level, paste a trace id from an error line, and follow one request through every service. Then drop INFO sampling to 10% and see which evidence you lose.
+
+<Simulator id="observability-lab" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

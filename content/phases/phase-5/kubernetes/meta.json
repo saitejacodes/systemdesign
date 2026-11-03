@@ -1,0 +1,20 @@
+{
+  "id": "p5-kubernetes",
+  "phase": 5,
+  "slug": "kubernetes",
+  "title": "Kubernetes for System Designers",
+  "order": 11,
+  "week": 12,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "k8s-architecture", "title": "Control plane, nodes and the reconciliation loop", "depth": "tradeoffs" },
+    { "id": "pods-deployments", "title": "Pods, ReplicaSets and Deployments", "depth": "deep" },
+    { "id": "services-ingress", "title": "Services and Ingress", "depth": "deep" },
+    { "id": "probes", "title": "Liveness, readiness and startup probes", "depth": "deep" },
+    { "id": "hpa", "title": "The Horizontal Pod Autoscaler", "depth": "tradeoffs" },
+    { "id": "interview-scope", "title": "What to know for interviews, and what not to", "depth": "awareness" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p5-containers", "p1-load-balancers", "p1-scaling"]
+}

@@ -1,0 +1,18 @@
+[
+  { "id": "iac-f1", "front": "Infrastructure as code?", "back": "Defining networks, servers, databases and permissions in version-controlled files that a tool turns into real resources, with review and history.", "topicId": "declarative-infra" },
+  { "id": "iac-f2", "front": "Declarative vs imperative infrastructure?", "back": "Declarative describes the desired end state and the tool computes the changes (running twice does nothing). Imperative is a script of steps.", "topicId": "declarative-infra" },
+  { "id": "iac-f3", "front": "When does Terraform reconcile, vs a Kubernetes controller?", "back": "Terraform only when someone runs plan/apply. Kubernetes controllers compare and fix continuously in a control loop.", "topicId": "declarative-infra" },
+  { "id": "iac-f4", "front": "Terraform vs OpenTofu?", "back": "HashiCorp moved Terraform to the Business Source License in August 2023. OpenTofu is the open-source fork under the Linux Foundation, largely compatible.", "topicId": "declarative-infra" },
+  { "id": "iac-f5", "front": "Terraform provider?", "back": "A plugin that turns resources into API calls for one platform (AWS, Cloudflare, GitHub). Downloaded by terraform init.", "topicId": "terraform-concepts" },
+  { "id": "iac-f6", "front": "What does -/+ mean in a plan?", "back": "Destroy and then create a replacement, because a changed attribute cannot be updated in place. For a database, data loss.", "topicId": "terraform-concepts" },
+  { "id": "iac-f7", "front": "What is a resource's identity in Terraform?", "back": "Its address, such as aws_db_instance.main. Renaming it without a moved block plans a destroy and a create.", "topicId": "terraform-concepts" },
+  { "id": "iac-f8", "front": "Three guard rails for a production database in Terraform?", "back": "lifecycle prevent_destroy, cloud-side deletion protection, and a CI policy that blocks plans destroying databases without extra approval.", "topicId": "terraform-concepts" },
+  { "id": "iac-f9", "front": "Why apply a saved plan file?", "back": "terraform plan -out=tfplan then apply tfplan guarantees the reviewed changes are exactly what runs.", "topicId": "terraform-concepts" },
+  { "id": "iac-f10", "front": "Terraform state?", "back": "A JSON file mapping each resource address to the real object's ID, plus last-seen attributes. Terraform's memory of what it manages.", "topicId": "state" },
+  { "id": "iac-f11", "front": "Four rules for state?", "back": "Store remotely (versioned), lock it, treat it as a secret (it holds plaintext attributes), never hand-edit it.", "topicId": "state" },
+  { "id": "iac-f12", "front": "State locking?", "back": "Stops two applies running at once and interleaving changes. S3 backends used DynamoDB; Terraform 1.10+ can lock with a file in the bucket.", "topicId": "state" },
+  { "id": "iac-f13", "front": "3,000 resources, 200 ms per read, parallelism 10. Minimum refresh time?", "back": "3,000 / 10 × 0.2 s = 60 seconds, before rate limits. One reason to split state.", "topicId": "state" },
+  { "id": "iac-f14", "front": "Configuration drift?", "back": "Any difference between the code and what is running, usually from a change made outside the IaC tool.", "topicId": "drift" },
+  { "id": "iac-f15", "front": "How to detect drift on a schedule?", "back": "Run terraform plan -detailed-exitcode: exit 0 no changes, 1 error, 2 changes pending. Use plan -refresh-only to just see real-world changes.", "topicId": "drift" },
+  { "id": "iac-f16", "front": "When to use ignore_changes?", "back": "When something else legitimately owns an attribute, such as an autoscaler's desired capacity, so Terraform stops reverting it.", "topicId": "drift" }
+]

@@ -1,0 +1,196 @@
+## Why it matters
+
+Every outage that starts with "we deployed" is really a story about the path code takes from a laptop to production. On 1 August 2012, Knight Capital deployed new trading code by hand to eight servers. According to the SEC's later order, a technician did not copy the new code to one of them; that server still held old, retired logic that a repurposed flag now switched back on, and it sent millions of unintended orders. Knight lost about $460 million in roughly 45 minutes. Nothing about that failure needed a clever bug. It needed a deployment that was manual, unverified and different on one machine. CI/CD exists to make the path to production boring: every change built the same way, tested the same way, packaged once, and deployed by a machine that cannot forget the eighth server.
+
+<Callout type="analogy" title="The airport baggage system">
+Think of every commit as a suitcase checked in at the airport. It is weighed and tagged once at the desk (the build creates one artifact with one tag). It then rides a fixed belt past a series of scanners, each slower and more thorough than the last: the size gauge, the X-ray, the explosives swab (unit, integration and end-to-end tests). A suitcase that fails any scanner is pulled off the belt and never reaches the plane. Crucially, nobody repacks the suitcase between scanners: the bag loaded onto the plane is the exact bag that was X-rayed (artifact promotion). And if the wrong bag does get loaded, the plan is not to search the hold mid-flight but to have the previous, known-good bag ready to swap back (rollback). Where the analogy breaks: real bags do not change, but your "plane" (production config, data and traffic) does, so a bag that passed every scanner can still fail on arrival.
+</Callout>
+
+## Pipeline stages
+
+<DepthStamp depth="deep" />
+
+Three terms get blurred constantly, so pin them down first.
+
+- <Term slug="continuous-integration">Continuous integration</Term> (CI) is a practice, not a tool: every developer merges small changes into the shared mainline at least daily, and every merge is automatically built and tested so that integration problems surface within minutes. Martin Fowler's long-running article on CI is the standard description; the key word is *continuous*, meaning branches do not live for weeks.
+- <Term slug="continuous-delivery">Continuous delivery</Term> means every change that passes the pipeline is *releasable*: production deployment is a button press, and the business chooses when to press it. Jez Humble and David Farley's book *Continuous Delivery* (2010) defined the term.
+- <Term slug="continuous-deployment">Continuous deployment</Term> goes one step further: every change that passes the pipeline is deployed to production automatically, with no human gate.
+
+The machinery that makes these possible is the <Term slug="deployment-pipeline">deployment pipeline</Term>: an automated sequence of stages that each commit passes through, where each stage gives more confidence at more cost, and a failure at any stage stops the change.
+
+<Figure caption="FIG. 12.1 · A DEPLOYMENT PIPELINE · FAST FEEDBACK FIRST, EXPENSIVE CONFIDENCE LATER">
+  <Diagram label="A commit flows through build, unit tests and static checks, packaging into an image, integration tests, deployment to staging with end-to-end tests, then production deployment with health verification. A failure at any stage stops the pipeline and notifies the author." chart={`flowchart LR
+    A[Commit to main] --> B[Build + unit tests + lint]
+    B --> C[Package image, record digest]
+    C --> D[Integration + contract tests]
+    D --> E[Deploy to staging + E2E smoke]
+    E --> F{Gate: auto or approval}
+    F --> G[Deploy to production]
+    G --> H[Verify: health, error rate, latency]
+    B -. fail .-> X[Stop and notify author]
+    D -. fail .-> X
+    E -. fail .-> X
+    H -. regress .-> R[Roll back]`} />
+</Figure>
+
+*Each stage is a filter. Cheap filters run first so most bad commits are rejected in minutes, not hours.*
+
+A typical pipeline for a web service:
+
+| Stage | What runs | Typical time budget | Fails on |
+|---|---|---|---|
+| Commit stage | Compile, unit tests, lint, type checks, dependency vulnerability scan | under 10 minutes | Logic bugs, style, known vulnerable libraries |
+| Package | Build the container image once; push it; record its digest | 1–3 minutes | Broken Dockerfile, missing assets |
+| Acceptance | Integration tests against real databases in containers, contract tests between services | 10–20 minutes | Wrong SQL, broken API contracts |
+| Staging | Deploy the same image, run end-to-end smoke tests | 5–15 minutes | Config errors, migrations, wiring |
+| Production | Progressive rollout with automated health checks | minutes to hours | Real traffic, real data |
+
+The "under 10 minutes" commit stage is not arbitrary. If feedback takes an hour, developers start the next task, batch more changes into each push, and stop reading the results. Humble and Farley recommend keeping the commit stage short for exactly this reason.
+
+### Worked example: where the time goes
+
+A team's pipeline runs build (4 min), unit tests (18 min), integration tests (25 min) and E2E (30 min) one after another: **77 minutes** per commit. With 40 merges a day, runs overlap and queue. Two changes give most of the win:
+
+1. **Parallelise.** Split the unit suite across 6 runners: 18 / 6 = 3 min (plus about 1 min of setup each). Split integration across 5: 25 / 5 = 5 min, plus setup.
+2. **Move slow tests later.** Run the full E2E suite against staging after merge, and keep only a 5-minute smoke subset before it.
+
+New critical path: 4 + 4 + 6 + 5 = **19 minutes**, and the remaining E2E runs off the critical path. The research behind the *Accelerate* book (Forsgren, Humble and Kim, 2018) found that lead time for changes, along with deployment frequency, change failure rate and time to restore service, distinguishes high-performing delivery teams. A 77-minute pipeline quietly caps how often you can ship and how fast you can ship a fix.
+
+### Trunk-based development
+
+CI works best with <Term slug="trunk-based-development">trunk-based development</Term>: everyone merges small changes into one main branch (directly or through short-lived branches that last hours, not weeks), and unfinished features hide behind feature flags rather than living on long branches. The alternative, long-lived feature branches merged at the end, means each branch is "integrated" only once, at the most painful moment. Some teams with strong review and release-train needs (mobile apps tied to store review, regulated products) run release branches successfully; the point is that the *mainline* stays continuously integrated.
+
+## Testing pyramid
+
+<DepthStamp depth="deep" />
+
+The <Term slug="test-pyramid">test pyramid</Term>, popularised by Mike Cohn in *Succeeding with Agile* (2009) and later explained by Martin Fowler and Ham Vocke, says: write **many** small, fast unit tests, **fewer** integration tests, and **very few** end-to-end tests. The shape follows from cost.
+
+| Layer | Scope | Speed | Flakiness | Tells you |
+|---|---|---|---|---|
+| Unit | One function or class, no I/O | milliseconds | very low | The logic is right |
+| Integration | Your code plus a real database, queue or HTTP stack | 100 ms to seconds | low to medium | The pieces fit |
+| Contract | One service's expectations of another's API | fast | low | You did not break a consumer |
+| End-to-end | Browser or client through every service | seconds to minutes | high | A user journey works |
+
+The anti-pattern is the **ice-cream cone**: few unit tests and a huge E2E suite run through a browser. It is slow, it fails for reasons unrelated to the change, and when it fails it does not tell you where.
+
+### Flaky tests compound
+
+A <Term slug="flaky-test">flaky test</Term> passes and fails on the same code (timing, ordering, shared state, network). Flakiness compounds across a suite. If each of 200 E2E tests independently fails 0.5% of the time with no real bug:
+
+- P(one test passes) = 0.995
+- P(all 200 pass) = 0.995^200 ≈ e^(200 × ln 0.995) ≈ e^(−1.0) ≈ **0.37**
+
+So **63% of pipeline runs fail with nothing wrong**. Engineers learn to press "retry" without reading, and the pipeline stops being a filter. Google's testing blog reported in 2016 that about 1.5% of its test runs reported a flaky result and that almost 16% of its tests showed some flakiness. The standard defences: quarantine flaky tests out of the blocking path (with an owner and a deadline), fix the cause rather than adding retries, and push checks down the pyramid where they are deterministic.
+
+### Contract tests between services
+
+With microservices, end-to-end tests across ten services become slow and fragile. **Consumer-driven contract tests** (Pact is the well-known tool) let each consumer publish what it expects from a provider ("GET /users/42 returns `id` and `email`"), and the provider's pipeline verifies it still satisfies every published contract. You catch "I renamed a field and broke billing" in the provider's commit stage, without deploying both services together.
+
+## Artifact promotion
+
+<DepthStamp depth="deep" />
+
+**Build once, deploy many.** The pipeline builds one artifact (a container image, a JAR, a binary) per commit, gives it an immutable identity, and **promotes** that same artifact from environment to environment. <Term slug="artifact-promotion">Artifact promotion</Term> means moving the exact bytes that passed testing forward, changing only configuration, never rebuilding.
+
+Why never rebuild for production? Because a rebuild is a different artifact. Dependency ranges resolve differently, a base image tag (`node:20`) has moved, a build cache is cold. You would ship bytes nobody tested.
+
+### Tags move, digests do not
+
+In container registries, a tag like `api:prod` or `api:1.4` is a mutable pointer. A digest like `api@sha256:9f86d0…` is the hash of the image content; it can never refer to anything else. Pipelines should record and deploy by digest:
+
+```
+build:   docker build -t registry/api:${GIT_SHA} .   -> digest sha256:9f86d0...
+staging: deploy registry/api@sha256:9f86d0...
+prod:    deploy registry/api@sha256:9f86d0...   (same bytes, different config)
+```
+
+Configuration (database URLs, feature flag defaults, replica counts) comes from the environment, as the <Term slug="twelve-factor-app">Twelve-Factor App</Term> recommends, so one artifact can run everywhere.
+
+### Supply chain: proving where the bytes came from
+
+Promotion only helps if you trust the artifact. The pipeline itself is now a high-value target: in 2021, Codecov disclosed that its Bash uploader script had been modified by an attacker, exposing environment variables (often credentials) from customers' CI runs. Defences that are now standard:
+
+- **No long-lived cloud keys in CI.** Use short-lived credentials via OIDC federation (GitHub Actions, GitLab and others can exchange a signed job identity token for temporary cloud credentials).
+- **Pin dependencies and actions** by version hash, not floating tags.
+- **Sign artifacts and record provenance.** Sigstore's cosign signs images; the SLSA framework describes levels of build provenance ("this digest was built by this pipeline from this commit"). Production admission can refuse unsigned images.
+
+## Rollback
+
+<DepthStamp depth="tradeoffs" />
+
+A deployment will eventually be bad. The question is how fast you get back to good. The two options:
+
+- **Roll back:** redeploy the previous known-good artifact. Fast and low-thought, *if* the previous version can still run against the current state of the world.
+- **Roll forward:** ship a fix through the pipeline. Necessary when rollback is unsafe, but only as fast as your pipeline (another reason the 77-minute pipeline hurts).
+
+In Kubernetes, a Deployment keeps old ReplicaSets (up to `revisionHistoryLimit`, 10 by default), so `kubectl rollout undo deployment/api` scales the previous revision back up. With immutable, digest-addressed images, rollback is "deploy the previous digest", which takes as long as a normal rollout.
+
+### What makes rollback unsafe
+
+Code rolls back; **data does not**. The classic trap:
+
+| Time | Event |
+|---|---|
+| 10:00 | v2 deploys with a migration that renames `users.name` to `users.full_name` |
+| 10:04 | v2 throws errors on an unrelated bug; on-call runs rollback to v1 |
+| 10:06 | v1 pods start, query `users.name`, column does not exist: **every request fails** |
+| 10:06–10:40 | Rollback made things worse; team must hand-write a reverse migration under pressure |
+
+The rule that prevents this: **every release must be compatible with the previous version's code and the next version's schema.** Schema changes ship separately from code changes, using the expand/contract pattern covered in the release strategies section. Other things that break rollback: messages written to a queue in a new format the old consumer cannot parse, caches populated with a new serialisation, and external side effects (emails sent, payments made) that cannot be unsent.
+
+### Decide before the incident
+
+Write the rollback trigger down before deploying: "if the 5xx rate exceeds 1% for 5 minutes, or p99 latency doubles, roll back first and debug later." Automate it where you can: the production stage watches the same SLIs your alerts use and reverts on regression. A rollback that needs a meeting is not a rollback.
+
+<TradeoffBox title="CI/CD choices" items={[
+  { gain: "Continuous deployment: tiny changes, fast feedback, small blast radius per deploy", cost: "Needs strong automated tests, monitoring and automated rollback; regulated domains may require a human gate" },
+  { gain: "Continuous delivery with a manual gate: a human chooses timing (marketing, support coverage)", cost: "Changes batch up between releases, so each deploy carries more risk" },
+  { gain: "Large E2E suite: tests real user journeys", cost: "Slow, flaky and hard to diagnose; pushes the pipeline past the point people wait for it" },
+  { gain: "Build once and promote by digest: production runs exactly what was tested", cost: "Requires all environment differences to live in config, not in the build" },
+  { gain: "Roll back by default: fastest path to recovery", cost: "Only works if schema, message and cache formats stay backward compatible" }
+]} />
+
+<NotWhenBox title="When not to go all the way" items={[
+  "A weekend prototype or a one-person internal tool: a single build-and-test job is enough; multi-stage promotion is overhead.",
+  "Mobile apps shipped through app stores: you cannot continuously deploy a binary users must download, so ship continuously to an internal track and gate store releases (and use server-driven flags).",
+  "Systems with mandated change approval (some medical, aviation or financial controls): keep continuous integration and delivery, but the final deploy is gated by policy.",
+  "Do not chase 100% E2E coverage: past a handful of critical journeys, each new browser test costs more in flakiness than it returns."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Continuous delivery means every commit goes to production automatically." right="That is continuous deployment. Continuous delivery means every passing commit could be deployed with one action; a human or a schedule may still decide when." />
+
+<Misconception wrong="We rebuild the image for production with the prod config baked in, so it is the same code." right="A rebuild is a different artifact: dependencies, base images and build caches can differ. Build once, deploy by digest, and inject config at runtime." />
+
+<Misconception wrong="If the deploy goes wrong we can always roll back." right="Rollback reverts code, not data. A destructive migration, a new message format or a sent email makes rollback unsafe unless every release stays backward compatible." />
+
+<Misconception wrong="Retrying failed tests automatically fixes flakiness." right="Retries hide it. Across a large suite small per-test flake rates compound until most runs fail; quarantine and fix the cause instead." />
+
+## Interview angle
+
+<InterviewAngle title="CI/CD" questions={[
+  "Walk me through what happens between a developer merging a PR and the change serving production traffic.",
+  "Your pipeline takes 80 minutes. How do you get it under 20 without losing confidence?",
+  "Why build the artifact once instead of per environment? How do you make one artifact work in staging and production?",
+  "A deploy at 14:00 raised the error rate. Do you roll back or roll forward, and what would stop you rolling back?",
+  "How would you stop a compromised dependency or CI token from reaching production?"
+]}>
+In system design interviews CI/CD usually appears as "how do you ship this safely?" after the architecture is drawn. Strong answers describe the pipeline as a series of filters ordered by cost (fast unit tests first, a few E2E checks last), insist on one immutable artifact promoted by digest with config injected per environment, and tie the production stage to the same SLIs as alerting so rollback can be automatic. Then show judgement about data: rollbacks are only safe if schema and message formats are backward compatible, which is why migrations ship separately using expand/contract. For senior roles, mention pipeline security (short-lived OIDC credentials, pinned dependencies, signed images) and the four DORA metrics as the way you would measure whether delivery is improving. A good follow-up answer on flakiness quantifies it: 200 tests at 0.5% flake each pass together only about 37% of the time.
+</InterviewAngle>
+
+## Practice
+
+1. A suite has 400 tests, each with an independent 0.2% flake rate. What fraction of runs fail with no real bug? How low must the per-test rate be for 95% of runs to pass?
+2. Redesign a pipeline that runs build (5 min), unit (24 min), integration (30 min) and E2E (40 min) sequentially. State which stages you parallelise, which you move after merge, and the new critical path.
+3. Write the rollback policy for a payment service: the trigger metrics and thresholds, who or what initiates rollback, and the three kinds of change that must never ship in the same release as the code that depends on them.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

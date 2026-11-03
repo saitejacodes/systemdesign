@@ -1,0 +1,19 @@
+{
+  "id": "p5-data-protection",
+  "phase": 5,
+  "slug": "data-protection",
+  "title": "Data Protection: Encryption, Keys and Secrets",
+  "order": 8,
+  "week": 11,
+  "estimatedMinutes": 65,
+  "topics": [
+    { "id": "encryption-in-transit", "title": "Encryption in transit", "depth": "deep" },
+    { "id": "encryption-at-rest", "title": "Encryption at rest and its threat model", "depth": "deep" },
+    { "id": "envelope-encryption", "title": "Key management and envelope encryption", "depth": "deep" },
+    { "id": "secrets-management", "title": "Secrets management", "depth": "tradeoffs" },
+    { "id": "pii-handling", "title": "Handling PII", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p1-tls", "p5-authn-authz", "p5-access-control"]
+}

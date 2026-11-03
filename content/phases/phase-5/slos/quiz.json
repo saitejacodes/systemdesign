@@ -1,0 +1,172 @@
+[
+  {
+    "id": "slos-q1",
+    "type": "single",
+    "prompt": "Which statement best separates an SLO from an SLA?",
+    "options": [
+      { "id": "a", "text": "An SLO is measured by engineering's tools, while an SLA is measured by the customers' own monitoring" },
+      { "id": "b", "text": "An SLA carries contractual consequences such as credits; an SLO is an internal target with none" },
+      { "id": "c", "text": "An SLO covers availability only, while an SLA covers latency, durability and freshness too" },
+      { "id": "d", "text": "An SLA is always the stricter number, so the team aims above it to keep the SLO safe" }
+    ],
+    "correct": ["b"],
+    "explanation": "The SRE book's test is consequences: an SLA is a contract with credits or termination if missed; without consequences it is an SLO. Who measures it does not define it; SLAs are normally computed from the provider's own data. Either can cover any SLI, so the availability-only split is invented. The SLA is usually looser than the SLO, not stricter, so the team hears about trouble before it owes money.",
+    "topicId": "sli-slo-sla",
+    "difficulty": 1
+  },
+  {
+    "id": "slos-q2",
+    "type": "single",
+    "prompt": "How much full outage does a 99.95% SLO allow over a 30-day window?",
+    "options": [
+      { "id": "a", "text": "4.32 minutes" },
+      { "id": "b", "text": "43.2 minutes" },
+      { "id": "c", "text": "21.6 minutes" },
+      { "id": "d", "text": "3.6 hours" }
+    ],
+    "correct": ["c"],
+    "explanation": "30 days is 43,200 minutes and the budget is 0.05%, so 43,200 × 0.0005 = 21.6 minutes. 4.32 minutes is the 99.99% budget. 43.2 minutes is 99.9%. 3.6 hours is 99.5%.",
+    "topicId": "error-budgets",
+    "difficulty": 1
+  },
+  {
+    "id": "slos-q3",
+    "type": "scenario",
+    "prompt": "What share of the 30-day error budget did the incident spend?",
+    "scenario": "An API serves a steady 1,000 requests a second with a 99.9% availability SLO over 30 days. A bad deploy fails 30% of requests for 20 minutes before rollback.",
+    "options": [
+      { "id": "a", "text": "About 46%" },
+      { "id": "b", "text": "About 14%" },
+      { "id": "c", "text": "About 2%" },
+      { "id": "d", "text": "About 0.03%" }
+    ],
+    "correct": ["b"],
+    "explanation": "Bad requests: 1,000 × 1,200 s × 0.3 = 360,000. Budget: 0.1% of 2,592,000,000 = 2,592,000. 360,000 / 2,592,000 ≈ 13.9%. Equivalently 20 min × 30% = 6 min of full outage out of 43.2. About 46% treats the 20 minutes as a full outage (20 / 43.2). About 2% is the fast-burn alert's threshold, not this incident. About 0.03% divides bad requests by all requests rather than by the budget.",
+    "topicId": "error-budgets",
+    "difficulty": 2
+  },
+  {
+    "id": "slos-q4",
+    "type": "multi",
+    "prompt": "Which are good SLIs for a request-driven checkout API? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Fraction of valid checkout requests returning a non-5xx response at the load balancer" },
+      { "id": "b", "text": "Fraction of valid checkout requests completed in under 400 ms at the load balancer" },
+      { "id": "c", "text": "Average CPU utilisation across the checkout fleet over the last five minutes" },
+      { "id": "d", "text": "Mean response time of checkout requests averaged across all servers each minute" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "Availability and threshold latency, both as good-over-valid ratios measured near the user, are the textbook request SLIs. CPU utilisation is a cause signal users never experience; checkout can fail at 20% CPU or be fine at 90%. A mean response time hides the slow tail, so most users can be fine while a tenth time out.",
+    "topicId": "choosing-slis",
+    "difficulty": 1
+  },
+  {
+    "id": "slos-q5",
+    "type": "scenario",
+    "prompt": "What is the best response?",
+    "scenario": "The team's latency SLO is 99% of requests under 300 ms. Their Prometheus histogram has buckets at 0.1, 0.25, 0.5 and 1 second. The SLI dashboard shows 99.4% using the 0.25 bucket.",
+    "options": [
+      { "id": "a", "text": "Fine as it is: 0.25 is stricter than 0.3, so the real SLI can only be better than the dashboard" },
+      { "id": "b", "text": "Interpolate between the 0.25 and 0.5 buckets with histogram_quantile, which is exact here" },
+      { "id": "c", "text": "Switch to the 0.5 bucket so the dashboard number is never overstated during an incident" },
+      { "id": "d", "text": "Add a 0.3 bucket boundary so the SLI counts exactly the requests faster than the SLO threshold" }
+    ],
+    "correct": ["d"],
+    "explanation": "A threshold SLI needs a bucket boundary at the threshold, so add le=0.3. Using 0.25 is conservative, but it can show the SLO breached when it is not, which means false pages and wasted budget arguments. histogram_quantile interpolates linearly inside a bucket, which is an estimate, not exact. The 0.5 bucket counts 400 ms requests as good, overstating the SLI, the opposite of what option c claims.",
+    "topicId": "choosing-slis",
+    "difficulty": 2
+  },
+  {
+    "id": "slos-q6",
+    "type": "single",
+    "prompt": "At a 99.9% SLO, what error rate corresponds to a burn rate of 14.4?",
+    "options": [
+      { "id": "a", "text": "0.0144%" },
+      { "id": "b", "text": "1.44%" },
+      { "id": "c", "text": "14.4%" },
+      { "id": "d", "text": "0.144%" }
+    ],
+    "correct": ["b"],
+    "explanation": "Burn rate = error rate / (1 − SLO), so error rate = 14.4 × 0.1% = 1.44%. 0.0144% divides instead of multiplying. 14.4% would be a burn rate of 144. 0.144% is a burn rate of 1.44, slower than the slow-burn page.",
+    "topicId": "burn-rate-alerts",
+    "difficulty": 2
+  },
+  {
+    "id": "slos-q7",
+    "type": "scenario",
+    "prompt": "Which alert from the workbook's recommended set fires first, and roughly when?",
+    "scenario": "A release introduces a bug that fails 0.5% of requests, steadily, on a service with a 99.9% SLO over 30 days. Alerts: page at 14.4x over 1 h (5 min), page at 6x over 6 h (30 min), ticket at 1x over 3 days (6 h).",
+    "options": [
+      { "id": "a", "text": "The 3-day ticket, after about 14 hours, with the budget gone in about 6 days" },
+      { "id": "b", "text": "The 6-hour page, after about 6 hours, because 0.5% is five times the budget" },
+      { "id": "c", "text": "The 1-hour page, within minutes, because any error rate above 0.1% pages" },
+      { "id": "d", "text": "None of them, because a 0.5% error rate stays inside a 99.9% SLO" }
+    ],
+    "correct": ["a"],
+    "explanation": "0.5% is a burn rate of 5, below both paging thresholds (14.4 and 6). The 3-day average passes 0.1% after 0.1 / 0.5 × 72 h ≈ 14.4 h, and at 5× the 30-day budget lasts 6 days. The 6-hour page needs a burn rate of 6, not 5. The 1-hour page needs 14.4×, not any breach. And 0.5% errors is five times the allowed 0.1%, so it is very much outside the SLO.",
+    "topicId": "burn-rate-alerts",
+    "difficulty": 3
+  },
+  {
+    "id": "slos-q8",
+    "type": "single",
+    "prompt": "Why does the workbook's fast-burn alert also require the 5-minute window to be over the threshold?",
+    "options": [
+      { "id": "a", "text": "So the alert detects a total outage faster than the 1-hour window alone could manage" },
+      { "id": "b", "text": "So the alert resolves within minutes of recovery instead of staying on for up to an hour" },
+      { "id": "c", "text": "So that short spikes alone can page, since the 1-hour window by itself would smooth them out" },
+      { "id": "d", "text": "So Prometheus evaluates fewer samples per rule and the query stays cheap to compute" }
+    ],
+    "correct": ["b"],
+    "explanation": "The short window fixes reset time: after recovery the 1-hour average stays high, but the 5-minute one drops quickly, and both must be true to fire. Detection speed is set by the long window, because both must exceed the threshold; the short one never makes it fire earlier. Short spikes alone cannot page, since the 1-hour condition must also hold. The extra window adds a query, so it does not make evaluation cheaper.",
+    "topicId": "burn-rate-alerts",
+    "difficulty": 2
+  },
+  {
+    "id": "slos-q9",
+    "type": "scenario",
+    "prompt": "What is the strongest reply?",
+    "scenario": "Checkout calls payments, inventory and fraud in series. Each has a 99.9% SLO and they fail independently. Product asks checkout to commit to a 99.95% SLO.",
+    "options": [
+      { "id": "a", "text": "Agree: checkout's own code is very stable, so hitting 99.95% only depends on the checkout team" },
+      { "id": "b", "text": "Agree, if checkout's SLA is set at 99.95% too so that both numbers are equal" },
+      { "id": "c", "text": "Decline: about 99.7% is the ceiling unless calls get retries, caching or redundant paths" },
+      { "id": "d", "text": "Decline: an SLO can never be higher than the lowest single dependency's SLA" }
+    ],
+    "correct": ["c"],
+    "explanation": "Serial independent dependencies multiply: 0.999³ ≈ 99.7%, so 99.95% is impossible without changing the design (retries for transient errors, caching inventory, a fallback payments provider). Checkout's own stability cannot beat its dependencies. Setting an equal SLA only adds financial penalties. The never-higher rule is too strong: redundancy can lift a service above any single dependency.",
+    "topicId": "choosing-slis",
+    "difficulty": 3
+  },
+  {
+    "id": "slos-q10",
+    "type": "scenario",
+    "prompt": "Under a typical error budget policy, what should happen next?",
+    "scenario": "A service has spent 110% of its rolling 28-day error budget. A large feature launch is planned for Thursday. The policy freezes non-urgent releases while the budget is exhausted and names the VP of Engineering for disputes.",
+    "options": [
+      { "id": "a", "text": "Launch anyway, since the budget resets automatically on the 1st of next month" },
+      { "id": "b", "text": "Hold the launch and fix top budget consumers, or escalate to the named VP" },
+      { "id": "c", "text": "Raise the error budget to 150% for this month so the launch can go ahead" },
+      { "id": "d", "text": "Lower the SLO target quietly so the service is back within budget for now" }
+    ],
+    "correct": ["b"],
+    "explanation": "The policy exists for exactly this: releases other than urgent fixes pause, the team works on what burned the budget, and anyone who disagrees uses the agreed escalation. A rolling 28-day window does not reset on the 1st; old bad days roll off gradually. Inflating the budget or quietly lowering the SLO during the crisis defeats the point of agreeing the numbers in advance; target changes belong in a planned review.",
+    "topicId": "budget-policy",
+    "difficulty": 2
+  },
+  {
+    "id": "slos-q11",
+    "type": "multi",
+    "prompt": "Which are sound reasons to prefer a request-based SLI over a time-based (good minutes) SLI for a busy API? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "A failure at peak traffic costs more budget than the same failure at 03:00" },
+      { "id": "b", "text": "A 100% outage and a 2% error rate in one minute are no longer counted the same" },
+      { "id": "c", "text": "It is always simpler to explain in a customer contract than counting minutes" },
+      { "id": "d", "text": "It stays precise for services that only receive a handful of requests an hour" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "Request-based SLIs weight each failure by the users it hit, so peak failures cost more and partial failures cost less than total ones. Good-minutes SLIs are usually easier to put in a contract, which is why SLAs often use them. At a handful of requests an hour, one failure swings a request-based SLI wildly, so it is noisier, not more precise.",
+    "topicId": "error-budgets",
+    "difficulty": 2
+  }
+]

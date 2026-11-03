@@ -1,0 +1,172 @@
+[
+  {
+    "id": "access-control-q1",
+    "type": "single",
+    "prompt": "What does a separation-of-duty constraint in RBAC enforce?",
+    "options": [
+      { "id": "a", "text": "A senior role inherits every permission of the roles below it" },
+      { "id": "b", "text": "One user cannot hold two conflicting roles, such as create and approve" },
+      { "id": "c", "text": "Each microservice must run under its own separate service account" },
+      { "id": "d", "text": "Roles can only be assigned by someone in a different department" }
+    ],
+    "correct": ["b"],
+    "explanation": "Separation of duty in the NIST RBAC model stops one person from holding roles that together allow fraud, such as creating and approving a payment. Inheriting junior permissions is role hierarchy, a different extension. Per-service accounts are a good least-privilege practice but not what separation of duty means. Who may assign roles is an administration rule, not this constraint.",
+    "topicId": "rbac",
+    "difficulty": 1
+  },
+  {
+    "id": "access-control-q2",
+    "type": "scenario",
+    "prompt": "What is the underlying problem, and the better fix?",
+    "scenario": "An HR system has roles like `editor-sales-l3-emea`, `editor-sales-l3-apac`, `editor-eng-l2-emea` and so on. Adding a contractor/employee distinction is about to double the role count from roughly 70 to 140.",
+    "options": [
+      { "id": "a", "text": "Role explosion; express the rule once as an attribute policy" },
+      { "id": "b", "text": "Too few roles; split each into separate read and write roles" },
+      { "id": "c", "text": "Privilege creep; delete every role and grant per user instead" },
+      { "id": "d", "text": "A slow role store; cache role lookups for longer at the gateway" }
+    ],
+    "correct": ["a"],
+    "explanation": "Roles that encode department x level x region are role explosion: each new dimension multiplies them. An ABAC rule comparing subject and resource attributes (same department and region, level at least N, employment type) replaces them all. Splitting roles makes the count worse. Per-user grants are harder to audit than roles, and privilege creep is about people accumulating roles, not the role count. Caching addresses latency, which is not the problem described.",
+    "topicId": "rbac",
+    "difficulty": 2
+  },
+  {
+    "id": "access-control-q3",
+    "type": "single",
+    "prompt": "In NIST SP 800-162 terms, an API gateway that calls Open Policy Agent and blocks the request on a deny is acting as which component?",
+    "options": [
+      { "id": "a", "text": "The policy decision point, since it decides what to block" },
+      { "id": "b", "text": "The policy information point, since it holds the request data" },
+      { "id": "c", "text": "The policy enforcement point, while OPA is the decision point" },
+      { "id": "d", "text": "The policy administration point, since it loads the policies" }
+    ],
+    "correct": ["c"],
+    "explanation": "The gateway intercepts the request and enforces the answer, which is the PEP; OPA evaluates policy and returns allow or deny, which is the PDP. The gateway does not evaluate the policy, so it is not the PDP. The PIP supplies attributes such as user department, usually a directory or metadata store. The PAP is where policies are authored and managed, for example a Git repository.",
+    "topicId": "abac",
+    "difficulty": 2
+  },
+  {
+    "id": "access-control-q4",
+    "type": "scenario",
+    "prompt": "Which access model fits best?",
+    "scenario": "You are building a document product: documents live in nested folders, folders are shared with teams, teams have members, and any document can also be shared 'with anyone who has the link'.",
+    "options": [
+      { "id": "a", "text": "RBAC with one role per folder, assigned to every member" },
+      { "id": "b", "text": "ReBAC: store relationships and answer checks by walking them" },
+      { "id": "c", "text": "Network ACLs that limit which subnets can reach which folder" },
+      { "id": "d", "text": "ABAC using only the time of day and the user's device type" }
+    ],
+    "correct": ["b"],
+    "explanation": "Sharing, ownership and nested groups are relationships, and relationship-based access control (as in Google's Zanzibar, OpenFGA or SpiceDB) models them directly. A role per folder explodes with nesting and cannot express link sharing cleanly. Network ACLs control reachability, not per-document permissions. Time and device attributes are context, but the core rule here depends on relationships, not environment.",
+    "topicId": "abac",
+    "difficulty": 2
+  },
+  {
+    "id": "access-control-q5",
+    "type": "single",
+    "prompt": "A request makes three authorization checks against a central policy service at 2 ms each. Moving the policy engine into a local sidecar mainly trades what?",
+    "options": [
+      { "id": "a", "text": "About 6 ms of latency for slower propagation of policy changes" },
+      { "id": "b", "text": "Stronger security, because sidecars cannot be misconfigured" },
+      { "id": "c", "text": "Nothing, since policy engines cache every decision on both sides" },
+      { "id": "d", "text": "Lower memory use per instance for a higher network bill overall" }
+    ],
+    "correct": ["a"],
+    "explanation": "A local engine removes the network hop (about 6 ms here), but policies and attribute data must be pushed to every instance, so a revoked permission applies only once the push lands. Sidecars can absolutely be misconfigured. Caching decisions helps but does not remove the first call or the freshness question. A local engine uses more memory per instance, not less, and reduces network traffic.",
+    "topicId": "abac",
+    "difficulty": 2
+  },
+  {
+    "id": "access-control-q6",
+    "type": "scenario",
+    "prompt": "Which control would most directly have limited the damage at step 3 onward?",
+    "scenario": "A firewall appliance on a cloud VM has an SSRF bug. An attacker makes it fetch credentials for the VM's attached role from the instance metadata service, then lists every storage bucket in the account and copies customer data out.",
+    "options": [
+      { "id": "a", "text": "Encrypting every bucket at rest with the provider's default key" },
+      { "id": "b", "text": "Putting the firewall VM into a private subnet with no inbound access" },
+      { "id": "c", "text": "Scoping the role to the one bucket and actions the firewall needs" },
+      { "id": "d", "text": "Rotating the role's temporary credentials every 6 hours instead of 12" }
+    ],
+    "correct": ["c"],
+    "explanation": "Least privilege on the role means the stolen credentials return AccessDenied for ListBuckets and GetObject on customer data, which is exactly the step that turned a bug into a breach. Default at-rest encryption is transparent to any principal allowed to read, so the role decrypts as normal. A firewall must accept inbound traffic to do its job, and SSRF uses that path anyway. Shorter credential lifetime barely matters when the copy happens within minutes.",
+    "topicId": "least-privilege",
+    "difficulty": 2
+  },
+  {
+    "id": "access-control-q7",
+    "type": "single",
+    "prompt": "In AWS IAM, a user has one policy that allows `s3:*` on a bucket and another that explicitly denies `s3:DeleteObject` on it. What happens on a delete?",
+    "options": [
+      { "id": "a", "text": "Allowed, since the broader Allow policy was attached to the user first" },
+      { "id": "b", "text": "Allowed, since a wildcard Allow is more specific to the bucket ARN" },
+      { "id": "c", "text": "Denied, but only if the Deny sits in the same policy as the Allow" },
+      { "id": "d", "text": "Denied, because an explicit Deny overrides any Allow, wherever it is" }
+    ],
+    "correct": ["d"],
+    "explanation": "IAM evaluates all applicable policies: an explicit Deny anywhere wins over every Allow, and anything not allowed is implicitly denied. Attachment order has no effect on evaluation. Specificity does not beat a Deny in IAM. The Deny applies regardless of which policy contains it.",
+    "topicId": "least-privilege",
+    "difficulty": 1
+  },
+  {
+    "id": "access-control-q8",
+    "type": "scenario",
+    "prompt": "What is the bug?",
+    "scenario": "Logged-in customer A changes the URL from `/api/orders/1041` to `/api/orders/1042` and sees customer B's order. The handler checks that the request has a valid session and that the user holds the `customer` role.",
+    "options": [
+      { "id": "a", "text": "Session fixation; rotate the session ID on every single login" },
+      { "id": "b", "text": "Broken object-level authorization; check that A owns order 1042" },
+      { "id": "c", "text": "Predictable IDs; switching to UUIDs on its own fixes the leak" },
+      { "id": "d", "text": "Missing TLS; the order ID was readable on the wire by others" }
+    ],
+    "correct": ["b"],
+    "explanation": "The handler authorizes the role but not the object: it never checks that order 1042 belongs to the caller. That is broken object-level authorization (IDOR), API1 in the OWASP API Security Top 10 (2023). Session fixation is about an attacker planting a session ID, which did not happen. UUIDs make guessing harder but any leaked or shared ID still works, so they are not the fix. TLS protects transport and is irrelevant when the user themselves edits the URL.",
+    "topicId": "least-privilege",
+    "difficulty": 2
+  },
+  {
+    "id": "access-control-q9",
+    "type": "multi",
+    "prompt": "Which statements about mTLS between internal services are true? Select all that apply.",
+    "options": [
+      { "id": "a", "text": "Both sides present certificates and prove identity" },
+      { "id": "b", "text": "It encrypts the traffic between the two services" },
+      { "id": "c", "text": "It decides which endpoints the caller may invoke" },
+      { "id": "d", "text": "It removes the need to check the end user's rights" }
+    ],
+    "correct": ["a", "b"],
+    "explanation": "mTLS authenticates both peers with certificates and encrypts the link. It does not authorize: which service may call which endpoint is a separate policy (often enforced by the mesh or the service). It also says nothing about the end user, so services must still check the user's rights or risk the confused deputy problem.",
+    "topicId": "service-auth",
+    "difficulty": 1
+  },
+  {
+    "id": "access-control-q10",
+    "type": "scenario",
+    "prompt": "What is the main weakness of this design?",
+    "scenario": "The orders service calls payments over mTLS. Payments verifies the caller is `spiffe://prod/ns/orders/sa/api` and then charges whatever `account_id` the request body contains. A bug in orders lets users choose that field freely.",
+    "options": [
+      { "id": "a", "text": "SPIFFE IDs can be forged, so the mTLS identity means very little" },
+      { "id": "b", "text": "The SVID lifetime is too long; rotating every minute would fix it" },
+      { "id": "c", "text": "A confused deputy: payments never checks the user owns the account" },
+      { "id": "d", "text": "mTLS should be swapped for a shared API key held by both services" }
+    ],
+    "correct": ["c"],
+    "explanation": "Payments trusts orders' authority for every request, so any user who can steer orders can charge any account: a confused deputy. Propagate the user's identity (the original token or a token-exchange token) and check ownership in payments. SVIDs are issued only after attestation and verified against a trust bundle, so forgery is not the issue. Credential lifetime is irrelevant because the legitimate orders service is making the bad call. A shared API key is weaker than mTLS and still has the same flaw.",
+    "topicId": "service-auth",
+    "difficulty": 3
+  },
+  {
+    "id": "access-control-q11",
+    "type": "single",
+    "prompt": "10,000 pods hold 1-hour workload certificates and renew at half their lifetime. Roughly what signing rate must the issuer sustain?",
+    "options": [
+      { "id": "a", "text": "About 2.8 signings per second, one per pod per hour" },
+      { "id": "b", "text": "About 5.6 signings per second, two per pod per hour" },
+      { "id": "c", "text": "About 167 signings per second, one per pod per minute" },
+      { "id": "d", "text": "About 0.12 signings per second, one per pod per day" }
+    ],
+    "correct": ["b"],
+    "explanation": "Renewing at half of a 1-hour lifetime means every 30 minutes, so 20,000 signings an hour, which is 20,000 / 3,600 = about 5.6 per second. One per pod per hour ignores early renewal. One per minute and one per day use the wrong renewal interval.",
+    "topicId": "service-auth",
+    "difficulty": 2
+  }
+]

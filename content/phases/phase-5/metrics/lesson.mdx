@@ -1,0 +1,200 @@
+## Why it matters
+
+Logs tell you what happened to one request. Metrics tell you what is happening to all of them, right now, for almost no cost per request. A counter of HTTP 500s takes the same few bytes to store whether you served ten requests or ten million, which is why dashboards and alerts are built on metrics and not on logs. Google's SRE book (chapter 6, "Monitoring Distributed Systems") distils service monitoring to four golden signals: latency, traffic, errors and saturation. The hard parts are not collecting numbers but choosing the right type, reading percentiles correctly, and keeping the number of time series from exploding when someone adds one innocent-looking label. This section covers counters, gauges and histograms, how percentiles are computed from buckets, the RED and USE methods for deciding what to measure, and how cardinality explosions happen and how to prevent them.
+
+<Callout type="analogy" title="The car dashboard, the odometer and the speed camera log">
+A car's odometer only ever goes up: that is a counter, and you get speed by looking at how fast it changes. The fuel gauge goes up and down: that is a gauge. A traffic authority that wants to know how fast cars drive on a road does not store every car's exact speed; it keeps bins (0–30, 30–50, 50–70, over 70 km/h) and adds one to the right bin each time a car passes: that is a histogram, and it can say "95% of cars were under 70" without remembering any single car. Now imagine the authority decides to keep a separate set of bins for every licence plate. Same road, same cameras, but the filing cabinet needs a drawer per car in the country. That is a cardinality explosion. Where the analogy breaks: a real dashboard shows one car; a metrics system shows thousands of instances at once and must add their counters and bins together correctly.
+</Callout>
+
+## Counters, gauges and histograms
+
+<DepthStamp depth="deep" />
+
+A metric is a named number sampled over time. Each unique combination of a metric name and its labels is one **time series**: a sequence of (timestamp, value) pairs stored in a <Term slug="time-series-database">time-series database</Term>. In Prometheus notation:
+
+```
+http_requests_total{service="orders", route="/checkout", status="500"}  1027
+```
+
+A <Term slug="metric-label">label</Term> (called a tag or attribute in other systems) is a key-value pair that splits a metric into dimensions you can filter and group by. There are three core types worth knowing in depth.
+
+**Counter.** A <Term slug="counter">counter</Term> is a value that only increases (or resets to zero when the process restarts). Requests served, errors, bytes sent. You almost never look at a counter's raw value; you look at its rate. In Prometheus, `rate(http_requests_total[5m])` gives the per-second average increase over the last five minutes and automatically handles resets: if the value drops from 10,400 to 12, Prometheus assumes a restart and counts the 12 as new increase. By convention, Prometheus counter names end in `_total`.
+
+**Gauge.** A <Term slug="gauge">gauge</Term> is a value that can go up and down: memory in use, queue depth, active connections, temperature. You read it directly, or with functions like `max_over_time`. Never `rate()` a gauge; and never use a gauge for something that only accumulates, because a scrape that misses the peak between samples loses data that a counter would have kept.
+
+**Histogram.** A <Term slug="histogram">histogram</Term> counts observations into buckets. In Prometheus, a histogram named `http_request_duration_seconds` is really several series: one counter per bucket boundary, `_bucket{le="0.1"}`, `_bucket{le="0.25"}` and so on (`le` means "less than or equal", and buckets are cumulative), plus `_sum` (total of all observed values) and `_count` (number of observations). From these you can compute the mean (`_sum` rate divided by `_count` rate), the share of requests under a threshold, and approximate percentiles.
+
+Prometheus also has a fourth type, the **summary**, which computes quantiles such as p99 inside each process. It is precise for that one process but **cannot be aggregated**: there is no correct way to combine forty instances' p99s into a fleet-wide p99. The Prometheus documentation recommends histograms in most cases for exactly this reason.
+
+| Type | Goes down? | Typical query | Use for | Pitfall |
+|---|---|---|---|---|
+| Counter | Only on restart | `rate(x_total[5m])` | Requests, errors, bytes | Reading the raw value; forgetting `rate` |
+| Gauge | Yes | Raw value, `max_over_time` | Memory, queue depth, in-flight | Missing peaks between scrapes |
+| Histogram | No (buckets are counters) | `histogram_quantile(0.99, ...)` | Latency, payload sizes | Badly chosen buckets; series count |
+| Summary | No | Read the precomputed quantile | One process's precise quantile | Cannot aggregate across instances |
+
+### Pull versus push
+
+Prometheus **pulls**: it scrapes an HTTP `/metrics` endpoint on each target every scrape interval (15 to 60 seconds is common). StatsD and the OpenTelemetry Protocol (OTLP) typically **push** from the app to a collector. Pull makes it easy to see when a target is down (the scrape fails) and keeps the app simple; push suits short-lived jobs and serverless functions that may not exist long enough to be scraped. Both work; this is rarely the interesting design question.
+
+## Histograms and percentiles
+
+<DepthStamp depth="deep" />
+
+Average latency hides the users having a bad time. If 99 requests take 50 ms and one takes 5 seconds, the mean is about 100 ms, which describes nobody. That is why latency is reported as a <Term slug="percentile">percentile</Term>: p50 (median), p95, p99. The slowest requests are the <Term slug="tail-latency">tail latency</Term>, and in a microservice architecture the tail matters more than it looks, because a page that fans out to many backends waits for the slowest one.
+
+### How histogram_quantile works
+
+Suppose an orders service has buckets at 0.05, 0.1, 0.25, 0.5, 1 and 2.5 seconds, and over the last five minutes it served 10,000 requests:
+
+| Bucket (le) | Cumulative count | In this bucket |
+|---|---|---|
+| 0.05 s | 6,000 | 6,000 |
+| 0.1 s | 8,500 | 2,500 |
+| 0.25 s | 9,600 | 1,100 |
+| 0.5 s | 9,880 | 280 |
+| 1 s | 9,950 | 70 |
+| 2.5 s | 10,000 | 50 |
+
+The p99 is the 9,900th request (10,000 × 0.99). That rank falls in the 0.5–1 s bucket, which holds requests 9,881 to 9,950. Prometheus's `histogram_quantile` assumes observations are spread evenly inside a bucket and interpolates linearly: (9,900 − 9,880) / 70 = 0.286 of the way through the bucket, so p99 ≈ 0.5 + 0.286 × 0.5 = **0.64 s**. The true p99 could be anywhere from 0.5 to 1 s. The estimate is only as good as the buckets around the value you care about.
+
+Practical rules:
+
+- **Put bucket boundaries at your thresholds.** If your target is "99% of checkouts under 300 ms", add a `le="0.3"` bucket. Then "share of requests under 300 ms" is an exact ratio of two counters, with no interpolation at all.
+- **Aggregate buckets, then compute the quantile.** Fleet-wide p99 is `histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))`. Summing buckets across instances is mathematically valid because they are counters.
+- **Never average percentiles.** The mean of forty instances' p99s is not the fleet p99. One overloaded instance with a 4 s p99 averaged with thirty-nine healthy 100 ms instances gives about 0.2 s, a number that describes no real request.
+- **Every bucket is a series.** Prometheus's default buckets give 11 boundaries plus `+Inf`, and with `_sum` and `_count` a histogram costs 14 series per label combination. Newer Prometheus versions add native histograms, which choose exponential buckets automatically and store them far more compactly; OpenTelemetry has an equivalent exponential histogram type.
+
+## RED and USE methods
+
+<DepthStamp depth="deep" />
+
+Teams that instrument everything end up with thousands of graphs and still cannot answer "is it broken?" Two well-known checklists say what to measure first.
+
+The <Term slug="red-method">RED method</Term>, described by Tom Wilkie (then at Weaveworks), is for **request-driven services**. For every service, measure:
+
+- **Rate**: requests per second.
+- **Errors**: failed requests per second (or the error ratio).
+- **Duration**: the distribution of request latency, as a histogram.
+
+The <Term slug="use-method">USE method</Term>, from Brendan Gregg, is for **resources**: CPU, memory, disks, network interfaces, and also software resources such as thread pools, connection pools and queues. For every resource, check:
+
+- **Utilization**: the share of time the resource was busy, or the share of capacity in use (<Term slug="utilization">utilization</Term>).
+- **Saturation**: how much extra work is waiting that it cannot service yet, such as run-queue length, swap activity, or requests queued for a connection pool.
+- **Errors**: error events from the resource, such as disk errors, dropped packets or failed allocations.
+
+They answer different questions and fit together. RED tells you **that users are hurting** (the symptom). USE tells you **which resource is the bottleneck** (the cause). Google's four golden signals overlap both: latency and errors as in RED, traffic as RED's rate, and saturation from USE.
+
+| Method | Applies to | Measures | Answers |
+|---|---|---|---|
+| RED | Services, endpoints | Rate, errors, duration | Are callers getting good, fast responses? |
+| USE | Resources and pools | Utilization, saturation, errors | Which resource is full or failing? |
+| Four golden signals | User-facing systems | Latency, traffic, errors, saturation | A combined starting dashboard |
+
+### Worked example: RED says it, USE finds it
+
+At 11:02 the checkout dashboard shows the RED picture: rate is flat at 1,200 requests a second, the error ratio rises from 0.1% to 4%, and p99 duration goes from 180 ms to 2.1 s. Users are hurting. Walking the USE checklist on the orders service: CPU utilization is 35% (fine), memory is steady (fine), but the database connection pool shows 100% utilization (all 50 connections in use) and saturation of 300 requests waiting for a connection. The errors are pool-acquire timeouts. The cause is a pool that is too small for a slower database query that shipped at 10:58, not a lack of CPU. <Term slug="littles-law">Little's Law</Term> confirms it: 1,200 requests a second × 0.08 s of database time per request needs about 96 concurrent connections, and the pool has 50.
+
+Saturation is the signal most dashboards forget. Utilization near 100% is ambiguous; a queue that is growing is not.
+
+## Cardinality and cardinality explosions
+
+<DepthStamp depth="deep" />
+
+The **cardinality** of a label is the number of distinct values it takes. The number of time series a metric creates is, at most, the product of its labels' cardinalities. A <Term slug="cardinality-explosion">cardinality explosion</Term> is a sudden, large jump in the number of active series, almost always caused by a label with unbounded values: user ID, email, full URL path with IDs in it, session ID, request ID, IP address, or raw error messages.
+
+### Worked example: counting series
+
+A counter `http_requests_total` on the orders service, with these labels:
+
+- `route`: 50 values
+- `method`: 3 values
+- `status`: 8 values
+- `instance`: 40 pods
+
+Upper bound: 50 × 3 × 8 × 40 = **48,000 series**. In practice fewer combinations ever occur (not every route returns every status), so the real count is lower; the product is the ceiling to plan for. Make it a histogram with the default buckets and each combination costs 14 series: up to 48,000 × 14 = **672,000 series** for one metric on one service. Buckets multiply too.
+
+Now someone adds `user_id` "to debug a customer issue". The theoretical ceiling becomes 48,000 × 1,000,000 users, which is meaningless. The realistic count is what matters: if 200,000 users are active in a day and each touches about 10 route/method/status combinations, that is **2 million new counter series**, and as a histogram **28 million**. Each series costs memory in the database's in-memory head block (a few kilobytes per active series is a common planning figure for Prometheus) plus index entries, so tens of millions of series means tens of gigabytes of RAM that was not there yesterday.
+
+### Failure timeline: the user_id label
+
+| Time | Event | Active series |
+|---|---|---|
+| Mon 10:00 | Normal; Prometheus pair handles the fleet comfortably | 1.2 million |
+| Mon 10:30 | Deploy adds a `user_id` label to the request-duration histogram on the orders service | rising |
+| Mon 12:00 | Every active user creates new series; ingestion rate and memory climb steadily | 9 million |
+| Mon 13:10 | Prometheus is killed by the out-of-memory killer, restarts, replays its write-ahead log, runs out of memory again | 0 (crash loop) |
+| Mon 13:15 | All dashboards go blank and every alert stops evaluating; on-call is now blind for every service, not just orders | none |
+| Mon 13:40 | Team finds the cause from the top-series-by-metric view (Prometheus's TSDB status page), reverts the deploy, and drops the label with a relabelling rule at scrape time | falling |
+| Mon 14:30 | Old series age out of the head block; memory returns to normal | 1.3 million |
+
+The worst part is the blast radius: one team's label took monitoring down for everyone. The Prometheus documentation's own guidance on labels says not to use them for high-cardinality dimensions such as user IDs or email addresses.
+
+### Defences
+
+- **Allow-list labels in code review.** Labels should be bounded enums: route templates (`/orders/:id`, never `/orders/55`), status class or code, method, region.
+- **Enforce limits in the pipeline.** Prometheus scrape configs support `sample_limit` (fail the scrape if a target exposes too many samples) and relabelling rules that drop labels. Multi-tenant stores such as Grafana Mimir and Cortex enforce per-tenant series limits, and managed services usually do the same.
+- **Watch the series count itself.** Alert on active series and on ingestion rate per job, so an explosion is caught at 10:45 instead of 13:10.
+- **Put high-cardinality data where it belongs.** Per-user or per-request detail goes in logs and traces, which are built for high-cardinality lookups. Metrics answer "how many and how fast"; logs and traces answer "which one". An <Term slug="exemplar">exemplar</Term> bridges them: a trace ID attached to a histogram bucket sample, so a spike on the latency graph links straight to a real slow trace.
+
+### Cost compared with logs
+
+Prometheus's storage documentation says samples compress to about 1–2 bytes each on disk. One hundred thousand series scraped every 15 seconds is 100,000 / 15 ≈ 6,667 samples a second, or about 576 million samples a day: roughly **1.2 GB a day** at 2 bytes per sample, independent of request volume. The same traffic summarised as logs in the logging section was 4.32 TB a day. Metrics are cheap because they aggregate at the source, and that is exactly why they cannot tell you which user was affected.
+
+<TradeoffBox title="Metric design choices" items={[
+  { gain: "Counters with rate(): exact, survive restarts, cheap", cost: "Raw values are meaningless; must remember to rate" },
+  { gain: "Histograms: aggregatable percentiles across a fleet", cost: "Approximate inside a bucket; every bucket is another series" },
+  { gain: "Summaries: precise per-process quantiles", cost: "Cannot be combined across instances, so useless for fleet p99" },
+  { gain: "More labels: slice by more dimensions", cost: "Series count multiplies; one unbounded label can take monitoring down" },
+  { gain: "Short scrape interval (5–15 s): faster detection", cost: "More samples, more storage, more load on targets" },
+  { gain: "RED per service plus USE per resource: few graphs, clear story", cost: "Needs discipline to resist adding hundreds of vanity metrics" }
+]} />
+
+<NotWhenBox title="When metrics are the wrong tool" items={[
+  "Finding which user, order or request was affected: use logs or traces, which handle high cardinality.",
+  "Explaining why one request was slow across services: use a trace.",
+  "Billing or exact business counts: scrapes can be missed and counters reset; use the transactional record.",
+  "Rare events (a few a day): a counter that is almost always zero is fine for alerting, but the details belong in a log."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="You can average each instance's p99 to get the service p99." right="Percentiles do not average. Sum histogram buckets across instances, then compute the quantile once." />
+
+<Misconception wrong="Adding a user_id label is a cheap way to debug one customer." right="It creates a series per user per label combination and can exhaust the metrics database's memory. Per-user detail belongs in logs and traces." />
+
+<Misconception wrong="High CPU utilization means the service is the bottleneck." right="Utilization alone is ambiguous. Check saturation (queues, waiting work) and errors per resource, and confirm with RED that users are actually affected." />
+
+<Misconception wrong="Average latency is a good summary of user experience." right="The mean hides the tail. Report p50, p95 and p99 from a histogram with buckets placed near your targets." />
+
+## Interview angle
+
+<InterviewAngle title="Metrics" questions={[
+  "What would you put on the first dashboard for a new service, and why those graphs?",
+  "How do you compute a fleet-wide p99 latency from forty instances?",
+  "Your Prometheus server is running out of memory after a deploy. How do you find and fix the cause?",
+  "Counter or gauge for queue depth? For messages processed? Why?",
+  "How would you let an engineer go from a latency spike on a graph to an actual slow request?"
+]}>
+Metrics show up in every design's "monitoring" step and in the metrics-monitoring case study, where you design the metrics system itself. A strong answer names RED per service and USE per resource, uses histograms (not averages, not summaries) for latency with buckets at the SLO threshold, computes p99 by summing buckets before calling `histogram_quantile`, and estimates series as the product of label cardinalities. On the out-of-memory question, find the top metrics by series count, look for an unbounded label, drop it with relabelling, and add series limits and an alert on active series. For the spike-to-request question, mention exemplars that attach trace IDs to histogram samples.
+</InterviewAngle>
+
+## Practice
+
+1. A metric has labels `route` (30), `method` (4), `status` (6), `region` (3) and `pod` (60). How many series is the upper bound as a counter, and as a histogram with 10 boundaries plus `+Inf`, `_sum` and `_count`?
+2. Given cumulative buckets 0.1 s: 7,000, 0.2 s: 9,000, 0.4 s: 9,800, 0.8 s: 9,960, 1.6 s: 10,000, estimate p95 and p99 the way `histogram_quantile` does, and say what range the true values could be in.
+3. Write the RED and USE checklists for a service that reads from Kafka, calls Postgres through a 40-connection pool, and serves an HTTP API. Name one metric of each type you would add.
+
+## Try it
+
+Read the RED dashboard before you open a single log. Each of the five incidents has its own shape in rate, errors and duration, plus a saturation gauge (pool, heap, database load, hit ratio): learn to tell "the database is slow" from "the database is getting more queries".
+
+<Simulator id="observability-lab" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

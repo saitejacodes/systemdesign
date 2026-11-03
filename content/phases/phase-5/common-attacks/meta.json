@@ -1,0 +1,18 @@
+{
+  "id": "p5-common-attacks",
+  "phase": 5,
+  "slug": "common-attacks",
+  "title": "Common Attacks: DDoS, Injection and SSRF",
+  "order": 9,
+  "week": 11,
+  "estimatedMinutes": 65,
+  "topics": [
+    { "id": "ddos", "title": "DDoS and mitigation layers", "depth": "deep" },
+    { "id": "injection", "title": "Injection", "depth": "deep" },
+    { "id": "ssrf", "title": "Server-side request forgery (SSRF)", "depth": "deep" },
+    { "id": "owasp-top-10", "title": "The OWASP Top 10", "depth": "awareness" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": [],
+  "prerequisites": ["p5-data-protection", "p5-access-control", "p2-rate-limiting", "p3-cdn"]
+}
