@@ -1,6 +1,6 @@
 # AI proxy (optional)
 
-SysDesign Lab calls AI providers straight from your browser. Anthropic allows that (the site sends the opt-in header), so most people never need this. Some OpenAI-compatible endpoints don't send CORS headers, so the browser blocks the reply, and the AI features say they "could not reach the endpoint".
+SysDesign Lab calls AI providers straight from your browser. Anthropic allows that (the site sends the opt-in header), and so do the built-in Gemini, Groq, OpenRouter and OpenAI presets, so most people never need this. Some other OpenAI-compatible endpoints don't send CORS headers, so the browser blocks the reply, and the AI features say they "could not reach the endpoint".
 
 This proxy runs on your own machine, listens on `127.0.0.1` only, forwards requests to the endpoint, and adds the CORS headers. It stores and logs nothing.
 
@@ -8,7 +8,7 @@ This proxy runs on your own machine, listens on `127.0.0.1` only, forwards reque
 AI_PROXY_TARGET=https://api.openai.com/v1 node scripts/ai-proxy/proxy.mjs
 ```
 
-Then open Settings → AI, choose **OpenAI-compatible endpoint**, and set the base URL to `http://127.0.0.1:8787`. Your key still goes in Settings; the proxy just passes the `Authorization` header through.
+Then open Settings → AI, choose **Other OpenAI-compatible endpoint**, and set the base URL to `http://127.0.0.1:8787`. Your key still goes in Settings; the proxy just passes the `Authorization` header through.
 
 | Variable | Default | Meaning |
 |---|---|---|

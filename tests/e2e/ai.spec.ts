@@ -19,7 +19,7 @@ test("without a key every AI entry point says to add one, and nothing calls a pr
   test.skip(info.project.name === "mobile", "desktop flow");
   const errors = watchErrors(page);
   const calls: string[] = [];
-  page.on("request", (r) => { if (/anthropic\.com|openai\.com/.test(r.url())) calls.push(r.url()); });
+  page.on("request", (r) => { if (/anthropic\.com|openai\.com|groq\.com|openrouter\.ai|googleapis\.com/.test(r.url())) calls.push(r.url()); });
 
   await page.goto("/settings");
   const ai = page.getByRole("region", { name: "AI" });
@@ -136,5 +136,42 @@ test("AI interviewer answers in character, asks a follow-up on the design, and g
   await groups.first().getByText("2 points").click();
   await expect(page.getByTestId("ai-score").first()).toContainText("AI · 1 point · you said 2");
   await expect(page.getByRole("button", { name: /Save attempt/ })).toBeDisabled();
+  expect(errors).toEqual([]);
+});
+
+test("a Groq key: Load models fills the model list and the tutor streams from Groq's endpoint", async ({ page }, info) => {
+  test.skip(info.project.name === "mobile", "desktop flow");
+  const errors = watchErrors(page);
+  const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET, POST" };
+  const auth: string[] = [];
+  await page.route("https://api.groq.com/openai/v1/**", async (route) => {
+    const req = route.request();
+    if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+    auth.push((await req.allHeaders()).authorization);
+    if (req.url().endsWith("/models")) return route.fulfill({ status: 200, headers: { ...cors, "content-type": "application/json" }, body: JSON.stringify({ data: [{ id: "test-model-b" }, { id: "test-model-a" }] }) });
+    const chunks = ['{"choices":[{"delta":{"content":"Groq says: "}}]}', '{"choices":[{"delta":{"content":"a resolver walks the tree."}}]}', '{"choices":[],"usage":{"prompt_tokens":900,"completion_tokens":12}}', "[DONE]"];
+    await route.fulfill({ status: 200, headers: { ...cors, "content-type": "text/event-stream" }, body: chunks.map((c) => `data: ${c}\n\n`).join("") });
+  });
+
+  await page.goto("/settings");
+  const ai = page.getByRole("region", { name: "AI" });
+  await ai.getByLabel("Provider").selectOption("groq");
+  await expect(ai.getByText("https://api.groq.com/openai/v1")).toBeVisible();
+  await expect(ai.getByLabel("Base URL")).toHaveCount(0);
+  await ai.getByLabel("API key").fill("gsk_test_key");
+  await ai.getByRole("button", { name: "Load models" }).click();
+  await expect(ai.getByText("2 models available")).toBeVisible();
+  await expect(page.locator("#ai-model-list option")).toHaveCount(2);
+  await ai.getByLabel("Model").fill("test-model-a");
+  await ai.getByRole("button", { name: "Test connection" }).click();
+  await expect(ai.getByText("Connected. The provider answered.")).toBeVisible();
+
+  await page.goto("/phase/1/dns");
+  await openTutor(page);
+  await page.getByRole("button", { name: "Explain simpler" }).click();
+  const tutor = page.getByTestId("tutor");
+  await expect(tutor.getByTestId("ai-output").last()).toContainText("Groq says: a resolver walks the tree.");
+  await expect(tutor.getByTestId("ai-cost")).toContainText("test-model-a · 900 in · 12 out");
+  expect(auth.every((a) => a === "Bearer gsk_test_key")).toBe(true);
   expect(errors).toEqual([]);
 });

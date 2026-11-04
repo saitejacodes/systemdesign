@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { estimateTokens, modelInfo } from "./pricing";
-import { AiError, type AiConfig, type ChatRequest, type ChatResult } from "./types";
+import { AiError, baseUrlFor, type AiConfig, type ChatRequest, type ChatResult } from "./types";
 
 export const TIMEOUT_MS = 60_000;
 const RETRY_DELAY_MS = 1_500;
@@ -96,10 +96,27 @@ async function anthropicChat(cfg: AiConfig, req: ChatRequest, signal: AbortSigna
   };
 }
 
-async function openAiChat(cfg: AiConfig, req: ChatRequest, signal: AbortSignal, onDelta: OnDelta): Promise<ChatResult> {
-  const base = (cfg.baseUrl ?? "").trim().replace(/\/+$/, "");
+function apiBase(cfg: Pick<AiConfig, "provider" | "baseUrl">) {
+  const base = baseUrlFor(cfg);
   if (!/^https?:\/\//.test(base)) throw new AiError("bad-request", "Set a base URL (http or https) for the OpenAI-compatible endpoint");
-  const res = await fetch(`${base}/chat/completions`, {
+  return base;
+}
+
+/** An HTTP error response as an AiError, with the provider's own message when the body has one. */
+async function httpError(res: Response): Promise<AiError> {
+  let detail = res.statusText;
+  try {
+    const j = await res.json();
+    // OpenAI shape { error: { message } }; Gemini's compat layer sometimes wraps it in an array.
+    detail = (Array.isArray(j) ? j[0] : j)?.error?.message ?? detail;
+  } catch { /* body not JSON */ }
+  return fromStatus(res.status, detail || `HTTP ${res.status}`);
+}
+
+/** OpenAI chat completions (OpenAI, Gemini, Groq, OpenRouter, or any compatible endpoint). */
+async function openAiChat(cfg: AiConfig, req: ChatRequest, signal: AbortSignal, onDelta: OnDelta): Promise<ChatResult> {
+  const base = apiBase(cfg);
+  const send = (withUsage: boolean) => fetch(`${base}/chat/completions`, {
     method: "POST",
     signal,
     headers: { "content-type": "application/json", authorization: `Bearer ${cfg.apiKey}` },
@@ -107,14 +124,17 @@ async function openAiChat(cfg: AiConfig, req: ChatRequest, signal: AbortSignal, 
       model: cfg.model,
       max_tokens: req.maxTokens ?? 16_000,
       stream: true,
-      stream_options: { include_usage: true },
+      ...(withUsage ? { stream_options: { include_usage: true } } : {}),
       messages: [{ role: "system", content: req.system }, ...req.messages],
     }),
   });
+  let res = await send(true);
   if (!res.ok) {
-    let detail = res.statusText;
-    try { const j = await res.json(); detail = j?.error?.message ?? detail; } catch { /* body not JSON */ }
-    throw fromStatus(res.status, detail || `HTTP ${res.status}`);
+    const err = await httpError(res);
+    // Some self-hosted servers reject stream_options; ask once more without it (token counts are then estimated).
+    if (err.kind !== "bad-request" || !/stream_options/i.test(err.message)) throw err;
+    res = await send(false);
+    if (!res.ok) throw await httpError(res);
   }
   if (!res.body) throw new AiError("unknown", "The endpoint returned no body");
   let text = "";
@@ -154,4 +174,23 @@ export async function* sseData(body: ReadableStream<Uint8Array>): AsyncGenerator
     if (done) break;
   }
   if (buf.startsWith("data:")) yield buf.slice(5).trim();
+}
+
+/** Model ids from GET {base}/models, sorted. Anthropic uses its own SDK list. */
+export async function listModels(cfg: Pick<AiConfig, "provider" | "apiKey" | "baseUrl">, signal?: AbortSignal): Promise<string[]> {
+  try {
+    if (cfg.provider === "anthropic") {
+      const client = new Anthropic({ apiKey: cfg.apiKey, dangerouslyAllowBrowser: true, maxRetries: 0, timeout: TIMEOUT_MS });
+      const ids: string[] = [];
+      for await (const m of client.models.list({ limit: 100 }, { signal })) ids.push(m.id);
+      return ids;
+    }
+    const res = await fetch(`${apiBase(cfg)}/models`, { signal, headers: { authorization: `Bearer ${cfg.apiKey}` } });
+    if (!res.ok) throw await httpError(res);
+    const j: { data?: { id?: string }[] } = await res.json();
+    // Gemini's compat layer prefixes ids with "models/"; chat completions accepts them without it.
+    return [...new Set((j.data ?? []).flatMap((m) => (m.id ? [m.id.replace(/^models\//, "")] : [])))].sort();
+  } catch (e) {
+    throw toAiError(e);
+  }
 }

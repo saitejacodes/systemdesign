@@ -5,11 +5,11 @@ import { newSession } from "@/lib/interview/session";
 import type { CaseStudyMeta, Rubric } from "@/lib/content/schemas";
 import type { StudioGraph } from "@/lib/studio/types";
 import type { TrafficProfile } from "@/lib/studio/sim";
-import { chat, fromStatus, sseData, toAiError } from "./client";
+import { chat, fromStatus, listModels, sseData, toAiError } from "./client";
 import { estimateCost, formatCost } from "./pricing";
 import { explainDesignPrompt, followUpPrompt, interviewerSystem, parseFeedback, scoringPrompt, tutorMessages, tutorSystem, LESSON_CHARS, TUTOR_HISTORY } from "./prompts";
 import { serializeGraph, serializeRun, serializeSession, trim } from "./serialize";
-import { AiError, describeError, type AiConfig } from "./types";
+import { AiError, PRESETS, baseUrlFor, describeError, type AiConfig } from "./types";
 import { monthKey, recordUsage } from "./usage";
 
 const graph: StudioGraph = {
@@ -157,6 +157,43 @@ describe("client", () => {
     expect(url).toBe("http://x.test/v1/chat/completions");
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer k");
     expect(JSON.parse(init.body as string).messages[0]).toEqual({ role: "system", content: "sys" });
+    vi.unstubAllGlobals();
+  });
+
+  it("routes Gemini, Groq, OpenRouter and OpenAI to their preset API root, ignoring any custom base URL", async () => {
+    for (const provider of ["gemini", "groq", "openrouter", "openai"] as const) {
+      const f = vi.fn(async () => sse(['{"choices":[{"delta":{"content":"ok"}}]}', "[DONE]"]));
+      vi.stubGlobal("fetch", f);
+      await chat({ provider, apiKey: "k", model: "m", baseUrl: "http://ignored.test" }, { system: "s", messages: [{ role: "user", content: "x" }] });
+      expect((f.mock.calls[0] as unknown as [string])[0]).toBe(`${PRESETS[provider]!.baseUrl}/chat/completions`);
+      vi.unstubAllGlobals();
+    }
+    expect(baseUrlFor({ provider: "openai-compatible", baseUrl: " http://x.test/v1/ " })).toBe("http://x.test/v1");
+  });
+
+  it("asks again without stream_options when an endpoint rejects it", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_u: string, init: RequestInit) => {
+      const b = JSON.parse(init.body as string);
+      bodies.push(b);
+      return b.stream_options ? new Response('{"error":{"message":"Unrecognized request argument: stream_options"}}', { status: 400 }) : sse(['{"choices":[{"delta":{"content":"ok"}}]}', "[DONE]"]);
+    }));
+    const r = await chat(cfg, { system: "s", messages: [{ role: "user", content: "x" }] });
+    expect(r.text).toBe("ok");
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].stream_options).toBeUndefined();
+    vi.unstubAllGlobals();
+  });
+
+  it("lists models from {base}/models, sorted, without Gemini's models/ prefix", async () => {
+    const f = vi.fn(async () => new Response(JSON.stringify({ data: [{ id: "models/b-model" }, { id: "a-model" }, { id: "b-model" }] }), { status: 200 }));
+    vi.stubGlobal("fetch", f);
+    expect(await listModels({ provider: "gemini", apiKey: "k" })).toEqual(["a-model", "b-model"]);
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`${PRESETS.gemini!.baseUrl}/models`);
+    expect((init.headers as Record<string, string>).authorization).toBe("Bearer k");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response('{"error":{"message":"Invalid API Key"}}', { status: 401 })));
+    await expect(listModels({ provider: "groq", apiKey: "bad" })).rejects.toMatchObject({ kind: "invalid-key" });
     vi.unstubAllGlobals();
   });
 

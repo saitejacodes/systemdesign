@@ -221,3 +221,9 @@
 - **AI grading** asks for JSON in a fenced block (works on every provider) and validates it with zod, keeping only known, unique criterion ids. A malformed reply is reported, not guessed at.
 - **AI interviewer state** lives in the session (`ai`: asks, follow-ups, feedback), optional so older drafts and attempts still parse. AI asks cost no points in Mock.
 
+## Prompt 21 follow-up · More providers
+- **Presets, not a free-for-all.** Gemini, Groq, OpenRouter and OpenAI are presets on the OpenAI chat-completions path with fixed API roots; "Other OpenAI-compatible endpoint" keeps the custom base URL. On 2026-11-04 all four answered a CORS preflight from `http://localhost:3000` allowing `authorization` and `content-type`, so none needs the proxy.
+- **No hard-coded model names** for these providers: their catalogues change monthly. "Load models" calls `GET {base}/models` with the learner's key and fills a datalist (Gemini's `models/` prefix is stripped). Anthropic keeps its default `claude-opus-5-5`.
+- **stream_options.** Sent for usage counts; if an endpoint rejects it with a 400 that names it, the request is re-sent once without it and tokens are estimated.
+- **Cost** stays token-only for non-Anthropic models (no guessed prices).
+

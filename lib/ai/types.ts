@@ -1,24 +1,55 @@
 // Provider-agnostic shapes for the optional AI features (Prompt 21). The key lives only in Settings.apiKey (IndexedDB)
 // and is sent only to the provider the learner picked.
 
-export const PROVIDERS = ["anthropic", "openai-compatible"] as const;
+export const PROVIDERS = ["anthropic", "gemini", "groq", "openrouter", "openai", "openai-compatible"] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 export const PROVIDER_LABEL: Record<Provider, string> = {
-  anthropic: "Anthropic",
-  "openai-compatible": "OpenAI-compatible endpoint",
+  anthropic: "Anthropic (Claude)",
+  gemini: "Google Gemini",
+  groq: "Groq",
+  openrouter: "OpenRouter",
+  openai: "OpenAI",
+  "openai-compatible": "Other OpenAI-compatible endpoint",
 };
 
+/** Blank means the learner picks one (Settings → AI → Load models); model names change too often to hard-code. */
 export const DEFAULT_MODEL: Record<Provider, string> = {
   anthropic: "claude-opus-5-5",
+  gemini: "",
+  groq: "",
+  openrouter: "",
+  openai: "",
   "openai-compatible": "",
 };
+
+export interface ProviderPreset {
+  /** The OpenAI-compatible API root (…/chat/completions, …/models). All four answer CORS preflights from a web page. */
+  baseUrl: string;
+  /** Where to create a key. */
+  keysUrl: string;
+  /** The provider's model list. */
+  modelsUrl: string;
+}
+
+/** Hosted providers that speak the OpenAI chat-completions protocol. */
+export const PRESETS: Partial<Record<Provider, ProviderPreset>> = {
+  gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", keysUrl: "https://aistudio.google.com/apikey", modelsUrl: "https://ai.google.dev/gemini-api/docs/models" },
+  groq: { baseUrl: "https://api.groq.com/openai/v1", keysUrl: "https://console.groq.com/keys", modelsUrl: "https://console.groq.com/docs/models" },
+  openrouter: { baseUrl: "https://openrouter.ai/api/v1", keysUrl: "https://openrouter.ai/settings/keys", modelsUrl: "https://openrouter.ai/models" },
+  openai: { baseUrl: "https://api.openai.com/v1", keysUrl: "https://platform.openai.com/api-keys", modelsUrl: "https://platform.openai.com/docs/models" },
+};
+
+export const isProvider = (x: string | undefined): x is Provider => (PROVIDERS as readonly string[]).includes(x ?? "");
+
+/** The API root for an OpenAI-protocol provider: the preset's, or the learner's own for a custom endpoint. */
+export const baseUrlFor = (cfg: Pick<AiConfig, "provider" | "baseUrl">) => (PRESETS[cfg.provider]?.baseUrl ?? cfg.baseUrl ?? "").trim().replace(/\/+$/, "");
 
 export interface AiConfig {
   provider: Provider;
   apiKey: string;
   model: string;
-  /** OpenAI-compatible only: the API root that /chat/completions hangs off, e.g. https://api.openai.com/v1. */
+  /** Custom OpenAI-compatible endpoint only: the API root that /chat/completions hangs off. Presets carry their own. */
   baseUrl?: string;
 }
 

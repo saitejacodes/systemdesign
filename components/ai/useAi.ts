@@ -4,13 +4,13 @@ import { getAdapter } from "@/lib/db/adapter";
 import { useSettings } from "@/lib/db/hooks";
 import { chat } from "@/lib/ai/client";
 import { estimateCost } from "@/lib/ai/pricing";
-import { DEFAULT_MODEL, PROVIDERS, describeError, type AiConfig, type ChatRequest, type ChatResult, type Provider } from "@/lib/ai/types";
+import { DEFAULT_MODEL, describeError, isProvider, type AiConfig, type ChatRequest, type ChatResult, type Provider } from "@/lib/ai/types";
 import { recordUsage } from "@/lib/ai/usage";
 
 /** The configured provider, or null when there is no key (every AI entry point then shows the "add a key" message). */
 export function useAiConfig(): AiConfig | null {
   const s = useSettings();
-  const provider: Provider = (PROVIDERS as readonly string[]).includes(s.aiProvider ?? "") ? (s.aiProvider as Provider) : "anthropic";
+  const provider: Provider = isProvider(s.aiProvider) ? s.aiProvider : "anthropic";
   const model = s.aiModel?.trim() || DEFAULT_MODEL[provider];
   if (!s.apiKey?.trim() || !model) return null;
   return { provider, apiKey: s.apiKey.trim(), model, baseUrl: s.aiBaseUrl };

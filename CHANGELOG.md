@@ -254,3 +254,9 @@
 - With no key, every entry point says "Add an API key in Settings" and nothing is sent anywhere.
 - Verify: `pnpm test` (lib/ai/ai.test.ts: serializer, prompt builders, client, usage, export without the key) and `pnpm test:e2e` (tests/e2e/ai.spec.ts mocks the provider). By hand: add a key in Settings, Test connection, open a lesson, press `]` → AI Tutor.
 
+## Prompt 21 follow-up · Gemini, Groq, OpenRouter, OpenAI keys
+- Settings → AI → Provider now offers Anthropic (Claude), Google Gemini, Groq, OpenRouter, OpenAI, and Other OpenAI-compatible endpoint. Presets carry their API root and link to where to get a key and the model list; no proxy is needed for any of them.
+- "Load models" lists the models your key can use (`GET /models`) and fills the Model box's suggestions.
+- Endpoints that reject `stream_options` are retried once without it.
+- Verify: `pnpm test` (preset routing, model listing, stream_options fallback) and `pnpm test:e2e tests/e2e/ai.spec.ts` (mocked Groq: load models, test connection, tutor stream). By hand: pick Groq, paste a key, Load models, choose one, Test connection.
+
