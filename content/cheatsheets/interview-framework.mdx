@@ -1,0 +1,74 @@
+---
+title: The 7-step interview framework
+summary: "The Phase 7 framework on one page: steps, minute marks for 30, 45 and 60 minutes, what to say and draw, and how to recover when the clock slips."
+group: Interview
+order: 9
+relatedSectionIds: [p7-interview-framework, p7-requirements-scoping, p7-deep-dive-patterns, p7-tradeoff-communication, p7-mock-interview-playbook, p1-estimation]
+---
+
+## The seven steps and the clock
+
+The same seven headings are used by Design Studio notes and Interview Mode rubrics. Default split for 45 minutes: **5 / 5 / 5 / 5 / 10 / 10 / 5**. Same weights at 60 minutes: **7 / 7 / 7 / 7 / 13 / 13 / 6**; at 30 minutes: **4 / 3 / 3 / 3 / 7 / 7 / 3**.
+
+| # | Step | Clock (45 min) | Clock (60 min) | On the board by the end |
+|---|---|---|---|---|
+| 1 | Requirements | 0:00–5:00 | 0:00–7:00 | Three lists: functional, non-functional with numbers, out of scope |
+| 2 | Estimation | 5:00–10:00 | 7:00–14:00 | Peak reads/s, writes/s, storage over retention, working set, one-line conclusion |
+| 3 | API | 10:00–15:00 | 14:00–21:00 | 3–5 endpoints with method, path, key fields, status codes |
+| 4 | Data Model | 15:00–20:00 | 21:00–28:00 | Entities with keys, the store chosen, one sentence why |
+| 5 | High-Level Design | 20:00–30:00 | 28:00–41:00 | Box diagram, each core request traced with numbered arrows |
+| 6 | Deep Dives | 30:00–40:00 | 41:00–54:00 | 2 deep dives (3 in 60 min), each with options, numbers and a decision |
+| 7 | Wrap-up | 40:00–45:00 | 54:00–60:00 | Failure table, the first thing to break at 10×, trade-offs list |
+
+Treat this as the budget for the design portion; introductions and your own questions often take 3–5 minutes, leaving 38–40. **Compress API and Data Model first** (they can share one block). **Never compress Deep Dives**; most of the signal is there.
+
+## What each step checks
+
+| Step | Prompts to cover |
+|---|---|
+| Requirements | Functional: what users must be able to do. Non-functional: scale, latency targets, availability, consistency, durability. Out of scope. |
+| Estimation | Users and DAU → requests/s, average and peak. Read:write ratio. Storage per item × items per day × retention. Bandwidth in and out. |
+| API | Endpoints or RPCs with request and response. Pagination, idempotency keys, auth. |
+| Data Model | Entities, keys and access patterns. Which database and why (SQL vs NoSQL, partition key, indexes). |
+| High-Level Design | Walk each request type through the diagram, component by component. |
+| Deep Dives | Scalability: what you shard, replicate or cache, and how. Fault tolerance: what fails, how it is detected, what happens to requests. |
+| Wrap-up | Bottlenecks: what breaks first at 10×. Trade-offs: each decision, the alternative, why. What you would monitor and alert on. |
+
+## Say and draw
+
+| Step | Opening line | Weak version |
+|---|---|---|
+| Requirements | "I'll list functional requirements, then targets, then what I'm leaving out." | Fifteen questions, nothing written down |
+| Estimation | "I'll size the peak, because that's what we design for. Assumptions first." | Numbers with no derivation, or math with no conclusion |
+| API | "Here's the contract, with status codes and idempotency since retries matter." | `createLink()` with no shapes |
+| Data Model | "The hot access pattern is X, so the key is Y, which points at store Z." | "NoSQL because it scales" |
+| High-Level Design | "Let me walk a redirect through this, request by request." | Ten boxes, no path traced |
+| Deep Dives | "The riskiest part is X. Options are A, B, C. Given our numbers, I pick B because..." | One option described as if no others existed |
+| Wrap-up | "Failures, what breaks at 10×, and the trade-offs I made." | "I think that's it" |
+
+End every step with a sentence that names its consequence: "Writes are 40 per second, so the write path doesn't need sharding."
+
+## Driving the session
+
+- **Signpost** at each boundary: "That's requirements. Next, estimation, two or three minutes."
+- **Check in** at step boundaries, not after every sentence.
+- **Proceed with a stated assumption** when it is reversible; **ask** when the answer changes the architecture; **offer a choice** of deep dives when both are valid.
+- An interruption tells you where the points are: answer it, then signpost back.
+
+## Recovery lines
+
+| Situation | Say |
+|---|---|
+| Requirements running long | "Let me write down what we have and make assumptions for the rest." |
+| No numbers yet at minute 12 | "Let me do a quick estimate, because it decides where effort goes." |
+| Deep dive in the wrong place | "This path carries 40 writes a second; let me move to the read path, which carries 19,500." |
+| Five minutes left, mid deep dive | "Let me stop and summarise: what I'd finish, and what breaks first." |
+| An earlier assumption is wrong | "That changes my earlier assumption about X; here is what I'd revise." |
+
+## Scoring reminder
+
+Interview Mode rubrics tag each criterion with one of the seven steps and score it 0, 1 or 2. In the URL shortener rubric (12 criteria, 24 points), the wrap-up alone carries 2 criteria: running out of time before it throws away up to 4 points (17%) that cost almost nothing.
+
+## Estimation template (URL shortener)
+
+100M links/month ÷ 2,592,000 s ≈ **40 writes/s** → × 100 ≈ **3,900 reads/s** → × 5 at peak ≈ **19,500/s**. 6B links over 5 years × 500 B = **3 TB**. Conclusion: "Writes are trivial; effort goes to the read path, hot links, and never returning a wrong code."

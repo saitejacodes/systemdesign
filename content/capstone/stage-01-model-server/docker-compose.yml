@@ -1,0 +1,32 @@
+# Stage 1: one llama.cpp model server in Docker. The gateway runs on your machine with `npm run dev`.
+# Run ./scripts/download-models.sh first: the server reads the GGUF file from ./models.
+services:
+  llm-1:
+    image: ghcr.io/ggml-org/llama.cpp:server-b6075
+    command:
+      - --model
+      - /models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+      - --alias
+      - qwen2.5-0.5b-instruct
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      # 8,192 tokens of KV cache shared by 4 slots: each concurrent request gets up to 2,048 tokens of context.
+      - --ctx-size
+      - "8192"
+      - --parallel
+      - "4"
+      - --threads
+      - ${LLM_THREADS:-4}
+      - --metrics
+    volumes:
+      - ./models:/models:ro
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s

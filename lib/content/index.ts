@@ -5,6 +5,7 @@ import { ContentError, parseContent } from "./parse";
 import { z } from "zod";
 import { StudioGraph } from "@/lib/studio/types";
 import * as S from "./schemas";
+import { parseCheatSheet, validateCheatSheets, type CheatSheet } from "./cheatsheets";
 
 const ROOT = path.join(process.cwd(), "content");
 const read = (p: string) => fs.readFileSync(p, "utf8");
@@ -118,6 +119,7 @@ export function validateAll() {
   getPlan();
   getResources();
   getCaseStudies();
+  getCheatSheets();
 }
 
 /** Plan weeks plus the written sections in the shape the client pages need. */
@@ -127,3 +129,17 @@ export function getPlanView() {
   }));
   return { weeks: getPlan(), sections };
 }
+
+export type { CheatSheet } from "./cheatsheets";
+
+let sheetsCache: CheatSheet[] | null = null;
+/** Reference cheat sheets (content/cheatsheets/*.mdx), validated and in reading order. */
+export function getCheatSheets(): CheatSheet[] {
+  if (sheetsCache) return sheetsCache;
+  const dir = path.join(ROOT, "cheatsheets");
+  const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith(".mdx")) : [];
+  const sheets = files.map((f) => parseCheatSheet(rel(path.join(dir, f)), f.replace(/\.mdx$/, ""), read(path.join(dir, f))));
+  sheetsCache = validateCheatSheets(sheets, new Set(getAllSections().map((s) => s.meta.id)));
+  return sheetsCache;
+}
+export const getCheatSheet = (slug: string) => getCheatSheets().find((s) => s.slug === slug);

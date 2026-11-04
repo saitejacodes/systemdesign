@@ -14,7 +14,7 @@
     "title": "Is Redlock safe?",
     "author": "Salvatore Sanfilippo (antirez)",
     "kind": "blog",
-    "url": "http://antirez.com/news/101",
+    "url": "https://antirez.com/news/101",
     "why": "The Redis author's point-by-point reply; read it right after Kleppmann's post to see both sides.",
     "topicIds": ["redis-locks"],
     "free": true

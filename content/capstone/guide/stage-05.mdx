@@ -1,0 +1,22 @@
+## What to observe and why it matters
+
+**Limit tokens, not requests.** A request for 10 tokens and one for 4,000 cost the GPU very different amounts. The bucket holds tokens per minute per tenant, and refills continuously ([the five algorithms](/phase/2/rate-limiting#the-five-algorithms), [rate limits and quotas](/phase/6/llm-cost-latency#rate-limits-and-quotas)).
+
+**Charge the estimate, then settle.** Output length is unknown until the stream ends, so the gateway reserves `prompt estimate + max_tokens` up front and refunds or charges the difference after. If the request is shed or fails before the first token, it refunds everything. This is why `max_tokens` matters to the client: asking for 4,000 when you need 200 ties up budget until the answer finishes.
+
+**One Lua script, not GET then SET.** Two gateways share the bucket. Read-modify-write from two processes loses updates; a Lua script runs atomically inside Redis ([Redis](/phase/3/redis), [distributed limiting](/phase/2/rate-limiting#distributed-rate-limiting)). The script uses Redis `TIME`, not each gateway's clock, so clock skew between gateways cannot mint tokens ([clocks](/phase/4/time-ordering)).
+
+**Priority tiers in the admission queue.** Gold sorts ahead of standard, standard ahead of free, and free and batch may only use the first half of the queue, so paid traffic always finds room ([access control](/phase/5/access-control)).
+
+**Fail open or fail closed is a business decision.** Stop Redis and the gateway cannot know the balance. Gold fails open (serve and risk overspend), free fails closed (503). Both are logged. Neither is "correct"; the choice trades revenue risk against abuse risk, and you should say which per tier ([fault tolerance](/phase/4/fault-tolerance)). The limiter is a counter with weak consistency across a failure, not a ledger: the ledger in Postgres stays the source of truth for billing ([consistency models](/phase/4/consistency-models)).
+
+## How this changes at real scale
+
+Assumptions: 50,000 tenants; 500 requests/s; two Redis operations per request (charge and settle); one Redis shard handles about 100,000 simple ops/s.
+
+```
+limiter ops   = 500 x 2       = 1,000 ops/s     -> one shard is plenty
+at 50x load   = 50,000 ops/s                    -> still one shard, but now a single point of failure
+```
+
+Throughput is rarely the limit; availability and latency are. Real platforms keep a local token allowance per gateway and sync with the shared store every few hundred milliseconds (accepting small overshoot), shard buckets by tenant, and limit at several layers at once: requests per minute, tokens per minute, concurrent streams and a daily spend cap. Providers publish these as separate limits for the same reason.

@@ -1,0 +1,21 @@
+## What to observe and why it matters
+
+**At-least-once plus idempotent workers equals effectively once.** JetStream redelivers a job if the worker does not ack within 60 s, up to 5 times. A worker may crash after calling the model but before acking, so the same job can run twice. The worker uses a deterministic request id (`batch:<batch id>:<custom_id>`), so the second run hits the ledger's primary key and is not billed again ([delivery semantics](/phase/3/delivery-semantics), [idempotency](/phase/2/idempotency)).
+
+**Idempotent submission.** `POST /v1/batches` with the same `Idempotency-Key` returns the same batch id with status `exists`. JetStream's message-id dedupe catches a duplicate publish within its window. A sweeper re-publishes jobs that were saved in Postgres but never reached the queue: the gap between two writes to two systems.
+
+**A work queue, not a log.** The stream uses work-queue retention: a message is deleted once acked, and only one consumer gets it ([queues versus logs](/phase/3/kafka-vs-queues)). It is bounded (`max_msgs` with discard-new), so a flood of submissions is refused at the door instead of filling the disk.
+
+**Batch fills the gaps.** The worker calls the gateway at the lowest priority, so batch only runs in capacity interactive traffic leaves free; under load it gets 503 and the job is retried later with backoff ([retries](/phase/4/timeouts-retries), [batch processing](/phase/6/batch-processing)). This is the event-driven split between accepting work and doing it ([event-driven](/phase/3/event-driven)).
+
+## How this changes at real scale
+
+Assumptions: the interactive fleet from stage 10 is sized for peak (398 GPUs with headroom) and averages 45% utilisation over a day; a GPU-hour costs $2.50.
+
+```
+idle GPU-hours per day = 398 x 24 x 0.55          = about 5,250
+their cost             = 5,250 x $2.50            = about $13,100 per day already paid for
+batch tokens they hold = 5,250 h x 3,600 s x 1,143 tok/s per GPU  = about 21.6B output tokens/day
+```
+
+(1,143 tokens/s per GPU is the stage 10 replica's 2,286 divided by its 2 GPUs; treating every idle GPU, prefill ones included, as decode capacity is an assumption that flatters the number.) That idle capacity is why providers sell batch APIs at a discount with a 24-hour completion window ([serving at scale](/phase/6/llm-serving-at-scale#why-gpu-autoscaling-is-slow-and-what-fleets-do-instead)): the deadline lets them schedule into the troughs. At real scale the queue would be partitioned by tenant for fairness, and results written to object storage rather than Postgres.

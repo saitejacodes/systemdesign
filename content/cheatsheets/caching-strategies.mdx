@@ -1,0 +1,83 @@
+---
+title: Caching strategy guide
+summary: The five read and write strategies side by side, invalidation that does not race, TTL arithmetic, failure modes with their defences, eviction and the cache layers.
+group: Building blocks
+order: 5
+relatedSectionIds: [p3-cache-strategies, p3-invalidation, p3-cache-failures, p3-eviction, p3-cache-layers, p3-redis, p3-cdn]
+---
+
+## Why the hit ratio matters
+
+DB reads = total reads × (1 − hit ratio). At 100,000 reads/s:
+
+| Hit ratio | DB reads/s | Change |
+|---|---|---|
+| 90% | 10,000 | |
+| 95% | 5,000 | half of 90% |
+| 99% | 1,000 | **ten times fewer** than 90% |
+| 0% (cold or failed cache) | 100,000 | 20× the 95% load |
+
+The last row is why a cache that the database cannot survive without is a dependency, not an optimisation.
+
+## Strategies
+
+| Strategy | Who fills the cache | Write latency | Read after write | Durability risk | Good for |
+|---|---|---|---|---|---|
+| <Term slug="cache-aside">Cache-aside</Term> | App, on a miss | DB only | Miss (after delete) | None from the cache | General default, read-heavy data |
+| <Term slug="read-through">Read-through</Term> | Cache's loader, on a miss | n/a (read pattern) | Depends on write side | None from the cache | Central caching logic, miss coalescing |
+| <Term slug="write-through">Write-through</Term> | Every write | Cache + DB | Hit, current | None (DB written first or together) | Data read right after it is written |
+| <Term slug="write-behind">Write-behind</Term> | Every write | Cache only | Hit, current in cache | Unflushed writes lost on crash | Counters, metrics, high-rate updates |
+| <Term slug="write-around">Write-around</Term> | Later reads only | DB only | Miss | None from the cache | Write-heavy, rarely re-read data |
+
+## Invalidation
+
+| Method | Staleness bound | Cost | Use |
+|---|---|---|---|
+| TTL only | The TTL | Up to keys ÷ TTL DB reads/s from expiry | Data that may be a little stale |
+| Update DB, then **delete** the key | Small race window | One delete per write | Default with cache-aside |
+| Versioned keys (`product:42:v7`) | None for readers with the new version | Old versions linger until evicted | Immutable or versioned content |
+| Change data capture deletes | Commit order, after commit | A pipeline to run | Many writers, "forgot to delete" bugs |
+| Leases or compare-and-set | Rejects late stale `SET` | Lua script or lease logic | Hot keys with frequent writes |
+| Delayed double delete | Delay length (a guess) | A second delete | Cheap mitigation of the slow-reader race |
+
+Rules: **update the database first, then delete** (delete-first lets a reader repopulate the old value forever). **Delete, do not update** the cache on write (two concurrent writers can leave the older value cached). Keep a TTL as the safety net even with explicit deletes.
+
+**TTL arithmetic** (50,000 products, 10,000 reads/s): TTL 5 s → up to 50,000 ÷ 5 = 10,000 DB reads/s (every read can miss); 60 s → ≈ 833/s; 10 min → ≈ 83/s. Staleness is the TTL.
+
+## Failure modes and defences
+
+| Failure | What happens | Defences |
+|---|---|---|
+| <Term slug="cache-stampede">Stampede</Term> (thundering herd) | One hot key expires; every request in the rebuild window hits the DB. 20,000 reads/s × 0.2 s rebuild = **4,000** identical queries | Rebuild lock, <Term slug="request-coalescing">request coalescing</Term>, refresh before expiry (probabilistic early expiration), stale-while-revalidate |
+| <Term slug="cache-penetration">Penetration</Term> | Requests for keys that do not exist always miss | <Term slug="negative-caching">Negative caching</Term> with a short TTL, a <Term slug="bloom-filter">Bloom filter</Term> of valid IDs (100M IDs at 1% false positives ≈ 120 MB, 7 hashes) |
+| <Term slug="hot-key">Hot key</Term> | One key's traffic exceeds one shard | In-process cache in front, replicate the key under suffixed names, find it with per-key metrics |
+| <Term slug="cache-avalanche">Avalanche</Term> | Many keys expire together, or the cache restarts empty | TTL jitter (3,600 s ± 10% spreads expiry over 12 min), warm before taking traffic, rate-limit DB fallback, replicas |
+
+## Eviction
+
+| Policy | Evicts | Strength | Weakness |
+|---|---|---|---|
+| LRU | Least recently used | Strong default for interactive workloads | Polluted by scans |
+| LFU | Least frequently used | Scan-resistant, keeps steady favourites | Needs decay; slow to adopt new hot keys |
+| FIFO | Oldest inserted | No work on a hit | Evicts hot entries for being old |
+| Random | Any entry | Trivial, no metadata | Sometimes evicts the hottest key |
+| TTL-based | Closest to expiry | Matches freshness rules | Ignores popularity |
+
+Redis `maxmemory-policy`: `noeviction` is the default (writes that need memory fail). Use `allkeys-lru` or `allkeys-lfu` for a pure cache; `volatile-*` only evicts keys with a TTL. Redis LRU and LFU are approximate (sampled).
+
+## Layers, nearest first
+
+| Layer | Latency | Scope | Invalidation |
+|---|---|---|---|
+| Browser / client | 0 network | One user | `Cache-Control`, ETag revalidation |
+| CDN edge | One short round trip | Region of users | TTL, purge, versioned URLs |
+| In-process (app memory) | ns–µs | One instance | Short TTL; each instance diverges |
+| Distributed cache (Redis, Memcached) | ≈ 0.5–1 ms in-DC | All instances | Delete on write, TTL |
+| Database buffer pool | Inside the DB | The DB | Automatic |
+
+## Interview checklist
+
+- Say what is cached, the key, the TTL and the invalidation rule.
+- Give the hit ratio you need and the DB load if it drops to 0.
+- Name the stampede defence for the hottest key.
+- State the staleness the product accepts, per data type.

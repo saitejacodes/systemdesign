@@ -1,0 +1,77 @@
+---
+title: Consistency models
+summary: The single-object ladder from linearizable to eventual, session guarantees, transactional isolation, Jepsen's availability classes, CAP and PACELC, and what real products default to.
+group: Distributed systems
+order: 6
+relatedSectionIds: [p4-consistency-models, p4-cap-pacelc, p4-quorums, p2-transactions, p2-replication, p4-time-ordering, p4-consensus]
+---
+
+## Two families, often confused
+
+- **Single-object models** (linearizable, sequential, causal, eventual) say which values a read may return given the history of writes to that object.
+- **Transactional isolation levels** (serializable, snapshot isolation, read committed) say how multi-object transactions may interleave.
+- **Strict serializable** is both at once: transactions in a serial order that respects real time. Spanner calls its version *external consistency*.
+
+Kyle Kingsbury's **Jepsen consistency map** (jepsen.io/consistency) draws both families as one lattice. This sheet follows its names and its three availability classes.
+
+## The single-object ladder, strongest first
+
+| Model | Promise | Bug it still allows | Jepsen availability class |
+|---|---|---|---|
+| <Term slug="linearizability">Linearizable</Term> | Behaves like one copy; once a write completes, every later read (in real time) sees it | None of the stale-read kind | Unavailable during some partitions |
+| <Term slug="sequential-consistency">Sequential</Term> | One order of operations that everyone agrees on, consistent with each client's order; may lag real time | A client can read a value older than one another client already saw | Unavailable |
+| <Term slug="causal-consistency">Causal</Term> | Causes are seen before effects; concurrent writes may appear in different orders | Two unrelated updates seen in different orders on different replicas | Sticky available |
+| Read-your-writes | A session sees its own writes | Other users' writes may be missing | Sticky available |
+| <Term slug="monotonic-reads">Monotonic reads</Term> | A session never reads older data than it already read | Data can still be stale | Totally available |
+| Monotonic writes | A session's writes apply in issue order | Others may see them late | Totally available |
+| Writes-follow-reads | A write is ordered after writes the session had read | Others may see it late | Totally available |
+| <Term slug="eventual-consistency">Eventual</Term> | Replicas converge once writes stop | Anything in between: stale, reordered, lost updates under last-write-wins | Totally available |
+
+Jepsen's classes: **unavailable** (some partitions force some nodes to stop serving), **sticky available** (every non-faulty node can serve, provided each client keeps talking to the same server), **totally available** (every non-faulty node can serve even when the network is fully partitioned).
+
+## Transactional isolation, roughly weakest to strongest
+
+| Level | Prevents | Still allows | Jepsen class |
+|---|---|---|---|
+| Read uncommitted | Dirty writes | Dirty reads | Totally available |
+| Read committed | Dirty reads | Non-repeatable reads, lost updates, write skew | Totally available |
+| Snapshot isolation | Non-repeatable reads, lost updates | <Term slug="write-skew">Write skew</Term> (two doctors both go off call) | Unavailable |
+| Repeatable read | Non-repeatable reads | Phantoms (in the ANSI definition) | Unavailable |
+| Serializable | All of the above | Real-time order violations (a later transaction may be ordered first) | Unavailable |
+| Strict serializable | All of the above, in real-time order | Nothing at this level | Unavailable |
+
+Snapshot isolation and repeatable read are incomparable: each forbids an anomaly the other allows. Vendor names do not match the standard either: PostgreSQL's "repeatable read" is snapshot isolation; MySQL InnoDB's default is "repeatable read" with its own semantics. Read the docs, or Jepsen's analyses, for the product you use.
+
+## CAP and PACELC
+
+- **CAP:** during a network **p**artition, a system must choose between **c**onsistency (linearizability) and **a**vailability (every non-failing node answers). It says nothing about normal operation.
+- **PACELC:** if **P**artitioned, choose **A** or **C**; **E**lse (normal operation), choose **L**atency or **C**onsistency. Strong consistency costs coordination round trips even when nothing is broken.
+
+## Quorums
+
+With N replicas, writes acknowledged by W and reads querying R: **R + W > N** makes every read set overlap the latest write set. N = 3, W = 2, R = 2 tolerates one slow or failed replica on each path. Overlap alone is not linearizability: sloppy quorums, hinted handoff and last-write-wins clocks can still return stale or lost writes.
+
+## Real products (defaults)
+
+| Product | Default | Other options |
+|---|---|---|
+| Spanner | Strict serializable (external consistency) | Stale reads at a timestamp, weaker and faster |
+| etcd | Linearizable reads and writes | Serializable (local) reads |
+| ZooKeeper | Linearizable writes; reads may lag | `sync` before a read |
+| DynamoDB | Eventually consistent reads | `ConsistentRead=true`, twice the read capacity (not on global secondary indexes) |
+| Amazon S3 | Strong read-after-write for objects since December 2020 | n/a |
+| MongoDB | Reads from the primary | Causally consistent sessions for secondary reads |
+| Cosmos DB | Session | Strong, bounded staleness; consistent prefix and eventual are weaker |
+| Cassandra | Per-query consistency level | `QUORUM` reads and writes for overlap |
+| DNS | Eventual, loosely bounded by TTLs | n/a |
+
+**Cost example (DynamoDB, 20,000 reads/s of ≤ 4 KB items):** all strong = 20,000 RCU; all eventual = 10,000 RCU; strong only for the 2% of reads right after a seller edits = 400 × 1 + 19,600 × 0.5 = **10,200 RCU**. Pay for strength only where staleness causes harm.
+
+## Choosing, per operation
+
+| If a stale or reordered read would... | Use |
+|---|---|
+| Double-sell, double-claim or break an invariant (usernames, seats, balances, leader election) | Linearizable or a transaction with a unique constraint |
+| Confuse the user about their own action ("my edit vanished") | Read-your-writes and monotonic reads (sticky sessions or read-from-leader after write) |
+| Show an effect before its cause (reply before question, post visible after unfriend) | Causal |
+| Only show slightly old counts, feeds, recommendations | Eventual |

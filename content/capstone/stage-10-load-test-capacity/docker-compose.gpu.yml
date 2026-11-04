@@ -1,0 +1,38 @@
+# Optional NVIDIA GPU override (Linux or WSL2 with the NVIDIA Container Toolkit installed):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# The three primary replicas switch to the CUDA build of the same llama.cpp release and offload every layer to the
+# GPU (--n-gpu-layers 999). Three 0.5B Q4 replicas need well under 4 GB of GPU memory together, so one GPU is enough.
+# On a Mac, Docker cannot reach the Apple GPU: run llama-server natively (Metal) instead and point LLM_REPLICAS at it.
+x-gpu-llm: &gpu-llm
+  image: ghcr.io/ggml-org/llama.cpp:server-cuda-b6075
+  command:
+    - --model
+    - /models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+    - --alias
+    - qwen2.5-0.5b-instruct
+    - --host
+    - 0.0.0.0
+    - --port
+    - "8080"
+    - --ctx-size
+    - "8192"
+    - --parallel
+    - "4"
+    - --n-gpu-layers
+    - "999"
+    - --metrics
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+services:
+  llm-1:
+    <<: *gpu-llm
+  llm-2:
+    <<: *gpu-llm
+  llm-3:
+    <<: *gpu-llm

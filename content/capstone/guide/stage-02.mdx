@@ -1,0 +1,23 @@
+## What to observe and why it matters
+
+**Keys are stored as hashes.** `select * from api_keys` shows a SHA-256 hash and a short display prefix, never the key. A database leak then leaks no usable keys. A fast hash is enough because the keys are long random strings, not passwords; a slow hash like bcrypt would add milliseconds to every request ([authentication](/phase/5/authn-authz)).
+
+**The ledger is idempotent by construction.** `usage_ledger` has the request id as primary key, and one statement inserts the row and bumps the daily rollup only if the insert happened (`ON CONFLICT DO NOTHING` inside a CTE). Replaying the same request id cannot double-bill ([idempotency](/phase/2/idempotency), [transactions](/phase/2/transactions)).
+
+**Bill in tokens, from the server's count.** The gateway records `usage.prompt_tokens` and `completion_tokens` from llama.cpp. A cancelled stream is billed for what was generated, with status `cancelled`.
+
+**Keyset pagination.** `GET /v1/usage` pages by `(created_at, request_id)` with an index in the same order, so page 500 costs the same as page 1 ([indexing](/phase/2/indexing)). The cursor keeps microseconds; a millisecond cursor would skip rows written in the same millisecond.
+
+**Service names are DNS.** The gateway reaches `postgres:5432` and `llm-1:8080` through Docker's embedded DNS ([DNS](/phase/1/dns)), and a pool caps connections at `DB_POOL_MAX` ([pooling](/phase/2/connection-pooling)).
+
+## How this changes at real scale
+
+Assumptions: 500 requests/s at peak; one ledger row of about 200 bytes plus index overhead of about 2x.
+
+```
+ledger writes   = 500 rows/s                     -> trivial for one Postgres primary
+ledger growth   = 500 x 86,400 x 600 B           = about 26 GB per day
+one year        = about 9.5 TB                   -> partition by month, roll up, archive raw rows
+```
+
+Writes are not the problem; retention is. Real platforms write usage events to a log (Kafka) and aggregate into a billing store asynchronously, keeping the request id as the dedupe key end to end. Key lookups are cached in the gateway (this build caches for `AUTH_CACHE_SECONDS`, default 30 s), so a revoked key can keep working for up to 30 s: name that window in the design.

@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Learner starters/solutions in five languages; checked by lib/labs/labs.test.ts instead.
     "content/labs/**",
+    // Capstone project code (its own package.json and tsconfig); parsed by lib/capstone/capstone.test.ts instead.
+    "content/capstone/**",
   ]),
 ]);
 

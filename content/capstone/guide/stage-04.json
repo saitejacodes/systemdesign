@@ -1,0 +1,116 @@
+{
+  "stage": 4,
+  "slug": "router",
+  "title": "Replicas and a router: round robin, least outstanding, prefix affinity",
+  "folder": "stage-04-router",
+  "minutes": 120,
+  "goal": "Run three model replicas and two gateways behind Nginx. The gateway routes each request with one of three policies and you measure the difference: prefix affinity sends requests that share a system prompt to the same replica, so llama.cpp reuses that prefix's KV cache instead of prefilling it again.",
+  "changes": [
+    {
+      "path": "src/router.ts",
+      "change": "added",
+      "note": "Three policies; rendezvous hashing of the system prompt; bounded affinity; per-replica stats incl. prefix-cache hit ratio."
+    },
+    {
+      "path": "src/chat.ts",
+      "change": "modified",
+      "note": "Route, then admit on that replica; spill to the next candidate once if it sheds; x-replica header."
+    },
+    {
+      "path": "src/server.ts",
+      "change": "modified",
+      "note": "/admin/replicas; x-served-by; keep-alive longer than nginx's."
+    },
+    {
+      "path": "nginx.conf",
+      "change": "added",
+      "note": "L7 proxy for SSE: proxy_buffering off, long read timeout, no retries of POSTs, admin paths hidden."
+    },
+    {
+      "path": "docker-compose.yml",
+      "change": "modified",
+      "note": "nginx + gateway-a/b + llm-1/2/3; each gateway gets 2 of each replica's 4 slots."
+    },
+    {
+      "path": "scripts/bench-routing.sh",
+      "change": "added",
+      "note": "60 requests over 3 long system prompts; prints TTFB percentiles and each gateway's per-replica stats."
+    }
+  ],
+  "run": [
+    {
+      "label": "Start with the default policy (prefix_affinity)",
+      "cmd": "docker compose up -d --build"
+    },
+    {
+      "label": "Benchmark each policy in turn",
+      "cmd": "for p in round_robin least_outstanding prefix_affinity; do ROUTER_POLICY=$p docker compose up -d gateway-a gateway-b; sleep 5; echo \"== $p\"; ./scripts/bench-routing.sh; done"
+    }
+  ],
+  "verify": [
+    {
+      "label": "Two gateways answer through nginx",
+      "cmd": "for i in 1 2 3 4; do curl -s -o /dev/null -D - localhost:8080/v1/models | grep -i x-served-by; done",
+      "expect": "x-served-by alternates between gateway-a and gateway-b."
+    },
+    {
+      "label": "Same system prompt, same replica",
+      "cmd": "for i in 1 2 3; do curl -s -o /dev/null -D - localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"system\",\"content\":\"You are a pirate.\"},{\"role\":\"user\",\"content\":\"Hi $i\"}],\"max_tokens\":8}' | grep -i x-replica; done",
+      "expect": "Under prefix_affinity the same x-replica three times (whichever replica owns that prompt's hash)."
+    },
+    {
+      "label": "Compare the policies",
+      "cmd": "./scripts/bench-routing.sh",
+      "expect": "Per-policy table: under prefix_affinity each prompt's requests concentrate on one replica and prefixHitRatio is high; under round_robin they spread and the ratio drops; TTFT p50 follows the hit ratio. If your llama.cpp build's timings lack cache_n, prefixHitRatio stays null: compare the TTFT percentiles instead."
+    },
+    {
+      "label": "Admin paths are not public",
+      "cmd": "curl -s -o /dev/null -w '%{http_code}\\n' localhost:8080/admin/replicas; curl -s localhost:8091/admin/replicas | head -c 200",
+      "expect": "404 through nginx; JSON from the gateway's own port 8091."
+    }
+  ],
+  "concepts": [
+    {
+      "sectionId": "p1-load-balancers",
+      "how": "Nginx balances at L7 (it parses HTTP, can route and log status codes); the gateway's router is a second, application-aware balancer."
+    },
+    {
+      "sectionId": "p1-reverse-proxy",
+      "how": "Proxy buffering must be off for SSE, and the upstream keep-alive must outlive the proxy's."
+    },
+    {
+      "sectionId": "p2-consistent-hashing",
+      "how": "Rendezvous hashing: removing a replica only moves the prompts it owned, unlike hash % N."
+    },
+    {
+      "sectionId": "p6-llm-serving-at-scale",
+      "how": "Prefix-aware routing with a load bound, exactly the score-cache-hits-minus-load idea in the lesson."
+    },
+    {
+      "sectionId": "p6-inference-optimization",
+      "how": "Prefix caching: reusing a prompt's KV cache skips its prefill, which is most of TTFT for long system prompts."
+    },
+    {
+      "sectionId": "p1-scaling",
+      "how": "Stateless gateways scale out freely; the state that matters (KV caches) lives in the replicas, which is why routing matters."
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "capstone-4-1",
+      "text": "nginx alternates between gateway-a and gateway-b; /admin is 404 through nginx."
+    },
+    {
+      "id": "capstone-4-2",
+      "text": "Under prefix_affinity the same system prompt lands on the same replica."
+    },
+    {
+      "id": "capstone-4-3",
+      "text": "I ran bench-routing.sh for all three policies and wrote down TTFT p50/p95 and prefixHitRatio for each."
+    },
+    {
+      "id": "capstone-4-4",
+      "text": "I can explain why each gateway only gets 2 of each replica's 4 slots, and what that costs."
+    }
+  ]
+}

@@ -4054,5 +4054,35 @@
     "slug": "scoring-rubric",
     "definition": "A list of criteria, each with a written description of what earns 0, 1 or 2 points, used to score a design attempt by evidence rather than impression.",
     "sectionId": "p7-mock-interview-playbook"
+  },
+  {
+    "term": "Rendezvous hashing",
+    "slug": "rendezvous-hashing",
+    "definition": "Also called highest-random-weight hashing. For each key, every node gets a score hash(key, node), and the key goes to the node with the highest score. Removing a node moves only that node's keys, and no ring or virtual nodes are needed.",
+    "sectionId": "p2-consistent-hashing"
+  },
+  {
+    "term": "Work queue",
+    "slug": "work-queue",
+    "definition": "A queue where each message is delivered to exactly one of several competing consumers. Adding consumers raises throughput. It is the opposite of pub/sub, where every subscriber gets every message.",
+    "sectionId": "p3-queues-vs-pubsub"
+  },
+  {
+    "term": "Gray failure",
+    "slug": "gray-failure",
+    "definition": "A partial failure that health checks miss: the component is slow, drops some requests or errors on some paths, yet still reports itself healthy, so traffic keeps reaching it. It is named in Huang et al., 'Gray Failure' (HotOS 2017).",
+    "sectionId": "p4-fault-tolerance"
+  },
+  {
+    "term": "Golden set",
+    "slug": "golden-set",
+    "definition": "A fixed, versioned set of inputs with expected outputs or grading criteria, run against every model or prompt change to catch regressions before release.",
+    "sectionId": "p6-evals-guardrails"
+  },
+  {
+    "term": "Knee of the curve",
+    "slug": "knee-of-the-curve",
+    "definition": "The load at which latency stops rising slowly and starts rising steeply, because queues begin to form. Plan capacity and SLOs below the knee, not at peak throughput.",
+    "sectionId": "p1-latency-throughput"
   }
 ]

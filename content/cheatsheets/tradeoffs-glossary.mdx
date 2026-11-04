@@ -1,0 +1,91 @@
+---
+title: Tradeoffs glossary
+summary: Fifty common system design tradeoffs, one line each, grouped by area, with when to pick each side.
+group: Interview
+order: 10
+relatedSectionIds: [p7-tradeoff-communication, p7-building-blocks-map, p2-sql-vs-nosql, p3-cache-strategies, p3-queues-vs-pubsub, p4-cap-pacelc, p4-high-availability, p1-monolith-vs-microservices]
+---
+
+## How to use it
+
+Each line is "A vs B": pick A when the first column holds, B when the second does. In an interview, say the decision, the alternative and the reason tied to a number from your estimate: "I pick B over A because writes are only 40 a second."
+
+## Data and storage
+
+| # | Tradeoff | Pick the first when | Pick the second when |
+|---|---|---|---|
+| 1 | SQL vs NoSQL | You need joins, transactions or ad-hoc queries | Access is by known keys at a scale one primary cannot write |
+| 2 | Normalised vs denormalised | Writes are frequent and data must not drift | Reads dominate and one fetch per page matters more than duplicate copies |
+| 3 | Strong vs eventual consistency | A stale read breaks an invariant (balances, usernames) | Slightly old data is harmless and latency or availability matters more |
+| 4 | Synchronous vs asynchronous replication | Losing an acknowledged write is unacceptable | Write latency matters and a few seconds of loss on failover is tolerable |
+| 5 | Single-leader vs leaderless replication | You want simple ordering and one source of truth per key | Writes must succeed during node failures and conflicts can be merged |
+| 6 | Range vs hash partitioning | Range scans by key matter (time, alphabetical) | Even spread matters more than range queries |
+| 7 | B-tree vs LSM-tree | Reads and in-place updates dominate | Write throughput dominates and compaction cost is acceptable |
+| 8 | Row vs column storage | Queries touch a few whole rows (OLTP) | Queries scan a few columns over many rows (OLAP) |
+| 9 | More indexes vs faster writes | Read queries are many and varied | Writes are hot and queries are few and known |
+| 10 | Optimistic vs pessimistic locking | Conflicts are rare and retries are cheap | Conflicts are frequent or retries are expensive |
+
+## Caching
+
+| # | Tradeoff | Pick the first when | Pick the second when |
+|---|---|---|---|
+| 11 | Cache-aside vs write-through | Only some written data is read again | Data is read right after it is written and must be current |
+| 12 | Write-through vs write-behind | Every write must be durable before acknowledging | Write rate is very high and losing unflushed writes is acceptable (counters) |
+| 13 | Short vs long TTL | Freshness matters more than database load | Database load matters more and staleness is acceptable |
+| 14 | Delete vs update the cache on write | Concurrent writers exist (default: delete) | A single writer owns the key and a miss storm would hurt |
+| 15 | In-process vs distributed cache | Nanosecond reads for a few very hot keys | All instances must share one view and memory per instance is limited |
+| 16 | LRU vs LFU eviction | Access is recency-driven and interactive | Scans pollute the cache or steady favourites matter |
+
+## Communication and messaging
+
+| # | Tradeoff | Pick the first when | Pick the second when |
+|---|---|---|---|
+| 17 | Synchronous call vs asynchronous message | The caller needs the result to respond | The work can finish later and the producer must not wait or fail with the consumer |
+| 18 | Queue vs log (pub/sub with replay) | Each job is done once by one worker | Many consumers need the same events, or replay matters |
+| 19 | At-least-once vs at-most-once | Losing a message is worse than a duplicate (most business events) | A duplicate is worse than a loss, or the data is disposable (metrics, presence) |
+| 20 | Push vs pull consumption | Lowest latency, with prefetch limits for backpressure | Consumers must set their own pace |
+| 21 | Polling vs WebSockets or SSE | Updates are rare and simplicity wins | Updates are frequent and latency matters |
+| 22 | REST vs gRPC | Public APIs, browsers, caching by HTTP semantics | Internal service-to-service calls with strict schemas and streaming |
+| 23 | REST vs GraphQL | Resources map cleanly to endpoints and HTTP caching helps | Many clients need different shapes of the same graph in one round trip |
+| 24 | Fan-out on write vs fan-out on read | Most authors have few followers; reads must be fast | Some authors have millions of followers; precomputing every feed is too costly |
+
+## Scaling and architecture
+
+| # | Tradeoff | Pick the first when | Pick the second when |
+|---|---|---|---|
+| 25 | Vertical vs horizontal scaling | It still fits on one bigger machine | You need more than one machine or must survive one dying |
+| 26 | Stateless vs stateful servers | You want easy scaling and failover (default) | Per-connection state (WebSockets, game rooms) makes stickiness worth it |
+| 27 | Monolith vs microservices | A small team and a domain still changing | Many teams need to deploy and scale independently |
+| 28 | L4 vs L7 load balancing | Raw throughput and any TCP protocol | Routing by path, header or cookie, and TLS termination |
+| 29 | Batch vs stream processing | Results can be hours old and recomputation is simpler | Results are needed in seconds |
+| 30 | Precompute vs compute on request | Reads vastly outnumber changes | Inputs change often or the space of answers is too big to store |
+| 31 | Serverless vs containers | Spiky or low traffic and little ops time | Steady load, long-running work or tight latency without cold starts |
+| 32 | Single region vs multi-region | Users are close and region loss is an acceptable risk | Region-level failure or distant users justify double cost and conflict handling |
+| 33 | Build vs buy (managed service) | It is your core differentiator or the managed option cannot meet a need | It is undifferentiated plumbing and the team is small |
+
+## Reliability and coordination
+
+| # | Tradeoff | Pick the first when | Pick the second when |
+|---|---|---|---|
+| 34 | Active-passive vs active-active | Single-writer semantics and simplicity matter | No failover pause is acceptable and conflicts can be handled or partitioned |
+| 35 | Fail open vs fail closed | Availability matters more than the check (rate limiter, recommendations) | Correctness or security matters more (auth, payments) |
+| 36 | Retry vs fail fast | The error is transient and the operation is idempotent | The service is overloaded or the deadline is nearly spent |
+| 37 | Short vs long timeouts | Freeing threads quickly matters more than rare slow successes | The operation is legitimately slow and retrying it is costly |
+| 38 | Token bucket vs sliding-window rate limiting | Short bursts should be allowed | Smooth, precise limits matter more than bursts |
+| 39 | Shed load vs queue it | Requests are interactive and stale work is worthless | Work can wait and a durable queue absorbs the spike |
+| 40 | Two-phase commit vs saga | Atomicity across a few participants you control, with blocking accepted | Long-running workflows across services, with compensating actions |
+| 41 | Distributed lock vs conditional write | Mutual exclusion is needed for an efficiency gain | Correctness is at stake: a compare-and-set or fencing token is safer than a lock |
+| 42 | Canary vs blue-green deployment | You want to limit blast radius with real traffic | You want instant full switch and instant rollback |
+
+## IDs, security and operations
+
+| # | Tradeoff | Pick the first when | Pick the second when |
+|---|---|---|---|
+| 43 | Random UUID vs sequential ID | IDs must not be guessable and generation must not coordinate | Index locality and compact keys matter (Snowflake-style or UUIDv7 give both order and no coordination) |
+| 44 | Stateless tokens (JWT) vs server-side sessions | No session store on the hot path and services verify locally | Instant revocation matters more than a lookup per request |
+| 45 | Head-based vs tail-based trace sampling | Cheap and simple sampling is enough | You must keep the slow and failed traces |
+| 46 | Metrics vs logs | Aggregates, alerts and low cost | Per-event detail for debugging (watch label cardinality on metrics) |
+| 47 | TLS termination at the edge vs end-to-end mTLS | Simpler internal network and cheaper CPU | Zero-trust: every hop authenticated and encrypted |
+| 48 | Pull CDN vs push CDN | Content is large in number and fetched on demand | A small set of large, known assets must be at the edge before launch |
+| 49 | Exact vs approximate counting | Money, quotas, anything audited | Huge cardinality where ±1% is fine (HyperLogLog, count-min) |
+| 50 | Latency vs throughput (batching) | Each request must return quickly | Total work per second matters and requests can wait to be batched |

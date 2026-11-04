@@ -1,0 +1,165 @@
+{
+  "stage": 1,
+  "slug": "model-server",
+  "title": "One model server and a streaming gateway",
+  "folder": "stage-01-model-server",
+  "minutes": 90,
+  "goal": "Serve a real open-weights model (Qwen2.5-0.5B-Instruct) with llama.cpp in Docker, put a TypeScript gateway in front of it that speaks the OpenAI Chat Completions API with SSE streaming, and log TTFT and TPOT for every request.",
+  "changes": [
+    {
+      "path": "scripts/download-models.sh",
+      "change": "added",
+      "note": "Downloads the GGUF model pinned to a Hugging Face commit and verifies its SHA-256."
+    },
+    {
+      "path": "docker-compose.yml",
+      "change": "added",
+      "note": "llama.cpp server b6075: 8,192-token context shared by 4 parallel slots, Prometheus metrics on."
+    },
+    {
+      "path": "src/server.ts",
+      "change": "added",
+      "note": "node:http server: routes, readiness against the model server, graceful shutdown."
+    },
+    {
+      "path": "src/chat.ts",
+      "change": "added",
+      "note": "The request path: validate, stream from llama.cpp, re-emit SSE, measure, log. Cancels upstream when the client leaves."
+    },
+    {
+      "path": "src/upstream.ts",
+      "change": "added",
+      "note": "fetch + a small SSE parser over llama.cpp's /v1/chat/completions."
+    },
+    {
+      "path": "src/openai.ts",
+      "change": "added",
+      "note": "Request validation and the OpenAI wire types."
+    },
+    {
+      "path": "src/timing.ts",
+      "change": "added",
+      "note": "StreamTimer: TTFT, TPOT and total time."
+    },
+    {
+      "path": "src/config.ts",
+      "change": "added",
+      "note": "Environment-driven settings."
+    },
+    {
+      "path": "src/http.ts",
+      "change": "added",
+      "note": "JSON body reading with a size limit; OpenAI-shaped errors."
+    },
+    {
+      "path": "src/log.ts",
+      "change": "added",
+      "note": "One JSON object per log line."
+    },
+    {
+      "path": "package.json",
+      "change": "added",
+      "note": "No runtime dependencies yet: Node 22's fetch and http are enough."
+    },
+    {
+      "path": "tsconfig.json",
+      "change": "added",
+      "note": "Strict TypeScript compiled to CommonJS (stage 8 needs require hooks)."
+    },
+    {
+      "path": ".env.example",
+      "change": "added",
+      "note": "Every setting with its default."
+    }
+  ],
+  "run": [
+    {
+      "label": "Download the model (491 MB, once)",
+      "cmd": "./scripts/download-models.sh"
+    },
+    {
+      "label": "Start llama.cpp",
+      "cmd": "docker compose up -d && docker compose ps"
+    },
+    {
+      "label": "Install and start the gateway on your machine",
+      "cmd": "npm install && npm run dev"
+    }
+  ],
+  "verify": [
+    {
+      "label": "The model server is up",
+      "cmd": "curl -s localhost:8081/health",
+      "expect": "{\"status\":\"ok\"} (while the model loads you get HTTP 503 with a loading message; wait a few seconds)"
+    },
+    {
+      "label": "The gateway lists the model",
+      "cmd": "curl -s localhost:8080/v1/models",
+      "expect": "{\"object\":\"list\",\"data\":[{\"id\":\"qwen2.5-0.5b-instruct\",\"object\":\"model\",\"owned_by\":\"local\"}]}"
+    },
+    {
+      "label": "Stream a completion",
+      "cmd": "curl -N localhost:8080/v1/chat/completions -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"Name three planets.\"}],\"stream\":true,\"max_tokens\":40}'",
+      "expect": "One line per token, each 'data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"...\"}...' arriving one after another, then a chunk with \"choices\":[] and a \"usage\" object, then 'data: [DONE]'. The words themselves vary."
+    },
+    {
+      "label": "TTFT from the outside",
+      "cmd": "curl -s -o /dev/null -w 'ttfb=%{time_starttransfer}s total=%{time_total}s\\n' localhost:8080/v1/chat/completions -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"Count from 1 to 20.\"}],\"stream\":true,\"max_tokens\":80}'",
+      "expect": "ttfb=... total=... with ttfb much smaller than total. The gateway sends headers with the first token, so ttfb is the TTFT a client sees."
+    },
+    {
+      "label": "TTFT and TPOT in the gateway log",
+      "cmd": "(look at the npm run dev terminal)",
+      "expect": "{\"event\":\"completion\",...,\"ttftMs\":...,\"tpotMs\":...,\"totalMs\":...,\"prefillTokens\":...} for every request. Write down your TTFT and TPOT: they are your laptop's baseline."
+    },
+    {
+      "label": "Cancellation reaches the model",
+      "cmd": "curl -N --max-time 1 localhost:8080/v1/chat/completions -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"Write 300 words about rivers.\"}],\"stream\":true,\"max_tokens\":400}'",
+      "expect": "curl stops after 1 second; the gateway logs {\"event\":\"completion_cancelled\",\"reason\":\"client disconnected\",...} and `docker compose logs llm-1` shows the slot released early instead of generating all 400 tokens."
+    }
+  ],
+  "concepts": [
+    {
+      "sectionId": "p6-llm-inference-internals",
+      "how": "TTFT is dominated by prefill (compute-bound), TPOT by decode (bandwidth-bound); you now measure both."
+    },
+    {
+      "sectionId": "p6-llm-serving",
+      "how": "Streaming, the KV cache per slot (--ctx-size split across --parallel) and the TTFT/TPOT definitions come straight from this lesson."
+    },
+    {
+      "sectionId": "p1-realtime",
+      "how": "SSE instead of WebSockets: one-way server-to-client tokens over plain HTTP, which every proxy and client library already handles."
+    },
+    {
+      "sectionId": "p1-http",
+      "how": "SSE rides on a long HTTP/1.1 response; under HTTP/2 many streams share one connection, which matters for browsers with many open chats."
+    },
+    {
+      "sectionId": "p2-rest",
+      "how": "Wire compatibility with an existing API (OpenAI's) is an API design choice: every client library works by changing one base URL."
+    },
+    {
+      "sectionId": "p1-latency-throughput",
+      "how": "End-to-end ≈ TTFT + (tokens − 1) × TPOT: latency and throughput per user are two different numbers."
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "capstone-1-1",
+      "text": "llama.cpp answers /health and the gateway streams tokens with SSE."
+    },
+    {
+      "id": "capstone-1-2",
+      "text": "I recorded my laptop's TTFT and TPOT for a short prompt from the gateway log."
+    },
+    {
+      "id": "capstone-1-3",
+      "text": "I saw ttfb from curl roughly match the gateway's ttftMs."
+    },
+    {
+      "id": "capstone-1-4",
+      "text": "Closing curl early logs completion_cancelled and stops generation."
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+---
+title: Reliability patterns
+summary: Timeouts, deadlines, retries with backoff and jitter, retry budgets, circuit breakers, bulkheads, load shedding, fallbacks and idempotency, with the numbers that size each one.
+group: Distributed systems
+order: 8
+relatedSectionIds: [p4-timeouts-retries, p4-circuit-breakers, p4-bulkheads-load-shedding, p4-fault-tolerance, p4-high-availability, p4-chaos-engineering, p4-disaster-recovery, p2-idempotency, p2-rate-limiting]
+---
+
+## Pattern map
+
+| Pattern | Protects against | Key setting | Failure if missing |
+|---|---|---|---|
+| <Term slug="timeout">Timeout</Term> | A hung dependency holding threads | Near the dependency's p99.9, measured client-side | Thread pool drains; unrelated requests fail |
+| <Term slug="deadline-propagation">Deadline propagation</Term> | Work continuing after the caller gave up | Remaining budget passed downstream on every hop | Downstream retries burn capacity for nobody |
+| Retry with backoff and jitter | Transient errors | Capped exponential, **full jitter**, one layer only | Synchronised retry waves |
+| <Term slug="retry-budget">Retry budget</Term> | Retry storms | Retries ≤ about **10%** of requests per client | Load multiplies exactly when the service is weakest |
+| <Term slug="circuit-breaker">Circuit breaker</Term> | Calling a dependency that is down | Failure-rate threshold, window, open wait, half-open trials | Every call waits a full timeout |
+| <Term slug="bulkhead">Bulkhead</Term> | One dependency exhausting a shared pool | Separate pool or semaphore per dependency | A widget takes the whole page down |
+| <Term slug="load-shedding">Load shedding</Term> | Overload | Reject early by priority when utilisation is high | Queues grow until every request times out |
+| <Term slug="fallback">Fallback</Term> | A failed non-critical dependency | Precomputed default, stale value or degraded response | Users see errors for optional features |
+| <Term slug="idempotency-key">Idempotency key</Term> | Duplicate effects from retries | Key stored atomically with the effect | Double charges |
+| Health checks and failover | Dead instances | Check interval × failures to mark down | Traffic to dead targets |
+
+## Timeouts and deadlines
+
+- Pick an acceptable false-timeout rate, then set the timeout at that percentile: p50 20 ms, p99 80 ms, p99.9 250 ms → about **300 ms** for ≈ 0.1% false timeouts.
+- **Little's law** for what a hang costs: 200 req/s × 1 s waiting = **200** threads stuck; with no timeout the pool fills and everything queues.
+- Pass a **deadline**, not fixed per-hop timeouts: each hop checks the remaining budget before starting work or a retry.
+- Fit retries inside the budget: 650 ms left, 250 ms per attempt, ≤ 100 ms pause → one retry fits (250 + 100 + 250 = 600 ms); a second does not.
+
+## Backoff formulas (Brooker, AWS Architecture Blog, "Exponential Backoff And Jitter")
+
+```text
+No jitter:     sleep = min(cap, base * 2^attempt)
+Full jitter:   sleep = random_between(0, min(cap, base * 2^attempt))
+Equal jitter:  temp = min(cap, base * 2^attempt); sleep = temp/2 + random_between(0, temp/2)
+Decorrelated:  sleep = min(cap, random_between(base, previous_sleep * 3))
+```
+
+| Attempt (base 100 ms, cap 5 s) | Window | Full-jitter average |
+|---|---|---|
+| 0 | 100 ms | 50 ms |
+| 1 | 200 ms | 100 ms |
+| 2 | 400 ms | 200 ms |
+| 3 | 800 ms | 400 ms |
+| 6 | 5,000 ms (6,400 capped) | 2,500 ms |
+
+## Retry amplification
+
+- **Across layers:** L layers each making k attempts → k^L calls at the bottom. 3 layers × 3 attempts = **27×**; 5 layers = **243×**. Retry at one layer, usually the one nearest the user or the one that knows the operation is idempotent.
+- **Within one layer:** with failure probability p and up to 3 retries, attempts per request = 1 + p + p² + p³. At p = 0.5 → 1.875×; p ≈ 1 → 4×. A service at 1,000 req/s with capacity 1,200 stays down after the trigger is fixed: a <Term slug="metastable-failure">metastable failure</Term>.
+- **With a 10% budget** (Google SRE book, "Handling Overload": at most 3 attempts per request, retries under about 10% of requests per client) the worst case is 1,000 × 1.1 = **1,100** req/s, under capacity.
+- Never retry: non-idempotent operations without a key, `400`-class errors other than `408`/`429`, or when the deadline has passed.
+
+## Circuit breaker
+
+| State | Calls | Moves to |
+|---|---|---|
+| Closed | Pass through; outcomes recorded in a sliding window | Open when failure (or slow-call) rate crosses the threshold |
+| Open | Rejected in microseconds; fallback runs | Half-open after the wait duration |
+| Half-open | A few trial calls pass | Closed if they succeed, Open if they fail |
+
+Resilience4j defaults, for reference: 50% failure-rate threshold, 100-call window, 60 s open wait. Without half-open, a breaker closes straight into full traffic on a cold service and flaps.
+
+## Bulkheads: size from Little's law
+
+| Dependency | Normal in-flight (rate × p99) | Limit | When full |
+|---|---|---|---|
+| Inventory | 400/s × 0.04 s = 16 | 50 | Fail the request (essential) |
+| Pricing | 400/s × 0.03 s = 12 | 40 | Fail the request |
+| Recommendations | 120/s × 0.08 s ≈ 10 | 20 | Render the page without the widget |
+
+## Load shedding by priority
+
+| Criticality | Meaning | Example |
+|---|---|---|
+| CRITICAL_PLUS | Failure is user-visible and serious | Payment authorisation |
+| CRITICAL | Default for user-facing production requests | Loading a product page |
+| SHEDDABLE_PLUS | Partial unavailability tolerated | Prefetch, recommendations |
+| SHEDDABLE | Can fail often; retried later | Batch jobs, analytics, log uploads |
+
+Shed early (at the edge), cheaply (before doing work) and visibly (`503` or `429` with `Retry-After`). Serving 1,000/s well beats accepting 1,500/s and timing out all of them.
+
+## Fallback ladder
+
+| Fallback | Example | Risk |
+|---|---|---|
+| Cached or stale value | Last known price list | Staleness; bound it and show it |
+| Generic default | Bestsellers instead of recommendations | Lower quality; precompute it |
+| Degraded response | Product page without reviews | Users notice something missing |
+| Accept and defer | Queue the email for later | Needs durable queue and idempotent replay |
+| Fail fast, clear error | "Payments are temporarily unavailable" | User is blocked, but resources stay free |
+
+A fallback that is never exercised breaks silently: test it, and alert when it is serving.
+
+## Recovery targets
+
+- **RPO** (recovery point objective): how much data you can lose, set by replication and backup frequency.
+- **RTO** (recovery time objective): how long recovery may take, set by automation and standby warmth.
+- Strategies by rising cost: backup and restore → pilot light → warm standby → multi-site active-active.

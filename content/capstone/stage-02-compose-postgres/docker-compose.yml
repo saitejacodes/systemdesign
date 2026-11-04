@@ -1,0 +1,73 @@
+# Stage 2: gateway, model server and Postgres start together. Services find each other by name through
+# Compose's built-in DNS (the gateway connects to "llm-1" and "postgres", never to an IP address).
+services:
+  gateway:
+    build: .
+    environment:
+      PORT: "8080"
+      LLM_URL: http://llm-1:8080
+      MODEL_NAME: qwen2.5-0.5b-instruct
+      DATABASE_URL: postgres://app:app@postgres:5432/llm
+      DB_POOL_MAX: "10"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      llm-1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  llm-1:
+    image: ghcr.io/ggml-org/llama.cpp:server-b6075
+    command:
+      - --model
+      - /models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+      - --alias
+      - qwen2.5-0.5b-instruct
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --ctx-size
+      - "8192"
+      - --parallel
+      - "4"
+      - --threads
+      - ${LLM_THREADS:-4}
+      - --metrics
+    volumes:
+      - ./models:/models:ro
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  postgres:
+    image: postgres:17.4-alpine3.21
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: llm
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U app -d llm"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:

@@ -1,0 +1,135 @@
+{
+  "stage": 6,
+  "slug": "caching",
+  "title": "Response caching: exact match and semantic (pgvector)",
+  "folder": "stage-06-caching",
+  "minutes": 120,
+  "goal": "Skip the model for repeated questions. An exact-match cache in Redis serves byte-identical temperature-0 requests; a semantic cache in Postgres (pgvector, HNSW) serves near-duplicates above a similarity threshold. Then make it give a wrong answer, and put the guards back.",
+  "changes": [
+    {
+      "path": "src/cache.ts",
+      "change": "added",
+      "note": "Exact cache keyed by tenant + model version + canonical request; embeddings via llama.cpp; nearest neighbour with pgvector; TTL jitter."
+    },
+    {
+      "path": "src/chat.ts",
+      "change": "modified",
+      "note": "Lookups before the rate limit; single-flight for identical in-flight requests; store only finished (stop) answers."
+    },
+    {
+      "path": "src/server.ts",
+      "change": "modified",
+      "note": "POST /admin/similarity returns the cosine similarity of two texts."
+    },
+    {
+      "path": "migrations/003_semantic_cache.sql",
+      "change": "added",
+      "note": "pgvector extension, semantic_cache table, HNSW index on cosine distance, scope index."
+    },
+    {
+      "path": "docker-compose.yml",
+      "change": "modified",
+      "note": "embed service (llama.cpp --embeddings, bge-small-en-v1.5); postgres image switches to pgvector/pgvector:0.8.0-pg17."
+    },
+    {
+      "path": "scripts/download-models.sh",
+      "change": "modified",
+      "note": "Adds the 37 MB embedding model."
+    }
+  ],
+  "run": [
+    {
+      "label": "Download the embedding model and start fresh (the database image changed)",
+      "cmd": "./scripts/download-models.sh && docker compose down -v && docker compose up -d --build"
+    }
+  ],
+  "verify": [
+    {
+      "label": "Exact hit",
+      "cmd": "for i in 1 2; do curl -s -D - -o /dev/null localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"What is HTTP?\"}],\"temperature\":0,\"max_tokens\":60}' | grep -iE 'x-cache|x-replica'; done",
+      "expect": "First: x-replica (a model ran, no x-cache header). Second: x-cache: exact-hit, in milliseconds."
+    },
+    {
+      "label": "Sampled requests are never cached",
+      "cmd": "curl -s -D - -o /dev/null localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"What is HTTP?\"}],\"temperature\":0.7,\"max_tokens\":60}' | grep -i x-cache",
+      "expect": "No output: temperature 0.7 skips the cache."
+    },
+    {
+      "label": "Measure two similar prompts",
+      "cmd": "curl -s localhost:8091/admin/similarity -H 'content-type: application/json' -d '{\"a\":\"How do I enable two-factor authentication?\",\"b\":\"How do I disable two-factor authentication?\"}'",
+      "expect": "{\"similarity\":0.9...,\"threshold\":0.95,\"dimensions\":384}. Write the number down: opposite intents, very close vectors."
+    },
+    {
+      "label": "Semantic hit (opt-in)",
+      "cmd": "for q in 'How do I enable two-factor authentication?' 'How can I enable two-factor authentication?'; do curl -s -D - -o /dev/null localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -H 'x-semantic-cache: allow' -d \"{\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"$q\\\"}],\\\"temperature\\\":0,\\\"max_tokens\\\":60}\" | grep -iE 'x-cache'; done",
+      "expect": "First: no x-cache (generated and stored). Second: x-cache: semantic-hit plus x-cache-similarity, if the two phrasings score above 0.95 on your run."
+    },
+    {
+      "label": "Make it lie",
+      "cmd": "SEMANTIC_THRESHOLD=0.85 docker compose up -d gateway-a gateway-b && sleep 5 && curl -s localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -H 'x-semantic-cache: allow' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"How do I disable two-factor authentication?\"}],\"temperature\":0,\"max_tokens\":60}'",
+      "expect": "If the enable/disable similarity you measured is above 0.85, the answer about ENABLING comes back for a question about DISABLING, with x-cache: semantic-hit. Then restore: docker compose up -d gateway-a gateway-b."
+    },
+    {
+      "label": "Scoped by tenant",
+      "cmd": "curl -s -D - -o /dev/null localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-globex-0001' -H 'content-type: application/json' -H 'x-semantic-cache: allow' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"How do I enable two-factor authentication?\"}],\"temperature\":0,\"max_tokens\":60}' | grep -i x-cache",
+      "expect": "No output: globex cannot hit acme's entries, even for the identical question."
+    },
+    {
+      "label": "Inspect the vectors",
+      "cmd": "docker compose exec postgres psql -U app -d llm -c \"SELECT tenant_id, model_version, left(prompt, 50), vector_dims(embedding) FROM semantic_cache\"",
+      "expect": "One row per stored answer, vector_dims 384, all with the current model_version."
+    }
+  ],
+  "concepts": [
+    {
+      "sectionId": "p3-cache-strategies",
+      "how": "Cache-aside: the gateway reads the cache, falls back to the model, then writes the answer back."
+    },
+    {
+      "sectionId": "p3-cache-failures",
+      "how": "Stampede: single-flight coalesces identical in-flight requests; TTL jitter prevents synchronized expiry (avalanche)."
+    },
+    {
+      "sectionId": "p3-invalidation",
+      "how": "The model version is in every key: a rollout invalidates by construction instead of by purge."
+    },
+    {
+      "sectionId": "p6-embeddings-vector-search",
+      "how": "bge-small embeddings, cosine distance, an HNSW index in pgvector, filtering by tenant and model version."
+    },
+    {
+      "sectionId": "p6-llm-cost-latency",
+      "how": "Semantic caching's real trade-off: hit rate against wrong answers, and why the exact cache goes first."
+    },
+    {
+      "sectionId": "p6-rag",
+      "how": "Embed, index, nearest-neighbour search: the same retrieval machinery RAG uses, here returning answers instead of documents."
+    },
+    {
+      "sectionId": "p2-search",
+      "how": "pgvector turns Postgres into a vector search index next to your relational data."
+    },
+    {
+      "sectionId": "p5-data-protection",
+      "how": "Scope by tenant so one customer's cached answer can never be served to another."
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "capstone-6-1",
+      "text": "The second identical temperature-0 request returned x-cache: exact-hit."
+    },
+    {
+      "id": "capstone-6-2",
+      "text": "I measured the similarity of 'enable' vs 'disable' 2FA with /admin/similarity."
+    },
+    {
+      "id": "capstone-6-3",
+      "text": "I produced a wrong semantic hit by lowering the threshold, then restored it."
+    },
+    {
+      "id": "capstone-6-4",
+      "text": "I confirmed a different tenant cannot hit another tenant's semantic entries."
+    }
+  ]
+}

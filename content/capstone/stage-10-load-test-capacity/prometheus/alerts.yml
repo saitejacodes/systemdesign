@@ -1,0 +1,36 @@
+# SLO-style alerts. Prometheus shows them under Alerts (http://localhost:9090/alerts); there is no Alertmanager
+# here, so nothing is sent anywhere. The thresholds are the lab SLOs from stage 10: replace them with yours.
+groups:
+  - name: llm-gateway-slo
+    rules:
+      - alert: TTFTp95High
+        expr: histogram_quantile(0.95, sum by (le) (rate(llm_ttft_seconds_bucket{tier!="batch"}[5m]))) > 2
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Interactive TTFT p95 above 2 s for 5 minutes"
+
+      - alert: TPOTp95High
+        expr: histogram_quantile(0.95, sum by (le) (rate(llm_tpot_seconds_bucket[5m]))) > 0.2
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "TPOT p95 above 200 ms (slower than 5 tokens/s per stream)"
+
+      - alert: HighShedRate
+        expr: sum(rate(gateway_shed_total{reason="overloaded"}[5m])) / sum(rate(gateway_requests_total{route="POST /v1/chat/completions"}[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "More than 5% of chat requests shed for overload: add capacity or lower demand"
+
+      - alert: ServerErrorRatio
+        expr: sum(rate(gateway_requests_total{status=~"5..", status!="503"}[5m])) / sum(rate(gateway_requests_total[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Over 1% of requests failing with 5xx (excluding deliberate 503 shedding)"

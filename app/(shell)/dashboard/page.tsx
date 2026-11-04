@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { CapstoneDashboardLine } from "@/components/capstone/CapstoneProgress";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { capstoneCheckpointIds } from "@/lib/capstone";
 import { getPlanView } from "@/lib/content";
 import { DashboardView } from "./DashboardView";
 import { NotesList } from "./NotesList";
@@ -13,6 +15,7 @@ export default function Page() {
       <PageHeader code="M-00" spec="Dashboard" before="Where you" em="stand" after="." lede="Progress per phase, quiz history, study time, notes and weak spots." />
       <DashboardView weeks={weeks} sections={sections} />
       <div className="grid max-w-3xl gap-8 px-4 pb-10 sm:px-8">
+        <CapstoneDashboardLine ids={capstoneCheckpointIds()} />
         <NotesList />
       </div>
     </>

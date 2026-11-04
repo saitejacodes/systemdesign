@@ -1,0 +1,37 @@
+## What to observe and why it matters
+
+**The knee.** `find-knee.sh` steps the arrival rate up. At first TTFT p95 stays near your stage 1 baseline while output tokens/s rises. Past the knee, throughput stops rising, TTFT p95 jumps (requests queue), then failures rise (admission sheds). The last rate that met every threshold is your capacity. Running past it buys nothing but latency ([latency and throughput](/phase/1/latency-throughput#percentiles-p50-p95-p99)).
+
+**SLOs from the curve, not from hope.** The k6 thresholds are TTFT p95 under 2 s and TPOT p95 under 200 ms: generous, because this is a CPU. Pick yours from your measured knee with headroom, then derive the error budget ([SLOs](/phase/5/slos#error-budgets)).
+
+**k6 sees more TTFT than llama.cpp does.** The output guardrail holds back 48 characters, so the first byte reaches the client a few tokens after the model produced it. Compare k6's TTFT with `llm_ttft_seconds` on the gateway: the difference is the guardrail's price.
+
+**Cost per 1M tokens on a laptop.** `capacity.mjs` with 40 tokens/s, 30 W and $0.15/kWh gives $0.031 of electricity and $1.19 of hardware amortisation per 1M output tokens: $1.22 in total, for a 0.5B model. Put your own knee number in.
+
+## How this changes at real scale
+
+Run `node scripts/capacity.mjs` and read part 2. Every number is computed from these labelled assumptions: Llama 3.1 70B (published config: 80 layers, 8 KV heads, head dim 128); FP8 weights; fp16 KV; TP=2 on 80 GB GPUs with 3.35 TB/s; 90% memory use, 4 GB overhead per GPU; 2,000 tokens per sequence; batch 64; 60% of the bandwidth roofline achieved; 200,000 output tokens/s peak demand; 4 prompt tokens per output token; 50% prefix-cache hits; 400 TFLOP/s effective prefill; $2.50 per GPU-hour.
+
+```
+KV per token        = 2 x 80 x 8 x 128 x 2              = 327,680 B
+KV memory/replica   = 2 x 80 x 0.9 - 2 x 4 - 70.6       = 65.4 GB  -> 199,585 tokens -> 99 sequences at 2,000
+decode step         = (weights + batch KV) / TP / BW    = 16.8 ms at the roofline
+TPOT at batch 64    = 16.8 / 0.6                        = 28.0 ms
+tokens/s/replica    = 64 / 0.028                        = 2,286
+decode replicas     = 200,000 / 2,286                   = 88  (176 GPUs)
+prefill             = 200,000 x 4 x 0.5 x 2 x 70.6e9 / 4e14   = 142 GPU-equivalents
+total               = 318 GPUs, 398 with 25% headroom, $1.10 per 1M output tokens at peak
+```
+
+Sensitivity (same script, one change at a time): prefix hit rate 0% gives 459 GPUs and $1.59; 90% gives 205 GPUs and $0.71. FP8 KV doubles KV capacity to 199 sequences. Llama 3.1 405B at TP=8 gives 1,546 GPUs and $5.37. The prefix-cache hit rate moves the bill more than any hardware choice ([capacity planning](/phase/6/llm-serving-at-scale#capacity-planning-end-to-end)).
+
+## What real labs add
+
+- **Continuous batching and paged attention.** The engine adds and removes sequences every step and stores KV in fixed blocks, so memory is not reserved for the longest possible answer ([batching](/phase/6/llm-serving#batching-static-continuous-and-paged)). llama.cpp's `--parallel` slots are a simple form of this.
+- **Tensor and pipeline parallelism.** A 405B model does not fit on one GPU; TP splits each layer across GPUs over NVLink, PP splits layers across nodes ([tensor parallelism](/phase/6/gpu-parallelism#tensor-parallelism), [pipeline parallelism](/phase/6/gpu-parallelism#pipeline-parallelism)).
+- **Disaggregated prefill and decode.** Separate pools so a long prompt cannot stall other users' decode steps, with KV transferred between them ([disaggregation](/phase/6/inference-optimization#disaggregated-prefill-and-decode)). Break-it 2 shows the problem it solves.
+- **Speculative decoding.** A small draft proposes several tokens and the big model verifies them in one step, trading spare compute for lower TPOT ([speculative decoding](/phase/6/speculative-decoding#expected-speedup-worked-with-numbers)).
+- **Quantisation and kernels.** FP8 or INT4 weights, FP8 KV, FlashAttention, CUDA graphs ([quantization](/phase/6/inference-optimization#quantization)).
+- **Fleet scheduling.** Models loaded on warm pools, batch filling troughs, and routing on live KV usage and cached prefixes across hundreds of replicas.
+
+Finish by reopening your stage 0 design. Present the gap between it and what you measured as a [trade-off](/phase/7/tradeoff-communication), and pick the [deep dive](/phase/7/deep-dive-patterns) you would now lead with.

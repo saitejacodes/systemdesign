@@ -1,0 +1,112 @@
+{
+  "stage": 3,
+  "slug": "admission-control",
+  "title": "Admission control: bounded queue, deadlines, shedding",
+  "folder": "stage-03-admission-control",
+  "minutes": 75,
+  "goal": "Stop sending the model more than it can run. The gateway admits at most --parallel requests per replica, queues a few more, refuses the rest fast with 503 + Retry-After, honours each request's deadline, and cancels work whose client has gone.",
+  "changes": [
+    {
+      "path": "src/admission.ts",
+      "change": "added",
+      "note": "Semaphore with a bounded FIFO queue, per-request wait budget, predicted-wait fast rejection, abort while queued."
+    },
+    {
+      "path": "src/chat.ts",
+      "change": "modified",
+      "note": "Context-length check before admission; acquire a slot; x-request-timeout-ms deadline; queueMs in the log."
+    },
+    {
+      "path": "src/server.ts",
+      "change": "modified",
+      "note": "GET /admin/queue shows slots in use, queue length and predicted wait."
+    },
+    {
+      "path": "src/config.ts",
+      "change": "modified",
+      "note": "SLOTS_PER_REPLICA, MAX_QUEUE, MAX_QUEUE_WAIT_MS, CONTEXT_PER_SLOT."
+    },
+    {
+      "path": "docker-compose.yml",
+      "change": "modified",
+      "note": "Passes the admission settings; MAX_QUEUE can be overridden from the shell."
+    }
+  ],
+  "run": [
+    {
+      "label": "Start the stack",
+      "cmd": "docker compose up -d --build"
+    }
+  ],
+  "verify": [
+    {
+      "label": "Watch the queue",
+      "cmd": "watch -n 0.5 curl -s localhost:8080/admin/queue",
+      "expect": "{\"replica\":\"llm-1\",\"slots\":4,\"inflight\":0,\"queued\":0,\"predictedWaitMs\":0} while idle."
+    },
+    {
+      "label": "Send 20 long requests at once",
+      "cmd": "for i in $(seq 1 20); do curl -s -o /dev/null -w '%{http_code} %{time_total}s\\n' localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"Write 200 words about the sea.\"}],\"max_tokens\":300}' & done; wait",
+      "expect": "4 run, up to 8 queue, the rest come back as 503 within milliseconds (exact split depends on timing). The watch window shows inflight 4 and queued up to 8."
+    },
+    {
+      "label": "Read the refusal",
+      "cmd": "curl -s -i localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}]}' | grep -iE '^HTTP|retry-after|overloaded'",
+      "expect": "Run while the queue is full: HTTP/1.1 503, a retry-after header, and \"type\":\"overloaded_error\" in the body."
+    },
+    {
+      "label": "A deadline you cannot meet is refused up front",
+      "cmd": "curl -s -i localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -H 'x-request-timeout-ms: 50' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}]}' | head -1",
+      "expect": "While the replica is busy: 503 at once with 'predicted wait ... exceeds the 50 ms budget', instead of a timeout seconds later."
+    },
+    {
+      "label": "Too long to ever fit",
+      "cmd": "python3 -c \"import json;print(json.dumps({'messages':[{'role':'user','content':'word '*3000}],'max_tokens':256}))\" | curl -s localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -d @-",
+      "expect": "400 with \"type\":\"context_length_exceeded\": refused before it takes a slot."
+    }
+  ],
+  "concepts": [
+    {
+      "sectionId": "p4-bulkheads-load-shedding",
+      "how": "Admission control and shedding: refuse early and cheaply so accepted work stays fast."
+    },
+    {
+      "sectionId": "p1-latency-throughput",
+      "how": "Little's law: wait = queue length / service rate, which is why an unbounded queue turns into minutes of p99."
+    },
+    {
+      "sectionId": "p4-timeouts-retries",
+      "how": "Deadlines propagate: the queue wait comes out of the request's own budget."
+    },
+    {
+      "sectionId": "p6-llm-serving-at-scale",
+      "how": "Admission decides run, wait or refuse using the signals a replica actually runs out of (slots, queue, predicted wait)."
+    },
+    {
+      "sectionId": "p6-llm-serving",
+      "how": "llama.cpp's --parallel slots are its batch: more requests than slots wait inside llama.cpp, invisible to you."
+    },
+    {
+      "sectionId": "p1-http",
+      "how": "503 + Retry-After is the standard way to say 'not now, come back later'."
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "capstone-3-1",
+      "text": "With 20 concurrent requests I saw 4 in flight, a bounded queue, and fast 503s with Retry-After."
+    },
+    {
+      "id": "capstone-3-2",
+      "text": "I can explain with Little's law why an unbounded queue makes p99 explode."
+    },
+    {
+      "id": "capstone-3-3",
+      "text": "A request with x-request-timeout-ms: 50 was refused immediately while the replica was busy."
+    },
+    {
+      "id": "capstone-3-4",
+      "text": "An oversized prompt got 400 context_length_exceeded without using a slot."
+    }
+  ]
+}

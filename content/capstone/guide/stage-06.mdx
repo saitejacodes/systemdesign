@@ -1,0 +1,26 @@
+## What to observe and why it matters
+
+**The exact cache is safe because it is narrow.** The key is tenant + model version + the canonical request (messages, max_tokens, every sampling parameter). Only temperature 0 is cached, because a sampled answer is supposed to differ ([cache strategies](/phase/3/cache-strategies)). A hit returns in milliseconds and costs zero GPU time.
+
+**Single-flight and TTL jitter.** Ten identical requests at once cause one generation; the other nine wait for it ([cache stampede](/phase/3/cache-failures#thundering-herd-and-cache-stampede)). Entries expire at 3,600 s plus or minus 10% so a burst written together does not expire together ([avalanche](/phase/3/cache-failures#cache-avalanche)).
+
+**The semantic cache can lie.** "How do I enable 2FA?" and "How do I disable 2FA?" embed very close together, because embeddings capture topic more than intent ([cosine similarity](/phase/6/embeddings-vector-search#cosine-similarity-and-distance-metrics)). Measure it with `/admin/similarity`, lower the threshold, and watch the cache answer the wrong question confidently and fast. A false hit is worse than a miss: it is a wrong answer with no signal that anything went wrong ([semantic caching](/phase/6/llm-cost-latency#semantic-caching)).
+
+**The guards.** Opt-in per request (`x-semantic-cache: allow` means "this answer is not personal"); scoped by tenant and model version; a high threshold (0.95); temperature 0 only; prompts with PII never stored ([data protection](/phase/5/data-protection)). Near misses are logged with their similarity so you can tune the threshold from data.
+
+**pgvector with HNSW.** Approximate nearest neighbour in the database you already run, with a `WHERE tenant_id = ... AND model_version = ...` filter ([pgvector](/phase/6/embeddings-vector-search#pgvector-versus-a-dedicated-vector-database), [HNSW](/phase/6/embeddings-vector-search#hnsw-the-layered-graph)). The same embedding and search pipeline is the retrieval half of RAG ([RAG](/phase/6/rag)).
+
+**Invalidation is by version.** Rolling out a new model or quantisation changes `MODEL_VERSION`, so every old entry stops matching at once ([invalidation](/phase/3/invalidation)). Break-it 8 tests what happens if you forget.
+
+## How this changes at real scale
+
+Assumptions: 500 requests/s; 5% exact hits, 10% semantic hits among opted-in traffic that is 30% of the total; a miss costs 400 output tokens; embedding costs about 5 ms on a CPU per query.
+
+```
+exact hits         = 500 x 0.05             = 25 req/s served without a GPU
+semantic hits      = 500 x 0.30 x 0.10      = 15 req/s
+GPU tokens saved   = 40 x 400               = 16,000 output tokens/s  (about 7 decode replicas at 2,300 tok/s)
+embedding overhead = 150 opted-in req/s x 5 ms = 0.75 CPU cores
+```
+
+Response caching helps most for FAQ-style traffic and very little for chat with long, unique histories. The bigger saving at real scale is **prefix caching** inside the engine (stage 4), which helps every request that shares a system prompt and can never return a wrong answer.

@@ -1,0 +1,23 @@
+## What to observe and why it matters
+
+**Retry before the first token, never after.** Until a byte reaches the client, a failed replica can be swapped for another and the client never knows. After the first token, a retry would either repeat text the client has already shown or produce a different continuation. The gateway ends the stream with an error instead and lets the client decide ([mid-stream failures](/phase/6/llm-serving-at-scale#reliability-failures-mid-stream), [retries](/phase/6/ai-reliability#retries-that-don-t-multiply-load)).
+
+**Slow is a failure.** The breaker counts a first token slower than 8 s as a failure, not only errors. A replica that answers slowly hurts more than one that is down, because callers keep sending to it ([circuit breakers](/phase/4/circuit-breakers)). After 3 failures it opens for 10 s, then lets exactly one probe through (half-open). Probes for replicas the router picked but never tried are released, or the breaker would stay stuck half-open.
+
+**A fallback that says so.** When every primary is open or full, SmolLM2-135M answers, and `x-model-served` plus the body's `model` field say which model it was. A worse answer, labelled, beats a 503 for most chat traffic; `x-allow-fallback: false` lets a caller refuse it ([fallbacks](/phase/6/ai-reliability#fallbacks-and-graceful-degradation), [high availability](/phase/4/high-availability)).
+
+**Guardrails on both sides.** Input: refuse obvious prompt-injection patterns with 400 ([common attacks](/phase/5/common-attacks)). Output: hold back the last 48 characters of the stream so a secret that spans two chunks can be caught before it is sent, and end with `finish_reason: content_filter` ([filtering](/phase/6/evals-guardrails#input-and-output-filtering)). The cost is 48 characters of extra delay, which stage 10's k6 sees as higher TTFT.
+
+**Evals as a deploy gate.** `npm run eval` runs a golden set and exits non-zero if the pass rate drops below `EVAL_MIN_PASS_RATE` (0.8) or any critical case fails; the GitHub workflow runs it on every pull request ([offline eval sets](/phase/6/evals-guardrails#offline-eval-sets), [CI/CD](/phase/5/ci-cd)). The canary serves 10% of traffic from the Q8_0 build with its own model version, so its answers never pollute the primary's cache ([release strategies](/phase/5/release-strategies)).
+
+## How this changes at real scale
+
+Assumptions: 400 replicas; each has a 0.1% chance per hour of a fault (GPU Xid error, NCCL hang, host failure); average stream 15 s.
+
+```
+faults per hour      = 400 x 0.001         = 0.4   -> one every 2.5 hours, every day
+streams on a replica = 64 concurrent       -> each fault cuts about 64 streams mid-answer
+streams cut per day  = 0.4 x 24 x 64       = about 615
+```
+
+At scale, mid-stream failure is a daily event, so clients need resumable or restartable UX, and the platform needs fast health detection (a hung NCCL collective looks like a slow replica, not a dead one). Real fleets use classifier models for guardrails rather than regexes, run evals on samples of live traffic, and roll out model versions per region with automatic rollback on eval or SLO regression.

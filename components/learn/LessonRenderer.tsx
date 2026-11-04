@@ -18,7 +18,7 @@ const text = (n: ReactNode): string => (typeof n === "string" || typeof n === "n
 /** H2s of a lesson, for the table of contents. */
 export const lessonHeadings = (mdx: string) => [...mdx.matchAll(/^## (.+)$/gm)].map((m) => ({ title: m[1].trim(), id: slugify(m[1]) }));
 
-function Term({ slug, children }: { slug: string; children?: ReactNode }) {
+export function Term({ slug, children }: { slug: string; children?: ReactNode }) {
   const t = getGlossary().find((g) => g.slug === slug);
   if (!t) throw new Error(`<Term slug="${slug}"> not found in content/glossary.json`);
   return (

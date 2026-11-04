@@ -14,7 +14,7 @@
     "title": "The Secret Lives of Data: Raft",
     "author": "Ben Johnson",
     "kind": "blog",
-    "url": "http://thesecretlivesofdata.com/raft/",
+    "url": "https://thesecretlivesofdata.com/raft/",
     "why": "A step-by-step animated walkthrough of election and log replication; ideal before reading the paper.",
     "topicIds": ["raft-election", "raft-log"],
     "free": true

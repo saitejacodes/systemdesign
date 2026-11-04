@@ -1,0 +1,100 @@
+---
+title: Estimation formulas and conversions
+summary: Powers of two, unit and time conversions, and the QPS, storage, bandwidth, cache and server-count formulas with worked lines.
+group: Numbers
+order: 3
+relatedSectionIds: [p1-estimation, p1-latency-throughput, p7-interview-framework, p2-sharding, p3-cache-layers]
+---
+
+## Method in four lines
+
+1. State assumptions out loud (DAU, actions per user, object size, retention, peak factor).
+2. Round to one significant figure and powers of ten.
+3. Compute peak reads/s, writes/s, storage over retention, bandwidth, working set.
+4. End with a sentence that changes the design: "writes are 40/s, so one primary is plenty; effort goes to the read path".
+
+## Powers of two
+
+| Power | Exact | Approx. | Name |
+|---|---|---|---|
+| 2¹⁰ | 1,024 | 10³ | 1 KB (KiB) |
+| 2²⁰ | 1,048,576 | 10⁶ | 1 MB (MiB) |
+| 2³⁰ | 1,073,741,824 | 10⁹ | 1 GB (GiB) |
+| 2⁴⁰ | ≈ 1.1 × 10¹² | 10¹² | 1 TB (TiB) |
+| 2⁵⁰ | ≈ 1.13 × 10¹⁵ | 10¹⁵ | 1 PB (PiB) |
+| 2¹⁶ | 65,536 | 6.5 × 10⁴ | Ports, uint16 |
+| 2³² | ≈ 4.3 × 10⁹ | 4 × 10⁹ | IPv4 addresses, uint32 |
+| 2⁶⁴ | ≈ 1.8 × 10¹⁹ | 2 × 10¹⁹ | uint64, 64-bit IDs |
+
+The KB vs KiB gap is 2.4% at KB and 10% at TB; ignore it in an interview.
+
+## Time conversions
+
+| Quantity | Exact | Use |
+|---|---|---|
+| Seconds per day | 86,400 | **≈ 10⁵** |
+| Seconds per 30-day month | 2,592,000 | ≈ 2.5 × 10⁶ |
+| Seconds per year | 31,536,000 | ≈ 3 × 10⁷ |
+| 1 million per day | 10⁶ ÷ 86,400 | ≈ **12/s** |
+| 1 billion per day | 10⁹ ÷ 86,400 | ≈ **12,000/s** |
+| 1 million per month | 10⁶ ÷ 2.59 × 10⁶ | ≈ **0.4/s** |
+
+Dividing by 10⁵ instead of 86,400 understates per-second rates by about 14%. Peak factors dwarf that, so it is fine for sizing; say "about".
+
+## Size conversions
+
+| Product | Result |
+|---|---|
+| 1 KB × 1 million | 1 GB |
+| 1 KB × 1 billion | 1 TB |
+| 1 MB × 1 million | 1 TB |
+| 1 MB × 1 billion | 1 PB |
+| 1 Gbps | 125 MB/s (divide bits by 8) |
+| 10 Gbps | 1.25 GB/s |
+
+Typical sizes to assume: ID or timestamp 8 B; UUID 16 B (36 as text); short text post with metadata about 1 KB; JSON API response 1–10 KB; compressed photo 200 KB–2 MB; a minute of 1080p video about 10–50 MB depending on bitrate.
+
+## Formulas
+
+| Quantity | Formula |
+|---|---|
+| Average QPS | DAU × actions per user per day ÷ 10⁵ |
+| Peak QPS | average × peak factor (2–3× global, 5–10× regional or event-driven) |
+| Read and write QPS | split by the read:write ratio |
+| Storage | new objects per day × size × days retained × replicas (+20–50% for indexes and metadata) |
+| Bandwidth | QPS × bytes per request, separately for ingress and egress |
+| Cache working set | distinct hot items per day × item size (often the top 10–20% of keys) |
+| Servers | peak QPS ÷ (per-server QPS × target utilisation, e.g. 0.6) |
+| Concurrency (Little's law) | in-flight = arrival rate × time in system |
+| Shards | max(storage ÷ per-node storage, write QPS ÷ per-node write QPS) |
+| Partitions (Kafka) | peak events/s ÷ per-consumer events/s, plus headroom |
+
+## Worked lines
+
+**Social app, 10M DAU × 20 requests/day:** 10⁷ × 20 = 2 × 10⁸/day ÷ 10⁵ = **2,000 QPS** average; × 3 peak = **6,000**; 90% reads → 5,400 reads/s and 600 writes/s at peak.
+
+**URL shortener, 100M links/month, 100 reads per write, 5-year retention, 5× peak:**
+
+| Line | Arithmetic | Result |
+|---|---|---|
+| Writes | 100M ÷ 2,592,000 s | **38.6/s**, call it 40 |
+| Reads | 38.6 × 100 | 3,860/s; total ≈ 3,900/s |
+| Peak | 3,900 × 5 | **19,500/s** |
+| Links stored | 100M × 12 × 5 | **6 billion** |
+| ID space, 7 chars base62 | 62⁷ | 3.52 trillion; 6B uses 0.17% |
+| Storage | 6B × 500 B | **3 TB**, 9 TB with 3 replicas |
+| Working set | 30M links/day × 500 B | **15 GB**, one cache cluster |
+
+**Photo uploads, 1M/day × 2 MB:** storage 2 TB/day × 365 ≈ **730 TB/year** before replicas and thumbnails; ingress 10⁶ ÷ 10⁵ = 10/s × 2 MB = **20 MB/s** average.
+
+**Timeline, 200M DAU, 10 loads and 0.5 posts per user per day, 3× peak:** writes 10⁸/day → 1,000/s, **3,000/s** peak; reads 2 × 10⁹/day → 20,000/s, **60,000/s** peak; text 100 GB/day ≈ 36 TB/year; egress 20,000 × 20 posts × 1 KB = **400 MB/s** before images.
+
+**Kafka clickstream, 50,000 events/s × 1 KB, consumer 2,000/s:** 25 consumers → ≥ 25 partitions (choose 48 for headroom); 50 MB/s ingest; 7-day retention 50 MB/s × 604,800 s ≈ **30 TB**, ≈ **91 TB** at replication factor 3.
+
+**Little's law:** 300 req/s to a dependency with 1 s timeouts during an outage → 300 × 1 = **300** threads stuck waiting.
+
+## Interview habits
+
+- Write units on every number; most estimation errors are unit errors (bits vs bytes, per day vs per second).
+- Keep it to 2–3 minutes and end with a conclusion. Offer more depth if the interviewer wants it.
+- Size for peak, store for retention, cache for the working set.

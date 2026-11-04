@@ -227,3 +227,13 @@
 - **stream_options.** Sent for usage counts; if an endpoint rejects it with a 400 that names it, the request is re-sent once without it and tokens are estimated.
 - **Cost** stays token-only for non-Anthropic models (no guessed prices).
 
+
+## Prompt 22
+- **Capstone project (the user's call).** The prompt specified a URL shortener. The user asked for something more ambitious that most engineers attempt and fail at, so the capstone is an LLM inference platform. Its stages map to the prompt's stage list: single service, Compose, cache, several instances, rate limiter, queue, Prometheus/Grafana, tracing and k6 all appear. The read replica becomes model replicas plus a router. Every phase 1–7 is linked from at least 2 stages, and a unit test enforces it.
+- **Capstone stack.** A Node 22 + TypeScript `node:http` gateway, and llama.cpp `server-b6075` on CPU (an optional CUDA override). Postgres 17.4 (pgvector 0.8.0 from stage 6), Redis 7.4.2, NATS 2.10.26 JetStream, Prometheus v3.2.1, Grafana 11.5.2, Jaeger 2.3.0, k6 0.57.0. Models are pinned by Hugging Face commit and SHA-256: Qwen2.5-0.5B-Instruct Q4_K_M (Q8_0 is the canary), SmolLM2-135M as the fallback, bge-small for embeddings. "Real scale" numbers are labelled assumptions with the arithmetic shown.
+- **Capstone validation.** Docker was not running here, so no stage was started. Every stage passes `docker compose config -q`, and the tests parse every TS, YAML, JSON and k6 file. The guide describes output shapes rather than numbers measured on this machine.
+- **Capstone code** lives in `content/capstone/stage-*` and is excluded from the app's tsconfig and ESLint. Its dependencies are the learner's, not the app's.
+- **Checkbox feedback.** Capstone checkboxes show the click at once and then follow the stored row. A controlled checkbox that only reflected IndexedDB flickered back to unticked until the write landed.
+- **Cheat sheets.** The slug is the file name, and a required `group` drives the index. Codes R-01 to R-11 come from `order`. Unknown slugs return 404 (`dynamicParams = false`). Print rules apply only to `[data-print-sheet]` pages.
+- **Resource library.** Duplicates by id are merged, with topicIds unioned. Ids that share a URL are merged into the first one. A resource's phases come from the sections that list it and the sections that teach its topics. Search is a plain word filter, because the list is small enough. Two section links moved to https, and the second `grpc-deadlines` id became `grpc-deadlines-guide`.
+- **Classics behind bot blocks.** Amazon, Netflix and Uber refuse automated requests. SDI links point to the ByteByteGo chapter pages, and the Netflix and Uber blogs to their homepages.

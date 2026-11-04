@@ -1,0 +1,24 @@
+## What to observe and why it matters
+
+**TTFT is prefill; TPOT is decode.** Send the same question twice, then a question with a 2,000-word pasted document. TTFT grows with the prompt length, TPOT barely moves. Prefill processes every prompt token in one pass and is compute-bound; decode produces one token per step and is bound by memory bandwidth, because every step reads all the weights ([the two phases](/phase/6/llm-inference-internals#why-prefill-is-compute-bound-and-decode-is-bandwidth-bound)). On a laptop CPU both are slow, but the shape is the same as on a GPU.
+
+**Look at `timings` in the final chunk.** llama.cpp reports `prompt_n` (tokens it had to prefill) and `cache_n` (tokens it reused from the previous request in the same slot). Repeat a request and `cache_n` jumps: that is prompt caching inside one server ([prefix caching](/phase/6/inference-optimization#prefix-caching-and-radixattention)). Stage 4 builds routing on top of this.
+
+**Streaming changes what "latency" means.** The gateway writes the SSE headers together with the first token, so time-to-first-byte equals TTFT. If it flushed headers early, a load balancer would see a fast response that has not started yet ([streaming metrics](/phase/6/llm-serving#streaming-and-latency-metrics)). SSE is plain HTTP/1.1 chunked output, which is why it passes through proxies that would break WebSockets ([real-time options](/phase/1/realtime)).
+
+**Cancel upstream when the client goes away.** Close curl mid-answer (Ctrl-C) and watch the llama.cpp log stop generating. Without this, every abandoned request keeps burning a decode slot.
+
+**The KV cache is small here.** Qwen2.5-0.5B has 24 layers, 2 KV heads and head dim 64, so fp16 KV is 2 x 24 x 2 x 64 x 2 = 12,288 bytes per token. The 8,192-token context across 4 slots is 96 MiB. This is why the laptop can run four parallel sequences.
+
+## How this changes at real scale
+
+Assumptions (labelled, not measured): Llama 3.1 70B, published config 80 layers, 8 KV heads, head dim 128; fp16 KV; one H100 80 GB has about 3.35 TB/s of HBM bandwidth.
+
+```
+KV per token      = 2 x 80 x 8 x 128 x 2 B   = 327,680 B = 320 KiB   (27x the 0.5B model)
+weights (FP8)     = 70.6B params x 1 B       = 70.6 GB
+decode step floor = bytes read / bandwidth
+                  = 70.6 GB / (2 GPUs x 3.35 TB/s) = about 10.5 ms per step with TP=2, before KV reads
+```
+
+So one sequence alone could get about 95 tokens/s, but the GPU is idle on compute. Serving engines batch many sequences into each step to reuse the same weight read ([batching](/phase/6/llm-serving#batching-static-continuous-and-paged)); stage 10 does that math. The gateway you wrote stays almost unchanged at real scale: real stacks put the same OpenAI-compatible, streaming, cancel-aware proxy in front of vLLM, SGLang or TensorRT-LLM.

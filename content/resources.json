@@ -1,0 +1,132 @@
+[
+  {
+    "id": "sdi-vol1",
+    "title": "System Design Interview: An Insider's Guide (Volume 1)",
+    "author": "Alex Xu",
+    "kind": "book",
+    "url": "https://bytebytego.com/courses/system-design-interview/scale-from-zero-to-millions-of-users",
+    "why": "Read the opening chapters for the four-step interview framework and back-of-the-envelope estimation, then the rate limiter, consistent hashing and unique ID generator chapters as compact worked answers to the most-asked building-block questions.",
+    "topicIds": ["seven-steps", "estimation-method", "algorithms", "ring", "snowflake"],
+    "free": false
+  },
+  {
+    "id": "sdi-vol2",
+    "title": "System Design Interview: An Insider's Guide (Volume 2)",
+    "author": "Alex Xu and Sahn Lam",
+    "kind": "book",
+    "url": "https://bytebytego.com/courses/system-design-interview/proximity-service",
+    "why": "Harder, more domain-specific cases than Volume 1: use the distributed message queue, S3-like object storage, ad click aggregation and payment system chapters to practise designs where storage layout and exactly-once effects decide the answer.",
+    "topicIds": ["kafka-log", "s3-model", "windowing", "payments", "metric-types"],
+    "free": false
+  },
+  {
+    "id": "sre-book",
+    "title": "Site Reliability Engineering: How Google Runs Production Systems",
+    "author": "Betsy Beyer, Chris Jones, Jennifer Petoff and Niall Richard Murphy (eds.), Google",
+    "kind": "free-book",
+    "url": "https://sre.google/sre-book/table-of-contents/",
+    "why": "The full book, free online: read chapters 3 to 6 for error budgets, SLOs and symptom-based monitoring, and chapters 21 and 22 for load shedding and how cascading failures start.",
+    "topicIds": ["sli-slo-sla", "error-budgets", "symptom-alerts", "load-shedding", "nines"],
+    "free": true
+  },
+  {
+    "id": "sre-workbook",
+    "title": "The Site Reliability Workbook: Practical Ways to Implement SRE",
+    "author": "Betsy Beyer, Niall Richard Murphy, David K. Rensin, Kent Kawahara and Stephen Thorne (eds.), Google",
+    "kind": "free-book",
+    "url": "https://sre.google/workbook/table-of-contents/",
+    "why": "The hands-on companion to the SRE book: it turns SLOs into concrete burn-rate alert rules and error budget policies, and has chapters on canarying releases and managing load.",
+    "topicIds": ["error-budgets", "burn-rate-alerts", "budget-policy", "canary"],
+    "free": true
+  },
+  {
+    "id": "hpbn",
+    "title": "High Performance Browser Networking",
+    "author": "Ilya Grigorik (O'Reilly)",
+    "kind": "free-book",
+    "url": "https://hpbn.co/",
+    "why": "Read the TCP and TLS chapters to see where handshake round trips and slow start go on a real page load, and the HTTP/2 and WebSocket chapters for why multiplexing and long-lived connections change server design.",
+    "topicIds": ["tcp-handshake", "tcp-congestion", "hol-blocking", "tls-handshake", "http-versions", "websockets"],
+    "free": true
+  },
+  {
+    "id": "bigtable-paper",
+    "title": "Bigtable: A Distributed Storage System for Structured Data",
+    "author": "Fay Chang et al. (OSDI 2006)",
+    "kind": "paper",
+    "url": "https://research.google/pubs/bigtable-a-distributed-storage-system-for-structured-data/",
+    "why": "The origin of the wide-column model: read it for the row/column-family/timestamp data model, memtables flushed to immutable SSTables with compactions, and tablets as the unit of sharding, which HBase and Cassandra's storage engine both inherit.",
+    "topicIds": ["wide-column", "lsm", "strategies"],
+    "free": true
+  },
+  {
+    "id": "netflix-tech-blog",
+    "title": "Netflix Technology Blog",
+    "author": "Netflix engineering",
+    "kind": "blog",
+    "url": "https://netflixtechblog.com/",
+    "why": "Search it for the posts behind Chaos Monkey, Hystrix-style circuit breaking and adaptive concurrency limits: the reasoning for designing a large microservice fleet to keep serving while its parts fail.",
+    "topicIds": ["chaos-principles", "breaker-states", "admission-control", "canary"],
+    "free": true
+  },
+  {
+    "id": "uber-eng-blog",
+    "title": "Uber Engineering Blog",
+    "author": "Uber engineering",
+    "kind": "blog",
+    "url": "https://www.uber.com/blog/engineering/",
+    "why": "Read it for what happens after microservices go too far: posts on its domain-oriented microservice architecture, schemaless storage on top of MySQL, and geospatial indexing at city scale.",
+    "topicIds": ["microservice-costs", "conways-law", "strategies"],
+    "free": true
+  },
+  {
+    "id": "discord-eng-blog",
+    "title": "Discord Engineering Blog",
+    "author": "Discord engineering",
+    "kind": "blog",
+    "url": "https://discord.com/category/engineering",
+    "why": "Follow its message-storage posts (MongoDB to Cassandra to ScyllaDB) for hot partitions in a wide-column store, and its Elixir posts for holding millions of concurrent WebSocket connections.",
+    "topicIds": ["wide-column", "hot-shards", "scaling-websockets"],
+    "free": true
+  },
+  {
+    "id": "stripe-eng-blog",
+    "title": "Stripe Engineering Blog",
+    "author": "Stripe engineering",
+    "kind": "blog",
+    "url": "https://stripe.com/blog/engineering",
+    "why": "Short, concrete posts from a payments API that cannot double-charge: idempotent retries, the rate limiters and load shedders in front of its API, canonical log lines, and online data migrations.",
+    "topicIds": ["retries", "algorithms", "structured-logs", "zero-downtime-migrations"],
+    "free": true
+  },
+  {
+    "id": "cloudflare-blog",
+    "title": "The Cloudflare Blog",
+    "author": "Cloudflare",
+    "kind": "blog",
+    "url": "https://blog.cloudflare.com/",
+    "why": "The best public source of detailed outage post-mortems and DDoS write-ups, plus posts on anycast routing and running code at the edge; read a post-mortem end to end to see how one config push becomes a global incident.",
+    "topicIds": ["ddos", "dns-anycast", "edge-functions", "clock-skew"],
+    "free": true
+  },
+  {
+    "id": "meta-eng-blog",
+    "title": "Engineering at Meta",
+    "author": "Meta engineering",
+    "kind": "blog",
+    "url": "https://engineering.fb.com/",
+    "why": "Read the TAO and cache-consistency posts for how a read-heavy social graph is served from caches, and why invalidation races, not hit ratio, are the hard part at that scale.",
+    "topicIds": ["cache-aside", "race", "stampede"],
+    "free": true
+  },
+  {
+    "id": "shopify-eng-blog",
+    "title": "Shopify Engineering",
+    "author": "Shopify engineering",
+    "kind": "blog",
+    "url": "https://shopify.engineering/",
+    "why": "The clearest public case for a modular monolith over microservices, plus posts on splitting a large Rails/MySQL deployment into isolated pods by shop and surviving flash-sale traffic spikes.",
+    "topicIds": ["modular-monolith", "strategies", "hot-shards"],
+    "free": true
+  }
+]

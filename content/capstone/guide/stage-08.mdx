@@ -1,0 +1,23 @@
+## What to observe and why it matters
+
+**Histograms for TTFT and TPOT, by replica and tier.** Averages hide the tail; a histogram lets Prometheus compute p95 across both gateways ([metrics](/phase/5/metrics)). The buckets are chosen for the laptop: TTFT from 50 ms to 32 s, TPOT from 5 ms to 640 ms. On a GPU fleet you would move them down by an order of magnitude.
+
+**Tenant id is not a label.** Every label value creates a time series. Ten tiers are fine; 50,000 tenants times 3 replicas times 10 buckets is 1.5 million series for one metric. Per-tenant numbers come from the usage ledger and from logs, which are built for high cardinality ([logging](/phase/5/logging)).
+
+**One trace, five hops.** The Nginx log line ends with the trace id it started. In Jaeger, follow it through the gateway, `router.route_and_admit` (time spent queueing shows here), `llm.generate` and the HTTP call to the replica. For batch, the trace context travels in NATS message headers, so the worker's span continues the trace that began at `POST /v1/batches` ([tracing](/phase/5/tracing)).
+
+**Alerts on symptoms, not causes.** The four alerts fire on TTFT p95 over 2 s, TPOT p95 over 200 ms, shed rate over 5% and 5xx ratio (excluding 503 shedding) over 1%, each sustained for minutes. A CPU alert would page you for a healthy, busy system ([alerting](/phase/5/alerting), [SLOs](/phase/5/slos)).
+
+**Two views of the same replica.** Compare the gateway's view (`llm_ttft_seconds`) with llama.cpp's own counters (`llamacpp:*`). The gap between them is queueing and network; when they diverge under load, the gateway is the bottleneck, not the model ([streaming metrics](/phase/6/llm-serving#streaming-and-latency-metrics)).
+
+## How this changes at real scale
+
+Assumptions: 400 replicas, 2 gateways per 10 replicas (80 gateways); each gateway exports about 2,000 series (histograms by replica, tier, route and status); each replica 200; a 15 s scrape.
+
+```
+series    = 80 x 2,000 + 400 x 200          = 240,000 active series
+samples/s = 240,000 / 15                    = 16,000 samples/s   -> fine for one Prometheus, tight for HA
+traces    = 500 req/s x about 6 spans       = 3,000 spans/s      -> sample: keep all errors and slow requests, 1% of the rest
+```
+
+Real platforms add GPU metrics (DCGM: SM utilisation, HBM bandwidth, memory), engine metrics (KV cache usage, preemptions, batch size per step, prefix-cache hit rate) and tail-based trace sampling, and they alert on SLO burn rate rather than fixed thresholds ([burn-rate alerts](/phase/5/slos#burn-rate-alerts)).

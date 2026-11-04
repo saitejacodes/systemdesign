@@ -1,0 +1,89 @@
+---
+title: Database selection guide
+summary: "Pick a store by access pattern: the questions to ask, each family's fit and cost, eight common use cases, and when to add replicas, shards or a second store."
+group: Building blocks
+order: 4
+relatedSectionIds: [p2-sql-vs-nosql, p2-data-modeling, p2-olap-vs-oltp, p2-indexing, p2-replication, p2-sharding, p2-transactions, p2-search, p2-object-storage, p6-embeddings-vector-search]
+---
+
+## Ask these, in order
+
+1. **What are the top 3–5 queries?** Write them before naming a store.
+2. **Do any writes need to change several records atomically** (money, stock, seats)? → a store with real multi-record transactions.
+3. **Is every read by one key?** → key-value. **One whole aggregate of varying shape?** → document.
+4. **Append-heavy, time-ordered, huge, read by partition?** → wide-column or time-series.
+5. **Questions about paths several hops deep?** → graph.
+6. **Scans and aggregates over millions of rows?** → columnar warehouse (OLAP), not the OLTP store.
+7. **Does it fit on one machine for the next few years?** If yes, a single relational primary with replicas is usually the answer.
+
+## Families
+
+| Family | Examples | Strong at | Gives up |
+|---|---|---|---|
+| Relational | PostgreSQL, MySQL | Joins, ad-hoc queries, ACID transactions, constraints | Write scaling past one primary needs sharding or distributed SQL |
+| Distributed SQL | Spanner, CockroachDB | SQL and transactions across nodes and regions | Commit latency from consensus, cost, operational depth |
+| Key-value | Redis, DynamoDB | Get/put by key, predictable latency, TTLs | Queries other than by key (DynamoDB adds secondary indexes) |
+| Document | MongoDB, Postgres `jsonb` | One fetch per aggregate, flexible shape | Duplicated data, weaker cross-document queries |
+| Wide-column | Cassandra, Bigtable | Huge write throughput, partition + clustering key range reads | Tables designed per query; ad-hoc queries scan everything |
+| Graph | Neo4j | Multi-hop traversals | Workloads that are not traversals; partitioning a graph across machines is hard |
+| Time-series | TimescaleDB, Prometheus TSDB | Time-ordered writes, downsampling, retention | General-purpose queries |
+| Columnar (OLAP) | BigQuery, Snowflake, ClickHouse, Redshift | Scans and aggregates over billions of rows | Point updates and per-request latency |
+| Search | Elasticsearch, OpenSearch | Full-text relevance, facets | Being the source of truth; it is a derived index |
+| Object storage | Amazon S3, GCS | Cheap, durable blobs of any size | Partial updates, low-latency small reads |
+| Vector | pgvector, dedicated vector DBs | Approximate nearest-neighbour search on embeddings | Exact answers; recall is tunable, not guaranteed |
+
+## Eight use cases
+
+| Use case | Main access pattern | Good fit | Why |
+|---|---|---|---|
+| Bank ledger and transfers | Multi-row atomic updates, audits | Relational | ACID and constraints are non-negotiable |
+| User sessions | GET/PUT by session ID, expire on inactivity | Key-value (Redis) | One key per read, built-in TTL, sub-millisecond |
+| Product catalogue, varied attributes | One product with all attributes; search for filtering | Document (or relational + `jsonb`) | Shape varies by category |
+| Chat history | Append; latest N per conversation | Wide-column (Cassandra) | Partition by conversation, cluster by time |
+| "People you may know" | 2–3 hop traversal | Graph (or relational at 2 hops) | Questions about paths, not rows |
+| Orders and inventory | Transactions across order, stock, payment | Relational | Stock must never go negative |
+| IoT sensor readings | Massive time-ordered writes, range reads per device | Wide-column or time-series | Partition by device, cluster by time |
+| Leaderboard | Increment score, read top 100 | Redis sorted set | `ZINCRBY` and `ZREVRANGE` |
+
+## OLTP vs OLAP
+
+| | OLTP | OLAP |
+|---|---|---|
+| Typical query | Fetch or update one order by ID | Sum revenue by region by month |
+| Rows per query | A few | Millions to billions |
+| Layout | Row-oriented | Column-oriented |
+| Latency goal | Milliseconds | Seconds to minutes |
+| Feed | Application writes | Batch ETL/ELT or change data capture from OLTP |
+
+Never run analytics on the primary that serves users; copy the data out.
+
+## Scaling a relational store, in order
+
+| Step | Fixes | Costs |
+|---|---|---|
+| Indexes for the hot queries | Slow reads | Slower writes, more storage |
+| Connection pooling (e.g. PgBouncer) | Connection exhaustion | Pool mode limits some session features |
+| Cache in front (cache-aside) | Read load on hot keys | Staleness, invalidation |
+| Read replicas | Read throughput | Replication lag: read-your-writes needs routing |
+| Vertical scaling | Everything, briefly | Price and a hard ceiling |
+| Partitioning or sharding by a key | Write throughput and size | Cross-shard queries and transactions, resharding, hot keys |
+
+Planning figure used on this site: one relational primary at about **5,000 writes/s** (food-delivery case study assumption). Measure your own.
+
+## Shard key checklist
+
+- High cardinality and even spread: user ID, not country.
+- Matches the hot query so most reads hit one shard.
+- Does not concentrate new writes: a timestamp key sends every insert to the newest shard.
+- Plan for hot keys (a celebrity, a big tenant): split, salt or cache.
+
+<Callout type="tip" title="The interview sentence">
+"The hot access pattern is X, so the key is Y, which points at store Z; I give up W and accept that because..." One sentence with the access pattern, the key, the store and the cost scores better than any list of databases.
+</Callout>
+
+## Red flags
+
+- "NoSQL because it scales" for data that fits on one Postgres server for years.
+- Money or inventory in a store without multi-record transactions, with no compensating design.
+- Using the search index or the cache as the source of truth.
+- Choosing a store before listing the queries.

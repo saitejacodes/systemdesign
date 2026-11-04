@@ -1,0 +1,160 @@
+{
+  "stage": 10,
+  "slug": "load-test-capacity",
+  "title": "Load testing, SLOs and capacity planning",
+  "folder": "stage-10-load-test-capacity",
+  "minutes": 150,
+  "goal": "Measure the laptop fleet with k6 (streaming), find the knee of the latency/throughput curve, set SLOs for TTFT p95 and TPOT p95, compute cost per 1M tokens on the laptop, and extrapolate to a GPU fleet for a frontier-size open model, naming every assumption.",
+  "changes": [
+    {
+      "path": "k6/lib.js",
+      "change": "added",
+      "note": "Streaming chat helper: TTFT from time-to-first-byte, TPOT from receive time / (tokens − 1), output token counter."
+    },
+    {
+      "path": "k6/smoke.js",
+      "change": "added",
+      "note": "1 user, 5 requests, strict thresholds."
+    },
+    {
+      "path": "k6/step.js",
+      "change": "added",
+      "note": "Constant arrival rate (open model) at RATE; SLO thresholds; one JSON summary line."
+    },
+    {
+      "path": "k6/long-prompts.js",
+      "change": "added",
+      "note": "Break-it: long prompts flood the replicas while short chats measure TTFT."
+    },
+    {
+      "path": "k6/noisy-neighbour.js",
+      "change": "added",
+      "note": "Break-it: the free tenant floods while gold measures TTFT."
+    },
+    {
+      "path": "scripts/find-knee.sh",
+      "change": "added",
+      "note": "Runs step.js at increasing rates and prints one row per rate."
+    },
+    {
+      "path": "scripts/capacity.mjs",
+      "change": "added",
+      "note": "Laptop cost per 1M tokens and GPU fleet sizing for Llama 3.1 70B or 405B, every input a named assumption."
+    },
+    {
+      "path": "migrations/005_loadtest_tenant.sql",
+      "change": "added",
+      "note": "A gold tenant with a budget no test reaches."
+    },
+    {
+      "path": "docker-compose.yml",
+      "change": "modified",
+      "note": "k6 service in the loadtest profile."
+    },
+    {
+      "path": "docker-compose.gpu.yml",
+      "change": "added",
+      "note": "Optional NVIDIA override: CUDA build, all layers on the GPU."
+    }
+  ],
+  "run": [
+    {
+      "label": "Start the stack",
+      "cmd": "./scripts/download-models.sh && docker compose up -d --build --wait"
+    },
+    {
+      "label": "Smoke test (local k6, or the container)",
+      "cmd": "k6 run k6/smoke.js || docker compose --profile loadtest run --rm k6 run /scripts/smoke.js"
+    },
+    {
+      "label": "Find the knee (about 8 minutes)",
+      "cmd": "./scripts/find-knee.sh"
+    },
+    {
+      "label": "Cost and fleet arithmetic with your number",
+      "cmd": "node scripts/capacity.mjs --laptopTokensPerS=<output_tokens_per_s at your knee>"
+    }
+  ],
+  "verify": [
+    {
+      "label": "Smoke passes",
+      "cmd": "k6 run k6/smoke.js",
+      "expect": "checks 100%, http_req_failed 0.00%, thresholds marked as passed, and ttft / tpot trends in the summary."
+    },
+    {
+      "label": "The knee table",
+      "cmd": "./scripts/find-knee.sh",
+      "expect": "One row per rate: at low rates TTFT p95 stays near your stage 1 baseline and fail% is 0; past the knee TTFT p95 jumps (queueing), then fail% rises (shedding) while out_tok/s stops growing. Mark the last rate where all three SLO thresholds hold."
+    },
+    {
+      "label": "Capacity arithmetic",
+      "cmd": "node scripts/capacity.mjs --laptopTokensPerS=40 | head -8",
+      "expect": "With 40 tokens/s, 30 W and $0.15/kWh: energy $0.031 per 1M output tokens, hardware amortisation $1.19, total $1.22. Then rerun with your own knee number."
+    },
+    {
+      "label": "Frontier fleet",
+      "cmd": "node scripts/capacity.mjs | tail -20",
+      "expect": "Llama 3.1 70B, FP8 weights, TP=2, defaults: 65.4 GB of KV memory per replica (199,585 tokens), TPOT 28.0 ms at batch 64, 2,286 output tokens/s per replica, 318 GPUs at a 200,000 tokens/s peak (398 with headroom), $1.10 per 1M output tokens at $2.50/GPU-hour."
+    }
+  ],
+  "concepts": [
+    {
+      "sectionId": "p1-estimation",
+      "how": "The same back-of-envelope method as any design, now with tokens: demand, per-unit capacity, units, headroom."
+    },
+    {
+      "sectionId": "p6-llm-serving-at-scale",
+      "how": "Capacity planning end to end: memory, latency-bound batch size, prefill check, headroom."
+    },
+    {
+      "sectionId": "p6-llm-inference-internals",
+      "how": "The roofline: decode reads all weights and KV per step, so bandwidth sets TPOT."
+    },
+    {
+      "sectionId": "p6-inference-optimization",
+      "how": "Continuous batching, paged attention, prefix caching, chunked prefill, disaggregated prefill/decode: what changes the numbers."
+    },
+    {
+      "sectionId": "p6-speculative-decoding",
+      "how": "Cuts TPOT when draft tokens are usually accepted; an option once decode, not prefill, is the bottleneck."
+    },
+    {
+      "sectionId": "p6-gpu-parallelism",
+      "how": "Tensor parallelism splits each layer across GPUs (TP in the calculator); pipeline parallelism splits layers."
+    },
+    {
+      "sectionId": "p5-slos",
+      "how": "TTFT p95 < 2 s and TPOT p95 < 200 ms as the lab SLOs; the knee is where the error budget starts burning."
+    },
+    {
+      "sectionId": "p7-tradeoff-communication",
+      "how": "Present the plan as a reviewer would want it: the number, the assumptions behind it, and which assumption it is most sensitive to."
+    },
+    {
+      "sectionId": "p7-deep-dive-patterns",
+      "how": "Capacity is the deep dive interviewers push on for LLM serving: KV memory, batch size versus TPOT, prefill versus decode."
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "capstone-10-1",
+      "text": "k6 smoke passed with TTFT and TPOT trends in the summary."
+    },
+    {
+      "id": "capstone-10-2",
+      "text": "I ran find-knee.sh and marked the highest rate that met all SLO thresholds."
+    },
+    {
+      "id": "capstone-10-3",
+      "text": "I computed my laptop's cost per 1M output tokens with my own knee number."
+    },
+    {
+      "id": "capstone-10-4",
+      "text": "I changed one assumption in capacity.mjs (TP, FP8 KV, batch, prefix hit rate) and explained how the GPU count moved."
+    },
+    {
+      "id": "capstone-10-5",
+      "text": "I compared my stage 0 design with what I built and the model answer."
+    }
+  ]
+}

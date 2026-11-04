@@ -1,0 +1,116 @@
+{
+  "stage": 5,
+  "slug": "rate-limits",
+  "title": "Per-tenant token rate limits and priority tiers",
+  "folder": "stage-05-rate-limits",
+  "minutes": 90,
+  "goal": "Limit each tenant by tokens, not requests, with a token bucket in Redis that both gateways share. The Lua script charges the estimate before running and the gateway settles the real cost after. Priority tiers order the admission queue and keep the free tier out of the back half of it. Decide what happens when Redis is down.",
+  "changes": [
+    {
+      "path": "src/ratelimit.ts",
+      "change": "added",
+      "note": "Token bucket in a Lua script (atomic, uses Redis TIME); charge estimate, settle actual; fail open or closed per tier; OpenAI-style rate-limit headers."
+    },
+    {
+      "path": "src/admission.ts",
+      "change": "modified",
+      "note": "Priority-ordered queue; free tier may only use the first half of the queue."
+    },
+    {
+      "path": "src/chat.ts",
+      "change": "modified",
+      "note": "Charge before admission, refund on shed or early failure, settle on completion."
+    },
+    {
+      "path": "docker-compose.yml",
+      "change": "modified",
+      "note": "Adds redis; RATE_LIMIT_FAIL_OPEN_TIERS."
+    },
+    {
+      "path": "package.json",
+      "change": "modified",
+      "note": "ioredis 5.4.2."
+    }
+  ],
+  "run": [
+    {
+      "label": "Start the stack",
+      "cmd": "docker compose up -d --build"
+    }
+  ],
+  "verify": [
+    {
+      "label": "Exhaust the free tier (4,000 tokens/minute)",
+      "cmd": "for i in $(seq 1 25); do curl -s -o /dev/null -w '%{http_code} ' localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-noisy-0001' -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":200}'; done; echo",
+      "expect": "About 19 x 200 first (each request reserves ~203 tokens of a 4,000 bucket, then refunds what it did not use, so a few more fit), then 429s."
+    },
+    {
+      "label": "Read a 429",
+      "cmd": "curl -s -i localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-noisy-0001' -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":200}' | grep -iE '^HTTP|retry-after|x-ratelimit'",
+      "expect": "HTTP/1.1 429, retry-after in seconds, x-ratelimit-limit-tokens: 4000 and x-ratelimit-remaining-tokens."
+    },
+    {
+      "label": "Other tenants are unaffected",
+      "cmd": "curl -s -o /dev/null -w '%{http_code}\\n' localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":20}'",
+      "expect": "200: acme has its own bucket."
+    },
+    {
+      "label": "Look inside the bucket",
+      "cmd": "docker compose exec redis redis-cli HGETALL rl:tokens:noisy",
+      "expect": "tokens (a decimal number, possibly negative after settling) and ts (Redis server time in ms)."
+    },
+    {
+      "label": "Redis down: fail open vs fail closed",
+      "cmd": "docker compose stop redis; for k in sk-lab-acme-0001 sk-lab-noisy-0001; do curl -s -o /dev/null -w \"$k %{http_code}\\n\" localhost:8080/v1/chat/completions -H \"authorization: Bearer $k\" -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":8}'; done; docker compose start redis",
+      "expect": "sk-lab-acme-0001 200 (gold fails open), sk-lab-noisy-0001 503 (free fails closed). Gateway logs show ratelimit_fail_open and ratelimit_fail_closed."
+    }
+  ],
+  "concepts": [
+    {
+      "sectionId": "p2-rate-limiting",
+      "how": "Token bucket, distributed with a shared store, telling the client with 429 + Retry-After + limit headers."
+    },
+    {
+      "sectionId": "p3-redis",
+      "how": "A Lua script runs atomically in Redis: read, refill, check and decrement cannot interleave between gateways."
+    },
+    {
+      "sectionId": "p4-consistency-models",
+      "how": "The limiter (Redis, approximate, fast) and the ledger (Postgres, exact, durable) disagree by design; the ledger is the source of truth for billing."
+    },
+    {
+      "sectionId": "p4-fault-tolerance",
+      "how": "Fail open for paid tiers (availability) and fail closed for free (protect the fleet): graceful degradation chosen per tier."
+    },
+    {
+      "sectionId": "p4-time-ordering",
+      "how": "The script reads Redis TIME, one clock for all gateways, so gateway clock skew cannot mint tokens."
+    },
+    {
+      "sectionId": "p6-llm-cost-latency",
+      "how": "Rate limits and quotas in tokens, as hosted LLM APIs do (tokens per minute)."
+    },
+    {
+      "sectionId": "p5-access-control",
+      "how": "Tiers are an authorization attribute of the tenant: they decide priority and degradation, not just limits."
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "capstone-5-1",
+      "text": "The noisy tenant hit 429 with retry-after and x-ratelimit headers while acme kept getting 200."
+    },
+    {
+      "id": "capstone-5-2",
+      "text": "I read the bucket with redis-cli HGETALL and can explain the estimate-then-settle charge."
+    },
+    {
+      "id": "capstone-5-3",
+      "text": "With Redis stopped, gold failed open and free failed closed."
+    },
+    {
+      "id": "capstone-5-4",
+      "text": "I can explain why the check-and-decrement must be one Lua script, not GET then SET."
+    }
+  ]
+}

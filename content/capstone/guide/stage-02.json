@@ -1,0 +1,149 @@
+{
+  "stage": 2,
+  "slug": "compose-postgres",
+  "title": "Compose, tenants, API keys and a usage ledger",
+  "folder": "stage-02-compose-postgres",
+  "minutes": 90,
+  "goal": "Containerise the gateway, add Postgres, and make every request belong to a tenant: API keys stored as SHA-256 hashes, a usage ledger in tokens written idempotently with a daily rollup in the same statement, and a paginated usage API.",
+  "changes": [
+    {
+      "path": "Dockerfile",
+      "change": "added",
+      "note": "Two-stage build; runs as the unprivileged node user; exec-form CMD so SIGTERM reaches node."
+    },
+    {
+      "path": "docker-compose.yml",
+      "change": "modified",
+      "note": "Adds gateway and postgres; services reach each other by name through Compose DNS."
+    },
+    {
+      "path": "migrations/001_schema.sql",
+      "change": "added",
+      "note": "tenants, api_keys (hash as primary key), usage_ledger (request_id primary key), usage_daily."
+    },
+    {
+      "path": "migrations/002_seed.sql",
+      "change": "added",
+      "note": "Three lab tenants: acme (gold), globex (standard), noisy (free)."
+    },
+    {
+      "path": "src/db.ts",
+      "change": "added",
+      "note": "authenticate() with a short in-memory cache, idempotent recordUsage(), keyset-paginated listUsage()."
+    },
+    {
+      "path": "src/auth.ts",
+      "change": "added",
+      "note": "Bearer key to tenant; the same 401 for missing, unknown or revoked keys."
+    },
+    {
+      "path": "src/chat.ts",
+      "change": "modified",
+      "note": "Requires a tenant; bills ok, cancelled and failed requests for the tokens actually generated."
+    },
+    {
+      "path": "src/server.ts",
+      "change": "modified",
+      "note": "GET /v1/usage; readiness also checks Postgres."
+    },
+    {
+      "path": ".dockerignore",
+      "change": "added",
+      "note": "Keeps node_modules, dist and the models out of the build context."
+    }
+  ],
+  "run": [
+    {
+      "label": "Stop stage 1's container and dev server, then start this stage",
+      "cmd": "./scripts/download-models.sh && docker compose up -d --build && docker compose ps"
+    }
+  ],
+  "verify": [
+    {
+      "label": "No key, no service",
+      "cmd": "curl -s -i localhost:8080/v1/chat/completions -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}' | head -1",
+      "expect": "HTTP/1.1 401 Unauthorized"
+    },
+    {
+      "label": "A tenant's request is billed",
+      "cmd": "curl -s localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":16}'",
+      "expect": "A chat.completion JSON with a \"usage\" object (prompt_tokens, completion_tokens, total_tokens)."
+    },
+    {
+      "label": "The ledger has the row",
+      "cmd": "docker compose exec postgres psql -U app -d llm -c \"SELECT tenant_id, prompt_tokens, completion_tokens, source, status FROM usage_ledger ORDER BY created_at DESC LIMIT 3\"",
+      "expect": "Your request as tenant_id acme, source interactive, status ok, with the same token counts as the response."
+    },
+    {
+      "label": "Idempotency: the same request id twice moves nothing",
+      "cmd": "docker compose exec postgres psql -U app -d llm -c \"WITH ins AS (INSERT INTO usage_ledger (request_id, tenant_id, model, prompt_tokens, completion_tokens, status) VALUES ('demo-1','acme','m',10,5,'ok') ON CONFLICT (request_id) DO NOTHING RETURNING 1) SELECT count(*) FROM ins\"",
+      "expect": "count 1 the first time you run it, count 0 every time after: a retried write is a no-op."
+    },
+    {
+      "label": "Keys are stored hashed",
+      "cmd": "docker compose exec postgres psql -U app -d llm -c \"SELECT key_prefix, left(key_hash, 16) AS hash, tenant_id FROM api_keys\"",
+      "expect": "Three rows with prefixes like sk-lab-acme- and 64-character hex hashes; the full keys appear nowhere in the database."
+    },
+    {
+      "label": "Paginate the usage API",
+      "cmd": "curl -s 'localhost:8080/v1/usage?limit=2' -H 'authorization: Bearer sk-lab-acme-0001'",
+      "expect": "{\"object\":\"list\",\"data\":[...2 rows...],\"nextCursor\":\"...\"}; pass that value as &cursor= to get the next page. nextCursor is null on the last page."
+    }
+  ],
+  "concepts": [
+    {
+      "sectionId": "p5-containers",
+      "how": "Multi-stage image, non-root user, PID 1 receiving SIGTERM so in-flight streams drain."
+    },
+    {
+      "sectionId": "p1-dns",
+      "how": "Compose's embedded DNS is service discovery: the gateway connects to llm-1 and postgres by name, never by IP."
+    },
+    {
+      "sectionId": "p2-data-modeling",
+      "how": "Tenants, keys, an append-only ledger and a rollup table: model the money first."
+    },
+    {
+      "sectionId": "p2-indexing",
+      "how": "(tenant_id, created_at DESC, request_id DESC) serves the usage page and its keyset cursor with one index range scan."
+    },
+    {
+      "sectionId": "p2-transactions",
+      "how": "Ledger insert and rollup update in one statement (a CTE): both change or neither does."
+    },
+    {
+      "sectionId": "p2-idempotency",
+      "how": "request_id as primary key + ON CONFLICT DO NOTHING: retries and redeliveries can never double-bill."
+    },
+    {
+      "sectionId": "p2-rest",
+      "how": "Cursor (keyset) pagination instead of OFFSET on /v1/usage."
+    },
+    {
+      "sectionId": "p5-authn-authz",
+      "how": "API keys as bearer tokens, hashed at rest; the revocation delay is the auth cache TTL."
+    },
+    {
+      "sectionId": "p2-connection-pooling",
+      "how": "A bounded pg pool per gateway: pool size x instances must fit under max_connections."
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "capstone-2-1",
+      "text": "docker compose up brings up gateway, llm-1 and postgres, and the gateway is healthy."
+    },
+    {
+      "id": "capstone-2-2",
+      "text": "A request without a key gets 401; with sk-lab-acme-0001 it is served and appears in usage_ledger."
+    },
+    {
+      "id": "capstone-2-3",
+      "text": "I ran the duplicate ledger insert twice and saw count 1, then 0."
+    },
+    {
+      "id": "capstone-2-4",
+      "text": "I paged through /v1/usage with nextCursor."
+    }
+  ]
+}

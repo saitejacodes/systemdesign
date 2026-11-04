@@ -110,3 +110,15 @@ export type GlossaryTerm = z.infer<typeof GlossaryTerm>;
 export type PlanWeek = z.infer<typeof PlanWeek>;
 export type CaseStudyMeta = z.infer<typeof CaseStudyMeta>;
 export type Depth = z.infer<typeof Depth>;
+
+/** Front matter of a reference cheat sheet (content/cheatsheets/<slug>.mdx). The slug is the file name. */
+export const CHEATSHEET_GROUPS = ["Numbers", "Building blocks", "Distributed systems", "Interview"] as const;
+export const CheatSheetMeta = z.strictObject({
+  title: z.string().min(1),
+  /** One line for the index and search. */
+  summary: z.string().min(1),
+  group: z.enum(CHEATSHEET_GROUPS),
+  order: z.number().int().positive(),
+  relatedSectionIds: z.array(id).min(1),
+});
+export type CheatSheetMeta = z.infer<typeof CheatSheetMeta>;

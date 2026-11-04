@@ -1,0 +1,24 @@
+{
+  "name": "llm-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SysDesign Lab capstone: an OpenAI-compatible gateway in front of llama.cpp",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "pg": "8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "@types/pg": "8.11.10",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3"
+  }
+}

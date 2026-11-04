@@ -1,0 +1,45 @@
+# Regression gate: every pull request starts the stack on a GitHub-hosted runner (CPU only) and runs the golden
+# eval set. A model, prompt, quantization or guardrail change that drops the pass rate below the gate, or fails a
+# critical case, fails the check. Assumes this stage folder is the repository root.
+name: eval-gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The GGUF files are ~1.3 GB together: cache them by the download script's contents (it pins the hashes).
+      - uses: actions/cache@v4
+        with:
+          path: models
+          key: models-${{ hashFiles('scripts/download-models.sh') }}
+
+      - name: Download models
+        run: ./scripts/download-models.sh
+
+      - name: Start the stack
+        run: docker compose up -d --build --wait --wait-timeout 600
+
+      - name: Install eval dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run golden set
+        env:
+          EVAL_BASE_URL: http://localhost:8080
+          EVAL_API_KEY: sk-lab-acme-0001
+          EVAL_MIN_PASS_RATE: "0.8"
+        run: npm run eval
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail 200 gateway-a gateway-b llm-1

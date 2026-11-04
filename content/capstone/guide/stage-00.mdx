@@ -1,0 +1,105 @@
+## How to use this stage
+
+Write the design before you build it. Give yourself 45 minutes, the same budget as an interview, and follow the [seven steps](/phase/7/interview-framework#the-seven-steps-and-why-this-order) in order. Fill in the template below in a text file (the downloaded zip contains it as `stage-00-design-review/design-review-template.md`). Only then open the model answer and compare. The point is not to match it; it is to find the decisions you did not know you had to make.
+
+The prompt: **"Design an LLM inference platform that serves an open-weights chat model to many tenants through an OpenAI-compatible API."**
+
+## The template
+
+```markdown
+# Design review: LLM inference platform
+
+## 1. Requirements (5 min)
+Functional (3-5 bullets):
+Non-functional, with numbers (latency as TTFT and TPOT, availability, cost):
+Out of scope (say it out loud):
+
+## 2. Estimation (5 min)
+Peak requests/s:
+Input and output tokens per request:
+Output tokens/s at peak:
+Concurrent streams (Little's law: tokens/s x TPOT):
+KV cache per token and per stream:
+Replicas and GPUs (show the arithmetic, label assumptions):
+
+## 3. API (5 min)
+Endpoints, request and response shape, status codes, streaming format:
+
+## 4. Data model (5 min)
+Entities, keys, store choice and why:
+
+## 5. High-level design (10 min)
+Boxes and arrows; walk one streaming request end to end:
+
+## 6. Deep dives (10 min) - pick 2 or 3
+Option A / option B / decision / why:
+
+## 7. Wrap-up (5 min)
+Failure modes, what breaks at 10x, trade-offs restated as decisions:
+```
+
+## What a strong answer does
+
+- States latency as **TTFT and TPOT**, not one "latency" number, because prefill and decode are different workloads ([why](/phase/6/llm-inference-internals#why-prefill-is-compute-bound-and-decode-is-bandwidth-bound)).
+- Sizes the fleet from **memory for the KV cache and the batch size that holds the TPOT target**, not from requests per second ([method](/phase/6/llm-serving-at-scale#capacity-planning-end-to-end)).
+- Rate-limits in **tokens**, and separates interactive from batch traffic so batch can fill idle GPUs.
+- Treats the prefix-cache hit rate as a capacity input and routes for it.
+- Names what happens **after the first token**: retries are no longer safe.
+
+## Model answer
+
+<details>
+<summary>Open only after you have written your own</summary>
+
+### 1. Requirements
+
+Functional: chat completions with SSE streaming; API keys per tenant; per-tenant token quotas and priority tiers; usage records for billing; an async batch endpoint for offline jobs.
+
+Non-functional (all labelled targets, not facts): TTFT p95 under 1 s and TPOT p95 under 50 ms for interactive traffic; 99.9% of requests answered (including by a fallback model); batch jobs done within 24 h; no tenant can push another's TTFT p95 over target; billing never double-counts a request.
+
+Out of scope: training and fine-tuning, multi-region active-active, tool calling and agents, a UI.
+
+### 2. Estimation
+
+Every number is an assumption to show the method.
+
+| Quantity | Assumption | Arithmetic | Result |
+|---|---|---|---|
+| Peak requests | 500 req/s | given | 500 req/s |
+| Tokens per request | 1,000 in, 400 out | 500 x 400 | 200,000 output tokens/s |
+| Uncached input | 80% prefix-cache hits | 500 x 1,000 x 0.2 | 100,000 prefill tokens/s |
+| Concurrent streams | TPOT 30 ms | 200,000 x 0.03 | 6,000 decoding at once |
+| KV per token | Llama 3.1 70B: 80 layers, 8 KV heads, dim 128, fp16 | 2 x 80 x 8 x 128 x 2 | 320 KiB |
+| KV per stream | 2,000 tokens average | 2,000 x 320 KiB | about 0.66 GB |
+
+The capacity script in stage 10 turns these into a fleet: with FP8 weights on 2 x 80 GB GPUs per replica, about 2,300 output tokens/s per replica at batch 64, so about 88 decode replicas plus prefill, around 320 GPUs before headroom. The answer moves most with the cache hit rate and the batch size you can hold at the TPOT target.
+
+### 3. API
+
+- `POST /v1/chat/completions`: OpenAI shape; `stream: true` returns `text/event-stream` with `data:` chunks and a final `[DONE]`; 400 for bad input, 401 bad key, 429 with `retry-after` for quota, 503 with `retry-after` for overload.
+- `POST /v1/batches`, `GET /v1/batches/:id`: 202 with a job id; idempotent on a client-supplied key.
+- `GET /v1/usage`: keyset-paginated ledger.
+
+### 4. Data model
+
+Postgres for tenants, hashed API keys, the usage ledger (primary key = request id, so a retried write is a no-op) and batch jobs. Redis for token buckets and the exact-match cache (losable). pgvector for the semantic cache. A durable work queue (JetStream, SQS or Kafka) for batch jobs.
+
+### 5. High-level design
+
+Client to L7 load balancer (no buffering, long read timeout) to stateless gateways. The gateway authenticates, charges the token bucket with an estimate, checks caches, admits the request into a bounded priority queue, picks a replica with a prefix-aware router, streams tokens back as they arrive, then settles the real token count and writes the ledger. Model servers run continuous batching with paged KV. Batch workers pull from the queue and call the same gateway at the lowest priority.
+
+### 6. Deep dives
+
+- **Admission and isolation.** Option A: queue everything (simple; p99 explodes under overload). Option B: bounded queue per replica, priority order, shed early with 503. Decision: B, because a request that will miss its deadline is better refused than served late.
+- **Routing.** Round robin ignores load and cache; least-outstanding balances load; prefix affinity raises cache hits but creates hot spots. Decision: rendezvous hash on the prefix, falling back to least-outstanding when the preferred replica is full.
+- **Mid-stream failure.** Retry only before the first token; after it, end the stream with an error and let the client decide. A circuit breaker per replica that counts slow first tokens as failures; a smaller fallback model when all primaries are open.
+
+### 7. Wrap-up
+
+What breaks at 10x: prefill compute (long prompts), so disaggregate prefill and decode; the KV memory per replica, so quantise KV or use larger tensor-parallel groups; the shared Redis for rate limits, so shard by tenant. Trade-offs as decisions: fail open on Redis for paying tiers, closed for free; semantic cache opt-in only, because a false hit is a wrong answer delivered fast.
+
+</details>
+
+## Revisit this at the end
+
+After stage 10, reread your own answer. For each number you guessed, write the measured laptop value next to it, and for each deep dive, note which Break-it experiment tested it.

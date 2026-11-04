@@ -1,0 +1,63 @@
+---
+title: Latency numbers
+summary: The classic latency table with its source and era, the ratios worth memorising, and the speed-of-light floor.
+group: Numbers
+order: 1
+relatedSectionIds: [p1-estimation, p1-latency-throughput, p3-cache-layers, p3-cdn, p6-multi-region]
+---
+
+## Source and how to read it
+
+The table below is the list popularised by Jeff Dean's talks at Google (for example his 2009 LADIS keynote) and Peter Norvig's essay *Teach Yourself Programming in Ten Years*, in the widely copied form that adds SSD rows. The figures are from roughly **2009–2012 hardware** and are **orders of magnitude, not measurements**: any real machine will differ by 2–10× on several rows. Colin Scott's interactive page ("Latency Numbers Every Programmer Should Know", Berkeley) re-projects the same list year by year from hardware trend lines; its later values are extrapolations, not benchmarks. Memorise the **ratios** and the **ladder**, not the digits.
+
+## The table
+
+| Operation | Time | In ns | Ratio worth knowing |
+|---|---|---|---|
+| L1 cache reference | 0.5 ns | 0.5 | Baseline (this site rounds it to 1 ns) |
+| Branch mispredict | 5 ns | 5 | |
+| L2 cache reference | 7 ns | 7 | 14× L1 |
+| Mutex lock/unlock | 25 ns | 25 | |
+| Main memory reference | 100 ns | 100 | 200× L1 |
+| Compress 1 KB (Snappy/Zippy) | 3 µs | 3,000 | |
+| Send 1 KB over a 1 Gbps network | 10 µs | 10,000 | 1 KB × 8 bits ÷ 10⁹ bit/s = 8 µs |
+| Read 4 KB randomly from SSD | 150 µs | 150,000 | ≈ 1,000× a memory reference |
+| Read 1 MB sequentially from memory | 250 µs | 250,000 | ≈ 4 GB/s |
+| Round trip within one data centre | 500 µs | 500,000 | Cheap next to a WAN round trip |
+| Read 1 MB sequentially from SSD | 1 ms | 1,000,000 | 4× memory |
+| Disk (HDD) seek | 10 ms | 10,000,000 | 20× a data-centre round trip |
+| Read 1 MB sequentially from HDD | 20 ms | 20,000,000 | 80× memory, 20× SSD |
+| Packet California → Netherlands → California | 150 ms | 150,000,000 | Bounded by physics, not hardware |
+
+## The ladder in one line
+
+**ns** for CPU caches and memory → **µs** for SSD and in-rack network → **ms** for a data-centre round trip (0.5), disk seeks (10) and cross-continent trips (150). Each rung is roughly 1,000× the one below.
+
+## Ratios to carry into a design
+
+| Comparison | Ratio | Design consequence |
+|---|---|---|
+| Memory vs SSD random read | 100 ns vs 150 µs ≈ **1:1,000** | Cache hot data in RAM (Redis, in-process) |
+| Same-DC vs cross-continent round trip | 0.5 ms vs 150 ms = **1:300** | CDNs, regional replicas, fewer round trips per page |
+| Sequential vs random on HDD | 20 ms per MB vs 10 ms per seek | Logs, LSM trees and batching are built around sequential I/O |
+| In-process call vs network hop | ns vs ≥ 0.5 ms | Every microservice hop costs at least a DC round trip |
+
+## The speed-of-light floor
+
+Light in optical fibre travels at about **200,000 km/s** (refractive index ≈ 1.5), so **1 ms ≈ 200 km one way**, or **100 km of distance per 1 ms of round trip**.
+
+- San Francisco ↔ Amsterdam is about 8,800 km great-circle: 2 × 8,800 ÷ 200,000 = **88 ms** minimum round trip. Real paths are longer and add routing, so the table's 150 ms is typical.
+- A TLS 1.3 connection on a fresh TCP connection costs 2 round trips before the first request byte: about **300 ms** on that path. Connection reuse and edge termination (CDN) remove most of it.
+- Synchronous replication across regions pays at least one round trip per commit: tens to 150 ms. Within a region across zones it is about a millisecond or two.
+
+## Planning figures used elsewhere on this site
+
+| Component | Planning figure | Where it comes from |
+|---|---|---|
+| One Redis instance | on the order of **100,000** simple ops/s | Phase 3 Redis lesson |
+| One relational primary | **5,000** writes/s (assumed) | Food-delivery case study assumption |
+| Tail amplification | 100-way fan-out at 1% slow each → **63%** of requests slow | 1 − 0.99¹⁰⁰, Dean and Barroso, "The Tail at Scale" (2013) |
+
+<Callout type="warning" title="Do not quote digits as facts">
+In an interview say "about half a millisecond for a round trip inside a data centre, about 150 ms across an ocean and back". Precise-sounding numbers from an old table invite a challenge you cannot win; ratios do not.
+</Callout>

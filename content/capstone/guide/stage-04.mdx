@@ -1,0 +1,22 @@
+## What to observe and why it matters
+
+**Three policies, measured.** `scripts/bench-routing.sh` sends 60 requests (6 at a time) spread over three long system prompts, under whichever policy is running, and prints mean TTFT and the cache hit ratio from llama.cpp's `cache_n`. Expect prefix affinity to show the most cached prompt tokens and the lowest TTFT for the shared prompt, round robin the fewest. Write your numbers down; they depend on your CPU.
+
+**Why prefix affinity wins on TTFT.** Each llama.cpp slot keeps its last prompt's KV. If the next request with the same system prompt lands on the same replica, only the new suffix needs prefill ([prefix-aware routing](/phase/6/llm-serving-at-scale#prefix-aware-routing)). Round robin spreads the prefix across three replicas, so each pays the full prefill.
+
+**Rendezvous hashing, with a fallback.** The router hashes the system prompt (or the first message) with each replica name and picks the highest score. Removing a replica moves only the keys that were on it ([consistent hashing](/phase/2/consistent-hashing)). If the preferred replica already has `AFFINITY_MAX_OUTSTANDING` requests, it falls back to the least-outstanding one: affinity is a preference, not a rule, or a popular prefix becomes a hot spot.
+
+**Two layers of balancing.** Nginx balances clients across two gateways (round robin, no buffering, 300 s read timeout) ([reverse proxy](/phase/1/reverse-proxy)); each gateway balances across model replicas with its own view of load ([load balancers](/phase/1/load-balancers)). The two gateways do not share outstanding counts, which is a deliberate simplification: say so in a review.
+
+## How this changes at real scale
+
+Assumptions: 20 replicas; 70% of requests share one of 50 system prompts averaging 1,500 tokens; prefill at 10,000 tokens/s per replica.
+
+```
+prefill per request without reuse  = 1,500 / 10,000  = 150 ms
+with prefix hit                    = suffix only     = about 20 ms
+round robin hit chance per prompt  = 1/20 of replicas have it warm  -> mostly misses
+saved per second at 500 req/s x 0.7 hit  = 350 x 1,350 tokens = 472,500 prefill tokens/s
+```
+
+At that rate prefix routing saves the compute of dozens of replicas, which is why production routers (SGLang's router, NVIDIA Dynamo, llm-d) route on cached-prefix trees and live KV usage rather than on request counts ([prefix caching](/phase/6/inference-optimization#prefix-caching-and-radixattention)).

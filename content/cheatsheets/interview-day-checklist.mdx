@@ -1,0 +1,85 @@
+---
+title: Interview-day checklist
+summary: What to set up the night before, the 20–30 minute warm-up, the one-page card to write, and the habits and recovery lines to use during the interview.
+group: Interview
+order: 11
+relatedSectionIds: [p7-final-review, p7-interview-framework, p7-mock-interview-playbook, p7-tradeoff-communication, p7-deep-dive-patterns, p1-estimation]
+---
+
+## Read this before the night before
+
+Read it once now, as the final-review lesson suggests, so nothing here surprises you. Print it and tick it off on D-1 and D-0.
+
+## The night before (D-1)
+
+**Stop**
+
+- [ ] Stop studying early in the evening. Cramming adds little you will recall and costs sleep.
+- [ ] No mock interview tonight. A bad mock the night before teaches nothing you can still use.
+
+**Remote interview: test the setup**
+
+- [ ] The video tool the company uses: installed, signed in, camera and screen share working.
+- [ ] The drawing tool or shared whiteboard you will use: opened, and you can draw a box, an arrow and a table quickly.
+- [ ] Microphone and headphones: tested on a call.
+- [ ] Internet connection: tested; a fallback (phone hotspot) ready.
+- [ ] Paper and a pen on the desk for arithmetic.
+- [ ] Quiet room, notifications off, the invite link and the interviewer's name saved where you can find them.
+
+**On-site interview**
+
+- [ ] Route and travel time checked, with a buffer.
+- [ ] Arrival time set, early enough to sit down calmly.
+- [ ] ID, if the company asked for it.
+
+## The one-page card
+
+Write it by hand, keep it next to you while warming up.
+
+| Line | Content |
+|---|---|
+| The seven steps | Requirements → Estimation → API → Data Model → High-Level Design → Deep Dives → Wrap-up |
+| The 45-minute split | 5 / 5 / 5 / 5 / 10 / 10 / 5 (minute marks 5, 10, 15, 20, 30, 40, 45) |
+| Seconds per day | 86,400 ≈ 10⁵, so 1M/day ≈ 12/s |
+| Peak factor | 2–3× global, 5–10× regional or event-driven |
+| Opening sentence | "I'll spend about five minutes on requirements, then estimate, sketch the API and data model, draw the architecture, and go deep on the riskiest parts." |
+| Two more practised lines | One for signposting a step change, one for closing the wrap-up |
+
+## Interview day (D-0): the warm-up
+
+20–30 minutes in total, **finished at least 30 minutes before the start**.
+
+| Min | Drill | Done when |
+|---|---|---|
+| 5 | One estimation drill: the URL shortener on paper. 100M links/month ÷ ≈ 2.6M s ≈ **40 writes/s**; × 100 ≈ **4,000 reads/s**; × 5 at peak ≈ **19,500/s** | You end with a one-line conclusion |
+| 3 | Say the framework out loud once, with the minute marks | No pause between steps |
+| 5 | One deep-dive answer out loud (for example, a hot key): diagnosis → mechanism with a number → second failure mode → detection → rollout | All five parts said |
+| 1 | Glance at this checklist | Then stop |
+
+## During the interview
+
+| Habit | What it sounds like |
+|---|---|
+| State assumptions | "I'll assume 5× peak because one link can go viral; tell me if you'd prefer another number." |
+| Keep to the clock | Check it at each step boundary; at minute 40, start the wrap-up whatever is unfinished |
+| Signpost | "That's requirements. Next I'll estimate traffic, two or three minutes." |
+| Propose the deep dives | "I'd go deep on ID generation and caching. Or would you rather I look at analytics?" |
+| One operational sentence per decision | "If Redis is cold, the store sees up to 19,300 reads a second, so I size it for that." |
+| Treat interruptions as hints | Answer, then: "Let me return to the create path." |
+
+## If something goes badly
+
+- Say so briefly and move on: "Let me simplify that and come back to it if there's time." Interviewers generally form an overall picture, and a strong recovery is evidence too.
+- Out of time mid deep dive: "Let me stop here and summarise what I'd finish and what breaks first."
+- Blank on a number: state an assumption and its source ("a single Redis node handles on the order of 100,000 simple operations a second") and carry on.
+- Need a moment: "Give me ten seconds to work this out" is fine.
+
+## Closing questions to be ready for
+
+- "Which part of your design are you least sure about?" Name it, and say how you would test it.
+- "What would you monitor in production?" The SLO and its burn rate, saturation of the bottleneck you named, queue lag, cache hit ratio.
+- "What would you change with more time?" Your known weak criterion from your mock reviews, strengthened.
+
+<Callout type="tip" title="Sleep beats an extra mock">
+If you are exhausted or ill, cut the warm-up to the framework out loud and rest. Nothing on this page is worth losing sleep over.
+</Callout>

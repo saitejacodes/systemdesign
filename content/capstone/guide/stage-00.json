@@ -1,0 +1,55 @@
+{
+  "stage": 0,
+  "slug": "design-review",
+  "title": "Design it first: the review",
+  "folder": null,
+  "minutes": 60,
+  "goal": "Before writing code, write the design for \"an LLM inference platform\" in the 7-step interview format. You will build this design over the next 10 stages, then compare it with the model answer.",
+  "changes": [],
+  "run": [],
+  "verify": [],
+  "concepts": [
+    {
+      "sectionId": "p7-interview-framework",
+      "how": "The 7 steps structure the whole review: requirements, estimation, API, data model, high-level design, deep dives, wrap-up."
+    },
+    {
+      "sectionId": "p7-requirements-scoping",
+      "how": "Separate functional requirements (chat, streaming, batch) from the numbers that drive the design (TTFT and TPOT targets, tenants, peak load)."
+    },
+    {
+      "sectionId": "p1-estimation",
+      "how": "Back-of-envelope: requests per second at peak, tokens per second, concurrent streams by Little's law."
+    },
+    {
+      "sectionId": "p6-llm-serving-at-scale",
+      "how": "The reference architecture you are designing toward: gateway, admission, router, replicas, batch tier."
+    },
+    {
+      "sectionId": "p7-building-blocks-map",
+      "how": "Name each block (load balancer, queue, cache, vector index, rate limiter) and why it is there."
+    },
+    {
+      "sectionId": "p7-tradeoff-communication",
+      "how": "Every deep dive ends with what you gave up: hit rate vs correctness, fail-open vs fail-closed."
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "capstone-0-1",
+      "text": "I wrote functional and non-functional requirements, including TTFT and TPOT targets with percentiles."
+    },
+    {
+      "id": "capstone-0-2",
+      "text": "I estimated peak requests/s, output tokens/s and concurrent streams, showing the arithmetic."
+    },
+    {
+      "id": "capstone-0-3",
+      "text": "I drew the high-level design with gateway, router, model replicas, cache, queue and data stores."
+    },
+    {
+      "id": "capstone-0-4",
+      "text": "I picked two deep dives and wrote the trade-off I am accepting in each."
+    }
+  ]
+}

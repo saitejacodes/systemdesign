@@ -1,6 +1,6 @@
 import "server-only";
 import MiniSearch from "minisearch";
-import { getAllSections, getCaseStudies, getGlossary, getResources, sectionHref } from ".";
+import { getAllSections, getCaseStudies, getCheatSheets, getGlossary, getResources, sectionHref } from ".";
 import { SEARCH_OPTIONS, type SearchDoc } from "./search-options";
 
 const slug = (s: string) => s.toLowerCase().replace(/[`*_]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -22,6 +22,7 @@ export function searchDocs(): SearchDoc[] {
   }
   for (const g of getGlossary()) docs.push({ id: `g:${g.slug}`, group: "Glossary", title: g.term, detail: g.definition.slice(0, 120), href: `/glossary#${g.slug}`, text: g.definition });
   for (const c of getCaseStudies()) docs.push({ id: `c:${c.meta.id}`, group: "Case studies", title: c.meta.title, detail: c.meta.summary, href: `/case-studies/${c.meta.id}`, text: `${c.meta.interviewerPrompt} ${c.meta.deepDiveQuestions.join(" ")}` });
+  for (const sh of getCheatSheets()) docs.push({ id: `cs:${sh.slug}`, group: "Reference", title: sh.meta.title, detail: sh.meta.summary, href: `/reference/${sh.slug}`, text: plain(sh.body).slice(0, 4000) });
   const res = [...getResources(), ...getAllSections().flatMap((s) => s.resources)];
   for (const r of new Map(res.map((r) => [r.id, r])).values()) docs.push({ id: `r:${r.id}`, group: "Resources", title: r.title, detail: r.author, href: r.url, text: r.why });
   return docs;

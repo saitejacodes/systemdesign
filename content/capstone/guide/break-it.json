@@ -1,0 +1,151 @@
+[
+  {
+    "id": "capstone-break-1",
+    "n": 1,
+    "title": "Kill a replica mid-stream",
+    "steps": [
+      "cd stage-10-load-test-capacity && docker compose up -d",
+      "curl -sN -D - localhost:8091/v1/chat/completions -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -d '{\"stream\":true,\"max_tokens\":400,\"messages\":[{\"role\":\"user\",\"content\":\"Write 300 words about lighthouses.\"}]}'",
+      "While tokens are arriving, read the x-replica response header and in a second terminal run: docker compose kill <that replica, e.g. llm-2>",
+      "Send the same request again a few times, then: curl -s localhost:8091/admin/replicas"
+    ],
+    "observe": "The first stream ends with an SSE data line carrying an upstream_error ('stream interrupted after N tokens') and no retry: the client already has N tokens. The next requests that would have gone to the dead replica fail before the first token, are retried on another replica (retry_other_replica in the logs), and succeed. After 3 failures /admin/replicas shows the breaker open, so new requests skip it without paying a connection error.",
+    "fix": "This is the designed behaviour: retry only before the first token, open the breaker, and give clients a way to restart a cut stream (keep the request id so the ledger does not double-bill). docker compose start llm-2 and watch the breaker go half-open, then closed after one successful probe.",
+    "concepts": [
+      "p6-llm-serving-at-scale",
+      "p4-circuit-breakers",
+      "p6-ai-reliability"
+    ]
+  },
+  {
+    "id": "capstone-break-2",
+    "n": 2,
+    "title": "Long-prompt flood: prefill starves decode",
+    "steps": [
+      "cd stage-10-load-test-capacity && docker compose up -d",
+      "k6 run -e FLOOD=0 k6/long-prompts.js   (baseline: short interactive chats only)",
+      "k6 run -e FLOOD=1 k6/long-prompts.js   (same chats plus a flood of ~1,500-token prompts)",
+      "Compare ttft{name:interactive} and tpot p95 between the two summaries; watch the Grafana TTFT and TPOT panels during the second run"
+    ],
+    "observe": "With the flood, short requests' TTFT p95 rises sharply and TPOT of streams already decoding rises too, although their own prompts did not change. On a CPU, a replica busy with a long prefill cannot run decode steps for its other slots at full speed: one tenant's long prompts become everyone's latency.",
+    "fix": "Cap prompt length per tier (MAX_TOKENS_LIMIT and a prompt-token limit), charge long prompts more in the token bucket, route long prompts to a dedicated replica pool, and in production use chunked prefill or disaggregated prefill and decode so prefill cannot monopolise a decode step.",
+    "concepts": [
+      "p6-llm-inference-internals",
+      "p6-inference-optimization",
+      "p4-bulkheads-load-shedding"
+    ]
+  },
+  {
+    "id": "capstone-break-3",
+    "n": 3,
+    "title": "A noisy neighbour",
+    "steps": [
+      "cd stage-10-load-test-capacity && docker compose up -d",
+      "k6 run k6/noisy-neighbour.js",
+      "During the run: curl -s localhost:8091/admin/replicas and watch the shed and 429 panels in Grafana"
+    ],
+    "observe": "The free tenant 'noisy' gets 429s once its 4,000 tokens/minute bucket is empty and 503s when queues fill (free may only use the first half of each queue). The gold tenant 'acme' keeps TTFT p95 close to its solo baseline and almost no failures: the thresholds for acme pass.",
+    "fix": "If acme suffers, tighten the free tier's bucket, lower the share of the queue it may use, or give paid tiers a reserved slot per replica (a bulkhead). Check that the limit is in tokens, not requests: a few requests with max_tokens 4,000 must cost more than many small ones.",
+    "concepts": [
+      "p2-rate-limiting",
+      "p4-bulkheads-load-shedding",
+      "p6-llm-serving-at-scale"
+    ]
+  },
+  {
+    "id": "capstone-break-4",
+    "n": 4,
+    "title": "Redis down: fail open or fail closed",
+    "steps": [
+      "cd stage-10-load-test-capacity && docker compose up -d",
+      "docker compose stop redis",
+      "for k in sk-lab-acme-0001 sk-lab-noisy-0001; do curl -s -o /dev/null -w \"$k %{http_code}\\n\" localhost:8080/v1/chat/completions -H \"authorization: Bearer $k\" -H 'content-type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":20}'; done",
+      "docker compose logs gateway-a | grep ratelimit_fail",
+      "Repeat a temperature-0 request twice: the exact cache is also in Redis",
+      "docker compose start redis"
+    ],
+    "observe": "acme (gold) gets 200: it fails open and the log says ratelimit_fail_open. noisy (free) gets 503 with retry-after: it fails closed. Exact-cache lookups miss silently instead of failing the request, so latency rises but answers still flow. Nothing is lost for billing, because the ledger is in Postgres.",
+    "fix": "Decide per tier with RATE_LIMIT_FAIL_OPEN_TIERS and write the decision down. Alert on ratelimit_fail_open, cap the time you will run open, and for real scale keep a local per-gateway allowance so a short Redis outage does not change behaviour at all.",
+    "concepts": [
+      "p4-fault-tolerance",
+      "p3-redis",
+      "p2-rate-limiting"
+    ]
+  },
+  {
+    "id": "capstone-break-5",
+    "n": 5,
+    "title": "Semantic-cache poisoning and false hits",
+    "steps": [
+      "cd stage-10-load-test-capacity && docker compose up -d",
+      "curl -s localhost:8091/admin/similarity -H 'content-type: application/json' -d '{\"a\":\"How do I enable two-factor authentication?\",\"b\":\"How do I disable two-factor authentication?\"}'",
+      "SEMANTIC_THRESHOLD=0.85 docker compose up -d gateway-a gateway-b",
+      "Ask the 'enable' question with header x-semantic-cache: allow and temperature 0, then the 'disable' question the same way (curl -s -D - localhost:8080/v1/chat/completions -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -H 'x-semantic-cache: allow' ...)",
+      "Restore: docker compose up -d gateway-a gateway-b (threshold back to 0.95)"
+    ],
+    "observe": "The two opposite questions score very close (often above 0.9). At 0.85 the 'disable' question returns the 'enable' answer with x-cache: semantic-hit, in milliseconds, with nothing in the response that looks wrong. Anyone who can write an opted-in entry can also seed answers for questions they expect others to ask: that is cache poisoning, which is why entries are scoped per tenant.",
+    "fix": "Keep the threshold high (0.95) and tune it from logged near misses, keep the cache opt-in and per tenant and per model version, never store prompts with PII, add a cheap intent check (negation words, entity mismatch) or a reranker before serving a hit, and sample hits for review.",
+    "concepts": [
+      "p6-embeddings-vector-search",
+      "p6-llm-cost-latency",
+      "p3-cache-strategies"
+    ]
+  },
+  {
+    "id": "capstone-break-6",
+    "n": 6,
+    "title": "Broker restart with a backlog",
+    "steps": [
+      "cd stage-10-load-test-capacity && docker compose up -d",
+      "docker compose stop worker",
+      "Submit 3 batches of 20 requests each with POST /v1/batches (different Idempotency-Key headers); check curl -s localhost:8091/admin/batch-queue shows pending jobs",
+      "docker compose restart nats, then docker compose start worker",
+      "During processing, docker compose kill worker once and start it again",
+      "Count ledger rows: docker compose exec postgres psql -U app -d llm -c \"select count(*), count(distinct request_id) from usage_ledger where source='batch'\""
+    ],
+    "observe": "The backlog survives the broker restart because the stream is file-backed (-sd /data on a volume). Jobs in flight when the worker was killed are redelivered after ack_wait (60 s); some run twice, but the ledger count equals the distinct count: deterministic request ids make the second run a no-op for billing. Every batch reaches done.",
+    "fix": "If jobs were lost, check the stream storage is a volume and the consumer is durable. If rows doubled, make the request id deterministic from batch id and custom_id. If the backlog never drains under interactive load, that is batch yielding as designed: add off-peak capacity or a deadline-aware scheduler.",
+    "concepts": [
+      "p3-delivery-semantics",
+      "p2-idempotency",
+      "p6-batch-processing"
+    ]
+  },
+  {
+    "id": "capstone-break-7",
+    "n": 7,
+    "title": "CPU-throttle one replica: a gray failure",
+    "steps": [
+      "cd stage-10-load-test-capacity && docker compose up -d",
+      "docker update --cpus 0.3 $(docker compose ps -q llm-2)",
+      "k6 run -e RATE=1 -e DURATION=120s k6/step.js, and watch TTFT per replica in Grafana and curl -s localhost:8091/admin/replicas",
+      "Restore: docker update --cpus 0 $(docker compose ps -q llm-2)"
+    ],
+    "observe": "llm-2 still passes its health check and returns 200s, so nothing looks down. But its requests have a much slower first token and TPOT, which drags the fleet's p95 up. Once first tokens exceed BREAKER_SLOW_TTFT_MS (8 s), the breaker counts them as failures and opens; with the default prefix_affinity policy, its outstanding count passes AFFINITY_MAX_OUTSTANDING and the router spills its traffic to the least-loaded replica.",
+    "fix": "Treat slow as failed in breakers, route on outstanding work rather than round robin, alert on per-replica TTFT outliers rather than only on fleet averages, and use health checks that measure a real (tiny) generation's latency, not just process liveness.",
+    "concepts": [
+      "p4-circuit-breakers",
+      "p1-load-balancers",
+      "p5-metrics"
+    ]
+  },
+  {
+    "id": "capstone-break-8",
+    "n": 8,
+    "title": "A model rollout that changes outputs",
+    "steps": [
+      "cd stage-10-load-test-capacity && WITH_CANARY=1 ./scripts/download-models.sh && docker compose up -d",
+      "Send a temperature-0 request twice to fill the exact cache (the second shows x-cache: exact-hit)",
+      "Edit the x-llm anchor in docker-compose.yml to load qwen2.5-0.5b-instruct-q8_0.gguf, but leave MODEL_VERSION unchanged; docker compose up -d llm-1 llm-2 llm-3",
+      "Send the same request: note x-cache and the answer; then npm run eval",
+      "Now set MODEL_VERSION=qwen2.5-0.5b-instruct-q8_0@9217f5d docker compose up -d gateway-a gateway-b and repeat"
+    ],
+    "observe": "With MODEL_VERSION unchanged, the exact and semantic caches keep serving answers produced by the old model, labelled as the new one, and the eval results you recorded no longer describe what is serving. After bumping MODEL_VERSION every cache key changes at once: hit rate drops to zero (a cold-cache load spike) and eval scores move, case by case.",
+    "fix": "Derive the version from the model file and quantisation, never by hand; make it part of every cache key and every eval record; roll out through the canary (CANARY_PERCENT) with the eval gate on the new version first; pre-warm the cache for top prompts or ramp traffic slowly to absorb the cold start.",
+    "concepts": [
+      "p5-release-strategies",
+      "p3-invalidation",
+      "p6-evals-guardrails"
+    ]
+  }
+]

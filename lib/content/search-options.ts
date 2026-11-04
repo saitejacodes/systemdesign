@@ -9,4 +9,4 @@ export const SEARCH_OPTIONS: Options<SearchDoc> = {
   searchOptions: { boost: { title: 3 }, prefix: true, fuzzy: 0.2 },
 };
 
-export const GROUP_ORDER = ["Lessons", "Glossary", "Flashcards", "Case studies", "Resources", "Notes"];
+export const GROUP_ORDER = ["Lessons", "Glossary", "Flashcards", "Case studies", "Reference", "Resources", "Notes"];

@@ -30,7 +30,7 @@
     "free": true
   },
   {
-    "id": "grpc-deadlines",
+    "id": "grpc-deadlines-guide",
     "title": "Deadlines",
     "author": "gRPC documentation",
     "kind": "docs",

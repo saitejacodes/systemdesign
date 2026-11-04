@@ -1,0 +1,110 @@
+---
+title: Availability nines and error budgets
+summary: Downtime per nine over every common window, series and parallel availability math, MTTR, error budgets and burn-rate alerts.
+group: Numbers
+order: 2
+relatedSectionIds: [p4-high-availability, p5-slos, p5-alerting, p1-estimation, p4-fault-tolerance]
+---
+
+## The nines table
+
+Allowed downtime = (1 − availability) × window. Year = 8,760 h = 525,600 min; 30 days = 43,200 min; 28 days = 40,320 min.
+
+| Availability | Per year | Per 30 days | Per 28 days | Per week | Per day |
+|---|---|---|---|---|---|
+| 99% | 87.6 h (3.65 d) | 7.2 h | 6.72 h | 1.68 h | 14.4 min |
+| 99.5% | 43.8 h | 3.6 h | 3.36 h | 50.4 min | 7.2 min |
+| 99.9% | 8.76 h | 43.2 min | 40.3 min | 10.1 min | 86.4 s |
+| 99.95% | 4.38 h | 21.6 min | 20.2 min | 5.04 min | 43.2 s |
+| 99.99% | 52.6 min | 4.32 min | 4.03 min | 60.5 s | 8.64 s |
+| 99.999% | 5.26 min | 25.9 s | 24.2 s | 6.05 s | 0.86 s |
+
+Each extra nine is 10× less downtime and usually far more than 10× the effort. At five nines a month allows less time than it takes a human to read a page, so recovery must be automatic.
+
+## Single component: MTBF and MTTR
+
+**A = MTBF ÷ (MTBF + MTTR)**
+
+| Server failing once a month (MTBF ≈ 720 h) | Arithmetic | Availability | Downtime per year |
+|---|---|---|---|
+| Human replaces it in 1 h | 720 ÷ 721 | 99.86% | ≈ 12 h |
+| Automation replaces it in 5 min | 720 ÷ 720.083 | 99.988% | ≈ 1 h |
+
+Same hardware, about a nine better: most availability engineering is **MTTR engineering** (detect fast, fail over automatically).
+
+## Series and parallel
+
+| Shape | Formula | Example |
+|---|---|---|
+| Series (all must work) | A = A₁ × A₂ × … × Aₙ | 10 hops at 99.9%: 0.999¹⁰ ≈ **99.0%** |
+| Parallel (any one works) | A = 1 − (1 − A₁)(1 − A₂)…(1 − Aₙ) | 2 copies at 99%: 1 − 0.01² = **99.99%** |
+| Parallel inside a shared zone | (1 − (1 − Aᵢ)²) × A_zone | Two 99.5% servers in one 99.9% AZ: ≈ **99.898%**, capped by the zone |
+| Parallel across zones | 1 − (1 − Aᵢ × A_zone)² | Same servers in two AZs: 1 − (1 − 0.995 × 0.999)² ≈ **99.996%** |
+
+**Worked checkout path** (LB 99.99%, app 99.95%, DB 99.9%):
+
+1. All single, in series: 0.9999 × 0.9995 × 0.999 = **99.840%** ≈ 14.0 h/yr.
+2. DB standby, 6 failovers × 90 s = 9 min/yr → DB ≈ 99.998%; chain ≈ **99.938%** ≈ 5.4 h/yr.
+3. Second app server: 1 − 0.0005² ≈ 99.99998%; chain ≈ **99.988%** ≈ 62 min/yr, now dominated by the load balancer.
+
+Redundancy pays only at the weakest link; the next link then becomes the target.
+
+<Callout type="warning" title="Where the parallel formula lies">
+It assumes independent failures. Shared racks, zones, builds, config pushes, DNS, auth services and the failover machinery itself all correlate failures. A survivor that cannot carry the whole load fails next. Treat the parallel result as a best case.
+</Callout>
+
+## Dependencies and the extra nine
+
+Your availability can never exceed the product of your **hard** dependencies. Treynor and co-authors ("The Calculus of Service Availability", ACM Queue, 2017) suggest critical dependencies offer roughly one more nine than the service: a 99.99% service with 5 hard dependencies at 99.999% spends 1 − 0.99999⁵ ≈ 0.005%, **half** its 0.01% budget, on them alone. Ways out: make the dependency soft (cache, fallback, async), or add redundancy.
+
+## Capacity to survive a zone loss
+
+Peak 30,000 req/s. Each surviving zone must carry peak ÷ (zones − 1).
+
+| Zones | Per zone, normal | Per zone after one is lost | Total provisioned |
+|---|---|---|---|
+| 2 | 15,000 | 30,000 | 60,000 (2× peak) |
+| 3 | 10,000 | 15,000 | 45,000 (1.5× peak) |
+| 4 | 7,500 | 10,000 | 40,000 (1.33× peak) |
+
+## Error budgets (Google SRE book, ch. 3; SRE workbook, ch. 2 and 5)
+
+- **Error budget = 1 − SLO** over the SLO window. 99.9% → 0.1% of valid events may be bad.
+- **Request-based example:** 1,000 req/s × 86,400 s × 30 d = 2,592,000,000 requests; budget = **2,592,000** bad requests. A 20-minute incident at 30% errors = 1,000 × 1,200 × 0.3 = 360,000 bad = **13.9%** of the month.
+- **Same thing in time:** 20 min × 30% = 6 min of full outage; 6 ÷ 43.2 = 13.9%.
+- **Rolling 28-day windows** are what the workbook recommends (equal weekdays, match user memory); calendar months suit SLAs and reports.
+
+| Term | Formula | At a 99.9% SLO, 30-day window |
+|---|---|---|
+| Burn rate | observed error rate ÷ (1 − SLO) | 0.1% errors → 1; 1.44% → 14.4; 30% → 300 |
+| Time to exhaust | window ÷ burn rate | Burn 300 → 720 h ÷ 300 = 2.4 h |
+| Budget consumed | burn rate × duration ÷ window | Burn 14.4 for 1 h → 14.4 ÷ 720 = 2% |
+
+## Multiwindow, multi-burn-rate alerts (SRE workbook, "Alerting on SLOs")
+
+| Severity | Long window | Short window | Burn rate | Budget spent when it fires |
+|---|---|---|---|---|
+| Page | 1 h | 5 min | 14.4 | 2% |
+| Page | 6 h | 30 min | 6 | 5% |
+| Ticket | 3 days | 6 h | 1 | 10% |
+
+Both windows must exceed the threshold to fire; the short window makes the alert reset quickly once the problem stops.
+
+## Error budget policy (workbook example, paraphrased)
+
+| Trigger | Consequence |
+|---|---|
+| Budget exceeded over the trailing four weeks | Halt changes except urgent fixes and security patches until back within SLO |
+| One incident uses more than 20% of the four-week budget | Postmortem with at least one high-priority action |
+| One class of outage uses more than 20% in a quarter | It goes on next quarter's planning priorities |
+| Disagreement about the numbers or the policy | Escalate to a named executive |
+
+The field disagrees on hard freezes (clear, but batches risk and punishes teams for dependencies' outages); many teams use softer policies. Both sides agree the consequence is written down before it is needed.
+
+| Layer | Set by | Example | When missed |
+|---|---|---|---|
+| SLI | Engineering | Ratio of non-5xx responses at the load balancer | Nothing: it is a measurement |
+| SLO | Engineering with product | 99.9% over 28 days | Error budget policy applies |
+| SLA | Business and legal | 99.5% per calendar month | Credits or refunds |
+
+The SLA is looser than the SLO so the team acts before money is owed.

@@ -1,0 +1,91 @@
+---
+title: Messaging semantics
+summary: At-most-once, at-least-once and effectively-once, the exact Kafka, RabbitMQ and SQS settings behind each, ordering, dead-letter queues, backpressure and how to pick a broker.
+group: Building blocks
+order: 7
+relatedSectionIds: [p3-delivery-semantics, p3-kafka-vs-queues, p3-queues-vs-pubsub, p3-partitioning-ordering, p3-failure-handling, p3-event-driven, p2-idempotency]
+---
+
+## The three guarantees
+
+| Guarantee | How it is built | Loses messages? | Duplicates? | Typical use |
+|---|---|---|---|---|
+| <Term slug="at-most-once">At-most-once</Term> | Ack (or commit offset) before processing; no producer retries | Yes, on crash | No | Metrics, presence, live location |
+| <Term slug="at-least-once">At-least-once</Term> | Process, then ack; producers retry | No | Yes | Default for business events |
+| <Term slug="effectively-once">Effectively-once</Term> | At-least-once + idempotent consumer, or broker transactions when input and output are both in the broker | No | Effects not duplicated | Payments, ledgers, inventory |
+
+**Exactly-once delivery is impossible in general:** a consumer can crash between doing the work and acknowledging it, and the broker cannot tell "crashed before" from "crashed after". It must redeliver (duplicates) or not (loss). Real systems make duplicates harmless.
+
+## Making duplicates harmless
+
+1. **Naturally idempotent messages.** Carry the new state ("status = SHIPPED"), not a delta ("increment shipped").
+2. **Dedup table in the same transaction as the effect.**
+
+```sql
+BEGIN;
+INSERT INTO processed_messages (message_id) VALUES ('evt-7f3a'); -- unique: fails on a duplicate
+UPDATE orders SET status = 'PAID' WHERE id = 991;
+COMMIT; -- then ack the message
+```
+
+3. **External side effects** (payment API, email): pass the message ID as the provider's <Term slug="idempotency-key">idempotency key</Term>.
+
+A separate "have I seen it?" cache check before the work is not enough: two copies can both pass it.
+
+## Settings that decide the guarantee
+
+| Broker | Producer side | Consumer side |
+|---|---|---|
+| Kafka | `acks=all` (default since 3.0; `0` = don't wait, `1` = leader only); `enable.idempotence=true` (default since 3.0) removes retry duplicates per partition; pair `acks=all` with topic `min.insync.replicas` (commonly 2 of 3 replicas) | Commit offsets **after** processing for at-least-once; auto-commit (`enable.auto.commit`, every 5 s by default) can commit before processing finishes |
+| Kafka transactions | `transactional.id`; writes to several partitions plus the consumer's offsets (`sendOffsetsToTransaction`) commit atomically | Downstream sets `isolation.level=read_committed`; Kafka Streams: `processing.guarantee=exactly_once_v2`. Covers effects **inside Kafka only** |
+| RabbitMQ | Publisher confirms; durable queues and persistent messages; quorum queues (Raft-replicated) for data you cannot lose | Manual ack (`basic.ack`) after processing; unacked messages are requeued if the channel closes. Auto-ack = at-most-once |
+| SQS standard | `SendMessage` retries can duplicate | At-least-once; message reappears after the visibility timeout (default 30 s) unless deleted |
+| SQS FIFO | Deduplication ID drops repeats sent within **5 minutes** | Order per message group; does not help a consumer that processes then crashes before deleting |
+
+## Duplicate arithmetic
+
+SQS standard queue, default 30 s visibility timeout, 2M messages/day, 1% take longer than 30 s → 2,000,000 × 0.01 = **20,000 redeliveries a day** from slowness alone. Fixes, in order: idempotent consumer (always needed), visibility timeout above worst-case processing (e.g. 120 s for a 50 s p99.9), extend it while working (`ChangeMessageVisibility` as a <Term slug="heartbeat">heartbeat</Term>).
+
+## Ordering
+
+| System | Ordering scope | Breaks when |
+|---|---|---|
+| Kafka | Per partition (same key → same partition) | Adding partitions remaps keys; retries without idempotence can reorder |
+| RabbitMQ | Per queue | Several competing consumers, or requeue after a nack |
+| SQS standard | Best effort | Always assume it can reorder |
+| SQS FIFO | Per message group ID | Throughput per group is limited, so pick group IDs per entity |
+
+Order only what needs it (per account, per order), never globally.
+
+## Poison messages and dead-letter queues
+
+- A **poison message** fails every time; at-least-once retries it forever and blocks the partition or queue.
+- Cap attempts, then move it to a <Term slug="dead-letter-queue">dead-letter queue</Term>: SQS redrive policy `maxReceiveCount`; RabbitMQ dead-letter exchange (and a delivery limit on quorum queues); Kafka has no built-in DLQ for consumers, so write a DLQ topic in client code.
+- Alarm on DLQ depth above zero, keep the original payload and error, and redrive only after the fix.
+
+## Backpressure and prefetch
+
+| Mechanism | Example |
+|---|---|
+| Bounded queue, producer blocks | RabbitMQ blocks publishers under a memory or disk alarm |
+| Reject at the edge | `429` / `503` when queue depth is too high |
+| Drop or sample | Analytics events, never payments |
+| Scale consumers on lag | Autoscale on SQS depth or Kafka consumer lag |
+| Pull-based consumption | Kafka consumers poll at their own pace (`max.poll.records`) |
+
+RabbitMQ prefetch (`basic.qos`): too low and a consumer idles a round trip per message; too high and one consumer hoards while others idle. Start near concurrency × a small multiple (10 workers, 50 ms each, 5 ms RTT → prefetch 20–30).
+
+## Picking a broker
+
+| Need | Kafka | RabbitMQ | SQS |
+|---|---|---|---|
+| Replay history, new consumers read the past | Yes, the core feature | Only with streams | No |
+| Many independent consumers of the same data | Consumer groups | One queue per consumer via an exchange | One queue per consumer via SNS |
+| Routing by key pattern or headers | No | Yes (direct, topic, fanout, headers exchanges) | Limited (SNS filter policies) |
+| Per-message ack, retry, DLQ | Offset-based; DLQ in client code | Built in | Built in |
+| Very high sustained throughput | Designed for it | Good, lower ceiling per queue | Standard: effectively unlimited, managed |
+| Operations burden | High if self-managed | Medium | None |
+
+<Callout type="warning" title="The costly mistake">
+"Kafka has exactly-once, so the consumer doesn't need idempotency." Kafka transactions cannot roll back an email, a card charge or a write to another database.
+</Callout>

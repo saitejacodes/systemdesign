@@ -1,0 +1,216 @@
+# Stage 7: an asynchronous batch path. POST /v1/batches writes jobs to NATS JetStream; the worker pulls them
+# and runs each through the gateway at the lowest priority, so batch work only uses spare capacity.
+# Topology from stage 4:
+#   client -> nginx :8080 (L7, round robin) -> gateway-a | gateway-b -> router -> llm-1 | llm-2 | llm-3
+# The gateways are also published on 8091 and 8092 so you can read each one's /admin/replicas.
+x-llm: &llm
+  image: ghcr.io/ggml-org/llama.cpp:server-b6075
+  command:
+    - --model
+    - /models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+    - --alias
+    - qwen2.5-0.5b-instruct
+    - --host
+    - 0.0.0.0
+    - --port
+    - "8080"
+    - --ctx-size
+    - "8192"
+    - --parallel
+    - "4"
+    - --threads
+    - ${LLM_THREADS:-2}
+    - --metrics
+  volumes:
+    - ./models:/models:ro
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+    interval: 5s
+    timeout: 3s
+    retries: 30
+    start_period: 10s
+  restart: unless-stopped
+
+x-gateway: &gateway
+  build: .
+  image: llm-gateway:stage-07
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    embed:
+      condition: service_healthy
+    nats:
+      condition: service_healthy
+    llm-1:
+      condition: service_healthy
+    llm-2:
+      condition: service_healthy
+    llm-3:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
+    interval: 5s
+    timeout: 3s
+    retries: 5
+  restart: unless-stopped
+
+x-gateway-env: &gateway-env
+  PORT: "8080"
+  LLM_REPLICAS: http://llm-1:8080,http://llm-2:8080,http://llm-3:8080
+  ROUTER_POLICY: ${ROUTER_POLICY:-prefix_affinity}
+  AFFINITY_MAX_OUTSTANDING: "4"
+  MODEL_NAME: qwen2.5-0.5b-instruct
+  DATABASE_URL: postgres://app:app@postgres:5432/llm
+  DB_POOL_MAX: "10"
+  REDIS_URL: redis://redis:6379
+  RATE_LIMIT_FAIL_OPEN_TIERS: ${RATE_LIMIT_FAIL_OPEN_TIERS:-gold,standard}
+  MODEL_VERSION: ${MODEL_VERSION:-qwen2.5-0.5b-instruct-q4_k_m@9217f5d}
+  EMBED_URL: http://embed:8080
+  EXACT_CACHE_TTL_SECONDS: "3600"
+  SEMANTIC_CACHE_TTL_SECONDS: "3600"
+  SEMANTIC_THRESHOLD: ${SEMANTIC_THRESHOLD:-0.95}
+  NATS_URL: nats://nats:4222
+  BATCH_QUEUE_MAX: ${BATCH_QUEUE_MAX:-1000}
+  WORKER_CONCURRENCY: "2"
+  # Secrets come from the environment (a .env file next to this one, never committed), not from the image.
+  INTERNAL_TOKEN: ${INTERNAL_TOKEN:-change-me-internal-token}
+  # Each replica has 4 llama.cpp slots and there are 2 gateways, so each gateway may use 2 per replica.
+  # Static partitioning is simple; its cost is that one gateway cannot borrow the other's idle slots.
+  SLOTS_PER_REPLICA: "2"
+  MAX_QUEUE: ${MAX_QUEUE:-8}
+  MAX_QUEUE_WAIT_MS: "5000"
+  CONTEXT_PER_SLOT: "2048"
+
+services:
+  nginx:
+    image: nginx:1.27.4-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      gateway-a:
+        condition: service_healthy
+      gateway-b:
+        condition: service_healthy
+    restart: unless-stopped
+
+  gateway-a:
+    <<: *gateway
+    environment:
+      <<: *gateway-env
+      INSTANCE_ID: gateway-a
+    ports:
+      - "8091:8080"
+
+  gateway-b:
+    <<: *gateway
+    environment:
+      <<: *gateway-env
+      INSTANCE_ID: gateway-b
+    ports:
+      - "8092:8080"
+
+  worker:
+    build: .
+    image: llm-gateway:stage-07
+    command: ["node", "dist/worker.js"]
+    environment:
+      <<: *gateway-env
+      INSTANCE_ID: worker
+      GATEWAY_URL: http://nginx
+    depends_on:
+      nginx:
+        condition: service_started
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nats:
+    image: nats:2.10.26-alpine
+    # -js enables JetStream, -sd is where it stores streams (a volume, so jobs survive a restart), -m is monitoring.
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - natsdata:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz?js-enabled-only=true"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  llm-1:
+    <<: *llm
+  llm-2:
+    <<: *llm
+  llm-3:
+    <<: *llm
+
+  embed:
+    image: ghcr.io/ggml-org/llama.cpp:server-b6075
+    command:
+      - --model
+      - /models/bge-small-en-v1.5-q8_0.gguf
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --embeddings
+      # BGE models use the [CLS] token's vector as the sentence embedding.
+      - --pooling
+      - cls
+      - --ctx-size
+      - "512"
+      - --threads
+      - "2"
+    volumes:
+      - ./models:/models:ro
+    ports:
+      - "8082:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  postgres:
+    # Postgres 17 with the pgvector extension preinstalled.
+    image: pgvector/pgvector:0.8.0-pg17
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: llm
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U app -d llm"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7.4.2-alpine3.21
+    # Limiter buckets and exact-cache entries, no persistence. Both kinds of key carry a TTL, so volatile-lru can
+    # evict either; an evicted bucket resets to full (generous). Production would split limiter and cache.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "volatile-lru"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:
+  natsdata:

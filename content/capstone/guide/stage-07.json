@@ -1,0 +1,136 @@
+{
+  "stage": 7,
+  "slug": "batch-queue",
+  "title": "An async batch path on NATS JetStream",
+  "folder": "stage-07-batch-queue",
+  "minutes": 120,
+  "goal": "Accept offline jobs (POST /v1/batches) into a durable queue and run them in the background at the lowest priority, so batch work only uses capacity interactive traffic leaves free. Delivery is at-least-once; workers are idempotent; usage goes to the same ledger; a full queue pushes back.",
+  "changes": [
+    {
+      "path": "src/queue.ts",
+      "change": "added",
+      "note": "JetStream work-queue stream with file storage, max_msgs + discard new (backpressure), 2-minute duplicate window; pull consumer with ack_wait and max_deliver."
+    },
+    {
+      "path": "src/batches.ts",
+      "change": "added",
+      "note": "POST /v1/batches with a required Idempotency-Key (one transaction); GET /v1/batches/:id."
+    },
+    {
+      "path": "src/worker.ts",
+      "change": "added",
+      "note": "Pull loop, heartbeats, defer on 429/503, retries with full-jitter backoff, terminal failure after 5 deliveries, sweeper for the dual-write gap."
+    },
+    {
+      "path": "src/auth.ts",
+      "change": "modified",
+      "note": "Internal token + tenant id for worker-to-gateway calls (constant-time compare)."
+    },
+    {
+      "path": "src/chat.ts",
+      "change": "modified",
+      "note": "Batch requests: lowest priority, not charged to the interactive bucket, deterministic request id, ledger source batch."
+    },
+    {
+      "path": "migrations/004_batches.sql",
+      "change": "added",
+      "note": "batches (unique tenant + idempotency key) and batch_items."
+    },
+    {
+      "path": "docker-compose.yml",
+      "change": "modified",
+      "note": "nats (JetStream, volume, monitoring on 8222) and worker."
+    },
+    {
+      "path": "package.json",
+      "change": "modified",
+      "note": "nats 2.29.3; dev:worker script."
+    }
+  ],
+  "run": [
+    {
+      "label": "Start the stack",
+      "cmd": "docker compose up -d --build"
+    }
+  ],
+  "verify": [
+    {
+      "label": "Submit a batch",
+      "cmd": "curl -s localhost:8080/v1/batches -H 'authorization: Bearer sk-lab-acme-0001' -H 'content-type: application/json' -H 'Idempotency-Key: demo-batch-1' -d '{\"requests\":[{\"custom_id\":\"q1\",\"body\":{\"messages\":[{\"role\":\"user\",\"content\":\"Capital of Italy?\"}],\"max_tokens\":16}},{\"custom_id\":\"q2\",\"body\":{\"messages\":[{\"role\":\"user\",\"content\":\"2+2?\"}],\"max_tokens\":8}}]}'",
+      "expect": "HTTP 202 {\"id\":\"batch_...\",\"status\":\"queued\",\"total\":2}."
+    },
+    {
+      "label": "Submit it again (a client retry)",
+      "cmd": "(repeat the previous command unchanged)",
+      "expect": "HTTP 200 {\"id\":\"batch_...\" (the same id),\"status\":\"exists\"}: nothing is enqueued twice."
+    },
+    {
+      "label": "Poll the result",
+      "cmd": "curl -s localhost:8080/v1/batches/<id> -H 'authorization: Bearer sk-lab-acme-0001'",
+      "expect": "counts.done reaches 2; each item has status done, a response and token counts."
+    },
+    {
+      "label": "Usage landed in the ledger as batch",
+      "cmd": "docker compose exec postgres psql -U app -d llm -c \"SELECT request_id, source, completion_tokens FROM usage_ledger WHERE source = 'batch'\"",
+      "expect": "Rows with request_id batch:<batchId>:q1 and :q2: deterministic ids, so a redelivered job reuses the same row."
+    },
+    {
+      "label": "Queue depth",
+      "cmd": "curl -s localhost:8091/admin/batch-queue; curl -s 'localhost:8222/jsz?streams=true' | head -c 400",
+      "expect": "{\"pending\":0,\"inProgress\":0} when drained; the NATS monitoring endpoint shows stream BATCH."
+    },
+    {
+      "label": "Batch yields to interactive traffic",
+      "cmd": "docker compose logs worker | grep batch_job_deferred | tail -3",
+      "expect": "While you flood interactive requests (stage 3's loop), jobs get 503 from admission (batch only queues in the first half) and the worker logs batch_job_deferred with a retry delay."
+    }
+  ],
+  "concepts": [
+    {
+      "sectionId": "p3-delivery-semantics",
+      "how": "At-least-once with explicit acks and ack_wait; effectively-once through idempotent processing."
+    },
+    {
+      "sectionId": "p3-kafka-vs-queues",
+      "how": "A work queue (each message to one worker, deleted on ack) rather than a replayable log."
+    },
+    {
+      "sectionId": "p3-event-driven",
+      "how": "Postgres commit then queue publish is a dual write; the sweeper patches the gap the outbox pattern closes."
+    },
+    {
+      "sectionId": "p2-idempotency",
+      "how": "Idempotency-Key on submit, msgID dedupe on publish, primary keys on results and ledger."
+    },
+    {
+      "sectionId": "p4-timeouts-retries",
+      "how": "Exponential backoff with full jitter on worker retries; a retry cap (max_deliver)."
+    },
+    {
+      "sectionId": "p6-batch-processing",
+      "how": "Idempotent pipelines: rerunning a job must not change the result or the bill."
+    },
+    {
+      "sectionId": "p6-llm-serving-at-scale",
+      "how": "The batch tier fills the headroom you must keep for peaks, at the lowest priority."
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "capstone-7-1",
+      "text": "A batch of two requests completed and both results are in GET /v1/batches/:id."
+    },
+    {
+      "id": "capstone-7-2",
+      "text": "Resubmitting with the same Idempotency-Key returned the same batch id with status exists."
+    },
+    {
+      "id": "capstone-7-3",
+      "text": "Batch usage rows have deterministic request ids (batch:<id>:<custom_id>)."
+    },
+    {
+      "id": "capstone-7-4",
+      "text": "I saw batch jobs deferred while interactive traffic filled the queues."
+    }
+  ]
+}
