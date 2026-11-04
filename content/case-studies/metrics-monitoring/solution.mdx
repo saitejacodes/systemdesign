@@ -1,0 +1,340 @@
+## Requirements
+
+A metrics system is a database with an unusual shape: it is written to far more than it is read, almost every write is a new row, the data loses value with age, and the most important reader is not a person but the alert evaluator that must keep working while the systems around it are on fire.
+
+**Functional requirements**
+
+1. Agents on 100,000 hosts push samples: each host reports **1,000 time series every 10 s**. A time series is a metric name plus a set of labels, for example `http_requests_total` with `service="checkout", status="500", az="b"`.
+2. Engineers query with a PromQL-style language over ranges from the last hour to the last year, and build dashboards from those queries.
+3. Alert rules (a query plus a threshold and a duration) are evaluated **at least once a minute**; firing alerts page the on-call engineer through the external paging provider.
+4. Notifications are grouped and deduplicated, can be silenced during maintenance, and resolve when the condition clears.
+5. Recording rules precompute expensive expressions into new series.
+
+**Non-functional requirements**
+
+| Property | Target | Why |
+|---|---|---|
+| Ingest throughput | 10M samples/s sustained, 2× burst | Agents replay buffered data after a network partition |
+| Freshness | A sample is queryable within 30 s of being sent | Alerts and dashboards during an incident need current data |
+| Alerting availability | Higher than everything else, including during partial infrastructure failure | The pager is the product; dashboards are a convenience |
+| Query latency | p99 under 1 s for last-hour dashboards; under 10 s for a year | Dashboards refresh every minute during incidents |
+| Durability | Lose at most a few seconds of samples on a crash; nothing once flushed | Gaps in data look like outages |
+| Retention | Full resolution 15 days, 5-minute resolution 90 days, 1-hour resolution 13 months | Last-year queries without storing every 10 s sample for a year |
+
+**Out of scope:** logs and traces (separate pipelines that may share the alerting layer), anomaly detection with machine learning, and per-tenant billing.
+
+<Callout type="tip" title="Rank the readers">
+Say explicitly that alert evaluation outranks dashboards. It justifies isolating the two read paths, shedding dashboard load first, and keeping the alerting path's dependencies to a minimum. Most candidates design one query path for both.
+</Callout>
+
+## Estimation
+
+Every number is an assumption of this problem, not a measurement of a real system.
+
+**Series and samples.** 100,000 hosts × 1,000 series = **100M active series**. One sample per series every 10 s: 100M ÷ 10 = **10M samples/s**.
+
+**Write requests.** Each agent sends one batch per interval: 100,000 ÷ 10 = **10,000 requests/s** of 1,000 samples each. The 2× burst is 20,000 requests/s (20M samples/s).
+
+**Ingest bandwidth.** Remote-write style batches carry each series' labels with its sample. Assume about 150 B of labels plus 16 B of timestamp and value per sample, 166 KB per uncompressed batch, and about 25 KB after compression: 10,000 × 25 KB = **250 MB/s ≈ 2 Gbit/s** inbound.
+
+**Series churn.** Deploys and pod restarts create new label values. Assume 10% of series are replaced each day: 10M new series a day that the index must absorb and later expire.
+
+**Compressed storage.** Facebook's Gorilla paper (Pelkonen et al., VLDB 2015) reports an average of 1.37 bytes per 16-byte data point; Prometheus documents roughly 1 to 2 bytes per sample. Use **1.5 B**:
+
+- Full resolution: 10M × 1.5 B = 15 MB/s = **1.3 TB/day**. For 15 days: about **19 TB**.
+- 5-minute rollups (keep count, sum, min, max), assume 8 B per rollup point: 100M series × 288 points/day × 8 B = 230 GB/day; 90 days ≈ **21 TB**.
+- 1-hour rollups: 100M × 24 × 8 B = 19 GB/day; 395 days ≈ **8 TB**.
+- Total in object storage ≈ **48 TB** after the compactor deduplicates replicas. That is cheap; storage volume is not the hard part.
+
+**Memory in the ingesters.** The newest 2 hours of every series stay in memory so writes are appends and fresh queries never touch disk. Assume 4 KB per active series for labels, index entries and open chunks. With replication factor 3: 300M series × 4 KB = **1.2 TB of RAM** across the fleet. Assume one ingester holds 10M series (40 GB) and appends 1M samples/s: 300M ÷ 10M = **30 ingesters**, 10 per zone, each taking 30M ÷ 30 = 1M samples/s.
+
+**Queries.** Assume 300 dashboards open on average, 20 panels each, refreshing every 60 s: 300 × 20 ÷ 60 = **100 queries/s**. During a big incident 3,000 dashboards are open: 1,000 queries/s. Alerting: 150,000 alert and recording rules evaluated every 60 s = **2,500 evaluations/s**, around the clock.
+
+**Why rollups matter, in one calculation.** A year-long panel over 1,000 series at full resolution reads 1,000 × 3.15M samples = 3.15B samples, about 4.7 GB compressed. From 1-hour rollups it reads 1,000 × 8,760 = 8.8M points, roughly 70 MB. That is the difference between a timeout and a 2 s query.
+
+| Quantity | Average | Burst |
+|---|---|---|
+| Samples ingested | 10M/s | 20M/s |
+| Write requests | 10,000/s | 20,000/s |
+| Rule evaluations | 2,500/s | 2,500/s (fixed schedule) |
+| Dashboard queries | 100/s | 1,000/s in incidents |
+| Hot RAM (RF 3) | 1.2 TB | — |
+| Object storage | 48 TB | — |
+
+For Run mode the workload is 10,000 write requests/s plus 2,600 reads/s (rules and dashboards): 12,600 QPS at a read:write ratio of 0.26, with a 2× peak.
+
+## API design
+
+**Ingest (agents, authenticated with a per-host token):**
+
+```http
+POST /api/v1/push
+Content-Type: application/x-protobuf
+Content-Encoding: snappy
+X-Tenant: payments
+
+<protobuf WriteRequest: 1,000 series, each with labels and one or more samples>
+
+204 No Content
+```
+
+```http
+429 Too Many Requests
+Retry-After: 10
+{ "error": "per-tenant series limit reached (5,000,000 active series)", "limit": "max_series_per_tenant" }
+```
+
+`204` is returned only once a quorum of ingester replicas (2 of 3) has appended the samples. A `429` tells the agent to keep the batch in its local buffer and retry with backoff. A `400` for a malformed or out-of-order sample is not retried, so one bad series cannot block a whole batch forever.
+
+**Query (engineers and the rule evaluator):**
+
+```http
+GET /api/v1/query_range?query=sum%20by%20(status)%20(rate(http_requests_total%5B5m%5D))&start=2026-11-04T09:00:00Z&end=2026-11-04T10:00:00Z&step=30s
+
+200 OK
+{ "status": "success", "data": { "resultType": "matrix", "result": [
+  { "metric": { "status": "500" }, "values": [[1793782800, "12.4"], [1793782830, "13.1"]] } ] },
+  "stats": { "seriesFetched": 412, "resolution": "raw", "cacheHit": false } }
+```
+
+The decoded query is `sum by (status) (rate(http_requests_total[5m]))`. Long ranges are answered from rollups automatically; the response says which resolution was used so a dashboard can show it.
+
+**Rules (configuration, versioned):**
+
+```http
+PUT /api/v1/rules/payments/checkout-slo
+Content-Type: application/yaml
+
+name: checkout-slo
+interval: 30s
+rules:
+  - alert: CheckoutErrorBudgetBurn
+    expr: sum(rate(http_requests_total{service="checkout",status=~"5.."}[5m])) / sum(rate(http_requests_total{service="checkout"}[5m])) > 0.02
+    for: 5m
+    labels: { severity: page, team: payments }
+    annotations: { runbook: "https://runbooks.internal/checkout-errors" }
+
+202 Accepted
+{ "group": "checkout-slo", "version": 18, "assignedEvaluator": "ruler-b-2" }
+```
+
+**Notification (outbound to the paging provider):** one call per alert group, carrying a stable dedup key (a hash of the group's labels), so a retried notification updates the same incident instead of opening a second one.
+
+## Data model
+
+| Entity | Key | Contents | Where |
+|---|---|---|---|
+| Series | series id = hash of the sorted label set | metric name, labels | Ingester memory (head); block index in object storage |
+| Postings (inverted index) | label pair, for example `service=checkout` | sorted list of series ids | Ingester memory; per-block index file |
+| Chunk | series id + time range | about 120 compressed samples (20 min at 10 s) | Ingester memory, then blocks in object storage |
+| Block | tenant + time range (2 h, later compacted to 24 h) | chunks + index + metadata for all series in that range | Object storage |
+| Rollup block | tenant + resolution + time range | count, sum, min, max per series per step | Object storage |
+| Rule group, silence, routing config | tenant + name + version | YAML definitions, history | SQL |
+| Alert state | rule + label set | pending/firing, since, last evaluation | Evaluator memory, checkpointed |
+
+**Why not a general-purpose database.** The write pattern is append-only, time-ordered within each series, and enormous: 10M rows a second. A relational table with an index on (series, timestamp) pays a B-tree update per sample and stores 16+ bytes per point plus row overhead. A wide-column store such as Cassandra handles the write rate but stores each sample as a cell, an order of magnitude larger than 1.5 B, and cannot answer "every series with `service=checkout` and `status=500`" without a separate index. A purpose-built <Term slug="time-series-database">time-series database</Term> design wins on all three counts: compressed chunks per series, an inverted index on labels, and immutable time-partitioned blocks that make retention a matter of deleting old files.
+
+**Why object storage for blocks.** Once a 2-hour block is cut it never changes, so it belongs in cheap, durable <Term slug="object-storage">object storage</Term>. Ingesters then hold only the last few hours, which bounds their memory and makes them replaceable. This is the shape of Prometheus' TSDB plus the long-term storage layers built around it (Thanos, Cortex, Grafana Mimir).
+
+**Rules and silences live in SQL** because they are small, edited by people, need history ("who silenced this?") and benefit from constraints.
+
+## High-level design
+
+<Figure caption="FIG. 1 · METRICS AND ALERTING · TWO DOORS, ZONE-REPLICATED INGESTERS, SEPARATE ALERT PATH">
+<Diagram label="Agents push through an ingest load balancer to stateless distributors in three zones, which hash each series to ingesters with one replica per zone. Ingesters cut 2-hour blocks into object storage, where a compactor deduplicates and downsamples them. Engineers query through a query load balancer to query services with a results cache, which read recent data from ingesters and older data from object storage. A ruler evaluates alert rules directly against the ingesters and sends alerts to a clustered alert manager, which pages through the external provider." chart={`flowchart LR
+  H["Agents on 100k hosts"] --> ILB["Ingest LB"]
+  ILB --> D["Distributors x3 zones"]
+  D -- "hash(series), RF 3, one per zone" --> I[("Ingesters, 2 h in memory + WAL")]
+  I -- "cut 2 h blocks" --> OBJ[("Object storage blocks")]
+  OBJ --> CMP["Compactor: dedup, 5 m and 1 h rollups"]
+  CMP --> OBJ
+  E["Engineers"] --> QLB["Query LB"]
+  QLB --> Q["Query service x3 zones"]
+  Q --> RC["Results cache"]
+  Q -- "recent" --> I
+  Q -- "older, rollups" --> OBJ
+  R["Ruler, sharded by rule group"] -- "evaluate every 30-60 s" --> I
+  R --> AM["Alert manager cluster x3"]
+  AM -- "grouped, deduped" --> P(("Paging provider"))
+  MM["Meta-monitoring, separate failure domain"] -. "dead man's switch" .-> P`} />
+</Figure>
+
+**Walkthrough: a write.**
+
+1. An agent batches its 1,000 samples and pushes to the ingest load balancer, which picks any distributor.
+2. The distributor validates the batch (label count and length limits, timestamps not too old or in the future), checks the tenant's ingestion rate and active-series limits, and computes each series id by hashing its labels.
+3. It looks up the series' owners on a <Term slug="consistent-hashing">consistent-hash</Term> ring of ingesters with **zone-aware replication**: three replicas, one in each zone. It sends each ingester the slice of the batch it owns, in parallel.
+4. Each ingester appends the samples to the series' open chunk in memory and to its write-ahead log on local disk. When 2 of 3 replicas acknowledge, the distributor returns `204`. The sample is now queryable: freshness is seconds, well inside 30 s.
+5. Every 2 hours each ingester cuts its in-memory data into an immutable block and uploads it. The compactor later merges the three replicas' blocks into one (deduplicating samples), compacts 2-hour blocks into 24-hour blocks, and writes 5-minute and 1-hour rollups.
+
+**Walkthrough: a dashboard query.**
+
+1. The query load balancer sends the request to a query service. Its front end splits a long range into one-day pieces, serves pieces it has already computed from the results cache, and runs the rest in parallel.
+2. For each piece it picks a resolution: raw for ranges under about 2 days, 5-minute rollups up to about 3 months, 1-hour beyond that.
+3. Pieces in the last few hours are answered by the ingesters (via the same ring, reading from any 2 replicas and merging); older pieces read block indexes and chunks from object storage through a cache of index headers and chunks.
+4. Results are merged, cached (except the still-changing last few minutes) and returned.
+
+**Walkthrough: an alert.**
+
+1. The ruler, sharded so each rule group has one owner, evaluates `CheckoutErrorBudgetBurn` every 30 s directly against the ingesters, bypassing the dashboard query path.
+2. The condition becomes true: the alert is **pending**. It stays true for the `for: 5m` duration, so it becomes **firing**, and the ruler sends it to all three alert manager replicas.
+3. The alert managers group it with related alerts (same team and service) for a short wait, deduplicate across replicas by gossiping a notification log, apply silences and inhibitions, and send one page to the provider.
+
+**Sizing the reference design.** Each tier must carry the 2× burst with one zone lost.
+
+- **Distributors** are stateless. Assume one handles 2,000 batches/s (2M samples/s). The burst of 20,000 batches/s over the 2 surviving zones is 10,000 per zone; at 8 per zone that is 10,000 ÷ (8 × 2,000) = 62% busy. Run **8 per zone, 24 in total**.
+- **Ingesters**: **10 per zone, 30 in total**, as estimated. Assume one can append 3M samples/s. With one replica per zone, losing a zone does not move series onto the survivors, so each surviving ingester still appends 1M samples/s on average and 2M at the burst: 67% busy.
+- **Queriers**: assume 500 front-end requests/s each, most answered from the results cache. The incident load of 1,000 queries/s on 2 surviving zones of 3 is 1,000 ÷ (6 × 500) = 33% busy. Run **3 per zone**.
+- **Rulers**: assume one evaluates 1,000 rules/s against ingester memory. 2,500 evaluations/s on 4 survivors of 6 is 63% busy. Run **2 per zone, 6 in total**, plus **3 alert manager replicas**, one per zone.
+
+Run mode simplifies one thing here: it sends every request type from both clients in proportion to their user counts, so in the Design Studio model most "read" traffic enters through the ingest door and some "write" traffic through the query door. The totals reaching the ingesters are the same either way, which is what the reference design is sized for.
+
+## Deep dives
+
+### How does the write path absorb 10M samples/s, and what happens when someone adds a high-cardinality label?
+
+**Sharding.** Hashing by series id spreads load evenly because there are 100M series and no series gets more than one sample per 10 s. The alternative, sharding by metric name, keeps a metric's series together (cheaper queries) but creates <Term slug="hot-shard">hot shards</Term>: `http_requests_total` might have 10M series on its own. Series hashing with parallel fan-out at query time is the standard trade.
+
+**Replication.** Three replicas, one per zone, written with a quorum of 2. Losing a zone leaves two replicas of every series, so writes and reads still reach a quorum and **no data moves**. A Kafka log in front of the ingesters is the main alternative: it absorbs bursts and makes ingesters rebuildable by replay, at the cost of another stateful system and a few seconds of extra delay before data is queryable. Choose it when ingest bursts are much larger than 2×; otherwise direct replicated writes are simpler and fresher.
+
+**Cardinality is the real write-path risk.** Throughput scales by adding distributors and ingesters. The number of distinct series is what breaks the system, because memory, index size and query fan-out all scale with it. A worked <Term slug="cardinality-explosion">cardinality explosion</Term>: a team adds a `user_id` label to `http_requests_total`, which already has 200 services × 10 status codes × 20 routes = 40,000 series. With 1M active users that becomes up to 40 billion series, and even 1% of those combinations appearing is 400M new series, four times the whole system's capacity, arriving in one deploy.
+
+Defences, in the order they act:
+
+- **Per-tenant limits at the distributor**: maximum active series per tenant (say 5M), maximum label values per metric, maximum labels per series. The excess is rejected with a `429` that names the limit, so the team that caused it sees it and the rest of the system is unaffected.
+- **Visibility**: a per-metric series count exposed as a metric, and a "top 10 metrics by series growth in the last hour" view, so the cause is found in minutes.
+- **Guidance**: high-cardinality identifiers belong in logs and traces, linked from metrics by <Term slug="exemplar">exemplars</Term>, not in metric labels.
+
+**Failure timeline: one label ships on a Tuesday afternoon.** A fictional checkout team deploys code that adds `user_id` to `http_requests_total`. The rate of new series is an assumption: 200 pods each meeting about 125 new users a second, 25,000 new series/s, against a normal churn of 10M ÷ 86,400 ≈ 116/s.
+
+| Time | What happens | How it is seen |
+|---|---|---|
+| 14:00:00 | Rolling deploy starts across 200 pods | Nothing yet |
+| 14:00:10 | The first pods push; each new user creates a new series. The tenant's new-series rate jumps 200-fold | The per-tenant series-growth graph turns vertical |
+| 14:02:10 | The tenant's active series climb from 2M to its 5M limit: 3M ÷ 25,000/s = 120 s | Distributors start returning `429` for samples that would create new series; existing series are still accepted |
+| 14:02:30 | `TenantSeriesLimitReached` pages the payments on-call and the observability team | The rest of the company sees nothing |
+| 14:10 | The top-growth view names the label; the team starts a rollback | Checkout's new per-user panels are empty; its existing alerts keep working |
+| 14:25 | Rollback complete; new series stop | Abandoned series stop receiving samples and leave memory at the next block cut, within 2 hours |
+
+Without the limit, the same deploy is a company-wide outage. 25,000 series/s × 4 KB × 3 replicas = 300 MB/s of ingester RAM. Assume each ingester has 56 GB usable: 30 × 56 GB = 1.68 TB, minus the 1.2 TB in use, leaves 480 GB of headroom, gone in 480 GB ÷ 0.3 GB/s = 1,600 s, about **27 minutes**. Ingesters then run out of memory one after another, replay the same series from their write-ahead log on restart and fail again, and every tenant loses ingestion and alerting at once, during the exact incident the alerts were meant to report.
+
+<Misconception wrong="A metrics system's capacity is measured in samples per second." right="Samples per second sets the CPU and network bill; active series sets memory, index size and query cost, and series count is what a single careless label can multiply by a thousand. Capacity planning and limits must be in series as well as samples." />
+
+### How do you store time series compactly? (awareness)
+
+The Gorilla paper's encoding, which Prometheus and most successors adapted, exploits two regularities:
+
+- **Timestamps** arrive at a nearly fixed interval. Store the first timestamp, then the delta, then only the **delta of deltas**. For a series reported every 10 s, the delta of deltas is usually 0, which the paper encodes in a single bit.
+- **Values** change slowly. XOR each float with the previous one; identical values XOR to 0 (one bit), and similar values share leading and trailing zero bits, so only the meaningful middle bits are stored.
+
+Together these give the paper's 1.37 bytes per sample instead of 16. The cost is that a chunk must be decoded from its start, so chunks are kept short (about 120 samples) to bound the work to reach any point.
+
+Samples are grouped into **2-hour blocks**, each with its own inverted index from label pairs to series ids. Fabian Reinartz's 2017 post "Writing a Time Series Database from Scratch", which introduced Prometheus' current storage engine, describes why: time-partitioned immutable blocks make queries over a range touch only a few blocks, make deletion by retention free (drop whole blocks), and keep the index of short-lived series from accumulating forever. A query for `service="checkout", status="500"` intersects two sorted posting lists per block, which is fast even with millions of series.
+
+### How do downsampling and the query path serve both the last hour and the last year quickly?
+
+**Resolution tiers.** The compactor writes 5-minute and 1-hour rollups and keeps count, sum, min and max for each step, because a rollup of only the average gives wrong answers: you cannot compute a maximum, a rate of a counter, or a percentile from averages. Rates over rollups use the counter's increase per step; percentiles over long ranges need histograms with stored buckets, not rolled-up quantile values. The Thanos project documents this approach (5-minute and 1-hour downsampling with aggregates kept per step), and it is the common design.
+
+| Query range | Resolution | Points per series |
+|---|---|---|
+| 1 hour | raw (10 s) | 360 |
+| 7 days | raw | 60,480, still fine |
+| 90 days | 5 min | 25,920 |
+| 1 year | 1 h | 8,760 |
+
+**Query front end.** Three techniques do most of the work:
+
+- **Split by time**: a 7-day query becomes seven 1-day queries run in parallel, each cacheable independently.
+- **Results cache**: dashboards are re-run every minute with a window that slides by one minute, so all but the newest piece is a cache hit. Do not cache the last few minutes, which are still being written. With 20-panel dashboards refreshing every minute, an assumed 70% hit rate removes most of the load during an incident, which is exactly when 3,000 dashboards are open.
+- **Limits**: maximum series per query (say 500,000), maximum samples touched, and a query timeout, so one `sum(rate(...))` over every series cannot starve the ingesters.
+
+**Isolation.** Dashboard queries and rule evaluations both read the ingesters, so give them different budgets: separate query-service pools, and per-request priority at the ingesters with dashboard queries shed first. During an incident, the dashboards' 10× load must not delay the alerts that tell people the incident is getting worse.
+
+<TradeoffBox title="Downsampling" items={[
+  { gain: "Year-long queries read about 0.3% of the points they would at raw resolution", cost: "Spikes shorter than a rollup step are visible only through the stored max and min, not in shape" },
+  { gain: "Long retention costs about 8 TB instead of hundreds", cost: "A compactor to run, monitor and keep up; if it falls behind, long-range queries get slow" }
+]} />
+
+### How do you evaluate alert rules reliably at least once a minute, and keep alerting when the infrastructure is failing?
+
+**Sharding the rule evaluator.** 150,000 rules every 60 s is 2,500 evaluations/s. Rule groups (rules evaluated together, in order, so a recording rule's output is available to the alerts after it) are assigned to evaluator instances on a hash ring. Each group has exactly one owner at a time; if an evaluator dies, its groups move to the next owner on the ring within a heartbeat timeout of about 30 s. A missed evaluation is fine because the next one comes 30 to 60 s later, and `for:` durations are tracked from restored state, so an alert pending for 4 minutes does not restart its 5-minute clock after a failover.
+
+**Running each group twice instead.** The alternative is two evaluators per group with deduplication downstream. It survives an evaluator crash with no gap at all, at double the load. Because the alert manager deduplicates identical alerts anyway, this is reasonable for the highest-severity rules only.
+
+**The alert manager cluster.** Three replicas receive every alert. They gossip a notification log, so only one sends each notification, and if the gossip is partitioned, the worst case is a duplicate page, never a missing one. Grouping is also a capacity control: the paging provider accepts 100 requests/s in this problem, and a zone outage can fire 50,000 alert instances at once. Grouping by `team` and `alertname` turns those into a few dozen notifications, and **inhibition** suppresses symptom alerts (high latency in 400 services) while the cause alert (zone b unreachable) is firing.
+
+**Keeping alerting alive while infrastructure fails.** The monitoring system usually runs on the infrastructure it monitors, so the failures it should report can take it down. Defences:
+
+- **Zone independence**: every tier spans three zones and survives losing one with quorum intact.
+- **Minimal dependencies on the alert path**: the ruler reads ingester memory directly, not object storage or the dashboard query path, so an object-storage or cache outage does not stop paging. Google's Monarch paper (VLDB 2020) describes keeping its time series in memory partly for this reason, so that monitoring does not depend on the storage systems it watches.
+- **Meta-monitoring in a separate failure domain**: a small independent system (another region or provider) watches the main one, including ingestion lag and evaluation delay.
+- **A <Term slug="dead-mans-switch">dead man's switch</Term>**: an alert that always fires, sent to the paging provider every minute; the provider pages if it stops arriving. Silence becomes a signal.
+
+<NotWhenBox title="A separate meta-monitoring stack" items={[
+  "A small company whose whole platform is one cluster: a hosted uptime check plus the dead man's switch gives most of the value",
+  "When the external paging provider is the only independent component you can afford: put the heartbeat there first"
+]} />
+
+## Failure modes & mitigations
+
+| Failure | Detection | Impact | Mitigation |
+|---|---|---|---|
+| One ingester crashes | Ring heartbeat missed | None for queries or writes (2 of 3 replicas left) | WAL replay on restart; replacement joins the ring |
+| A whole zone is lost | Health checks, ring state | One replica of every series missing | Zone-aware replication keeps quorum; surviving zones sized for the full load |
+| Cardinality explosion from one team | Per-tenant series growth alert | Ingester memory exhaustion, slow queries | Per-tenant series and label limits with a clear `429` |
+| Agents replay a backlog after a partition | Ingest rate jump, out-of-order rejections | 2× write burst | Capacity for 2×; per-tenant rate limits; agents back off on `429` |
+| Object storage unavailable | Upload errors | Blocks cannot be shipped; old-range queries fail | Ingesters keep blocks on local disk until upload succeeds; alerting unaffected |
+| Compactor falls behind | Oldest uncompacted block age | Slow long-range queries, rising storage | Shard compaction by tenant and time; alert on lag |
+| Expensive query | Query cost metrics | Ingester CPU saturation | Series and sample limits, timeouts, separate pools |
+| Rule evaluator dies | Ring heartbeat | Missed evaluations for about 30 s | Groups move on the ring; `for:` state restored |
+| Alert storm | Notification rate | Pager rate limit (100/s) exceeded, on-call overwhelmed | Grouping, inhibition, per-receiver rate limits |
+| Paging provider outage | Delivery errors, missing heartbeat acknowledgement | Pages not delivered | Retry with backoff; second provider or channel for critical pages |
+| Whole monitoring system down | Dead man's switch stops | Silent blindness | Provider pages on missing heartbeat; meta-monitoring elsewhere |
+
+## Scaling to 10×
+
+At 1B active series and 100M samples/s:
+
+**What breaks first: ingester memory and the index**, not throughput. 3B replicated series × 4 KB is 12 TB of RAM; at 10M series per ingester that is 300 ingesters. Every query over a popular metric now fans out to hundreds of ingesters, and the slowest one sets the latency.
+
+**What changes:**
+
+- **Shuffle sharding by tenant**: each tenant's series live on a small subset of ingesters (say 30 of 300), which bounds query fan-out and limits the damage a single tenant's cardinality explosion can do to others.
+- **Aggregation at the edge**: most of 1,000 series per host are never queried individually. Recording rules or agent-side aggregation (sum across pods) can cut stored series by an order of magnitude; this is a product decision about what to keep.
+- **Ingest buffer**: at 200M samples/s bursts, a partitioned log in front of the ingesters (the alternative rejected at 1×) starts to pay for itself.
+- **Regional deployments with a global query layer**: keep data in the region it was produced and fan out only queries that need a global view, so a region's alerting never depends on another region.
+- **Query pushdown**: send partial aggregations to the ingesters and object-store readers instead of pulling raw series to the query service.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| Push from agents | Pull (scrape) from a central server | The problem fixes push; push also crosses network boundaries easily. Pull gives a free "target is up" signal, which push replaces with staleness detection |
+| Shard by series hash | Shard by metric name | Even load with 100M series; metric-name sharding creates hot shards |
+| RF 3, one replica per zone, quorum 2 | Kafka log in front of ingesters | Simpler and fresher at 2× bursts; revisit at 10× |
+| Purpose-built TSDB blocks (Gorilla-style chunks + inverted index) | Wide-column or relational store | About 10× smaller, label queries via postings, retention by deleting blocks |
+| Immutable blocks in object storage | Ingesters keep all history | Bounded ingester memory, cheap durable storage, stateless readers |
+| Rollups with count, sum, min, max | Rollups with averages only | Averages cannot answer max, rate or percentiles |
+| Query front end with splitting and results cache | Every query runs in full | Sliding dashboards are mostly cache hits; parallelism bounds latency |
+| Ruler reads ingesters directly, separate from dashboards | One shared query path | Dashboard surges during incidents must not delay alerts |
+| Clustered alert manager with gossip dedup | Single alert manager | No single point of failure; worst case is a duplicate page |
+| Per-tenant cardinality limits | Unlimited ingestion | One label must not take down everyone's monitoring |
+| Dead man's switch and meta-monitoring | Trust the system to report its own failure | A dead monitoring system is silent by definition |
+
+## What interviewers look for
+
+- **Ranked readers.** Alerting outranks dashboards, and the design shows it: a separate evaluation path, dashboard load shed first, few dependencies on the paging path.
+- **Estimation in series, not just samples.** 100M active series, the RAM that implies with replication, storage from a cited compression figure, and the year-long query arithmetic that justifies rollups.
+- **Cardinality as the named risk**, with a worked explosion, per-tenant limits at the distributor, and identifiers moved to logs and traces.
+- **Storage awareness without a lecture**: delta-of-delta timestamps, XOR values, immutable 2-hour blocks with an inverted index, object storage for history.
+- **Rollups done right**: min, max, sum and count, and why averages break rates and percentiles.
+- **Alerting as a distributed system**: sharded rule groups with failover, `for:` state that survives restarts, deduplicated and grouped notifications within the pager's rate limit.
+- **Monitoring the monitor**: a dead man's switch and independent meta-monitoring. The strongest candidates raise this unprompted.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "A team's deploy doubles the active series count in ten minutes. Walk me through what each component sees and what stops it.",
+  "Why can't you compute a p99 latency for last year from 1-hour rollups of the p99 series?",
+  "The paging provider is down for 20 minutes during an outage. What happens to the alerts that fire in that window?",
+  "How would you support a global view across five regions without making any region's alerting depend on another?",
+  "Your ingesters restart one at a time during a rolling deploy. How long does it take, and what is at risk?"
+]} />

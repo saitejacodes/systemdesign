@@ -44,7 +44,7 @@
     }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["file-sync", "instagram", "video-streaming"],
   "prerequisites": [
     "p2-sql-vs-nosql"
   ]

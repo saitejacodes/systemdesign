@@ -12,6 +12,6 @@
     { "id": "admission-control", "title": "Admission control", "depth": "tradeoffs" }
   ],
   "simulatorIds": ["retry-storm"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["ticket-booking", "api-gateway", "metrics-monitoring"],
   "prerequisites": ["p4-timeouts-retries", "p4-circuit-breakers", "p2-connection-pooling", "p2-rate-limiting"]
 }

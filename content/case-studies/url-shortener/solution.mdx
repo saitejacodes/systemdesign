@@ -1,0 +1,291 @@
+## Requirements
+
+A URL shortener looks like a toy problem, and that is the trap. The write path is so small that it barely needs designing; the interesting work is a read path that has to be fast, extremely available and *never wrong*, plus an ID scheme that is short, collision-free and not guessable. A strong answer says this out loud early and spends its time accordingly.
+
+### Functional
+
+1. **Create a short link.** A creator submits a long URL and gets back a short URL such as `https://sho.rt/aZ3kQ9x`. Optional: a custom alias (`/spring-sale`) and an expiry date earlier than the 5-year default.
+2. **Redirect.** Anyone opening the short URL is sent to the original URL.
+3. **Manage links.** A creator can list, disable and delete their links. The destination is **immutable**: it cannot be edited after creation. This is a requirement we deliberately accept, because it makes every cache in the system trivially correct.
+4. **Analytics.** Click counts per link per day, broken down by country and referrer, available within minutes.
+
+### Non-functional
+
+| Property | Target | Why it matters here |
+|---|---|---|
+| Redirect latency | under 50 ms added at p99, measured at our edge | Every click pays it; users abandon slow links |
+| Redirect availability | 99.99% (about 52 minutes of downtime a year) | A dead shortener breaks every link ever printed |
+| Create availability | 99.9% | A failed create can be retried; a failed redirect cannot |
+| Correctness | a code never resolves to a URL other than its own, ever | Printed QR codes and bookmarks live for years |
+| Unguessability | codes cannot be enumerated by counting | Links often point at private documents |
+| Durability | links kept 5 years (or until their expiry) | |
+| Analytics freshness | minutes; best effort | Must never slow or fail a redirect |
+
+### Out of scope
+
+Link-in-bio pages, QR rendering, billing, and the account system itself (we assume an authenticated creator ID arrives with each create). Abuse detection, such as scanning destinations against a malware list like Google Safe Browsing, matters in production; we mention where it plugs in but do not design it.
+
+## Estimation
+
+Every number below is derived from the problem's assumptions, not from any real company.
+
+**Writes.** 100M links a month ÷ (30 days × 86,400 s = 2,592,000 s) = **38.6 creates per second**, call it 40/s.
+
+**Reads.** 100 redirects per create → 38.6 × 100 = **3,860 redirects per second** on average. Total average load ≈ 3,860 + 39 ≈ **3,900 requests per second**.
+
+**Peak.** A viral link plus the daily cycle gives about **5×**: 3,900 × 5 = **19,500 requests per second**, of which about 19,300 are redirects and 195 are creates.
+
+**Links stored.** 100M a month × 12 × 5 years = **6 billion links**.
+
+**ID space.** Base62 (`0-9`, `a-z`, `A-Z`) with 7 characters gives 62⁷ = **3.52 trillion** codes. Six billion links use 6 × 10⁹ ÷ 3.52 × 10¹² = **0.17%** of the space. Six characters (62⁶ = 56.8 billion) would technically fit, but a random guess would then hit a real link about 1 time in 10, which fails the unguessability requirement. Seven characters drop that to about 1 in 590.
+
+**Storage per link.** Code 7 B + long URL (assume 100 B average) + owner ID 8 B + created and expiry timestamps 16 B + status flags ≈ 140 B of payload. Real stores add row overhead, an owner index and compaction headroom, so budget **500 B per link**: 6 × 10⁹ × 500 B = **3 TB**, or **9 TB** with three replicas. This is small: storage decides the database node count, not throughput.
+
+**Cache.** Link popularity is extremely skewed: a small set of recent links gets most clicks. Assume the links clicked on a given day number about 30M; at 500 B each that is **15 GB**, so a 64 GB Redis cluster holds a full day's working set with room to spare. We assume a **90% hit rate**, deliberately conservative for such skew.
+
+**Database load at peak.** Misses: 19,300 × 10% = 1,930 reads/s, plus 195 writes/s, about **2,100 operations per second**. Any partitioned store handles that on a few nodes; we size to six nodes for the 9 TB.
+
+**Service instances.** Assume one instance of the stateless link service serves **5,000 redirects per second** (one cache lookup and a tiny response; an assumption to benchmark). Peak 19,500 ÷ 5,000 = 3.9 instances at 100% utilisation. We want utilisation under 50% normally and under 80% with one availability zone lost, so **9 instances, 3 per zone**: 19,500 ÷ 45,000 = 43% normally, 19,500 ÷ 30,000 = 65% with a zone down.
+
+**Bandwidth.** A redirect response is about 500 B of headers: 19,300 × 500 B ≈ **10 MB/s** at peak. Negligible.
+
+**Analytics events.** One event per redirect, about 200 B: 3,860/s × 200 B = 0.77 MB/s → **67 GB a day** raw, roughly 24 TB a year before compression.
+
+<Callout type="tip" title="What the numbers say">
+Writes are 40 per second: one Postgres instance could take them. Reads are skewed and cacheable. Storage is a few terabytes. So the design problem is not scale in the usual sense; it is tail latency on the read path, hot keys, and correctness of the ID scheme and caches.
+</Callout>
+
+## API design
+
+Creation is an authenticated JSON API; redirection is a bare HTTP `GET` on the short domain.
+
+```http
+POST /v1/links HTTP/1.1
+Authorization: Bearer <token>
+Idempotency-Key: 6f1c2a9e-5b7d-4e1a-9c3f-2d8b7a6e4f10
+Content-Type: application/json
+
+{ "longUrl": "https://example.com/reports/2026/q3?ref=newsletter",
+  "customAlias": "q3-report",
+  "expiresAt": "2027-01-31T00:00:00Z" }
+```
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{ "code": "q3-report",
+  "shortUrl": "https://sho.rt/q3-report",
+  "longUrl": "https://example.com/reports/2026/q3?ref=newsletter",
+  "expiresAt": "2027-01-31T00:00:00Z",
+  "createdAt": "2026-11-04T10:12:44Z" }
+```
+
+- `409 Conflict` when the custom alias is taken; `400` for an invalid or disallowed URL; `429` when a creator exceeds their create quota.
+- The <Term slug="idempotency-key">idempotency key</Term> makes a retried create return the same link instead of minting a second one. Without it, a client that times out and retries gets two codes for one URL.
+
+```http
+GET /aZ3kQ9x HTTP/1.1
+Host: sho.rt
+```
+
+```http
+HTTP/1.1 302 Found
+Location: https://example.com/reports/2026/q3?ref=newsletter
+Cache-Control: private, max-age=300
+```
+
+- `404 Not Found` for a code that never existed; `410 Gone` for an expired, disabled or deleted link. The distinction helps creators debug and lets crawlers drop dead links.
+
+Management and analytics:
+
+```http
+GET /v1/links?cursor=eyJjIjoiMjAyNi0xMS0wMSJ9&limit=50     → the creator's links, newest first
+DELETE /v1/links/aZ3kQ9x                                   → 204, link becomes 410 Gone
+GET /v1/links/aZ3kQ9x/stats?from=2026-10-01&to=2026-10-31  → daily clicks, countries, referrers
+```
+
+```json
+{ "code": "aZ3kQ9x",
+  "days": [ { "date": "2026-10-01", "clicks": 18234, "uniqueVisitors": 15102 } ],
+  "topCountries": [ { "country": "IN", "clicks": 120331 } ],
+  "topReferrers": [ { "referrer": "t.co", "clicks": 88120 } ] }
+```
+
+List endpoints use opaque cursors rather than page numbers, so the list stays stable while new links are being created.
+
+## Data model
+
+| Entity | Key | Fields | Access pattern |
+|---|---|---|---|
+| `link` | `code` (partition key) | `long_url`, `owner_id`, `created_at`, `expires_at`, `status` (active, disabled, deleted), `is_custom` | Point read by code on every cache miss; conditional insert on create |
+| `owner_link` | `owner_id` (partition), `created_at` desc, `code` (sort) | none | "My links", newest first, paged |
+| `daily_stats` | `(code, date)` | `clicks`, HLL sketch of visitors, top countries and referrers | Read by creators; written by the analytics pipeline |
+| idempotency record | `(owner_id, idempotency_key)` | `code`, `ttl = 24 h` | Checked at the start of every create |
+
+**Database choice: a partitioned key-value store with conditional writes** (for example DynamoDB, or Cassandra using lightweight transactions for the insert). The deciding reasons:
+
+- The hot access pattern is a single-key lookup by `code`. There are no joins and no multi-row transactions on the read path.
+- Uniqueness needs an **insert-if-absent** (`attribute_not_exists(code)` in DynamoDB, `INSERT … IF NOT EXISTS` in Cassandra). Both custom aliases and generated codes use the same primitive. Cassandra's version runs a Paxos round and costs several round trips, which would be a problem at 100,000 writes per second; at 40 per second it is irrelevant.
+- Built-in per-row TTL helps with cleanup (though not correctness, see deep dive 4), and the store grows by adding nodes.
+
+<Term slug="sharding">Sharded</Term> Postgres would also work: 6 billion rows and 3 TB spread over a handful of shards by hash of `code`, with a unique primary key doing the conditional insert. Choose it if the team already runs Postgres well. What decides it is not scale but operations: the KV store gives replication across zones, TTL and elastic growth without running shard routing yourself.
+
+The one awkward part is that `link` and `owner_link` live in different partitions, so the two writes are not atomic in Cassandra. We **order** them so a crash leaves a harmless state: write `link` first (the conditional insert that can fail), then `owner_link`. A crash in between leaves a working link missing from its creator's list; the client's retry with the same idempotency key finds the link and completes the second write. The opposite order could leave a list entry pointing at a code someone else then claims.
+
+## High-level design
+
+<Figure caption="FIG. 1 · URL SHORTENER · REFERENCE ARCHITECTURE">
+  <Diagram label="Creators and visitors resolve the short domain through DNS and reach a load balancer, which spreads requests over nine stateless link-service instances in three availability zones. The link service reads codes from a Redis cache and, on a miss, from a replicated key-value store; creates go straight to the key-value store with a conditional insert. Every redirect also emits a click event asynchronously to a Kafka topic, which analytics consumers aggregate into a data lake." chart={`flowchart LR
+    C[Creators] --> DNS[DNS]
+    V[Visitors] --> DNS
+    C --> LB[Load balancer]
+    V --> LB
+    subgraph Region
+      LB --> A1[Link service AZ-a x3]
+      LB --> A2[Link service AZ-b x3]
+      LB --> A3[Link service AZ-c x3]
+      A1 & A2 & A3 -->|get code| R[(Redis cache 64 GB)]
+      A1 & A2 & A3 -->|miss / conditional insert| KV[(KV store 6 nodes RF=3)]
+      A1 & A2 & A3 -.->|click event async| K[[Kafka: clicks]]
+      K -.-> W[Analytics consumers]
+      W --> S3[(Data lake / daily_stats)]
+    end`} />
+</Figure>
+
+**Redirect (`GET /aZ3kQ9x`).**
+1. DNS resolves `sho.rt` to the regional load balancer, which terminates TLS and picks a healthy link-service instance.
+2. The instance checks a small **in-process cache** (a few thousand of the hottest codes, 30 s TTL). This absorbs viral links before they reach the network.
+3. On a local miss it reads `link:aZ3kQ9x` from Redis (about 1 ms). On a Redis miss it reads the KV store (about 5 ms), then writes the result to Redis with a TTL of `min(24 h, expires_at − now)`. This is <Term slug="cache-aside">cache-aside</Term>.
+4. It checks `status` and `expires_at`. Active → `302` with `Location`; otherwise `410`.
+5. It appends a click event (code, timestamp, country from IP, referrer, a hashed visitor ID) to an in-memory buffer that a background thread flushes to Kafka. The response does not wait for it.
+
+Latency: LB 1 ms + service about 5 ms + Redis 1 ms, with 10% of requests paying 5 ms more for the store: roughly **8 ms at the median and well under 50 ms at p99**, even at peak utilisation.
+
+**Create (`POST /v1/links`).**
+1. The service checks the idempotency record; if found, it returns the stored result.
+2. It validates the URL (scheme `http` or `https`, length limit, not our own domain to prevent redirect loops, blocklist check).
+3. It generates a code (deep dive 1) or takes the custom alias, and performs the conditional insert. On a conflict for a generated code it generates again; for an alias it returns `409`.
+4. It writes `owner_link`, stores the idempotency record, **deletes any negative-cache entry for that code** (deep dive 2), and returns `201`.
+
+**Analytics.** Consumers read the `clicks` topic, aggregate per code per minute, and upsert `daily_stats`; raw events land in the data lake for ad-hoc queries.
+
+## Deep dives
+
+### How do you generate short codes that never collide and cannot be enumerated: hash, counter, Snowflake or random?
+
+| Option | How it works | Length | Collisions | Enumerable? | Verdict |
+|---|---|---|---|---|---|
+| Hash the URL | `base62(sha256(longUrl))[:7]` | 7 | Birthday collisions: across 6B links, expected about n² ÷ 2N = (6×10⁹)² ÷ (2 × 3.52×10¹²) ≈ 5 million | No | Same URL from two users yields one code, one expiry and shared analytics; collisions still need a check-and-retry |
+| Counter + base62 | A global sequence (a <Term slug="ticket-server">ticket server</Term> or a DB sequence handing out blocks of 1,000) | 6–7 | None | **Yes**: `/aZ3kQ9x` → `/aZ3kQ9y` | Fails unguessability unless scrambled |
+| Counter + keyed permutation | Run the counter through a keyed bijection (a small Feistel network over 42 bits, re-encrypting until the result is under 62⁷) before base62 | 7 | None, by construction | No, without the key | Best at very high write rates; needs a range allocator and careful key management |
+| <Term slug="snowflake-id">Snowflake</Term> ID | 41-bit ms timestamp + 10-bit machine + 12-bit sequence (Twitter's 2010 scheme) | **11** (62¹⁰ is below 2⁶⁴) | None | Partly: time-ordered and dense | Too long for a *short* link |
+| Random | 42 bits from a CSPRNG → base62, retry while the insert-if-absent fails | 7 | Possible; probability per attempt = fraction of space used, at most 0.17% | No | **Chosen** |
+
+**Decision: random 7-character codes with a conditional insert.** At 40 writes per second, an extra retry 0.17% of the time costs nothing, and the system has *one* uniqueness mechanism shared with custom aliases, no coordinator, no range allocator, no secret key to rotate. The deciding trade-off is coordination versus a rare retry; at this write rate the retry wins. If writes grew a thousandfold and Paxos-backed inserts became expensive, switch to counter blocks plus a keyed permutation, which needs no existence check at all.
+
+<Misconception wrong="Hashing the long URL is the standard approach because it deduplicates." right="Deduplication is usually a bug here: two creators shortening the same URL should get separate links with their own expiry and analytics. And truncated hashes collide anyway, so you still need an insert-if-absent and a retry, which is the random scheme with extra steps." />
+
+Two details matter. Base62 is case-sensitive, so `aZ3` and `AZ3` are different links; that is fine for clicks but awkward for codes read aloud. Base58, used for Bitcoin addresses, drops `0`, `O`, `I` and `l`, and is worth offering for printed codes. And codes come from a cryptographically secure random generator, not `Math.random`, or an attacker who learns the generator state can predict them.
+
+### Should the redirect be a 301 or a 302, and how do you cache at each layer without ever serving a wrong or dead link?
+
+RFC 9110 defines `301 Moved Permanently` as cacheable by default ("heuristically cacheable"), while `302 Found` is cached only when the response carries explicit freshness such as `Cache-Control: max-age`. In practice browsers commonly keep a 301 for a very long time when no cache headers are sent. (`307` and `308` are the method-preserving equivalents; for `GET` they behave like `302` and `301`.)
+
+<TradeoffBox title="301 vs 302" items={[
+  { gain: "301: repeat clicks never reach you, so less load and the fastest possible repeat visit", cost: "You lose every repeat click from analytics, and disabling or expiring the link does not stop browsers that cached it" },
+  { gain: "302 with max-age=300: you control the window; disable and expiry take effect within 5 minutes everywhere", cost: "Every click after 5 minutes costs a request, which the cache absorbs cheaply" }
+]} />
+
+**Decision: 302 with `Cache-Control: private, max-age=300`.** Analytics, expiry and deletion are requirements; a 301 makes all three unreliable. `private` stops shared caches from storing it, which keeps the 5-minute bound honest. A paying creator who wants no analytics and maximum speed could opt into 301 per link.
+
+Each caching layer has a different staleness budget:
+
+| Layer | What it holds | TTL | Invalidation |
+|---|---|---|---|
+| Browser | the 302 | 5 min (`max-age`) | none; the TTL is the bound |
+| In-process LRU | about 5,000 hottest codes | 30 s | none; the TTL is the bound |
+| Redis | any code read in the last day | `min(24 h, expires_at − now)` | deleted on disable or delete |
+| Negative cache (Redis) | codes that returned 404 | 60 s | **deleted on create** |
+
+Because destinations are immutable, a cached entry can only become wrong in one way: the link was disabled, deleted or expired. Each layer bounds that by TTL (disable is visible everywhere within 5 minutes). The <Term slug="negative-caching">negative cache</Term> exists to stop scanners walking random codes from hammering the store, and its one trap is the reverse error: someone probes `/aZ3kQ9x`, it is cached as 404, then a creator happens to mint exactly that code. The create path deletes the negative entry *after* the insert commits, so the window is at most the gap between those two steps.
+
+**Hot keys.** A viral code at 30,000 requests per second would land on a single Redis shard. The in-process cache turns that into at most 9 instances × 1 request per 30 s against Redis. On a cold miss, the service uses <Term slug="request-coalescing">request coalescing</Term> (single-flight) so 1,000 concurrent requests for the same missing code cause one store read, not 1,000 — the <Term slug="cache-stampede">cache stampede</Term> problem.
+
+A CDN can also serve redirects (cache the 302 at the edge for 60 s), cutting global latency to a few milliseconds. The cost is that clicks served at the edge must be recovered from CDN logs for analytics. Worth adding when visitors are global; not needed to meet a 50 ms server-side target.
+
+### How do you collect click analytics without adding latency or a new way for redirects to fail?
+
+The tempting design, `UPDATE links SET clicks = clicks + 1` on every redirect, puts a write on the hottest read path, makes the viral link a hot row, and couples redirect availability to database write availability.
+
+Instead, each redirect produces a click event **asynchronously**: the request thread appends to a bounded in-memory buffer, and a background producer sends batches to a Kafka topic partitioned by code. The redirect never waits. If Kafka is unavailable, the buffer fills (say 50 MB, about 250,000 events, roughly a minute of traffic per instance); after that the service **drops events and increments a `clicks_dropped` metric**. Analytics is <Term slug="fail-open">fail-open</Term> by design: a lost click is acceptable, a failed redirect is not.
+
+Consumers aggregate per code per minute and upsert `daily_stats`. Delivery is <Term slug="at-least-once">at-least-once</Term>, so a consumer crash can double-count a batch. Each event carries an ID, and consumers commit offsets in the same transaction as the aggregate (or keep the IDs of the last few batches), which makes the aggregation an <Term slug="idempotent-consumer">idempotent consumer</Term>. Unique visitors use a <Term slug="hyperloglog">HyperLogLog</Term> sketch per link per day: about 12 KB at Redis's standard precision, with roughly 0.8% error, instead of storing every visitor ID.
+
+<NotWhenBox title="An analytics pipeline" items={[
+  "Creators need only a lifetime total that can be minutes stale: a periodic count from the data lake is enough, without a streaming job.",
+  "Billing depends on exact click counts: then the drop-on-overflow policy is wrong, and you need durable local spooling and exactly-once aggregation."
+]} />
+
+### How do custom aliases, expiry and deletion work, and what keeps a code from ever pointing somewhere else?
+
+**Custom aliases** go through the same conditional insert as random codes, so uniqueness is enforced by the store, not by a read-then-write check that two concurrent requests could both pass. Validation: 4–30 characters from `[A-Za-z0-9-]`, not a reserved word (`api`, `login`, `admin`, `v1`), and not a generated-code-shaped string of exactly 7 base62 characters, so aliases and random codes cannot compete for the same value.
+
+**Expiry** is checked on every read: `now > expires_at` → 410, no matter what any cache holds, because the cached entry carries `expires_at`. The store's TTL deletion is only garbage collection. DynamoDB, for example, documents that expired items are removed in the background, typically within a few days, so relying on it for correctness would serve expired links.
+
+**The rule that keeps codes correct: never reuse a code.** When a link expires or is deleted, its row becomes a tombstone (`status = deleted`, URL cleared) and stays forever. Reuse is tempting once the space feels finite, but the old link lives on in browser caches, bookmarks, printed posters and QR codes. Reassigning it sends those people to a stranger's page, which is exactly what the requirements forbid. The cost of keeping tombstones: at about 100 B each, even all 6 billion links would take 600 GB. And the space is not finite in practice: at 0.17% used, it is not running out.
+
+## Failure modes & mitigations
+
+| Failure | Detection | Effect on requests | Mitigation |
+|---|---|---|---|
+| One link-service instance dies | LB health check fails within about 10 s | Requests in flight on it fail; retries succeed elsewhere | 9 instances over 3 zones; stateless, replaced automatically |
+| A whole availability zone is lost | Zone health alarms, LB marks targets unhealthy | Capacity drops by a third | Sized so 6 instances run at 65% at peak; Redis replicas and store replicas exist in other zones |
+| Redis primary shard fails | Replica promotion within seconds (Redis Cluster or Sentinel) | That shard's misses go to the store briefly | Store has 15× headroom over normal miss traffic (about 2,100 of 30,000 ops/s) |
+| Whole cache flushed or cold after restart | Hit-rate metric drops from 90% to 0 | Store read load jumps from 1,930/s to about 19,300/s at peak | In-process cache and request coalescing absorb the hottest codes; store sized at 30,000 ops/s; warm Redis from the previous day's top codes before cut-over |
+| KV store node lost | Store's own failure detector | Quorum reads continue on the other two replicas | RF = 3 across zones; quorum reads and writes |
+| Kafka unavailable | Producer errors, buffer-fill metric | None for redirects; analytics delayed, then dropped | Bounded buffer, drop with `clicks_dropped` counter, alert |
+| Hot viral link | Per-key request rate metric on Redis | One shard saturates | In-process LRU, request coalescing; optionally a CDN layer |
+| Enumeration scan | Spike in 404 rate per client IP | Load on store from misses | Negative cache; per-IP rate limit on 404s; 7-character random space |
+| Malicious destination reported after creation | Abuse report or scanner | Link keeps redirecting until disabled | Disable sets status and deletes the Redis key; visible everywhere within the 5 min browser TTL |
+
+## Scaling to 10×
+
+At 1B links a month: 386 creates/s, 38,600 redirects/s on average and about **193,000/s at peak**.
+
+1. **The cache tier breaks first.** 193,000 lookups/s is fine for a sharded Redis cluster in total, but a single viral code can now exceed what one shard serves, and the working set grows to about 150 GB. Add shards, keep the in-process hot-key cache, and consider read replicas for Redis.
+2. **The link service** scales linearly: 193,000 ÷ 5,000 ÷ 0.65 ≈ 60 instances, 20 per zone.
+3. **The ID space starts to matter.** 60 billion links over 5 years fills 1.7% of 62⁷, so a random guess finds a real link 1 time in 59 and retries get more frequent. Move new links to **8 characters** (62⁸ ≈ 218 trillion): old 7-character codes stay valid because length alone distinguishes them.
+4. **Conditional inserts** at 386/s with Paxos-backed lightweight transactions start to cost real latency in Cassandra. Either use a store with cheap conditional writes, or switch generation to counter blocks with a keyed permutation, which needs no existence check.
+5. **Global latency.** With visitors on every continent, the 50 ms budget is easy at the server but the network round trip is not. Go multi-region active-active for reads. Because links are immutable, replicating them across regions creates no conflicts, **except at creation**: two regions could mint the same random code at the same moment and last-writer-wins replication would silently keep one of them, breaking a link. Give each region its own slice of the code space (for example, the first character encodes the region), or send all creates to one home region. Reads stay local.
+6. **Analytics** volume reaches about 670 GB a day raw; partition the topic by code, move aggregation to a stream processor, and expire raw events to cold storage.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| Random 7-char base62 + conditional insert | Counter + keyed permutation | One uniqueness mechanism shared with aliases, no coordinator; the retry rate is 0.17% at worst |
+| 7 characters | 6 characters | 6 would fit 6B links but makes 1 in 10 random guesses a real link |
+| 302 + `max-age=300` | 301 | Keeps analytics, expiry and deletion working, with a 5-minute staleness bound |
+| Immutable destinations | Editable links | Every cache becomes correct by construction; only disable/expiry need bounding |
+| Partitioned KV store | Sharded Postgres | Pure key lookups, built-in replication and growth; Postgres is equally valid for a Postgres team |
+| Cache-aside Redis + in-process LRU | CDN-only caching | Meets the server-side target without losing analytics; CDN is a later addition |
+| Async click events, drop on overflow | Synchronous counter update | No write and no extra dependency on the hot path; lossy analytics is acceptable |
+| Never reuse codes (tombstones) | Recycle expired codes | Old links live in caches, bookmarks and print forever |
+
+## What interviewers look for
+
+- **Prioritisation from the numbers.** Strong candidates compute 40 writes/s and 3,900 reads/s within the first minutes and say that the write path is trivial, so the time goes on reads, caching and correctness. Weak ones shard the write path.
+- **A reasoned ID scheme.** Naming hash, counter, Snowflake and random, giving the collision math (62⁷ = 3.52 trillion, 0.17% used), and choosing based on the write rate and the unguessability requirement.
+- **HTTP precision.** Knowing that 301 is cacheable by default, what that does to analytics and deletion, and choosing deliberately.
+- **Correctness instincts.** Never reusing codes, checking expiry on read rather than trusting store TTLs, and invalidating negative cache entries on create.
+- **Failure thinking on the hot path.** Analytics that fail open, hot-key protection, and a store sized for a cold cache, not just for the steady-state miss rate.
+- **Staff-level extras.** The multi-region code-collision problem with last-writer-wins replication, and the move to 8-character codes at 10×.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "A creator says their link showed 404 for two minutes right after creating it. What happened?",
+  "Your Redis cluster restarts empty at peak. Walk me through the next 60 seconds.",
+  "How would you let creators edit the destination, and what would that change in your caching?",
+  "Two regions both accept creates. How do you guarantee a code is never assigned twice?",
+  "How would you detect and stop a phishing campaign using your links?"
+]} />

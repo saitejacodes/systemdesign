@@ -1,0 +1,790 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "riders",
+      "kind": "client",
+      "x": 0,
+      "y": 192,
+      "label": "Riders",
+      "props": {
+        "platform": "mobile",
+        "users": 50000000
+      }
+    },
+    {
+      "id": "drivers",
+      "kind": "client",
+      "x": 0,
+      "y": 640,
+      "label": "Drivers",
+      "props": {
+        "platform": "mobile",
+        "users": 2000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 0,
+      "label": "DNS",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "w": 1584,
+      "h": 1184,
+      "label": "Region (primary)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 448,
+      "label": "Load balancer (HTTP + WebSocket)",
+      "props": {
+        "layer": "L7",
+        "algorithm": "least-connections",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 272,
+      "y": 32,
+      "w": 320,
+      "h": 272,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "gw-a",
+      "kind": "service",
+      "x": 48,
+      "y": 48,
+      "label": "Realtime gateway AZ-a (x16)",
+      "props": {
+        "name": "gateway",
+        "instances": 16,
+        "capacityQps": 10000,
+        "latencyMs": 2,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "trip-a",
+      "kind": "service",
+      "x": 48,
+      "y": 160,
+      "label": "Trip & dispatch AZ-a (x9)",
+      "props": {
+        "name": "dispatch",
+        "instances": 9,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 272,
+      "y": 336,
+      "w": 320,
+      "h": 272,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "gw-b",
+      "kind": "service",
+      "x": 48,
+      "y": 48,
+      "label": "Realtime gateway AZ-b (x16)",
+      "props": {
+        "name": "gateway",
+        "instances": 16,
+        "capacityQps": 10000,
+        "latencyMs": 2,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "trip-b",
+      "kind": "service",
+      "x": 48,
+      "y": 160,
+      "label": "Trip & dispatch AZ-b (x9)",
+      "props": {
+        "name": "dispatch",
+        "instances": 9,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 272,
+      "y": 640,
+      "w": 320,
+      "h": 272,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "gw-c",
+      "kind": "service",
+      "x": 48,
+      "y": 48,
+      "label": "Realtime gateway AZ-c (x16)",
+      "props": {
+        "name": "gateway",
+        "instances": 16,
+        "capacityQps": 10000,
+        "latencyMs": 2,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "trip-c",
+      "kind": "service",
+      "x": 48,
+      "y": 160,
+      "label": "Trip & dispatch AZ-c (x9)",
+      "props": {
+        "name": "dispatch",
+        "instances": 9,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "geo-w",
+      "kind": "nosql-db",
+      "x": 720,
+      "y": 64,
+      "label": "Geo index primaries (Redis, 8 shards)",
+      "props": {
+        "nodes": 8,
+        "consistency": "one",
+        "capacityQps": 50000,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "geo-r",
+      "kind": "nosql-db",
+      "x": 720,
+      "y": 256,
+      "label": "Geo index replicas (8)",
+      "props": {
+        "nodes": 8,
+        "consistency": "one",
+        "capacityQps": 10000,
+        "latencyMs": 2,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "pubsub",
+      "kind": "queue",
+      "x": 720,
+      "y": 448,
+      "label": "Redis pub/sub: push channels",
+      "props": {
+        "partitions": 16,
+        "retentionH": 0,
+        "replication": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "trips",
+      "kind": "sql-db",
+      "x": 720,
+      "y": 640,
+      "label": "Trips + driver state (Postgres, 2 replicas)",
+      "props": {
+        "replicas": 2,
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "locs",
+      "kind": "queue",
+      "x": 976,
+      "y": 64,
+      "label": "Kafka: driver locations",
+      "props": {
+        "partitions": 64,
+        "retentionH": 24,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0,
+        "replication": 3
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "hist",
+      "kind": "worker",
+      "x": 1232,
+      "y": 64,
+      "label": "Route recorders (x8)",
+      "props": {
+        "instances": 8,
+        "processingMs": 0.1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "routes",
+      "kind": "object-storage",
+      "x": 1488,
+      "y": 64,
+      "label": "Trip routes + location archive",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "surge",
+      "kind": "worker",
+      "x": 1232,
+      "y": 256,
+      "label": "Surge job (per H3 cell, 1 min)",
+      "props": {
+        "instances": 4,
+        "processingMs": 0.05,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "pricing",
+      "kind": "nosql-db",
+      "x": 1488,
+      "y": 256,
+      "label": "Pricing store: surge per cell",
+      "props": {
+        "nodes": 3,
+        "consistency": "quorum",
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "tev",
+      "kind": "queue",
+      "x": 976,
+      "y": 832,
+      "label": "Kafka: trip events (outbox)",
+      "props": {
+        "partitions": 32,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0,
+        "replication": 3
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "pay",
+      "kind": "worker",
+      "x": 1232,
+      "y": 832,
+      "label": "Payment workers (x6)",
+      "props": {
+        "instances": 6,
+        "processingMs": 50,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "ledger",
+      "kind": "sql-db",
+      "x": 1488,
+      "y": 832,
+      "label": "Payments ledger (Postgres)",
+      "props": {
+        "replicas": 1,
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 976,
+      "y": 448,
+      "label": "Monitoring (match time, GPS lag)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "maps",
+      "kind": "external-api",
+      "x": 2112,
+      "y": 448,
+      "label": "Maps / routing & ETA provider",
+      "props": {
+        "latencyMs": 150,
+        "rateLimitQps": 20000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "psp",
+      "kind": "external-api",
+      "x": 2112,
+      "y": 832,
+      "label": "Payment service provider",
+      "props": {
+        "latencyMs": 800,
+        "rateLimitQps": 2000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 0,
+      "y": 1248,
+      "w": 448,
+      "h": 224,
+      "label": "Notes",
+      "props": {
+        "text": "Run mode models driver location writes (gateway to the geo index primaries), nearby-driver queries (dispatch to the replicas) and trip requests plus state changes (dispatch to Postgres, where assignment is a conditional update). Maps calls, pushes, route recording, surge and payments are drawn but carry no run-mode traffic. Sized for the 2x evening peak (1M drivers online, 250,000 updates/s) with one zone lost: 48 gateway and 27 dispatch instances."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-riders-dns",
+      "source": "riders",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-riders-lb",
+      "source": "riders",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "HTTPS + WebSocket"
+    },
+    {
+      "id": "e-drivers-dns",
+      "source": "drivers",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-drivers-lb",
+      "source": "drivers",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "HTTPS + WebSocket"
+    },
+    {
+      "id": "e-lb-gw-a",
+      "source": "lb",
+      "target": "gw-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "location, pushes"
+    },
+    {
+      "id": "e-gw-a-geo-w",
+      "source": "gw-a",
+      "target": "geo-w",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GEOADD"
+    },
+    {
+      "id": "e-gw-a-locs",
+      "source": "gw-a",
+      "target": "locs",
+      "kind": "async",
+      "direction": "forward",
+      "label": "append"
+    },
+    {
+      "id": "e-gw-a-pubsub",
+      "source": "gw-a",
+      "target": "pubsub",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "subscribe / publish position"
+    },
+    {
+      "id": "e-lb-trip-a",
+      "source": "lb",
+      "target": "trip-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "nearby, request, trip actions"
+    },
+    {
+      "id": "e-trip-a-geo-r",
+      "source": "trip-a",
+      "target": "geo-r",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "nearby search"
+    },
+    {
+      "id": "e-trip-a-trips",
+      "source": "trip-a",
+      "target": "trips",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conditional assign"
+    },
+    {
+      "id": "e-trip-a-pricing",
+      "source": "trip-a",
+      "target": "pricing",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "surge for cell"
+    },
+    {
+      "id": "e-trip-a-maps",
+      "source": "trip-a",
+      "target": "maps",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "ETA matrix"
+    },
+    {
+      "id": "e-trip-a-pubsub",
+      "source": "trip-a",
+      "target": "pubsub",
+      "kind": "async",
+      "direction": "forward",
+      "label": "offers, trip updates"
+    },
+    {
+      "id": "e-lb-gw-b",
+      "source": "lb",
+      "target": "gw-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "location, pushes"
+    },
+    {
+      "id": "e-gw-b-geo-w",
+      "source": "gw-b",
+      "target": "geo-w",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GEOADD"
+    },
+    {
+      "id": "e-gw-b-locs",
+      "source": "gw-b",
+      "target": "locs",
+      "kind": "async",
+      "direction": "forward",
+      "label": "append"
+    },
+    {
+      "id": "e-gw-b-pubsub",
+      "source": "gw-b",
+      "target": "pubsub",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "subscribe / publish position"
+    },
+    {
+      "id": "e-lb-trip-b",
+      "source": "lb",
+      "target": "trip-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "nearby, request, trip actions"
+    },
+    {
+      "id": "e-trip-b-geo-r",
+      "source": "trip-b",
+      "target": "geo-r",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "nearby search"
+    },
+    {
+      "id": "e-trip-b-trips",
+      "source": "trip-b",
+      "target": "trips",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conditional assign"
+    },
+    {
+      "id": "e-trip-b-pricing",
+      "source": "trip-b",
+      "target": "pricing",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "surge for cell"
+    },
+    {
+      "id": "e-trip-b-maps",
+      "source": "trip-b",
+      "target": "maps",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "ETA matrix"
+    },
+    {
+      "id": "e-trip-b-pubsub",
+      "source": "trip-b",
+      "target": "pubsub",
+      "kind": "async",
+      "direction": "forward",
+      "label": "offers, trip updates"
+    },
+    {
+      "id": "e-lb-gw-c",
+      "source": "lb",
+      "target": "gw-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "location, pushes"
+    },
+    {
+      "id": "e-gw-c-geo-w",
+      "source": "gw-c",
+      "target": "geo-w",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GEOADD"
+    },
+    {
+      "id": "e-gw-c-locs",
+      "source": "gw-c",
+      "target": "locs",
+      "kind": "async",
+      "direction": "forward",
+      "label": "append"
+    },
+    {
+      "id": "e-gw-c-pubsub",
+      "source": "gw-c",
+      "target": "pubsub",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "subscribe / publish position"
+    },
+    {
+      "id": "e-lb-trip-c",
+      "source": "lb",
+      "target": "trip-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "nearby, request, trip actions"
+    },
+    {
+      "id": "e-trip-c-geo-r",
+      "source": "trip-c",
+      "target": "geo-r",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "nearby search"
+    },
+    {
+      "id": "e-trip-c-trips",
+      "source": "trip-c",
+      "target": "trips",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conditional assign"
+    },
+    {
+      "id": "e-trip-c-pricing",
+      "source": "trip-c",
+      "target": "pricing",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "surge for cell"
+    },
+    {
+      "id": "e-trip-c-maps",
+      "source": "trip-c",
+      "target": "maps",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "ETA matrix"
+    },
+    {
+      "id": "e-trip-c-pubsub",
+      "source": "trip-c",
+      "target": "pubsub",
+      "kind": "async",
+      "direction": "forward",
+      "label": "offers, trip updates"
+    },
+    {
+      "id": "e-geo-w-geo-r",
+      "source": "geo-w",
+      "target": "geo-r",
+      "kind": "replication",
+      "direction": "forward",
+      "label": "async replication"
+    },
+    {
+      "id": "e-locs-hist",
+      "source": "locs",
+      "target": "hist",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-hist-routes",
+      "source": "hist",
+      "target": "routes",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "append route"
+    },
+    {
+      "id": "e-locs-surge",
+      "source": "locs",
+      "target": "surge",
+      "kind": "async",
+      "direction": "forward",
+      "label": "supply"
+    },
+    {
+      "id": "e-surge-pricing",
+      "source": "surge",
+      "target": "pricing",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "multipliers"
+    },
+    {
+      "id": "e-trips-tev",
+      "source": "trips",
+      "target": "tev",
+      "kind": "async",
+      "direction": "forward",
+      "label": "outbox (CDC)"
+    },
+    {
+      "id": "e-tev-surge",
+      "source": "tev",
+      "target": "surge",
+      "kind": "async",
+      "direction": "forward",
+      "label": "demand"
+    },
+    {
+      "id": "e-tev-pay",
+      "source": "tev",
+      "target": "pay",
+      "kind": "async",
+      "direction": "forward",
+      "label": "trip completed"
+    },
+    {
+      "id": "e-pay-psp",
+      "source": "pay",
+      "target": "psp",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "charge (idempotency key)"
+    },
+    {
+      "id": "e-pay-ledger",
+      "source": "pay",
+      "target": "ledger",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "double-entry"
+    }
+  ]
+}

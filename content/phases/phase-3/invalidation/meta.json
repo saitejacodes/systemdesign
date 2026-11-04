@@ -14,6 +14,6 @@
     { "id": "delete-vs-update", "title": "Why delete beats update on write", "depth": "deep" }
   ],
   "simulatorIds": ["cache"],
-  "practiceCaseStudyIds": ["news-feed"],
+  "practiceCaseStudyIds": ["news-feed", "typeahead"],
   "prerequisites": ["p3-cache-strategies"]
 }

@@ -1,0 +1,54 @@
+{
+  "id": "search-engine",
+  "title": "Web search engine",
+  "summary": "Indexing and serving 10B crawled pages: a document-partitioned inverted index, 200-way scatter-gather under a 200 ms p99, ranking in stages, and new pages searchable within a day.",
+  "difficulty": 3,
+  "weekRecommended": 15,
+  "relatedSectionIds": ["p2-search", "p2-sharding", "p2-indexing", "p1-estimation", "p3-cache-strategies", "p4-timeouts-retries", "p4-fault-tolerance", "p6-batch-processing", "p6-stream-processing"],
+  "interviewerPrompt": "Let's design a web search engine. Assume the crawler already exists and drops the pages it fetches into storage. How do you turn those pages into something people can search, and how do you answer a query?",
+  "clarifyingQuestions": [
+    { "question": "How big is the corpus?", "answer": "About 10B pages are in the index. The crawler writes them to object storage as compressed WARC files and publishes a 'page fetched' event for each one." },
+    { "question": "How many pages change each day?", "answer": "About 500M pages a day are new or changed, including deletions such as pages that now return 404." },
+    { "question": "How many queries?", "answer": "100,000 queries per second at peak. Assume the daily average is half of that." },
+    { "question": "What does a response contain, and how fast must it be?", "answer": "The top 10 results, each with title, URL and a snippet of text showing the query words. Under 200 ms at p99, measured at our servers." },
+    { "question": "How fresh must the index be?", "answer": "A new or changed page must be searchable within a day of being crawled. Breaking news faster than that is a nice extension." },
+    { "question": "What if part of the index is unavailable?", "answer": "Keep answering. Results may be slightly worse while a piece is missing, but the search page must not fail." },
+    { "question": "How good must the ranking be?", "answer": "Be aware of how modern ranking works, in stages from term matching to learned models, but do not design the models. Focus on where ranking runs and what it costs." },
+    { "question": "Which query features are required?", "answer": "Keyword queries with implicit AND, phrase queries in quotes, and 'did you mean' spelling suggestions. Images, ads, maps and answer boxes are out of scope." },
+    { "question": "Is crawling part of this?", "answer": "No. The crawler is a separate system (see the web crawler case) that has already removed near-duplicate pages. Assume it has been scaled up to deliver 500M pages a day." },
+    { "question": "Do we personalise results?", "answer": "Only by language and country. No per-user personalisation." }
+  ],
+  "deepDiveQuestions": [
+    "How do crawled pages become a searchable inverted index, and how do you keep it within a day of fresh?",
+    "Should you partition the index by document or by term, and how many shards and replicas do you need?",
+    "How do you keep p99 under 200 ms when every query fans out to 200 shards?",
+    "How does ranking work in stages, and where does each stage run?",
+    "How do you cache query results without serving removed pages, and where do spell correction and typeahead fit?"
+  ],
+  "trafficProfile": {
+    "qps": 50000,
+    "readWriteRatio": 8.6,
+    "peakMultiplier": 2,
+    "requestTypes": [
+      { "id": "search", "name": "Search query (top 10 with snippets)", "op": "read", "weight": 1, "target": { "kinds": ["search-index"] } }
+    ]
+  },
+  "runChallenge": {
+    "id": "search-peak-zone-loss",
+    "title": "Peak queries with a zone down",
+    "description": "Run at the 100,000 queries/s peak and lose the availability zone holding the most components after 10 s. Searches must stay under 200 ms at p99 with under 0.5% errors, and no single component may be able to take search down.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "minOkQps": 99000, "maxP99Ms": 200, "maxErrorRatePct": 0.5, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Using one big relational table with LIKE '%word%' or a B-tree on text, instead of an inverted index with postings lists.",
+    "Partitioning the index by term because 'a query only touches a few shards', without noticing that common terms create enormous hot shards and every document update touches hundreds of shards.",
+    "Ignoring tail latency: with 200 shards per query, a shard that is slow 1% of the time makes most queries slow unless you hedge or cut off stragglers.",
+    "Rebuilding the whole index from scratch every time pages change, which cannot meet a one-day freshness target at 10B pages without enormous waste.",
+    "Running an expensive learned ranking model over every matching document instead of in stages over a few hundred candidates.",
+    "Caching query results with no TTL and no purge path, so a page removed for legal reasons keeps appearing in results.",
+    "Treating a missing shard as a failed query, when returning results from the other 99.5% of the index is better than an error page."
+  ]
+}

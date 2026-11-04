@@ -1,0 +1,50 @@
+{
+  "id": "fixture-kv-store",
+  "title": "Session key-value store",
+  "summary": "Test fixture: a small read-heavy key-value service for user sessions, used by Interview Mode's tests.",
+  "difficulty": 1,
+  "weekRecommended": 14,
+  "relatedSectionIds": ["p2-sql-vs-nosql", "p3-cache-strategies"],
+  "interviewerPrompt": "Design a key-value service that stores login sessions for a web product. Any of our API servers must be able to read a session by its token on every request, and sessions are created at login and deleted at logout. Tell me how you would build it.",
+  "clarifyingQuestions": [
+    { "question": "How many users, and how often is a session read?", "answer": "About 5 million daily users. Every API request reads the session once, which works out to roughly 2,000 reads and writes per second on average." },
+    { "question": "What is the read:write ratio?", "answer": "About 10 reads for every write: sessions are created and refreshed far less often than they are checked." },
+    { "question": "How big is a session record?", "answer": "Under 1 KB: user id, roles, expiry and a few flags." },
+    { "question": "How long do sessions live?", "answer": "30 days unless the user logs out. Expired sessions can be removed lazily." },
+    { "question": "What latency do API servers need?", "answer": "The session lookup should add under 10 ms at p99, because it sits on every request." },
+    { "question": "Is it acceptable to read a session that was just deleted?", "answer": "For a second or two, yes. A logout must take effect everywhere within 5 seconds." },
+    { "question": "How bad is losing sessions?", "answer": "Losing all sessions logs everyone out at once, which is a visible incident. Losing a handful is tolerable." },
+    { "question": "What does peak look like?", "answer": "Weekday mornings run at about 3 times the average." },
+    { "question": "Single region or several?", "answer": "One region with three availability zones for now." }
+  ],
+  "deepDiveQuestions": [
+    "Your cache node restarts at peak. What happens to the database, and how do you protect it?",
+    "How does a logout take effect within 5 seconds when sessions are cached?",
+    "How do you partition the store, and what happens to a hot key?"
+  ],
+  "trafficProfile": {
+    "qps": 2000,
+    "readWriteRatio": 10,
+    "peakMultiplier": 3,
+    "requestTypes": [
+      { "id": "read-session", "name": "Read session", "op": "read", "weight": 1, "target": { "kinds": ["nosql-db"] } },
+      { "id": "write-session", "name": "Create or delete session", "op": "write", "weight": 1, "target": { "kinds": ["nosql-db"] } }
+    ]
+  },
+  "runChallenge": {
+    "id": "fixture-peak",
+    "title": "Hold the morning peak",
+    "description": "At 3× average traffic, keep p99 under 100 ms with under 1% errors and no single point of failure.",
+    "atPeak": true,
+    "durationS": 30,
+    "targets": { "maxP99Ms": 100, "maxErrorRatePct": 1, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Skipping estimation, then sizing the cache and database by feel.",
+    "Using a relational database with joins for a pure key lookup, then fighting its write throughput.",
+    "Putting the cache in front with no plan for a cache restart, so the database takes every read at once.",
+    "Caching sessions with a long TTL, so a logout does not take effect for minutes.",
+    "Running one load balancer or one cache node and calling the design highly available.",
+    "Designing a GET endpoint that takes the session token in the URL, where it ends up in access logs."
+  ]
+}

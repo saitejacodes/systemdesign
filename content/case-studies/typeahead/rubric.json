@@ -1,0 +1,64 @@
+{
+  "criteria": [
+    { "id": "functional-scope", "step": "Requirements", "title": "Functional scope",
+      "levels": {
+        "0": "Says 'return suggestions' without defining what is matched or ranked.",
+        "1": "Top 10 completions of a prefix ranked by popularity, but no blocklist, freshness or privacy requirement.",
+        "2": "Top 10 completions of the normalised prefix per language and country, ranked by recency-weighted popularity, trending within an hour, blocklist enforced within minutes, and a minimum-distinct-users rule so private queries never surface." } },
+    { "id": "nfr-latency-budget", "step": "Requirements", "title": "Latency budget and availability",
+      "levels": {
+        "0": "No latency target.",
+        "1": "States 100 ms, but treats it as all server time.",
+        "2": "Splits 100 ms end to end into network, edge and server time (about 60 ms ours at p99), and states that suggestions may degrade (stale or empty) but must never block the search box." } },
+    { "id": "traffic-math", "step": "Estimation", "title": "Keystroke traffic derived",
+      "levels": {
+        "0": "No numbers, or uses the search rate as the request rate.",
+        "1": "Gets roughly 70,000 requests/s but no peak or edge offload.",
+        "2": "100M × 5 × 12 = 6B requests/day = 69,444/s, 3× peak 208,333/s, 50% served at the edge so origin sees about 104,000/s; log events 5,787/s average." } },
+    { "id": "index-size-math", "step": "Estimation", "title": "Index size and fleet",
+      "levels": {
+        "0": "Picks a data structure without estimating its size.",
+        "1": "Estimates the number of queries but not the per-prefix storage.",
+        "2": "30M eligible queries, about 300M distinct prefixes × 70 B ≈ 21 GB, fits in RAM and is replicated rather than sharded; 12 servers derived from origin peak, per-server capacity and zone loss." } },
+    { "id": "api", "step": "API", "title": "API and cacheability",
+      "levels": {
+        "0": "Endpoint named without parameters or response.",
+        "1": "GET with prefix and a JSON list, but no cache headers or event logging.",
+        "2": "GET /v1/suggest?q=&lang=&cc= with normalisation rules, Cache-Control and a version in the response, plus a fire-and-forget event endpoint for searches and selections." } },
+    { "id": "data-model", "step": "Data Model", "title": "Serving and pipeline data",
+      "levels": {
+        "0": "Stores suggestions in a relational table queried with LIKE 'prefix%'.",
+        "1": "A trie in memory, without saying how it is built or versioned.",
+        "2": "Immutable versioned snapshots (prefix → top-10 query IDs plus a query string table), a small trending overlay, a blocklist, and append-only query logs in object storage." } },
+    { "id": "hld-walkthrough", "step": "High-Level Design", "title": "Architecture and both paths",
+      "levels": {
+        "0": "Boxes without a walkthrough.",
+        "1": "Walks the read path but not how logs become suggestions.",
+        "2": "Walks the read path (browser cache → CDN → LB → in-memory lookup → overlay merge → blocklist filter) and the write path (collector → Kafka → stream aggregator and archiver → batch builder → snapshot rollout)." } },
+    { "id": "trie-vs-topk", "step": "Deep Dives", "title": "Trie vs precomputed top-k",
+      "levels": {
+        "0": "Walks the subtree per request.",
+        "1": "Stores top-k at each trie node, but no size estimate or update strategy.",
+        "2": "Compares subtree walk, top-k per node, and a sorted prefix table / FST; chooses precomputed top-k in an immutable snapshot built offline, explains why in-place updates are avoided, and when sharding would be needed." } },
+    { "id": "pipeline-trending", "step": "Deep Dives", "title": "Update pipeline and trending",
+      "levels": {
+        "0": "Updates counts in the serving structure on every search.",
+        "1": "A periodic batch rebuild, but nothing meets the one-hour trending requirement.",
+        "2": "Batch rebuild every 6 h with decayed counts and filters, plus a streaming trending detector that publishes a small overlay every minute; snapshots validated and rolled out by canary with instant rollback." } },
+    { "id": "caching-blocklist", "step": "Deep Dives", "title": "Edge caching and blocklist safety",
+      "levels": {
+        "0": "No caching, or caches with no plan for blocked terms.",
+        "1": "Caches at the CDN with a TTL, but a blocked term stays visible until the TTL and next build.",
+        "2": "Browser, CDN and server caches with chosen TTLs, the blocklist applied at serving time on every response, and a CDN purge for urgent blocks, so a block takes effect in minutes." } },
+    { "id": "personalization", "step": "Deep Dives", "title": "Personalization (awareness)",
+      "levels": {
+        "0": "Not considered, or personalises the shared response.",
+        "1": "Suggests mixing in the user's history without saying where it happens.",
+        "2": "Keeps the shared response cacheable and merges personal history on the device or in a separate uncached call, with privacy controls." } },
+    { "id": "failures-scale-tradeoffs", "step": "Wrap-up", "title": "Failures, 10× and trade-offs",
+      "levels": {
+        "0": "No failure or scaling discussion.",
+        "1": "Covers server loss, but not a bad snapshot or pipeline outage, or what breaks first at 10×.",
+        "2": "Bad-snapshot timeline with canary and rollback, pipeline outage serving the last good snapshot, and at 10× multi-market snapshots and regional edges; each decision stated with its alternative." } }
+  ]
+}

@@ -1,0 +1,358 @@
+## Requirements
+
+Food delivery looks like ride-sharing with a detour through a kitchen, and that resemblance is where weak answers go wrong. There are three parties instead of two, preparation time often matters more than the drive, one courier can carry two orders, and the restaurant runs on a tablet that drops off the network. A strong answer names those differences, then spends its time on the order lifecycle and dispatch, treating location ingestion as the high-volume but simple pipe it is.
+
+### Functional
+
+1. **Browse and search.** A customer sees restaurants that can deliver to their location right now, can search by restaurant or dish, and can open a menu with prices and item availability.
+2. **Cart and checkout.** The customer places an order and pays through an external payment service provider (PSP). The order is charged exactly once and refunded if it cannot be fulfilled.
+3. **Restaurant flow.** The restaurant receives the order on its tablet, accepts it with a preparation estimate (or rejects it), and marks it ready.
+4. **Dispatch.** Within 30 s of the restaurant accepting, the system assigns a courier, optionally batching two nearby orders onto one courier.
+5. **Courier flow.** The courier accepts the offer, picks up, and delivers.
+6. **Tracking.** All three parties see the order's status; the customer also sees the courier on a map and an ETA.
+
+### Non-functional
+
+| Property | Target | Why it matters here |
+|---|---|---|
+| Courier assignment | within 30 s of the restaurant accepting, at p99 | Food waits on the counter otherwise |
+| Double-booking | never, except deliberate batching | A courier cannot be in two places |
+| Charging | exactly once per order; refunds idempotent | Money errors destroy trust and cost support time |
+| Order availability | 99.95% for placing and progressing orders | Most of the day's orders arrive in two short peaks |
+| Browse latency | p99 under 300 ms at our edge | The home screen is where conversion happens |
+| Tracking freshness | courier position seconds old; status changes always delivered | Customers forgive a laggy dot, not a missing "picked up" |
+| Peaks | 4× the daily average at lunch and dinner | Predictable, every day |
+
+### Out of scope
+
+Restaurant onboarding, courier pay, promotions, ratings, support tooling and fraud models. Fraud checks plug in before the payment intent; courier pay consumes the order events.
+
+## Estimation
+
+All numbers come from the stated assumptions, not from any real company.
+
+**Orders.** 5M a day ÷ 86,400 s = **57.9 orders/s**; at the 4× peak, **231.5/s**. Assume about 8 state-changing writes per order (create, payment, accept, assign, ready, pickup, deliver, payment record): **463 writes/s** average, **1,852/s** at peak. Assuming a well-provisioned Postgres primary sustains about 5,000 simple transactional writes/s (to benchmark), peak is 37% of one primary.
+
+**Couriers online.** 5M ÷ 24 = 208,333 orders an hour. Assume an online courier completes 2 deliveries an hour: **104,167 online** on average and, assuming supply follows demand, **416,667 at peak** (42% of the 1M registered).
+
+**Location updates.** One ping per online courier every 5 s: **20,833/s** average, **83,333/s** at peak, about 17 MB/s at 200 B each. That is 45 times the order write rate.
+
+**Browse.** Assume 4 sessions per order (25% conversion) and 10 read calls per session: 5M × 4 × 10 = 200M a day = **2,315/s**, **9,259/s** at peak.
+
+**Totals.** 20,833 + 463 + 2,315 = **23,611 requests/s** average, **94,444/s** at peak. Reads per write: 2,315 ÷ 21,296 = 0.109.
+
+**Active orders** by <Term slug="littles-law">Little's law</Term> (in flight = arrival rate × time in system), at 40 minutes from placement to delivery: 57.9 × 2,400 s = **138,900** average, **555,600** at peak.
+
+**The maps provider's 20,000 requests/s** decides the ETA strategy:
+- An ETA for each of 20 restaurants in every browse list: 9,259 × 20 = **185,000/s**, nine times the limit. Browse ETAs must come from an internal model.
+- Refreshing every active order every 5 s: 555,600 ÷ 5 = 111,000/s. Also impossible.
+- Refreshing every 60 s: 555,600 ÷ 60 = 9,260/s, plus dispatch's 231.5 orders/s × 10 candidates = 2,315/s: **11,600/s, 58% of the limit.**
+
+**PSP.** One intent per order plus about 30% for status checks and refunds: 231.5 × 1.3 ≈ **300/s**, 15% of its 2,000/s limit.
+
+**Storage.** Orders at about 2 KB: 10 GB a day, 3.65 TB a year; 90 days hot in Postgres (900 GB), the rest archived. Live positions: 416,667 × 100 B ≈ **42 MB**, so the geo index is a write-rate problem, not a size problem. Location history: 20,833 × 100 B × 86,400 ≈ 180 GB a day, 3 days in Kafka then object storage. Menus: 500k × 100 items × 500 B = 25 GB, which fits in cache.
+
+**Realtime connections at peak.** 416,667 couriers + 300,000 restaurants (assume 60% online) + 166,700 customers (assume 30% of active orders have the app open) ≈ **883,000**. At an assumed 50,000 per gateway instance and a 70% ceiling with one zone lost: 883,000 ÷ 0.7 ÷ 2 ÷ 50,000 = 12.6 → **13 per zone, 39 instances**.
+
+**Service instances.** Per-instance capacities are assumptions to benchmark. Rule: under 70% at peak with one of three zones lost, so two zones carry the peak.
+
+| Service | Peak | Per instance | Per zone | Total | Busy normal / zone lost |
+|---|---|---|---|---|---|
+| Location | 83,333/s | 5,000/s | 83,333 ÷ 2 ÷ 3,500 = 11.9 → 12 | 36 | 46% / 69% |
+| Catalog | 9,259/s | 1,000/s | 9,259 ÷ 2 ÷ 700 = 6.6 → 7 | 21 | 44% / 66% |
+| Order | 1,852/s | 500/s | 1,852 ÷ 2 ÷ 350 = 2.6 → 3 | 9 | 41% / 62% |
+
+**Geo index.** Budget 40,000 operations/s per Redis primary (an assumption that leaves headroom for dispatch queries): 83,333 ÷ 40,000 = 2.1, so **4 primaries** at 52%, each with a replica in another zone.
+
+**Search.** The browse cache answers about 70% (home lists and menus repeat per cell and restaurant; text searches and filters miss): 9,259 × 0.3 = 2,778/s. At 1,000/s per node and a 50% target, **6 nodes**.
+
+<Callout type="tip" title="What the numbers say">
+Order writes are under 2,000 a second: one Postgres primary, no sharding yet. Courier pings are 45 times that and must never touch the order store. The scarcest resource is not ours: the maps provider's limit decides how often ETAs refresh and forces an internal ETA model for browsing.
+</Callout>
+
+## API design
+
+Customer, restaurant and courier apps share one API gateway; each gets its own route prefix and rate limits.
+
+```http
+GET /v1/feed?lat=12.9716&lng=77.5946&cursor=eyJyIjoyMH0 HTTP/1.1
+Authorization: Bearer <customer token>
+```
+
+```json
+{ "cell": "tdr1v9",
+  "restaurants": [
+    { "id": "r_8812", "name": "Biryani House", "etaMinutes": [28, 38], "deliveryFee": 29, "open": true } ],
+  "nextCursor": "eyJyIjo0MH0" }
+```
+
+`GET /v1/search?q=biryani&lat=…&lng=…` and `GET /v1/restaurants/{id}/menu` follow the same shape. The ETA here is a range from the internal model, never a maps call.
+
+```http
+POST /v1/orders HTTP/1.1
+Authorization: Bearer <customer token>
+Idempotency-Key: 0b4f6a1e-2c55-4d0e-9a71-3f1c8e2d9b40
+Content-Type: application/json
+
+{ "restaurantId": "r_8812",
+  "items": [ { "itemId": "m_101", "qty": 2, "options": ["extra-raita"] } ],
+  "addressId": "a_77",
+  "quotedTotal": 598,
+  "paymentMethod": "card" }
+```
+
+```http
+HTTP/1.1 201 Created
+
+{ "orderId": "o_01JC9Z6K7Q", "state": "PENDING_PAYMENT", "total": 598,
+  "payment": { "pspPaymentId": "pi_3Q…", "clientSecret": "…" } }
+```
+
+- `409 Conflict` with the new total if prices changed since the quote (the server reprices from the catalog, never trusting the client); `422` if the restaurant closed or an item sold out; `429` per customer.
+- The <Term slug="idempotency-key">idempotency key</Term> makes a retried checkout return the same order and the same payment intent.
+
+The PSP confirms payment by a signed webhook, `POST /internal/psp/webhook`, which the order service verifies and applies idempotently.
+
+Restaurant and courier actions are small, conditional commands that carry the version the app last saw:
+
+```http
+POST /v1/restaurant/orders/o_01JC9Z6K7Q/accept   { "prepMinutes": 15, "version": 3 }   → 200 | 409 stale
+POST /v1/restaurant/orders/o_01JC9Z6K7Q/ready    { "version": 5 }
+POST /v1/courier/offers/of_552/accept            → 200 | 410 offer expired
+POST /v1/courier/orders/o_01JC9Z6K7Q/pickup      { "version": 6 }
+POST /v1/courier/location                        { "points": [ { "lat": 12.97, "lng": 77.59, "ts": 1762240000123, "speed": 6.1 } ] }
+```
+
+Location takes a **batch** of points, so a courier who loses signal uploads the gap in one request. Events flow back over one WebSocket per app (`wss://rt…/v1/stream`), each carrying the order's version so the app ignores anything older; a backgrounded app gets status changes as mobile push.
+
+## Data model
+
+| Entity | Store | Key | Key fields | Access pattern |
+|---|---|---|---|---|
+| `restaurant` | Catalog DB (Postgres) | `restaurant_id` | city, location, cell, hours, `online` (tablet heartbeat), prep-time estimate | Edited rarely; copied to search and cache |
+| `menu_item` | Catalog DB | `(restaurant_id, item_id)` | price, `available`, version | Read via cache; repriced at checkout |
+| `cell_restaurants` | Redis (derived) | location cell | ranked ids of restaurants that deliver there | Home feed: one read |
+| `order` | Orders DB (Postgres) | `order_id` (time-ordered) | customer, restaurant, courier, `kitchen_state`, `courier_state`, `payment_state`, version, priced item snapshot | Point reads; conditional updates |
+| `order_idempotency` | Orders DB | `(customer_id, idempotency_key)` unique | `order_id` | Checked in the create transaction |
+| `courier` | Orders DB | `courier_id` | city, status (offline, online), `active_orders`, capacity, `pending_offer`, version | Conditional update on assignment |
+| `payment` | Orders DB | `order_id` | PSP payment id, amount, state, refund state | One row per order |
+| `outbox` | Orders DB | sequence | event type, payload | Same transaction as each state change |
+| courier position | Redis Cluster | `geo:{cell}` sorted set; `pos:{courier_id}` hash | lat, lng, heading, last seen | Written every 5 s; radius queries |
+
+**Postgres for orders and couriers.** Orders need conditional transitions, a unique idempotency key, an atomic outbox and ad-hoc queries. At 1,852 writes/s one primary with a synchronous standby in another zone carries it, plus an async replica for history. The decisive choice is putting **couriers in the same database as orders**: assignment becomes one local transaction over both rows, so the database, not a distributed lock, prevents double-booking. A key-value store with multi-item conditional transactions would also work; atomic outbox writes and ad-hoc queries tip it to Postgres.
+
+**Redis for positions.** 83,333 writes/s of data worthless after 30 s belongs in memory. Positions are overwritten, never queried historically, and a lost one is replaced by the next ping 5 s later.
+
+**Search** is an inverted index (OpenSearch or Elasticsearch class) of restaurants and dishes with a geo field, fed from the catalog by <Term slug="change-data-capture">change data capture</Term>. It answers text queries and filters; the home feed comes from precomputed cell lists.
+
+## High-level design
+
+<Figure caption="FIG. 1 · FOOD DELIVERY · REFERENCE ARCHITECTURE">
+  <Diagram label="Three client apps reach an API gateway that routes to location, catalog, order and realtime tiers spread over three zones. Location writes positions to a Redis geo index and Kafka; a tracking worker pushes them to customers. Catalog reads Redis and a search index. The order service writes orders and an outbox to Postgres and calls the payment provider; order events reach the notifier and dispatch, which reads the geo index, asks the maps provider for ETAs and assigns couriers in Postgres." chart={`flowchart LR
+    CU[Customers] --> GW[API gateway]
+    RS[Restaurant tablets] --> GW
+    CO[Couriers] --> GW
+    CU --> CDN[CDN: photos]
+    subgraph Region
+      GW --> LOC[Location x36]
+      GW --> CAT[Catalog x21]
+      GW --> ORD[Order x9]
+      GW --> RT[Realtime gateway x39]
+      LOC -->|GEOADD| GEO[(Redis geo index)]
+      LOC -.->|append| LK[[Kafka: locations]]
+      LK -.-> TR[Tracking fan-out] --> RT
+      CAT --> MC[(Redis: cell lists, menus)]
+      CAT --> SI[(Search index)]
+      ORD -->|order + outbox| PG[(Postgres: orders, couriers)]
+      PG -.->|outbox relay| OE[[Kafka: order events]]
+      OE -.-> NT[Notifier] --> RT
+      OE -.-> DS[Dispatch per city]
+      DS --> GEO
+      DS -->|conditional assign| PG
+    end
+    ORD --> PSP[Payment provider]
+    DS --> MAPS[Maps / ETA provider]`} />
+</Figure>
+
+**Browse.** The catalog service maps the customer's location to a cell (geohash-6 or H3, roughly a kilometre across) and reads that cell's ranked restaurant list from Redis in one call (about 1 ms). It drops restaurants that just went offline (an in-memory set refreshed every few seconds) and attaches ETA ranges from the internal model (distance, recent prep times, courier supply). Text searches and filters go to the search index with a geo-distance filter. Cell lists are rebuilt every few minutes and when serviceability changes.
+
+**Place order.** The order service checks the idempotency key, reprices the cart from the catalog, and in **one transaction** inserts the order (`PENDING_PAYMENT`), the idempotency row and an outbox event. It creates a PSP payment intent keyed by the order ID and returns the client secret; the app pays through the PSP's SDK, and the PSP's webhook moves the order to `PLACED`.
+
+**Restaurant.** The outbox relay publishes `order.placed`; the notifier pushes it to the tablet over WebSocket with a mobile push as backup. Staff accept with a prep estimate.
+
+**Dispatch.** `order.accepted` wakes the city's dispatcher, which finds nearby couriers in the geo index, scores the best few by ETA against the predicted food-ready time, and assigns with a conditional update (deep dive 3).
+
+**Location and tracking.** Every 5 s the courier app posts its position; it lands in the geo index and Kafka, and the tracking worker pushes it to whoever is watching (deep dive 4).
+
+## Deep dives
+
+### How do you place an order and charge exactly once when payment confirmations arrive late, twice or never?
+
+Three things go wrong: the client retries, the PSP sends a webhook twice, or its answer never comes. Each needs a guard.
+
+**Client retries.** The create transaction inserts `(customer_id, idempotency_key)` under a unique constraint alongside the order. A retry hits the constraint, reads the stored `order_id` and returns the original response. Same transaction, so neither row can exist without the other.
+
+**One payment intent per order.** The payment intent is created with the **order ID as the PSP's idempotency key**. Major PSPs accept such a key (Stripe, for example, documents an `Idempotency-Key` header on POST requests), so a repeated create returns the first intent, not a second charge. The order row exists before any charge, so every charge has something to reconcile against; charging first would let a crash leave money taken with no order.
+
+**Webhooks are at-least-once.** The handler verifies the signature and applies a conditional transition: `UPDATE orders SET payment_state='CAPTURED', state='PLACED', version=version+1 WHERE id=$1 AND payment_state='PENDING'`. A duplicate updates zero rows and returns 200. When webhooks contradict each other, the handler asks the PSP for the intent's current state rather than trusting arrival order.
+
+**The answer never comes.** Some methods (bank redirects, UPI-style collect requests) confirm minutes later or never. A sweeper queries the PSP for orders in `PENDING_PAYMENT` over 2 minutes old and cancels intent and order at 15 minutes. A success webhook that arrives for a cancelled order triggers a **refund keyed `refund:{order_id}`**, so it happens once. Later failures (restaurant rejects, no courier) use the same keyed refund. A daily **reconciliation** against the PSP's settlement report is the backstop for everything else.
+
+<Misconception wrong="Wrap 'create order' and 'charge card' in one distributed transaction and you get exactly-once charging." right="The PSP is not a participant in your transactions. Exactly-once charging comes from idempotency keys at both hops, conditional state transitions and reconciliation. The payment-system case study covers the ledger side." />
+
+### How do you model the order state machine across customer, restaurant and courier so that late, duplicate or out-of-order events cannot corrupt it?
+
+A single enum (`PLACED → ACCEPTED → ASSIGNED → READY → PICKED_UP → DELIVERED`) fails on the first real dinner: food is often ready before a courier is assigned, and couriers often arrive before the food. Kitchen and courier progress **independently**, so the order has one lifecycle state plus two sub-states:
+
+| Field | Values | Updated by |
+|---|---|---|
+| `state` | `PENDING_PAYMENT`, `PLACED`, `ACTIVE`, `DELIVERED`, `CANCELLED` | Order service |
+| `kitchen_state` | `NEW`, `ACKED`, `ACCEPTED`, `READY`, `REJECTED` | Restaurant tablet |
+| `courier_state` | `UNASSIGNED`, `OFFERED`, `ASSIGNED`, `AT_RESTAURANT`, `PICKED_UP`, `DELIVERED` | Dispatch, courier app |
+
+Every command is a guarded, versioned update. Only the assigned courier, already at the restaurant, can pick up:
+
+```sql
+UPDATE orders SET courier_state = 'PICKED_UP', version = version + 1, picked_up_at = now()
+WHERE id = $1 AND courier_id = $2 AND courier_state = 'AT_RESTAURANT' AND state = 'ACTIVE';
+-- plus INSERT INTO outbox (...) in the same transaction
+```
+
+- **Transitions only move forward.** A retried "picked up" matches zero rows; the handler sees the order already there and returns success, so every command is idempotent.
+- **Races are decided by the database.** If the customer cancels as the courier taps "picked up", both are conditional updates on one row; the first commit wins and the other gets a 409 with the new state. The cancellation policy runs inside the same transaction.
+- **Every change writes an outbox row** in the same transaction (the <Term slug="transactional-outbox">transactional outbox</Term>). A relay publishes to `order-events`, partitioned by order ID, so consumers see each order's events in commit order; as <Term slug="idempotent-consumer">idempotent consumers</Term> they drop any event whose version is not newer than what they hold.
+- **Timers are data.** No restaurant acknowledgement in 60 s → escalate; not accepted in 5 minutes → cancel and refund; no courier in 10 minutes → widen the search, then cancel. Timer rows (`due_at`, `order_id`, `kind`) are scanned every second, so they survive restarts.
+
+This is an orchestrated <Term slug="saga">saga</Term>: a long-running process with compensations (refund, release the courier) instead of rollback, owned by the order service because one place must own cancellation policy and timers.
+
+### How do you assign a courier within 30 seconds without double-booking anyone, and when should you batch two orders onto one courier?
+
+**Candidates.** Redis implements geo on sorted sets: `GEOADD` scores members by a 52-bit geohash, and `GEOSEARCH … BYRADIUS` (Redis 6.2+) answers radius queries. We keep one set per geohash-5 cell (about 5 km across) rather than one per city: assume the busiest city has 60,000 couriers online at peak, which is 12,000 pings a second, too much for a single key on one shard (a <Term slug="hot-key">hot key</Term>). Dispatch queries the restaurant's cell and its neighbours, drops couriers silent for over 30 s, and keeps those online with spare capacity and no pending offer. Uber's open-source H3 hexagonal grid is a common alternative; hexagons have uniform neighbour distances, so "cell plus one ring" is a fairer search area.
+
+**Scoring.** For the 10 nearest candidates, dispatch asks the maps provider for one travel-time matrix. The cost compares courier arrival with the **predicted food-ready time** (the stated prep minutes corrected by the restaurant's recent history): early wastes courier time at the counter, late lets food go cold.
+
+**Matching in windows.** Every 5 s per city, dispatch takes all orders awaiting a courier and all candidates and solves the assignment as a matching problem: exactly with the Hungarian algorithm (Kuhn, 1955), or greedily over the cost matrix, which is often close enough. The window leaves 25 s of the 30 s budget for the offer. DoorDash's engineering blog has described its dispatch as machine-learned predictions (such as preparation and travel times) feeding an optimisation solver: the mature form of this design.
+
+**Batching** a second order onto a courier pays when pickups are at the same or adjacent restaurants with similar ready times and drop-offs are close: one trip instead of two, exactly when couriers are scarce. The rule that keeps it honest is a cap on the first customer's added delay, say 5 minutes. Hence `capacity` and `active_orders` on the courier row.
+
+**No double-booking** comes from one Postgres transaction, not from the dispatcher's memory:
+
+```sql
+BEGIN;
+UPDATE couriers SET pending_offer = $order, offer_expires_at = now() + interval '20 seconds', version = version + 1
+ WHERE id = $courier AND version = $seen_version AND status = 'ONLINE'
+   AND pending_offer IS NULL AND cardinality(active_orders) < capacity;
+UPDATE orders SET courier_state = 'OFFERED', courier_id = $courier, version = version + 1
+ WHERE id = $order AND courier_state = 'UNASSIGNED' AND state = 'ACTIVE';
+-- both must update exactly one row, else ROLLBACK and try the next candidate
+INSERT INTO outbox (...);
+COMMIT;
+```
+
+This is <Term slug="optimistic-locking">optimistic locking</Term> on the courier's version. Each city has one active dispatcher holding a <Term slug="lease">lease</Term>, so conflicts are rare; if a paused dispatcher briefly overlaps with its successor, the version check still lets only one assignment through. The lease can be wrong without causing harm because the database is the arbiter. The courier has 20 s to accept, which moves the order into `active_orders`; a decline or timeout clears `pending_offer` conditionally and the order rejoins the next window.
+
+<TradeoffBox title="Dispatch strategy" items={[
+  { gain: "Greedy, one order at a time as it is accepted: simplest, lowest latency", cost: "Grabs the courier who was the only good option for the next order; no batching" },
+  { gain: "Windowed matching every few seconds: better global assignments and natural batching", cost: "Adds up to one window of delay; a slow solve eats the 30 s budget" }
+]} />
+
+**Contrast with ride-sharing:** a rider on the kerb wants the nearest driver now; food wants the courier who arrives when it is ready. Same geo index, different scoring and timing.
+
+### How do you ingest 83,000 courier positions a second and show live tracking without a database write per ping?
+
+The location service is stateless. It authenticates the batch, drops points that are out of order or imply impossible speed (GPS jumps), and for the latest point:
+
+1. **Overwrites the live position** in Redis (`GEOADD geo:{cell}` and `HSET pos:{courier_id}` with heading and timestamp), removing the courier from the old cell's set if they crossed a boundary. Sorted-set members do not expire, so readers filter by last-seen time and a sweeper removes couriers silent for 2 minutes.
+2. **Appends to Kafka**, partitioned by courier ID so each courier's points stay ordered, for tracking, ETA progress and an archive used in disputes and analytics.
+
+Neither step touches Postgres. Courier **status** changes a few times per delivery and lives in Postgres; **position** changes every 5 s and lives in memory. Mixing them is the commonest way to overload the order store.
+
+**Tracking fan-out.** The tracking worker learns from order events which customers watch which courier, keeps that map in memory, and pushes each position to its watchers through the realtime gateway, whose connection registry (`user_id → gateway instance`) lives in Redis. At peak, with about 70% of 416,667 online couriers carrying an order, that is at most 291,667 ÷ 5 = **58,333 pushes/s**, fewer in practice because most customers are not watching the map. Polling every 5 s by every active order would instead cost 555,600 ÷ 5 = 111,000 requests/s, mostly returning nothing new. A <Term slug="websocket">WebSocket</Term> sends only news and also carries status changes; 10 s polling is the fallback.
+
+**ETA** is refreshed from the maps provider every 60 s per active order or when the courier leaves the planned route; in between, the server adjusts it by progress along the route. That keeps the provider at 58% of its limit.
+
+<NotWhenBox title="A Redis geo index" items={[
+  "A few thousand couriers: a Postgres table with a PostGIS index handles a few hundred writes a second and saves a component.",
+  "Dispatch needs trajectory-aware features: keep an in-memory index inside each city's dispatcher, fed from the Kafka location stream."
+]} />
+
+### What happens when a restaurant tablet goes offline mid-rush, and how does the platform survive the lunch and dinner peaks?
+
+**Restaurant reliability.** The tablet holds a WebSocket and sends a <Term slug="heartbeat">heartbeat</Term> every 30 s. A restaurant appears in browse only if it is within hours, not paused, and its heartbeat is fresh. New orders go out by WebSocket and by mobile push, and the tablet must acknowledge receipt (not acceptance) within 60 s. Taps made while offline queue on the tablet and replay on reconnect; each carries the order version, so a stale accept on a cancelled order gets a 409 that staff can see.
+
+**Failure timeline: the tablet loses Wi-Fi at 19:42 on a Friday.**
+
+| Time | What happens | Who sees what |
+|---|---|---|
+| 19:42:00 | Wi-Fi drops; three orders arrive in the next minute | Customers see "Waiting for restaurant" |
+| 19:42:30 | First missed heartbeat | Nothing yet |
+| 19:43:00 | First order unacknowledged after 60 s; push also unacknowledged | Monitoring counts an unacknowledged order |
+| 19:43:30 | Two heartbeats missed: restaurant marked **offline** and dropped from browse within seconds | New customers stop seeing it, so orders stop piling up |
+| 19:44:00 | Escalation: an automated phone call reads the order and asks staff to press 1 to accept | Staff can accept by phone |
+| 19:47:00 | Still not accepted at 5 minutes: cancel and refund each, keyed by order ID | Customers get "Restaurant unavailable, refunded" and similar restaurants |
+| 19:51:00 | Wi-Fi returns; tablet reconnects and shows those orders as cancelled | Restaurant reappears after a fresh heartbeat |
+
+Two signals, missed heartbeats and unacknowledged orders, also catch a tablet that is online but ignored. Repeat offenders get a longer automatic pause instead of flapping in and out of the feed.
+
+**Surviving the peaks.** Peaks are predictable to the minute, so reactive autoscaling, which acts after latency rises, is the wrong primary tool.
+
+- **Scheduled scale-out** 30 minutes before lunch and dinner to the peak sizes, with reactive autoscaling kept for surprises such as a cricket final.
+- **Priorities under overload** (<Term slug="load-shedding">load shedding</Term>): order and courier commands first, location second (a dropped ping costs 5 s of freshness), browse last. Browse degrades to stale cell lists, then to unpersonalised ranking, before any order request is refused.
+- **Bulkheads.** Separate instance and connection pools per tier, so slow search cannot starve orders.
+- **Demand shaping.** When waiting orders per available courier cross a threshold, widen ETAs, add a busy-time fee and shrink delivery radii: fewer orders that arrive beat more that get cancelled.
+
+## Failure modes & mitigations
+
+| Failure | Detection | Effect | Mitigation |
+|---|---|---|---|
+| One availability zone lost | Zone health alarms; LB health checks | A third of service capacity gone | Every tier sized to stay under 70% on two zones; Postgres standby and Redis replicas in other zones |
+| Postgres primary fails | Failed writes, replication health | Order writes fail for the failover (typically tens of seconds) | Synchronous standby promoted; apps retry with the same idempotency keys; browse and tracking unaffected |
+| Redis geo primary fails | Cluster failover | Some positions missing for seconds | Replica promoted; every courier resends within 5 s |
+| Order-events lag | Consumer lag alarm | Notifications delayed | Outbox rows persist; dispatch also ticks every 5 s per city |
+| Maps provider slow or down | ETA error rate and latency | No fresh ETAs | <Term slug="circuit-breaker">Circuit breaker</Term>; dispatch falls back to distance × city speed |
+| PSP outage | Payment intent errors | New checkouts fail | Clear error; a second PSP if configured; never an order without an intent |
+| Duplicate or lost webhooks | Sweeper finds stale `PENDING_PAYMENT` | Order stuck, or a charge for a cancelled order | Conditional transitions; PSP status query; keyed refund; daily reconciliation |
+| Restaurant tablet offline | Missed heartbeats, unacknowledged orders | Orders not accepted | Mark offline, phone escalation, cancel and refund at 5 minutes |
+| Courier app offline mid-trip | No pings for 30 s | Map freezes | Show "last updated"; buffered points upload on reconnect; alert support after 10 minutes |
+| City dispatcher crashes | Lease not renewed | That city's assignments pause | Another instance takes the lease in about 10 s; conditional writes make overlap harmless |
+
+## Scaling to 10×
+
+At 50M orders a day: 579 orders/s average, 2,315/s at peak, about 18,500 order writes/s at peak and 833,000 location pings/s.
+
+1. **The orders database breaks first.** 18,500 writes/s is beyond one primary. Shard by **city**: orders, couriers and dispatch never cross a city, so assignment stays a local transaction. Split the biggest city by zone if it runs hot.
+2. **The maps limit** breaks almost as early: about 116,000 ETA requests/s at the same policy. Cache cell-to-cell travel times for a few minutes and move to an in-house ETA model calibrated on real trips, keeping the provider for routes.
+3. **Location ingestion** scales linearly (about 360 instances, 40 Redis primaries); move the geo index into per-city in-memory indexes inside the dispatchers, fed from Kafka.
+4. **Realtime gateway**: about 8.8M connections, around 380 instances, with the connection registry partitioned by user.
+5. **Multi-region.** Each city gets a home region and fails over as a unit, so no order is written in two regions at once.
+6. **Payments** at about 3,000 calls/s exceed the PSP's limit: add a second PSP, which also removes a single dependency.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| One Postgres for orders and couriers | Separate services and stores | Assignment is one local transaction; 1,852 writes/s fits one primary |
+| Courier positions in Redis, not the DB | Write every ping to a database | 83,333 ephemeral writes/s; positions self-heal within 5 s |
+| Kitchen and courier sub-states | Single linear status | Kitchen and courier progress independently in real kitchens |
+| Transactional outbox + Kafka | Publish directly from the service | No lost or phantom events on a crash between write and publish |
+| Windowed matching per city | Greedy nearest courier per order | Better assignments and batching within the 30 s budget |
+| Conditional writes for assignment | Distributed lock in Redis | The database already holds the truth; a lock can expire mid-operation |
+| Internal ETA for browse, provider for dispatch | Provider ETA everywhere | 185,000 requests/s would be 9× the limit |
+| PSP intent keyed by order ID | Charge inside the order request | Retries cannot double-charge; every charge has an order to reconcile |
+
+## What interviewers look for
+
+- **Three parties, not two.** Strong candidates treat the restaurant as a first-class, unreliable participant. Weak ones copy ride-sharing.
+- **Numbers that redirect the design.** Pings outnumber order writes 45 to 1, so they stay out of the order store; the maps rate limit, not compute, decides ETA strategy.
+- **Exactly-once charging.** Idempotency keys at the API and the PSP, conditional webhooks, a sweeper, keyed refunds and reconciliation, with no imaginary distributed transaction.
+- **A state machine that survives reality.** Independent kitchen and courier progress, conditional transitions, timers as data, an outbox.
+- **Dispatch judgement.** Matching to the food-ready time, a clear batching rule, and double-booking prevented by the database, not a lock.
+- **Staff-level extras.** Shedding priorities for the dinner peak, demand shaping when couriers are scarce, and sharding by city at 10×.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "The PSP says the payment succeeded, but your order was already cancelled by the sweeper. What happens?",
+  "A courier taps 'picked up' while the customer taps 'cancel'. Who wins, and how?",
+  "Your Redis geo index is wiped at 19:30. Walk me through the next 30 seconds of dispatch.",
+  "How would you decide whether to batch a second order onto a courier who is already heading to a restaurant?",
+  "The maps provider halves your rate limit during dinner. What degrades and in what order?"
+]} />

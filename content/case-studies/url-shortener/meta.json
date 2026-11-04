@@ -1,0 +1,54 @@
+{
+  "id": "url-shortener",
+  "title": "URL shortener",
+  "summary": "Short links that redirect in milliseconds: tiny writes, enormous skewed reads, and IDs that must never collide or be guessed.",
+  "difficulty": 1,
+  "weekRecommended": 14,
+  "relatedSectionIds": ["p1-estimation", "p4-id-generation", "p1-http", "p3-cache-strategies", "p2-sql-vs-nosql", "p3-event-driven", "p3-cache-failures"],
+  "interviewerPrompt": "Let's design a URL shortener, something like bit.ly. People paste a long link and get a short one back, and anyone who opens the short link ends up at the original page. Where would you like to start?",
+  "clarifyingQuestions": [
+    { "question": "How many new short links are created, and how often are they opened?", "answer": "About 100M new links a month, and links are opened 100 times for every one created, so roughly 10 billion redirects a month." },
+    { "question": "How long do links live?", "answer": "Links are kept for 5 years by default. A creator can also set an earlier expiry date, after which the link must stop working." },
+    { "question": "Can users pick their own short code?", "answer": "Yes, optionally: a custom alias such as /spring-sale. If the alias is taken, creation fails; it is never silently changed." },
+    { "question": "How fast must the redirect be?", "answer": "The redirect must add under 50 ms at p99, measured at our servers. Redirects matter far more than creation, which can take a few hundred milliseconds." },
+    { "question": "How bad is it if a short link opens the wrong page?", "answer": "Unacceptable. A short link must never resolve to a URL other than the one it was created for, even after it expires or is deleted." },
+    { "question": "Should short codes be sequential, like /1, /2, /3?", "answer": "No. Codes must be hard to enumerate: someone should not be able to walk the code space and discover other people's links." },
+    { "question": "Who creates links and who opens them?", "answer": "About 10M registered creators make links through the web app and a public API; around 500M people a month follow links from anywhere, mostly on phones." },
+    { "question": "Do creators need analytics?", "answer": "Yes: click counts per link per day, with country and referrer breakdowns. Numbers a few minutes old are fine, but collecting them must never slow down or break a redirect." },
+    { "question": "Can the destination of a link be edited after creation?", "answer": "No. A creator can disable or delete a link, but not point it somewhere else." },
+    { "question": "How spiky is traffic?", "answer": "A single link can go viral and take a large share of all redirects for a few hours. Plan for peaks of about 5 times the average." }
+  ],
+  "deepDiveQuestions": [
+    "How do you generate short codes that never collide and cannot be enumerated: hash, counter, Snowflake or random?",
+    "Should the redirect be a 301 or a 302, and how do you cache at each layer without ever serving a wrong or dead link?",
+    "How do you collect click analytics without adding latency or a new way for redirects to fail?",
+    "How do custom aliases, expiry and deletion work, and what keeps a code from ever pointing somewhere else?"
+  ],
+  "trafficProfile": {
+    "qps": 3900,
+    "readWriteRatio": 100,
+    "peakMultiplier": 5,
+    "requestTypes": [
+      { "id": "redirect", "name": "Redirect (GET /{code})", "op": "read", "weight": 1, "target": { "kinds": ["nosql-db"] } },
+      { "id": "create", "name": "Create short link", "op": "write", "weight": 1, "target": { "kinds": ["nosql-db"] } }
+    ]
+  },
+  "runChallenge": {
+    "id": "url-shortener-peak-redirects",
+    "title": "Viral peak: fast redirects, no single point of failure",
+    "description": "Run at 5× peak (about 19,500 requests per second). Redirects must stay under 50 ms at p99 with almost no errors, and no single component may be able to cut visitors off from their links.",
+    "atPeak": true,
+    "durationS": 60,
+    "targets": { "maxP99Ms": 50, "maxErrorRatePct": 0.1, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Hashing the long URL and truncating it without a plan for collisions, or without noticing that two users shortening the same URL then share one code, one expiry and one set of analytics.",
+    "Using a plain auto-increment counter encoded in base62, which makes every link discoverable by counting.",
+    "Choosing 301 for every link without realising browsers may cache it indefinitely, which breaks analytics, expiry and deletion for anyone who clicked once.",
+    "Writing a click record synchronously to the database on every redirect, putting a write on the hottest read path.",
+    "Reusing codes after links expire, so a stale browser cache, bookmark or printed QR code now opens someone else's page.",
+    "Spending the interview on sharding the write path when writes are about 40 per second and the real problems are the read path, the cache and correctness.",
+    "Caching 'not found' results without invalidating them on create, so a freshly created link returns 404 for minutes.",
+    "Ignoring hot keys: one viral code concentrates tens of thousands of requests per second on a single cache shard."
+  ]
+}

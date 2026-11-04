@@ -1,0 +1,57 @@
+{
+  "id": "instagram",
+  "title": "Photo-sharing app",
+  "summary": "Post photos, follow people, scroll a feed: presigned uploads into a resizing pipeline, a CDN serving 460 Gbps of images, a hybrid fan-out feed, and like counters that survive a 100M-follower account.",
+  "difficulty": 2,
+  "weekRecommended": 15,
+  "relatedSectionIds": ["p1-estimation", "p2-object-storage", "p3-cdn", "p2-data-modeling", "p2-sql-vs-nosql", "p3-cache-strategies", "p3-redis", "p3-event-driven", "p3-cache-failures", "p2-idempotency"],
+  "interviewerPrompt": "Design a photo-sharing app. People post photos with captions, follow each other, and scroll a home feed of posts from accounts they follow, where they can like and comment. Where would you start?",
+  "clarifyingQuestions": [
+    { "question": "How many users, and how active are they?", "answer": "About 500M daily active users on phones, out of roughly 1B accounts. Assume the busiest hour is about twice the daily average." },
+    { "question": "How many photos are posted, and how big are they?", "answer": "About 100M new photos a day, averaging 2 MB as uploaded. One photo per post is a fine simplification." },
+    { "question": "How much do people scroll?", "answer": "About 50 feed images per user per day, roughly 5 feed pages of 10 posts each." },
+    { "question": "How skewed is the follow graph?", "answer": "The average account follows about 150 others, but some accounts have 100M followers." },
+    { "question": "How fast must the feed load?", "answer": "Under 500 ms at p99 on mobile networks, measured on the device. Images can stream in after the feed's text and layout." },
+    { "question": "What does 'never lose a photo' mean exactly?", "answer": "Once the app tells the user their post is shared, the photo must survive any single machine, disk or zone failure." },
+    { "question": "How quickly must a new post appear in followers' feeds?", "answer": "Within seconds for most followers. A minute is acceptable for accounts with huge followings." },
+    { "question": "How many likes and comments?", "answer": "About 5 per user per day combined, mostly likes. Counts shown on a post may lag by a few seconds but must not drift permanently." },
+    { "question": "Is the feed chronological or ranked?", "answer": "Ranked, but ranking itself is out of scope: assume a ranking service orders a few hundred candidates you give it." },
+    { "question": "Are videos, stories, direct messages or search in scope?", "answer": "No. Photos, follows, the home feed, likes and comments only." }
+  ],
+  "deepDiveQuestions": [
+    "How does a photo get from the phone to followers' screens: presigned upload, resizing into variants, and never losing an acknowledged photo?",
+    "How do you store and serve billions of images cheaply: variants, formats, CDN cache keys and storage tiers?",
+    "How do you build the home feed when the average account has 150 followers but some have 100M?",
+    "How do you count likes and comments at 58,000 writes per second so counts are fast to read and never drift?",
+    "What happens in the minutes after an account with 100M followers posts, and how do you keep hot keys from melting the cache and database?"
+  ],
+  "trafficProfile": {
+    "qps": 347222,
+    "readWriteRatio": 11,
+    "peakMultiplier": 2,
+    "requestTypes": [
+      { "id": "image", "name": "Fetch image variant (CDN)", "op": "read", "weight": 10, "target": { "kinds": ["cdn"] } },
+      { "id": "feed", "name": "Load a feed page", "op": "read", "weight": 1, "target": { "nodeId": "posts" } },
+      { "id": "like-comment", "name": "Like or comment", "op": "write", "weight": 1, "target": { "nodeId": "engage" } }
+    ]
+  },
+  "runChallenge": {
+    "id": "cold-cache-at-peak",
+    "title": "Cold cache at the evening peak",
+    "description": "At the 2× peak (about 579,000 image fetches, 58,000 feed loads and 58,000 likes or comments per second), the Redis cluster is flushed 10 s in. Ten seconds later, with the cache still mostly cold, feed loads must stay under 250 ms at p99 server-side with almost no errors, and no single component may be able to take the feed down.",
+    "atPeak": true,
+    "scenario": "cache-flush",
+    "durationS": 20,
+    "targets": { "maxP99Ms": 250, "maxErrorRatePct": 0.1, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Uploading photo bytes through the API servers instead of straight to object storage with a presigned URL, so 37 Gbps of ingress and slow mobile uploads tie up request threads.",
+    "Serving the 2 MB original to every phone instead of resized variants, multiplying CDN egress and slowing the feed on mobile networks.",
+    "Fanning out every post to every follower's timeline, so one post from a 100M-follower account means 100M timeline writes.",
+    "Storing a like count as a single row incremented on every like, which becomes a hot row the moment a celebrity posts.",
+    "Keeping likes only as a counter, with no per-user like record, so double taps double count and 'did I like this?' cannot be answered.",
+    "Acknowledging a post before the photo is durably stored, or deleting the phone's local copy before the server confirms, which loses photos on a crash.",
+    "Sizing the database for the cache's steady-state miss rate only, so a cold cache sends the full feed load to a store that cannot take it.",
+    "Paginating the feed with offsets, which shows duplicates and skips posts as new posts arrive at the top."
+  ]
+}

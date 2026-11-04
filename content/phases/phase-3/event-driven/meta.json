@@ -15,6 +15,6 @@
     { "id": "cdc", "title": "Change data capture", "depth": "awareness" }
   ],
   "simulatorIds": ["outbox"],
-  "practiceCaseStudyIds": ["notification-system"],
+  "practiceCaseStudyIds": ["notification-system", "news-feed", "file-sync"],
   "prerequisites": ["p3-queues-vs-pubsub", "p3-delivery-semantics", "p2-transactions"]
 }

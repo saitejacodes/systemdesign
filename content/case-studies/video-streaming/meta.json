@@ -1,0 +1,57 @@
+{
+  "id": "video-streaming",
+  "title": "Video streaming",
+  "summary": "Upload, transcode and stream video on demand: bytes that never touch your servers, a chunked transcoding DAG, adaptive bitrate over a CDN carrying 50 Tbps, and view counts that never slow playback.",
+  "difficulty": 3,
+  "weekRecommended": 14,
+  "relatedSectionIds": ["p1-estimation", "p2-object-storage", "p3-cdn", "p3-cache-layers", "p3-kafka-vs-queues", "p3-failure-handling", "p3-delivery-semantics", "p6-batch-processing", "p6-stream-processing"],
+  "interviewerPrompt": "Let's design a video platform like YouTube or Netflix. Creators upload videos and viewers watch them on phones, TVs and laptops. How would you build it?",
+  "clarifyingQuestions": [
+    { "question": "How much do people watch?", "answer": "About 200M viewers a day, watching an hour each on average. Evenings are busier: plan for a peak of about twice the daily average." },
+    { "question": "How much is uploaded?", "answer": "About 500 hours of video every minute. Assume an average video is 10 minutes long and is uploaded at around 1080p." },
+    { "question": "Is this live streaming or video on demand?", "answer": "Video on demand only. Live streaming is out of scope." },
+    { "question": "How quickly must playback start, and how much stalling is acceptable?", "answer": "Playback should start in under 2 seconds, and rebuffering should be rare: well under 1% of watch time spent stalled." },
+    { "question": "How soon after upload must a video be watchable?", "answer": "Within minutes. It is fine if the highest resolutions appear a little later than the first watchable one." },
+    { "question": "Which devices and network conditions?", "answer": "Phones on mobile networks, smart TVs, and browsers. Bandwidth varies from under 1 Mbps to over 50 Mbps, so quality must adapt during playback." },
+    { "question": "How large can an upload be, and do creators have reliable connections?", "answer": "Files of several gigabytes are common, sometimes tens of gigabytes. Many creators upload from home or mobile connections that drop, so uploads must resume rather than restart." },
+    { "question": "Do we need view counts?", "answer": "Yes, shown on every video and used by creators. A few minutes of delay is fine, but counting must never slow down or break playback, and obvious repeat or bot views should not count." },
+    { "question": "Is popularity skewed?", "answer": "Heavily. A small share of videos gets most views, while most uploads are watched rarely. New releases from big channels can spike suddenly." },
+    { "question": "What about recommendations, search, comments, ads and DRM?", "answer": "Out of scope, apart from noting where they plug in. Assume videos are public or unlisted; access control by signed URLs is enough." }
+  ],
+  "deepDiveQuestions": [
+    "How do creators upload multi-gigabyte files reliably, and why should the bytes never pass through your application servers?",
+    "How does the transcoding pipeline, a DAG of jobs, turn one upload into a playable bitrate ladder within minutes?",
+    "How does adaptive bitrate streaming work with HLS or DASH, and how do you choose the ladder and the segment length?",
+    "How do you deliver 50 Tbps at peak through CDN tiers without the long tail or a hot release overwhelming the origin?",
+    "How do you count views at 300,000 events per second without slowing playback or double counting?"
+  ],
+  "trafficProfile": {
+    "qps": 1555556,
+    "readWriteRatio": 9.1818,
+    "peakMultiplier": 2,
+    "requestTypes": [
+      { "id": "segment", "name": "Fetch manifest or segment (CDN)", "op": "read", "weight": 100, "target": { "kinds": ["cdn"] } },
+      { "id": "play-start", "name": "Start playback (play-info API)", "op": "read", "weight": 1, "target": { "nodeId": "meta" } },
+      { "id": "playback-event", "name": "Playback event (view, heartbeat)", "op": "write", "weight": 1, "target": { "nodeId": "agg" } }
+    ]
+  },
+  "runChallenge": {
+    "id": "evening-peak-lose-zone",
+    "title": "Evening peak with a zone down",
+    "description": "Run the 2× evening peak (about 2.8M segment fetches, 28,000 play starts and 306,000 playback events per second) and lose the busiest availability zone after 10 s. The play-start API must stay under 200 ms at p99 with almost no errors, and no single component may be able to stop playback.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "maxP99Ms": 200, "maxErrorRatePct": 0.1, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Streaming upload bytes through the application servers, which turns 300 Gbps of ingress into an API scaling problem and makes every dropped connection restart a multi-gigabyte upload.",
+    "Transcoding each video as one long job on one machine, so a 2-hour upload takes hours to become watchable and a single crash restarts all of it.",
+    "Serving one fixed-resolution MP4 file instead of segmented adaptive bitrate streams, so viewers on weak networks stall and viewers on strong ones get poor quality.",
+    "Drawing a CDN box without sizing egress: 200M viewer-hours a day at 3 Mbps is about 25 Tbps on average, which is the dominant cost and the main design driver.",
+    "Incrementing a view counter row in the database on every play, making the most popular video a hot row and putting a write on the playback path.",
+    "Ignoring the long tail: most uploads are rarely watched, so their segments are cache misses everywhere, and an origin sized only for popular content collapses.",
+    "Publishing a video before its manifest and segments are fully written, or caching a manifest for hours so newly added renditions or takedowns never reach viewers.",
+    "Treating transcoding tasks as exactly-once instead of making them idempotent (deterministic output keys) so retries after a crash are harmless."
+  ]
+}

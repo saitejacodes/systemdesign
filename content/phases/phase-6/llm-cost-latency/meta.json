@@ -15,6 +15,6 @@
     { "id": "rate-limits", "title": "Rate limits and quotas", "depth": "tradeoffs" }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["rag-docs-assistant"],
   "prerequisites": ["p6-llm-serving", "p6-embeddings-vector-search", "p3-cache-strategies", "p2-rate-limiting"]
 }

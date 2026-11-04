@@ -1,0 +1,57 @@
+{
+  "id": "notification-system",
+  "title": "Notification system",
+  "summary": "A shared push, email and SMS platform that keeps password resets fast while a campaign floods the pipe, and never sends twice from its own side.",
+  "difficulty": 2,
+  "weekRecommended": 14,
+  "relatedSectionIds": ["p3-delivery-semantics", "p3-failure-handling", "p3-queues-vs-pubsub", "p3-kafka-vs-queues", "p2-idempotency", "p2-rate-limiting", "p4-circuit-breakers", "p4-bulkheads-load-shedding", "p4-timeouts-retries"],
+  "interviewerPrompt": "Our product teams each send their own push notifications, emails and texts, and it's a mess. Design a notification service they can all call instead. It needs to work at our scale.",
+  "clarifyingQuestions": [
+    { "question": "Which channels, and do we build the delivery transport ourselves?", "answer": "Mobile push, email and SMS, all delivered through third-party providers: APNs and FCM for push, one email provider and one SMS provider. Assume the providers' rate limits are about 100k/s for push, 10k/s for email and 1k/s for SMS." },
+    { "question": "How many users and how many notifications?", "answer": "200M users and about 1B notifications a day, so roughly 11.6k per second on average." },
+    { "question": "Is the load steady or bursty?", "answer": "Bursty. Marketing campaigns to large segments cause 5× bursts over the average." },
+    { "question": "Are all notifications equally important?", "answer": "No. Transactional messages such as password resets, one-time codes and order updates must go out within seconds even while a campaign is running. Marketing can wait." },
+    { "question": "Who decides which channel a user gets?", "answer": "The user. Respect per-category, per-channel preferences, global opt-outs and quiet hours in the user's time zone. Security messages ignore quiet hours." },
+    { "question": "How strict is 'no duplicates'?", "answer": "The same notification must never be sent twice because of our retries or a caller retrying. Be explicit about what you can and cannot guarantee when a provider call times out." },
+    { "question": "What happens when a provider is slow or down?", "answer": "The service must survive it: no lost notifications, no meltdown from retries, and urgent messages should still get out if there is a way." },
+    { "question": "Do callers send one message at a time, or campaigns too?", "answer": "Both. Product services send individual transactional messages; marketing sends one message to a segment of up to all users, optionally scheduled." },
+    { "question": "Who writes the message content?", "answer": "Teams own versioned, localised templates; callers pass a template id and variables." },
+    { "question": "Do callers need to know what happened?", "answer": "Yes: they should be able to look up whether a notification was suppressed, sent, delivered or failed. An in-app inbox is out of scope." },
+    { "question": "Should a user be protected from too many messages?", "answer": "Yes, cap marketing per user per day across all teams. Transactional messages are exempt." }
+  ],
+  "deepDiveQuestions": [
+    "How do you keep transactional messages fast during a 5× campaign burst?",
+    "How do retries, backoff and the dead-letter queue work, and what happens when a provider goes down?",
+    "What does 'never send twice' really mean, and where can duplicates still happen?",
+    "Where and how do you apply preferences, quiet hours and per-user rate limits?"
+  ],
+  "trafficProfile": {
+    "qps": 14800,
+    "readWriteRatio": 0.065,
+    "peakMultiplier": 5,
+    "requestTypes": [
+      { "id": "send", "name": "Send notification (accept and enqueue)", "op": "write", "weight": 11.6, "target": { "kinds": ["queue"] } },
+      { "id": "devices", "name": "Register device / update preferences", "op": "write", "weight": 2.3, "target": { "kinds": ["nosql-db"] } },
+      { "id": "status", "name": "Read preferences / delivery status", "op": "read", "weight": 1, "target": { "kinds": ["nosql-db"] } }
+    ]
+  },
+  "runChallenge": {
+    "id": "campaign-burst-lose-az",
+    "title": "Campaign burst with a zone down",
+    "description": "Run a 5× campaign burst and lose the busiest availability zone after 10 s. The accept path must keep taking notifications with under 1% errors and a p99 under 200 ms, with no single point of failure.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "minOkQps": 72000, "maxErrorRatePct": 1, "maxP99Ms": 200, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Putting transactional and marketing messages in one queue, so a campaign backlog delays password resets.",
+    "Scaling your own servers while ignoring that the providers' rate limits are the real bottleneck at peak.",
+    "Claiming exactly-once delivery to the provider instead of explaining the in-doubt timeout and a per-category retry policy.",
+    "Retrying every error the same way: retrying permanent failures such as invalid tokens, or retrying without backoff and jitter.",
+    "Checking preferences only at accept time, so an opt-out does not stop a campaign already in flight.",
+    "Letting retries block the main queue instead of using delayed retry queues and a dead-letter queue with an owner.",
+    "Forgetting expiry: retrying a one-time code or a 'driver is here' message long after it became useless.",
+    "No way to stop a campaign that was sent to the wrong segment."
+  ]
+}

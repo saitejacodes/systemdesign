@@ -1,0 +1,64 @@
+{
+  "criteria": [
+    { "id": "req-politeness-first", "step": "Requirements", "title": "Politeness and robots.txt as hard requirements",
+      "levels": {
+        "0": "Lists fetch, parse and store only; politeness, robots.txt and dedup are missing or treated as optional.",
+        "1": "Mentions robots.txt and a per-host limit, but does not treat them as the constraint that shapes the design.",
+        "2": "States the inversion early: at most 1 req/s per host plus robots.txt is the binding constraint, the crawl must be fast in aggregate and slow per host, and progress must survive machine failure. Names what is out of scope (JS rendering, ranking)." } },
+    { "id": "req-nfr", "step": "Requirements", "title": "Non-functional targets",
+      "levels": {
+        "0": "No throughput, freshness or fault-tolerance targets.",
+        "1": "Gives the 1B pages/month target but no freshness or failure expectations.",
+        "2": "Sets throughput (1B/month with a catch-up burst), freshness by page class, durability of the frontier, and explicitly says single-fetch latency is not a goal." } },
+    { "id": "est-rates", "step": "Estimation", "title": "Fetch rate, bandwidth and storage",
+      "levels": {
+        "0": "No numbers, or numbers not derived.",
+        "1": "Derives about 400 pages/s but skips bandwidth or storage, or gets an order of magnitude wrong.",
+        "2": "Derives 1B ÷ 2.59M s ≈ 386 pages/s, 320 Mbit/s inbound, 100 TB/month raw (about 25 TB compressed), and concludes bandwidth is not the bottleneck." } },
+    { "id": "est-frontier", "step": "Estimation", "title": "Frontier growth and dedup sizing",
+      "levels": {
+        "0": "Never estimates links per page or the size of the seen-URL set.",
+        "1": "Estimates links per page but not what it implies, or sizes the seen set without a formula.",
+        "2": "Computes 20,000 URL lookups/s and about 5× more new URLs discovered than fetched (so the frontier must be capped and prioritised), sizes a Bloom filter from bits-per-element (about 36 GB for 20B URLs at 0.1%), and notes per-host politeness bounds a big site to about 2.6M pages a month." } },
+    { "id": "api-lease", "step": "API", "title": "Lease-based frontier API",
+      "levels": {
+        "0": "Only an operator API, or fetchers pull single URLs with no failure semantics.",
+        "1": "Fetchers pull batches from the frontier but there is no expiry or idempotent completion.",
+        "2": "Operator API (create crawl, status, host policy) plus internal lease and complete RPCs: leases expire so a dead fetcher's work returns, complete is idempotent, and conditional GET headers travel with the lease." } },
+    { "id": "data-partitioning", "step": "Data Model", "title": "URL and host records partitioned by host",
+      "levels": {
+        "0": "A single SQL table of URLs with no partitioning or access-pattern reasoning.",
+        "1": "Picks a NoSQL store but partitions by URL hash or does not justify the choice.",
+        "2": "URL and host records in a wide-column (LSM) store partitioned by host hash, aligned with frontier shard ownership; pages in large WARC files in object storage; small config in SQL; URL normalisation before fingerprinting." } },
+    { "id": "hld-walkthrough", "step": "High-Level Design", "title": "End-to-end loop with clear ownership",
+      "levels": {
+        "0": "A box diagram with no walkthrough of a fetch or a discovered link.",
+        "1": "Walks through fetching but not how discovered links get back to the right frontier shard.",
+        "2": "Walks a fetch (lease, robots check, DNS cache, conditional GET, WARC write, complete) and a discovered link (normalise, route to owning shard, Bloom check, insert, prioritise), with zone cells and regional replicated state." } },
+    { "id": "dd-frontier", "step": "Deep Dives", "title": "Frontier: priority and politeness",
+      "levels": {
+        "0": "A single queue, or per-host locks on the hot path.",
+        "1": "Per-host queues but no mechanism to choose the next host or to combine priority.",
+        "2": "Mercator-style front queues for priority and back queues per host with a heap of next-allowed times; adaptive delay under the 1 req/s cap; per-IP politeness for shared hosting; host-hash partitioning so no coordination is needed." } },
+    { "id": "dd-dedup", "step": "Deep Dives", "title": "URL and content deduplication",
+      "levels": {
+        "0": "No dedup, or 'check the database' for every link.",
+        "1": "Bloom filter or content hash, but not both, or no reasoning about false positives.",
+        "2": "Three layers: normalisation, a sized Bloom filter whose false positive costs one skipped URL (seeds bypass it), and SimHash near-duplicate detection with a small Hamming threshold, citing why exact hashing is not enough." } },
+    { "id": "dd-robots-recrawl", "step": "Deep Dives", "title": "robots.txt rules and recrawl policy",
+      "levels": {
+        "0": "robots.txt mentioned only by name; recrawl is 'crawl everything again periodically'.",
+        "1": "Caches robots.txt and recrawls by change frequency, without details.",
+        "2": "robots.txt cached at most 24 h, 4xx means allow and 5xx means disallow, back off on 429/503; recrawl as a fixed budget spent where importance × freshness gain per fetch is highest, with conditional GETs and sitemaps making recrawls cheap." } },
+    { "id": "dd-failures", "step": "Deep Dives", "title": "Fault tolerance of in-flight work",
+      "levels": {
+        "0": "No failure discussion, or claims exactly-once fetching.",
+        "1": "Says workers are stateless and restarted, without what happens to their work or to frontier state.",
+        "2": "Gives timelines: fetcher death returns leased URLs after expiry with harmless duplicate fetches; a lost frontier shard's host ranges are reassigned and rebuilt from the replicated URL store and a Bloom snapshot; zone loss is a capacity drop." } },
+    { "id": "wrap-scaling", "step": "Wrap-up", "title": "10× bottlenecks and trade-offs",
+      "levels": {
+        "0": "'Add more machines.'",
+        "1": "Scales fetchers and storage but misses DNS, ready-host count or prioritisation.",
+        "2": "Names DNS and the number of ready hosts as what breaks first, moves to geographic fetching, shards the Bloom and SimHash indexes, and summarises each decision against its alternative." } }
+  ]
+}

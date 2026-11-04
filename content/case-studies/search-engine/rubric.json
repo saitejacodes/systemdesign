@@ -1,0 +1,64 @@
+{
+  "criteria": [
+    { "id": "functional-scope", "step": "Requirements", "title": "Scope and the boundary with the crawler",
+      "levels": {
+        "0": "Designs the crawler again, or lists only 'search the web'.",
+        "1": "Covers indexing and querying, but leaves snippets, phrase queries or deletions out.",
+        "2": "Takes crawler output as input, indexes new, changed and deleted pages, serves top 10 with snippets, phrase queries and 'did you mean', and puts ads, images and personalisation out of scope." } },
+    { "id": "nfr", "step": "Requirements", "title": "Latency, freshness and graceful degradation",
+      "levels": {
+        "0": "No targets.",
+        "1": "States 200 ms p99, but not freshness or what happens when part of the index is missing.",
+        "2": "200 ms p99 at the server, searchable within a day of crawl, partial results instead of errors when shards are missing, and fast removal of pages for legal reasons." } },
+    { "id": "query-math", "step": "Estimation", "title": "Query and fan-out load",
+      "levels": {
+        "0": "No query numbers.",
+        "1": "Has 100,000 queries/s but never multiplies by the shard fan-out.",
+        "2": "100k peak, 50% result-cache hits, 50k to the index tier, × 200 shards = 10M shard RPCs/s; rows sized so a zone loss leaves ρ ≤ 0.7 (108 rows, about 21,600 index servers)." } },
+    { "id": "index-size-math", "step": "Estimation", "title": "Index size and shard sizing",
+      "levels": {
+        "0": "No size estimate.",
+        "1": "Estimates raw page storage but not postings.",
+        "2": "10B docs × 600 distinct terms ≈ 6T postings ≈ 9 TB, positions ≈ 15 TB, about 24 TB total; 50M docs per shard → 200 shards of about 120 GB that fit in RAM; separate 32 TB doc store for snippets." } },
+    { "id": "api", "step": "API", "title": "Query and internal APIs",
+      "levels": {
+        "0": "No API.",
+        "1": "A GET /search with q, without pagination, locale or partial-result signalling.",
+        "2": "GET /search with q, locale and page; a response with results, snippets, a spelling suggestion and a partial flag; internal shard query and doc-fetch RPCs with deadlines." } },
+    { "id": "data-model", "step": "Data Model", "title": "Inverted index structures",
+      "levels": {
+        "0": "A table of (word, url) rows.",
+        "1": "Term → postings list, but no doc IDs, compression or document store.",
+        "2": "Term dictionary, compressed postings sorted by doc ID with frequencies and positions, per-doc static scores, a deletion bitmap, a separate document store, and a URL-to-doc-ID map shared with the crawler's fingerprints." } },
+    { "id": "hld-walkthrough", "step": "High-Level Design", "title": "Architecture and both paths",
+      "levels": {
+        "0": "Boxes without a walkthrough.",
+        "1": "Walks a query but not how a crawled page reaches the index, or the reverse.",
+        "2": "Walks the indexing path (events → indexers → delta segments → shards) and the query path (cache → scatter to one row → merge → rerank → snippets → spell) with a latency budget." } },
+    { "id": "indexing-freshness", "step": "Deep Dives", "title": "Index building and freshness",
+      "levels": {
+        "0": "Rebuilds everything per change, or updates postings in place.",
+        "1": "A periodic batch rebuild only, which cannot meet one-day freshness.",
+        "2": "Weekly base build plus hourly immutable delta segments and a deletion bitmap, merged in the background (LSM-style), with an optional real-time tier for news." } },
+    { "id": "partitioning", "step": "Deep Dives", "title": "Document vs term partitioning",
+      "levels": {
+        "0": "Does not discuss partitioning.",
+        "1": "Picks one without comparing load balance, updates and failure behaviour.",
+        "2": "Compares both on fan-out, hot terms, update cost and failure behaviour; chooses document partitioning; sizes shards and rows; mentions tiering." } },
+    { "id": "tail-latency", "step": "Deep Dives", "title": "Tail latency under fan-out",
+      "levels": {
+        "0": "Ignores the fan-out effect.",
+        "1": "Knows the slowest shard decides latency but has no technique.",
+        "2": "Shows 1 − 0.99²⁰⁰ ≈ 87%, then uses deadlines, hedged requests after p95, partial results with a coverage flag, and local caches." } },
+    { "id": "ranking-caching", "step": "Deep Dives", "title": "Ranking stages, caching and adjacent systems",
+      "levels": {
+        "0": "Ranks by term counts only and has no cache.",
+        "1": "Mentions BM25 and a cache, but runs expensive ranking on all matches or never invalidates the cache.",
+        "2": "BM25 plus static rank with dynamic pruning on each shard, a learned reranker on a few hundred candidates at the root, a result cache with TTL and purge, and spell correction and typeahead as separate fail-open services." } },
+    { "id": "failures-scale-tradeoffs", "step": "Wrap-up", "title": "Failures, 10× and trade-offs",
+      "levels": {
+        "0": "No failure or scaling discussion.",
+        "1": "Covers machine loss but not a bad index push or a cache flush.",
+        "2": "Bad-segment rollout timeline with canaries and rollback, cache flush load, zone loss; at 10× names fan-out RPCs and replica count first, then tiering; each decision stated with its alternative." } }
+  ]
+}

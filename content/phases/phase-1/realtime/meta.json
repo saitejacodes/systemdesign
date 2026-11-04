@@ -14,7 +14,7 @@
     { "id": "scaling-websockets", "title": "Scaling WebSocket connections", "depth": "tradeoffs" }
   ],
   "simulatorIds": ["request-journey"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["chat-app", "ride-sharing", "file-sync"],
   "prerequisites": ["p1-http"]
 }
 

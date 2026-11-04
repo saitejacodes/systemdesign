@@ -1,0 +1,740 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "creators",
+      "kind": "client",
+      "x": 0,
+      "y": 96,
+      "label": "Creators uploading",
+      "props": {
+        "platform": "web",
+        "users": 5000000
+      }
+    },
+    {
+      "id": "viewers",
+      "kind": "client",
+      "x": 0,
+      "y": 544,
+      "label": "Viewers",
+      "props": {
+        "platform": "both",
+        "users": 200000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 0,
+      "label": "DNS (steers to nearest CDN PoP)",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "cdn",
+      "kind": "cdn",
+      "x": 224,
+      "y": 832,
+      "label": "CDN edge + origin shield (manifests, segments)",
+      "props": {
+        "hitRate": 95,
+        "latencyMs": 20,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "w": 1712,
+      "h": 1184,
+      "label": "Region (primary)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "upload-lb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 64,
+      "label": "Upload API load balancer",
+      "props": {
+        "layer": "L7",
+        "algorithm": "round-robin",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "video-svc",
+      "kind": "service",
+      "x": 272,
+      "y": 64,
+      "label": "Upload & video service (x6)",
+      "props": {
+        "name": "video",
+        "instances": 6,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "pipeline-db",
+      "kind": "sql-db",
+      "x": 528,
+      "y": 0,
+      "label": "Pipeline DB: uploads, job DAG state",
+      "props": {
+        "replicas": 1,
+        "capacityQps": 10000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "tq",
+      "kind": "queue",
+      "x": 528,
+      "y": 160,
+      "label": "Transcode task queue",
+      "props": {
+        "partitions": 256,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0,
+        "replication": 3
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "transcoders",
+      "kind": "worker",
+      "x": 784,
+      "y": 160,
+      "label": "Transcode workers (2,500 x 64 vCPU)",
+      "props": {
+        "instances": 2500,
+        "processingMs": 750,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 560,
+      "label": "API load balancer",
+      "props": {
+        "layer": "L7",
+        "algorithm": "round-robin",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 272,
+      "y": 320,
+      "w": 496,
+      "h": 256,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "play-a",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Playback API AZ-a (x9)",
+      "props": {
+        "name": "playback",
+        "instances": 9,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "collect-a",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Event collectors AZ-a (x10)",
+      "props": {
+        "name": "collector",
+        "instances": 10,
+        "capacityQps": 20000,
+        "latencyMs": 2,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "events-a",
+      "kind": "queue",
+      "x": 288,
+      "y": 160,
+      "label": "Kafka: playback events AZ-a",
+      "props": {
+        "partitions": 32,
+        "retentionH": 72,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0,
+        "replication": 3
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 272,
+      "y": 608,
+      "w": 496,
+      "h": 256,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "play-b",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Playback API AZ-b (x9)",
+      "props": {
+        "name": "playback",
+        "instances": 9,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "collect-b",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Event collectors AZ-b (x10)",
+      "props": {
+        "name": "collector",
+        "instances": 10,
+        "capacityQps": 20000,
+        "latencyMs": 2,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "events-b",
+      "kind": "queue",
+      "x": 288,
+      "y": 160,
+      "label": "Kafka: playback events AZ-b",
+      "props": {
+        "partitions": 32,
+        "retentionH": 72,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0,
+        "replication": 3
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 272,
+      "y": 896,
+      "w": 496,
+      "h": 256,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "play-c",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Playback API AZ-c (x9)",
+      "props": {
+        "name": "playback",
+        "instances": 9,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "collect-c",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Event collectors AZ-c (x10)",
+      "props": {
+        "name": "collector",
+        "instances": 10,
+        "capacityQps": 20000,
+        "latencyMs": 2,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "events-c",
+      "kind": "queue",
+      "x": 288,
+      "y": 160,
+      "label": "Kafka: playback events AZ-c",
+      "props": {
+        "partitions": 32,
+        "retentionH": 72,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0,
+        "replication": 3
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "cache",
+      "kind": "cache",
+      "x": 1024,
+      "y": 352,
+      "label": "Redis: play-info + view counts (3x64 GB)",
+      "props": {
+        "sizeGb": 192,
+        "hitRate": 95,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "meta",
+      "kind": "nosql-db",
+      "x": 1024,
+      "y": 576,
+      "label": "Video metadata store (12 nodes, RF=3)",
+      "props": {
+        "nodes": 12,
+        "consistency": "quorum",
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "agg",
+      "kind": "worker",
+      "x": 1024,
+      "y": 832,
+      "label": "View-count aggregators (x24)",
+      "props": {
+        "instances": 24,
+        "processingMs": 0.05,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "views",
+      "kind": "nosql-db",
+      "x": 1280,
+      "y": 832,
+      "label": "View counters + watch time (6 nodes)",
+      "props": {
+        "nodes": 6,
+        "consistency": "quorum",
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "os",
+      "kind": "object-storage",
+      "x": 1280,
+      "y": 160,
+      "label": "Object storage: raw uploads + renditions",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 1280,
+      "y": 576,
+      "label": "Monitoring (QoE: start time, rebuffer)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 0,
+      "y": 1248,
+      "w": 448,
+      "h": 224,
+      "label": "Notes",
+      "props": {
+        "text": "Run mode models the viewer-facing paths: segment fetches end at the CDN (95% edge hit; misses go to the origin shield and object storage), play-start calls read play-info through Redis, and playback events land in zone-local Kafka buffers. Uploads (about 50 videos/s) and transcoding are drawn but carry no run-mode traffic. Sized for the 2x evening peak with one zone lost: 27 playback instances, 30 collectors. Transcode workers stand for 64-vCPU machines; 750 ms is one 60-second chunk-rendition task's share of a machine."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-creators-dns",
+      "source": "creators",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-creators-cdn",
+      "source": "creators",
+      "target": "cdn",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GET manifest / segment"
+    },
+    {
+      "id": "e-creators-lb",
+      "source": "creators",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "play start, events"
+    },
+    {
+      "id": "e-viewers-dns",
+      "source": "viewers",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-viewers-cdn",
+      "source": "viewers",
+      "target": "cdn",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GET manifest / segment"
+    },
+    {
+      "id": "e-viewers-lb",
+      "source": "viewers",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "play start, events"
+    },
+    {
+      "id": "e-creators-upload-lb",
+      "source": "creators",
+      "target": "upload-lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "init / complete upload"
+    },
+    {
+      "id": "e-creators-os",
+      "source": "creators",
+      "target": "os",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "PUT parts (presigned)"
+    },
+    {
+      "id": "e-cdn-os",
+      "source": "cdn",
+      "target": "os",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "origin fetch on miss"
+    },
+    {
+      "id": "e-upload-lb-video-svc",
+      "source": "upload-lb",
+      "target": "video-svc",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-video-svc-meta",
+      "source": "video-svc",
+      "target": "meta",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "video row"
+    },
+    {
+      "id": "e-video-svc-pipeline-db",
+      "source": "video-svc",
+      "target": "pipeline-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "upload session, DAG"
+    },
+    {
+      "id": "e-video-svc-os",
+      "source": "video-svc",
+      "target": "os",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "create multipart, presign"
+    },
+    {
+      "id": "e-video-svc-tq",
+      "source": "video-svc",
+      "target": "tq",
+      "kind": "async",
+      "direction": "forward",
+      "label": "enqueue DAG"
+    },
+    {
+      "id": "e-tq-transcoders",
+      "source": "tq",
+      "target": "transcoders",
+      "kind": "async",
+      "direction": "forward",
+      "label": "chunk tasks"
+    },
+    {
+      "id": "e-transcoders-os",
+      "source": "transcoders",
+      "target": "os",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "read raw, write renditions"
+    },
+    {
+      "id": "e-transcoders-pipeline-db",
+      "source": "transcoders",
+      "target": "pipeline-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "task state"
+    },
+    {
+      "id": "e-transcoders-video-svc",
+      "source": "transcoders",
+      "target": "video-svc",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "publish callback"
+    },
+    {
+      "id": "e-lb-play-a",
+      "source": "lb",
+      "target": "play-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-play-a-cache",
+      "source": "play-a",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "play-info"
+    },
+    {
+      "id": "e-play-a-meta",
+      "source": "play-a",
+      "target": "meta",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "miss"
+    },
+    {
+      "id": "e-lb-collect-a",
+      "source": "lb",
+      "target": "collect-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-collect-a-events-a",
+      "source": "collect-a",
+      "target": "events-a",
+      "kind": "async",
+      "direction": "forward",
+      "label": "batch append"
+    },
+    {
+      "id": "e-events-a-agg",
+      "source": "events-a",
+      "target": "agg",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-lb-play-b",
+      "source": "lb",
+      "target": "play-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-play-b-cache",
+      "source": "play-b",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "play-info"
+    },
+    {
+      "id": "e-play-b-meta",
+      "source": "play-b",
+      "target": "meta",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "miss"
+    },
+    {
+      "id": "e-lb-collect-b",
+      "source": "lb",
+      "target": "collect-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-collect-b-events-b",
+      "source": "collect-b",
+      "target": "events-b",
+      "kind": "async",
+      "direction": "forward",
+      "label": "batch append"
+    },
+    {
+      "id": "e-events-b-agg",
+      "source": "events-b",
+      "target": "agg",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-lb-play-c",
+      "source": "lb",
+      "target": "play-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-play-c-cache",
+      "source": "play-c",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "play-info"
+    },
+    {
+      "id": "e-play-c-meta",
+      "source": "play-c",
+      "target": "meta",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "miss"
+    },
+    {
+      "id": "e-lb-collect-c",
+      "source": "lb",
+      "target": "collect-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-collect-c-events-c",
+      "source": "collect-c",
+      "target": "events-c",
+      "kind": "async",
+      "direction": "forward",
+      "label": "batch append"
+    },
+    {
+      "id": "e-events-c-agg",
+      "source": "events-c",
+      "target": "agg",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-agg-views",
+      "source": "agg",
+      "target": "views",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "flush deltas every 60 s"
+    },
+    {
+      "id": "e-agg-cache",
+      "source": "agg",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "count snapshot"
+    }
+  ]
+}

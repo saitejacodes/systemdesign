@@ -1,0 +1,395 @@
+## Requirements
+
+An <Term slug="api-gateway">API gateway</Term> is the front door every public call passes through before reaching the roughly 200 services behind it. The trap is treating it as "a load balancer with auth": it sits on the hot path of every request, so it must be faster, more available and better isolated than anything behind it.
+
+### Functional
+
+1. **Authenticate** every request: an API key (server-to-server partners) or an OAuth 2.0 access token issued by the external identity provider (IdP) as a <Term slug="jwt">JWT</Term>. Bad credentials get `401`, missing scopes `403`.
+2. **Route** by host, path prefix, method and version (`/v1/orders/*` and `/v2/orders/*` may differ) to an upstream found through service discovery.
+3. **Rate-limit** per customer (tenant) and API key, for example 1,000 requests/s with a burst of 2,000, and enforce **monthly quotas** (for example 50M calls). Over-limit callers get `429` with a retry hint.
+4. **Transform** requests declaratively: strip or add headers, inject the caller's identity, rewrite paths.
+5. **Protect upstreams**: per-route timeouts, safe retries, circuit breaking, concurrency caps.
+6. **Meter usage** per tenant, key and route for billing.
+7. **Change configuration** (routes, keys, plans) live through a control-plane API, without restarts.
+
+### Non-functional
+
+| Property | Target | Why this number |
+| --- | --- | --- |
+| Peak load | 500k requests/s across 3 regions | Given |
+| Added latency | 10 ms or less at p99, gateway time only | Given; upstream time is the services' budget |
+| Availability | 99.99% for the gateway itself | It is in series with every service, so it must beat each of them |
+| Config propagation | Under 30 s fleet-wide, no restarts | A revoked key or bad route must stop working quickly |
+| Isolation | A slow or failing route degrades only that route | Given |
+| Usage accuracy | Billing within 0.1%; quota enforcement may lag about a minute | Money needs accuracy, enforcement needs speed |
+
+### Out of scope
+
+Issuing tokens (the IdP does that), the developer portal, a web application firewall and DDoS scrubbing (assumed at the network edge in front of us), service-to-service traffic, and business logic. Aggregating several backend calls into one response is excluded on purpose: it belongs in a <Term slug="bff">backend for frontend</Term> (deep dive 5).
+
+## Estimation
+
+Assumptions beyond the brief, labelled so the interviewer can change them: peak is 2.5× average, 50,000 customers hold 200,000 active API keys, about 2,000 routes over 200 services, 1 KB requests and 5 KB responses, 80% reads.
+
+**Traffic.**
+
+- Average = 500,000 ÷ 2.5 = **200,000 requests/s**.
+- Per day: 200,000 × 86,400 s = **17.3 billion requests**; per 30-day month about **518 billion**.
+- Per region in normal operation: 500,000 ÷ 3 ≈ **167,000/s at peak**. If a whole region fails, the two survivors take 250,000/s each.
+
+**Gateway fleet.** Assume one 16-vCPU instance sustains 10,000 requests/s with TLS, JWT checks, a limiter call and async logging: 16 cores × 1,000 ms ÷ 10,000 = 1.6 core-ms per request, a conservative figure to replace with a benchmark of your own filter chain.
+
+- Per region: 3 availability zones × 12 instances = 36 instances = 360,000 requests/s of capacity.
+- Normal peak: <Term slug="utilization">utilization</Term> ρ = 167,000 ÷ 360,000 = **0.46**.
+- Lose one AZ: 167,000 ÷ 240,000 = **0.70**.
+- Lose one region: 250,000 ÷ 360,000 = **0.69**.
+- Lose a region and an AZ in a survivor at once: 250,000 ÷ 240,000 = 1.04. That double failure is not provisioned for; the plan is to shed the lowest-priority traffic (deep dive 5).
+- Total: 3 × 36 = **108 instances**. (The reference design gives each AZ's gateway node 12 instances and a cap of 12 × 10,000 = 120,000 requests/s.)
+
+Why ρ near 0.5? Queueing delay grows as 1 ÷ (1 − ρ): twice as much at 0.75 as at 0.5. Headroom is the cheapest latency there is.
+
+**Bandwidth.** 500,000 × 6 KB = 3 GB/s (24 Gbit/s) globally; per instance 167,000 ÷ 36 ≈ 4,600 requests/s × 6 KB ≈ 220 Mbit/s. Not a constraint.
+
+**Latency budget (gateway-added, per request).**
+
+| Step | Typical | Notes |
+| --- | --- | --- |
+| TLS record decryption and HTTP parsing | 0.2 ms | Handshakes amortised by keep-alive and session resumption |
+| JWT signature check | about 0.05 ms | RSA-2048 verification is tens of microseconds; cache the result per token |
+| API-key lookup | 0.01 ms | In-memory hash map |
+| Rate-limit check | 0.5 ms (p99 2 ms) | One in-AZ Redis round trip, 3 ms timeout |
+| Route match and transforms | 0.05 ms | Prefix trie, declarative header rules |
+| Upstream connect | 0 ms | Pooled, warm connections |
+| **Sum** | **about 1 ms typical** | Leaves about 9 ms of p99 for queueing, GC pauses and the limiter's tail |
+
+**Identity provider.** The template's IdP accepts 5,000 requests/s. Calling it to introspect every token would need 500,000/s, **100× its limit**. Validation must be local: this one number decides the authentication design.
+
+**Rate-limiter store.** One counter operation per request: 167,000 ops/s per region, 250,000/s on region failover. Budget 50,000 script calls/s per Redis primary (an assumption to benchmark, about half of what one Redis thread does on simple commands): 250,000 ÷ 50,000 = 5, rounded up to **8 primaries** per region for headroom, each with a replica in another AZ. Memory is trivial: 200,000 keys × 2 windows × 100 B ≈ 40 MB. The shards exist for operations per second, not memory.
+
+**Usage metering.** One event per request would be 500,000 × 300 B = 150 MB/s. Instead each instance counts per (tenant, key, route, status class) and flushes every 10 s. At up to 3,000 tuples per flush: 108 × 3,000 ÷ 10 ≈ **32,000 rows/s at peak** (about 4 MB/s), or about 10,700/s per region, which **4 usage workers** per region absorb at an assumed 5,000 batched rows/s each (ρ 0.53). Rolled up hourly: 50,000 tenants × ~40 (route, status) pairs × 24 h ≈ 48M rows ≈ 6 GB a day, about 2.3 TB for 13 months of billing history.
+
+**Access logs.** 17.3 billion × 500 B ≈ 8.6 TB a day. Keep all errors and slow requests plus 1% of the rest, about 2%: **roughly 170 GB a day**.
+
+**Configuration.** 2,000 routes × 2 KB = 4 MB; 200,000 keys × 200 B (hash, tenant, plan, scopes, status) = 40 MB. A ~50 MB snapshot fits in RAM on every instance; most changes are kilobyte deltas.
+
+## API design
+
+The gateway has two very different APIs: the **data plane**, which is every customer request passing through, and the **control plane**, used by service teams and the billing system to change configuration.
+
+### Data plane: a request passing through
+
+```http
+GET /v2/orders/ord_81f2 HTTP/1.1
+Host: api.example.com
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IjIwMjYtMTEtYSJ9.eyJzdWIiOiJ...
+Accept: application/json
+```
+
+What the upstream `orders` service receives (identity resolved, spoofable headers stripped):
+
+```http
+GET /orders/ord_81f2 HTTP/1.1
+Host: orders.internal
+X-Request-Id: 01JC3Z8W5Q4N7T2M9K6R1H0F3B
+X-Tenant-Id: t_4812
+X-Auth-Subject: client_9f3a
+X-Auth-Scopes: orders:read
+X-Request-Deadline-Ms: 2000
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+```
+
+The gateway **deletes** incoming `X-Tenant-Id` and `X-Auth-*` headers before adding its own, or a caller could impersonate another tenant; upstreams trust them only over <Term slug="mtls">mTLS</Term> from the gateway.
+
+A rejected request:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 2
+X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1762245602
+Content-Type: application/json
+
+{"error":"rate_limited","message":"Tenant t_4812 exceeded 1000 requests/s on route class default","request_id":"01JC3Z8W5Q4N7T2M9K6R1H0F3B"}
+```
+
+The `X-RateLimit-*` names follow a common convention (GitHub's public API uses them); an IETF draft standardises `RateLimit` header fields. Quota exhaustion is also `429`, but with `"error":"quota_exceeded"` and a `Retry-After` at the next billing period, so clients can tell "slow down" from "upgrade your plan".
+
+### Control plane
+
+```http
+PUT /admin/v1/routes/orders-v2 HTTP/1.1
+If-Match: "cfg-41"
+Content-Type: application/json
+
+{"match":{"host":"api.example.com","pathPrefix":"/v2/orders/","methods":["GET","POST"]},
+ "upstream":"orders","rewritePrefix":"/orders/","timeoutMs":2000,
+ "retry":{"on":["connect-failure","503"],"maxAttempts":2,"idempotentOnly":true},
+ "auth":{"schemes":["jwt","api-key"],"scopes":{"GET":"orders:read","POST":"orders:write"}},
+ "limitClass":"default"}
+```
+
+```http
+HTTP/1.1 202 Accepted
+ETag: "cfg-42"
+
+{"configVersion":42,"rollout":{"stage":"canary","instancesAcked":3,"instancesTotal":108}}
+```
+
+`If-Match` gives optimistic concurrency so two teams cannot silently overwrite each other; the `202` is honest, and `GET /admin/v1/rollouts/42` reports how far the change has spread.
+
+Other calls: `POST /admin/v1/tenants/:id/keys` (returns the plaintext key once; only its hash is stored), `DELETE /admin/v1/keys/:keyId` (revocation, pushed with priority), `PUT /admin/v1/tenants/:id/plan` and the customer-facing `GET /v1/usage?from=2026-11-01&to=2026-11-04&granularity=hour`.
+
+Internally, each gateway holds a long-lived gRPC stream, `StreamConfig(nodeId, lastAckedVersion)`, delivering versioned snapshots or deltas that it ACKs or NACKs: the shape of Envoy's xDS protocol, worth naming if you build on <Term slug="envoy">Envoy</Term>.
+
+## Data model
+
+The gateway's data has three very different lifetimes, so it lives in three stores.
+
+**1. Control-plane configuration: PostgreSQL.** A few hundred writes a day, never read on the hot path (gateways get pushed snapshots), and it must be transactional and auditable. One primary with a synchronous replica; not a scaling problem.
+
+```sql
+CREATE TABLE api_keys (
+  key_hash     bytea PRIMARY KEY,          -- SHA-256 of the key; plaintext is never stored
+  key_id       text UNIQUE NOT NULL,       -- 'key_7Hq2', shown in dashboards
+  tenant_id    text NOT NULL REFERENCES tenants(tenant_id),
+  scopes       text[] NOT NULL,
+  status       text NOT NULL CHECK (status IN ('active','revoked')),
+  last4        char(4) NOT NULL,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE routes (
+  route_id     text PRIMARY KEY,
+  host         text NOT NULL,
+  path_prefix  text NOT NULL,
+  methods      text[] NOT NULL,
+  upstream     text NOT NULL REFERENCES upstream_clusters(name),
+  policy       jsonb NOT NULL,             -- timeouts, retries, auth, limit class, transforms
+  updated_by   text NOT NULL,
+  config_version bigint NOT NULL,
+  UNIQUE (host, path_prefix)
+);
+
+CREATE TABLE config_versions (
+  version      bigint PRIMARY KEY,
+  diff         jsonb NOT NULL,
+  author       text NOT NULL,
+  status       text NOT NULL,              -- validated | canary | rolled_out | rolled_back
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+```
+
+Also `tenants(tenant_id, plan_id, status)`, `plans(plan_id, rate_rps, burst, monthly_quota)` and `upstream_clusters(name, discovery, lb_policy, max_concurrency, breaker)`. Every change appends to `config_versions`, which is the audit log and the rollback target in one.
+
+**2. Rate-limit counters: Redis Cluster, per region.** Keys like `rl:{t_4812}:default:1762245600` hold an integer with a 2 s <Term slug="ttl">TTL</Term>. The braces are a Redis Cluster hash tag, so all of one tenant's counters land in the same <Term slug="hash-slot">hash slot</Term> and a Lua script can update them atomically. Losing this data loses at most a second or two of counting, so it is not replicated across regions and not persisted to disk.
+
+**3. Usage: Kafka, then a columnar store.** The aggregated rows go to a Kafka topic partitioned by `tenant_id`, then into a columnar analytics table (ClickHouse is a common choice) that answers "calls per route per hour for tenant X" quickly:
+
+```sql
+CREATE TABLE usage_hourly (
+  tenant_id text, key_id text, route_id text, status_class text,
+  hour timestamp, requests bigint, bytes_out bigint
+) -- sorted by (tenant_id, hour, route_id)
+```
+
+Each batch carries `(instance_id, flush_seq)`, so replays are deduplicated and invoices never double-count.
+
+**Service discovery** is not stored by the gateway: the control plane watches Kubernetes endpoints and pushes them through the same config stream (deep dive 4).
+
+## High-level design
+
+<Figure caption="FIG. 1 · API GATEWAY · DATA PLANE PER REGION, SHARED CONTROL PLANE">
+<Diagram label="Partner apps reach the nearest of three regions through GeoDNS. In each region an L4 load balancer spreads connections over 36 gateways in three zones. Gateways authenticate locally, check a regional Redis limiter, and forward over pooled mTLS to the upstream services; usage flows through Kafka to a usage store. A PostgreSQL-backed control plane pushes config, endpoints and quota flags to every gateway." chart={`flowchart LR
+  C[Partner apps] -->|GeoDNS: nearest healthy region| NLB[L4 load balancer]
+  subgraph R[Region, one of three]
+    NLB --> GA[Gateways AZ-a x12]
+    NLB --> GB[Gateways AZ-b x12]
+    NLB --> GC[Gateways AZ-c x12]
+    GA & GB & GC -->|limit check| RL[(Redis limiter, 8 shards)]
+    GA & GB & GC -->|mTLS, pooled| UP[200 upstream services]
+    GA & GB & GC -.->|usage every 10 s| K[[Kafka usage topic]]
+    K -.-> W[Usage workers] --> US[(Usage store)]
+  end
+  IDP[Identity provider] -.->|JWKS every 5 min| GA
+  CP[Control plane + PostgreSQL] -.->|versioned config, endpoints, quota flags| GA
+  US --> Q[Quota + billing] -.->|tenant over quota| CP`} />
+</Figure>
+
+**1. A read (`GET /v2/orders/ord_81f2`).** GeoDNS returns the nearest healthy region; the L4 load balancer hands the connection to a gateway, which terminates TLS and then (a) assigns a request ID and trace span, (b) matches the route in an in-memory prefix trie, (c) authenticates: for a JWT, finds the `kid`'s key in its cached <Term slug="jwks">JWKS</Term> and checks signature, claims and scope; for an API key, hashes it and looks it up in memory, (d) checks the quota flag (memory) and rate limit (one Redis call), (e) applies transforms (strip spoofable headers, inject identity, rewrite the path), sets a deadline and forwards over a pooled mTLS connection to an endpoint from its pushed endpoint list, and (f) adds the outcome to its local usage aggregate. About 1 ms added.
+
+**2. A write (`POST /v2/orders`).** Same path, but it needs `orders:write` and is never retried unless the client sent an `Idempotency-Key`, which passes through untouched.
+
+**3. Over the limit.** Redis answers "denied, retry in 2 s"; the gateway returns `429` and caches the denial until the window ends, so a client hammering at 50,000/s costs Redis one call per window per instance.
+
+**4. A config change.** The control plane validates the route, writes version 42 and pushes it in stages; each gateway swaps its route table atomically.
+
+**5. Usage and quotas.** Every 10 s each gateway flushes its aggregate to Kafka; workers write the usage store; a quota job sums month-to-date every minute and sets a `quota_exceeded` flag that the control plane pushes to gateways.
+
+## Deep dives
+
+### How do you authenticate 500k requests per second against an identity provider that accepts 5,000, and what happens when it rotates its signing keys?
+
+**Options.**
+
+- **Introspect every token at the IdP** (token introspection, RFC 7662): instant revocation, but 500,000 calls/s against a 5,000/s limit. Rejected.
+- **Introspect with a per-token cache**: one IdP call per token lifetime, but a cold cache after a failover bursts the IdP exactly when things are already bad.
+- **Validate JWTs locally against cached public keys**: no network call on the hot path, and the IdP can be down for hours unnoticed. The cost: a signed token stays valid until it expires.
+
+**Decision: local JWT validation**, with these rules:
+
+- **Pin the algorithms** the IdP uses (for example RS256 or ES256). Reject `alg: none` and never verify an HMAC token with the public key as the secret; both attacks come from trusting the token's own header.
+- **Validate the claims**, not just the signature: `iss`, `aud`, `exp` and `nbf` (with at most 60 s of clock skew), and the route's scope. That is authorisation offload: the upstream receives a verified identity and scopes, not a raw token.
+- **Short token lifetime** (10 to 15 minutes) bounds how long a stolen token works. For emergencies the control plane pushes a small denylist of token IDs (`jti`) or client IDs, each entry expiring when its tokens would.
+- **Cache verification results** per token hash until `exp`: a partner reuses one token for thousands of calls.
+
+**Key rotation** is where outages happen. The IdP signs with key `2026-11-a` and will rotate to `2026-11-b`:
+
+1. The IdP publishes `2026-11-b` in its JWKS **before** it signs anything with it, and keeps `2026-11-a` listed until every token signed with it has expired.
+2. Gateways refresh the JWKS every 5 minutes in the background, and keep the last good copy if a refresh fails (<Term slug="static-stability">static stability</Term>: an IdP outage changes nothing for already-issued tokens).
+3. A token with an unknown `kid` triggers one immediate refresh, collapsed so thousands of concurrent requests cause one fetch, and limited to once per 30 s per instance so garbage `kid` values cannot turn the gateway into a DDoS against the IdP.
+
+<Callout type="warning" title="Failure timeline · the IdP rotates early">
+t = 0: the IdP starts signing with a new key, but its JWKS endpoint still serves the old set from a cache. t + 1 s: tokens with the new `kid` fail; the gateway's immediate refetch gets the stale set too, so it fails closed for those tokens only, while old-key tokens keep working. t + 1 min: a `401 unknown_kid` alert fires. Fail closed on signatures, always, and alert on the reason code rather than the raw 401 count.
+</Callout>
+
+**API keys** are simpler: the 40 MB table of hashed keys lives in memory, revocations arrive as priority deltas within seconds, and a memory dump leaks no usable keys.
+
+### How do you enforce per-tenant rate limits and monthly quotas across 108 gateway instances?
+
+**Algorithm.** A <Term slug="token-bucket">token bucket</Term> per (tenant, limit class) matches how plans are sold: a sustained rate plus a burst. Implemented in Redis as a <Term slug="sliding-window">sliding-window</Term> counter or a token bucket inside a Lua script, it costs one round trip and is atomic because Redis runs the script on one thread.
+
+**Where the counter lives.** Three options:
+
+| Option | Accuracy | Cost | Verdict |
+| --- | --- | --- | --- |
+| Local bucket per instance, limit ÷ 108 | Poor: uneven traffic throttles a tenant far below its limit | Free | Fallback only |
+| Central Redis counter per request | Exact within a region | 1 round trip, 167k ops/s per region | Default for most tenants |
+| Local buckets that lease tokens from Redis in batches | Close (over-admits by at most one lease per instance) | Few Redis calls | For the biggest tenants |
+
+**Decision: central counters by default, leases for heavy tenants.** The problem with one Redis call per request is not total load (8 shards handle it) but the <Term slug="hot-key">hot key</Term>: one tenant at 60,000 requests/s puts 60,000 ops/s on one key on one shard. Above a threshold (say 2,000 requests/s), each gateway leases tokens in chunks of 200 and spends them locally, turning 60,000 Redis calls into about 300, at the price of over-admitting by at most one unspent lease per instance per window.
+
+**Regions.** Counters are per region, so a 1,000/s tenant could in theory get 1,000/s in each region. Either split the limit by each region's recent share of the tenant's traffic, or accept the slack and let the monthly quota be the hard control. The second is usually enough: the rate limit protects capacity, which is regional anyway.
+
+**When Redis is down.** Choose per limit class, in config:
+
+- <Term slug="fail-open">Fail open</Term> (admit, with the local per-instance bucket as a crude cap) for ordinary limits: an outage of a protection should not become an outage of the API.
+- <Term slug="fail-closed">Fail closed</Term> for limits that protect something fragile, such as an expensive search endpoint or a prepaid hard cap.
+
+The limiter call has a 3 ms timeout and its own <Term slug="circuit-breaker">circuit breaker</Term>, so a slow Redis costs 3 ms briefly, not on every request.
+
+**Monthly quotas** are about money over a month, so a minute of lag is fine and they stay off the per-request path: the usage pipeline sums per tenant every minute and flips a flag. Overshoot is bounded by the lag: a tenant at 1,000 requests/s overshoots by at most 60,000 calls on a 50M quota (0.12%), billed as overage. Only prepaid plans with a hard stop get a per-request counter, using the same lease trick.
+
+### How does the gateway stop one slow upstream from hurting the other 199: timeouts, retries and circuit breaking?
+
+The gateway's worst enemy is one bad upstream. Suppose `inventory` handles 5,000 requests/s at 50 ms. By <Term slug="littles-law">Little's law</Term> (in-flight = rate × time) that is 250 requests in flight. If it slows to 5 s, in-flight becomes 25,000, each holding a connection, a buffer and a slot in the gateway. Without limits those stuck requests exhaust memory and event-loop time, and **every other route** on the same instances slows down: exactly the failure the brief forbids.
+
+The defences, per upstream cluster:
+
+- **Timeouts with deadline propagation.** Each route has a timeout (2 s for `orders`), and the gateway passes the remaining time to the upstream (`X-Request-Deadline-Ms`), so the service can stop work the client has already given up on. See <Term slug="deadline-propagation">deadline propagation</Term>.
+- **Concurrency caps** (a <Term slug="bulkhead">bulkhead</Term>): at most about 2× normal in-flight per upstream per instance; above that, an immediate `503`. The slow route fails fast; the other 199 are untouched.
+- **Retries, carefully.** Only on connection failures or a `503` before the upstream did work, only for idempotent methods or requests with an idempotency key, at most once, to a **different** endpoint, with jitter, and within a <Term slug="retry-budget">retry budget</Term> (retries add at most 10% to an upstream's load). Without a budget, a struggling service at 5,000/s receives 10,000/s as every request is retried: a <Term slug="retry-storm">retry storm</Term>.
+- **Circuit breaking and outlier detection.** Eject an endpoint that returns 5 consecutive 5xx for 30 s (<Term slug="outlier-detection">outlier detection</Term>); open the whole cluster's breaker if more than 50% of calls fail over 10 s, and answer with a fast `503` while half-open probes test recovery.
+
+<Callout type="example" title="Failure timeline · inventory slows from 50 ms to 5 s">
+t = 0: a deploy adds a slow query. Callers of `/v2/inventory` see responses stall. t + 2 s: calls hit the 2 s timeout and return `504`; in-flight reaches its cap (250 ÷ 108 instances ≈ 2.3 normally, capped at about 5 per instance) and further calls get an immediate `503` with `Retry-After`. t + 10 s: over 50% fail, the breaker opens, inventory callers get a fast `503` in under 1 ms, and every other route's p99 is unchanged. t + 30 s: the per-route 5xx alert pages the inventory team, not the gateway team, because dashboards and alerts are per upstream. t + 4 min: rollback; half-open probes succeed and the breaker closes. Without caps, 25,000 stuck requests would have pushed every route past its timeout.
+</Callout>
+
+### How do route, key and service-discovery changes reach every instance safely, without restarts?
+
+A gateway's config is code that runs on every request, so a bad push is the likeliest way to take the whole API down at once. Cloudflare's public post-mortem of its 2 July 2019 outage is the canonical example: a WAF rule with a badly backtracking regular expression was deployed to the whole network at once and drove CPUs to 100% everywhere.
+
+- **Control plane / data plane split.** The <Term slug="control-plane">control plane</Term> (config API, PostgreSQL, validators, push service) can be down without affecting traffic; the <Term slug="data-plane">data plane</Term> keeps serving its last good snapshot indefinitely, and a gateway that starts meanwhile loads the snapshot from local disk or object storage.
+- **Versioned, immutable snapshots** with ACK/NACK: a gateway that cannot apply version 42 NACKs and keeps 41, and the rollout dashboard shows which instance runs which version.
+- **Validation before push**: schema, references (the upstream exists), route-shadowing detection, a linear-time regex engine (such as RE2) instead of a backtracking one, and a replay of recent real requests against the new route table to diff routing decisions.
+- **Staged rollout**: canary instances, one AZ, one region, then all, with automatic rollback on error or latency regression (a <Term slug="canary-release">canary release</Term>). Key revocations and denylists skip the stages; they only remove access.
+- **Atomic swap**: the new snapshot is built off to the side and one pointer swap makes it live; in-flight requests keep the snapshot they started with.
+
+**Service discovery** works the same way: the control plane watches Kubernetes endpoints and pushes endpoint deltas, so no request queries a registry. These deltas are frequent and skip the canary stages, so their safety rule is different: refuse any update that removes more than half of a cluster's endpoints at once, which is likelier a discovery bug than a real event, and keep the last list.
+
+### The gateway is a single point of failure and a latency tax on every call: how do you contain both, and when should you use BFFs or no gateway at all?
+
+**The SPOF.** Availabilities in series multiply: a 99.95% upstream behind a 99.9% gateway gives callers at best 0.9995 × 0.999 = **99.85%**. Hence the gateway's 99.99% target, reached by:
+
+- **Stateless instances**: all state is pushed config or external (Redis, Kafka); <Term slug="health-check">health checks</Term> remove a dead instance in seconds; no <Term slug="sticky-session">sticky sessions</Term>.
+- **N+1 at every level**: two AZs carry a region's peak (ρ 0.70), two regions carry the global peak (ρ 0.69). GeoDNS with health checks, or <Term slug="anycast">anycast</Term>, moves a failed region's callers.
+- **No hot-path dependency weaker than the gateway.** The IdP is never called inline; Redis is optional (3 ms timeout, fail open); Kafka is buffered (10 minutes in memory, then local disk); the control plane is never consulted per request.
+- **Priority <Term slug="load-shedding">load shedding</Term>.** Past a CPU or in-flight threshold an instance rejects the lowest-priority traffic first (batch jobs, free tier) with `503` and `Retry-After`. Stripe's engineering post "Scaling your API with rate limiters" describes the same layering of request-rate limiters, concurrency limiters and priority-based load shedders.
+- **Keep it thin.** Every feature added to the gateway can break 200 services at once.
+
+**The latency tax.** A gateway adds a network hop (a few hundred microseconds in-region), about 1 ms of filter work, and a tail: GC pauses, the limiter's p99, queueing near saturation. Against a 100 ms upstream that is cheap. It becomes expensive when internal calls hairpin through the edge (a request touching five services pays it five times) and when the upstream answers in a millisecond or two. So internal traffic goes service to service through a <Term slug="service-mesh">service mesh</Term> or client libraries, never back through the edge.
+
+**One gateway or BFFs?** A <Term slug="bff">backend for frontend</Term> is a small service owned by one client team (iOS, web, partners) that calls several services and shapes one response for that client; Sam Newman named and describes the pattern on his website. "Combine several backend calls for the mobile app" is exactly a BFF's job. Putting it in the shared gateway is the classic mistake: the gateway's release cadence and blast radius become every product team's problem.
+
+| Layout | Use it when | Cost |
+| --- | --- | --- |
+| One shared edge gateway (this design) | One public API, many services, cross-cutting policy (auth, limits, metering) | Must stay thin; one platform team owns it |
+| Edge gateway → BFF per client → services | Several client types with different data needs | One more hop and one more deployable per client type |
+| BFFs only, each doing its own auth and limits | Few client types, few services | Policy duplicated and drifting across BFFs |
+| No gateway: load balancer + shared auth library | One or two services, one team | Every service must get auth, limits and metering right on its own |
+
+Here the answer is the second row as the product grows: the gateway keeps policy, BFFs own composition.
+
+<NotWhenBox title="A central API gateway" items={[
+  "One or two services owned by one team: a load balancer plus a shared auth library is simpler and one hop shorter",
+  "Large uploads and downloads: hand out a presigned URL so the bytes bypass the gateway"
+]} />
+
+## Failure modes & mitigations
+
+| Failure | Detection | Impact | Mitigation |
+| --- | --- | --- | --- |
+| IdP outage | JWKS refresh errors | None for valid tokens; new logins fail at the IdP, not here | Cached JWKS used indefinitely; alert if older than 24 h |
+| Redis limiter shard down | Limiter timeout and breaker | Limits for tenants on that shard become approximate | Fail open to local buckets for normal classes, fail closed for protected ones; replica promotion in seconds |
+| One upstream slow | Per-cluster latency and in-flight | That route only | Timeouts, concurrency caps, breaker, retry budget |
+| Bad config pushed | Canary error-rate regression; NACKs | Canary instances only | Validation, linear-time regex, staged rollout, auto-rollback, last-known-good |
+| Control plane down | Push-service health | No config changes; traffic unaffected | Data plane serves last snapshot; snapshot copy in object storage for cold starts |
+| Service discovery bug removes most endpoints | Endpoint-count drop alarm | Could black-hole a service | Refuse deltas that remove more than 50% of a cluster |
+| AZ loss | LB health checks | 1/3 of a region's capacity | Two AZs carry peak at ρ 0.70 |
+| Region loss | GeoDNS health checks | 1/3 of global traffic moves | Two regions carry global peak at ρ 0.69; limiter counters restart from zero there |
+| Kafka unavailable | Producer errors | Usage delayed, never lost | 10-minute memory buffer plus local spill; dedup by `(instance, flush_seq)` |
+| TLS certificate expiry | Expiry monitor at 30, 14, 3 days | Total outage | Automated renewal, staged cert rollout like any config |
+
+## Scaling to 10×
+
+At 5M requests/s at peak, here is what breaks, in order.
+
+1. **The rate-limiter store first.** Region failover would put 2.5M ops/s on Redis, and hot keys do not shard. Use leased tokens for every tenant above a low threshold, so Redis load scales with active tenants rather than requests.
+2. **The in-memory key table.** 2M keys is 400 MB per instance, pushed to 1,000 instances. Switch to on-demand lookup with an LRU cache, <Term slug="negative-caching">negative caching</Term> for unknown keys, and revocations as deltas.
+3. **Config fan-out.** 1,080 streams to the push service: shard it, send deltas only, add regional relays.
+4. **Blast radius.** Split each region into independent cells (gateway fleet plus limiter), assign tenants to cells and roll out cell by cell. Giving each tenant a random small subset of cells (shuffle sharding, described in the AWS Builders' Library) means one tenant's poison traffic rarely shares all its cells with another's.
+5. **TLS handshakes.** Terminate TLS at the CDN edge or L7 edge with session resumption and keep long-lived connections from there.
+
+The metering pipeline scales linearly with Kafka partitions and workers, and the stateless fleet is the easy part: 1,080 instances instead of 108.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why |
+| --- | --- | --- |
+| Local JWT validation with cached JWKS | Introspect every token | 500k/s vs a 5,000/s IdP limit; no third party on the hot path |
+| Short token TTL plus pushed denylist | Instant revocation via introspection | Bounded exposure of 10 to 15 minutes is acceptable for API tokens |
+| Central Redis counters, leases for big tenants | Purely local limits | Accuracy for most tenants, hot keys handled separately |
+| Per-region rate counters | One global counter | No cross-region round trip in a 10 ms budget |
+| Quotas from the async usage pipeline | Per-request quota counter | Quotas are about money; a minute of lag is billed, not lost |
+| Fail open on the limiter (per class) | Always fail closed | A broken protection should not become an API outage |
+| Push config (xDS-style) with staged rollout | Gateways poll a database | Versioned, ACKed, atomic, and survives control-plane outage |
+| Concurrency caps and breakers per upstream | Timeouts only | Timeouts alone still let a slow route hold thousands of slots |
+| Thin gateway, aggregation in BFFs | Aggregation in the gateway | Shared infrastructure must not carry product logic |
+
+## What interviewers look for
+
+- **The latency budget, itemised**: only the limiter call touches the network. Weak answers say "it's fast".
+- **The IdP number**: 500k/s of introspection against a 5,000/s IdP is impossible, so validation is local. This is estimation driving design.
+- **Rotation and revocation** handled explicitly, including the unknown-`kid` refresh and what fails closed.
+- **Hot tenants in the limiter** and a deliberate fail-open or fail-closed choice per class.
+- **Isolation by Little's law**: why one slow upstream hurts a shared gateway, fixed with caps, retry budgets and breakers.
+- **Control plane / data plane separation** with validated, staged, atomic rollout; bonus for a real config-push outage.
+- **Knowing the gateway's limits**: SPOF containment, the latency tax, and pushing aggregation into BFFs instead.
+
+<InterviewAngle title="API gateway" questions={[
+  "Walk me through your 10 ms latency budget. Which step can blow it, and what is its timeout?",
+  "The IdP rotates its signing key. What does your gateway do, minute by minute?",
+  "One tenant sends 60,000 requests a second. What happens to your Redis limiter, and how do you fix it?",
+  "The inventory service goes from 50 ms to 5 s. What happens to the orders route on the same gateway instances?",
+  "Someone pushes a route with a catastrophic regex. How far does it get?"
+]} />

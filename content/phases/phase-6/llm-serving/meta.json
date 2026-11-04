@@ -14,6 +14,6 @@
     { "id": "hosted-vs-self-hosted", "title": "Hosted APIs vs self-hosting", "depth": "tradeoffs" }
   ],
   "simulatorIds": ["llm-inference"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["rag-docs-assistant"],
   "prerequisites": ["p1-latency-throughput", "p1-realtime"]
 }

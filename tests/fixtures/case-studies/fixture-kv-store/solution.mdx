@@ -1,0 +1,51 @@
+## Requirements
+
+**Functional.** Create a session at login and return its token; read a session by token on every API request; delete it at logout; expire it after 30 days. Out of scope: the login flow itself, and multi-region replication.
+
+**Non-functional.** Lookup adds under 10 ms at p99. A logout takes effect everywhere within 5 seconds. Losing a few sessions is tolerable; losing all of them at once is not.
+
+## Estimation
+
+- Traffic: about 2,000 requests per second on average, 10 reads per write, so roughly 1,820 reads/s and 180 writes/s. At the 3× morning peak that is about 6,000 requests per second.
+- Live sessions: 5 million daily users with a 30-day lifetime is at most about 150 million sessions if nobody logs out; in practice far fewer, but size for the worst case.
+- Storage: 150 million × 1 KB ≈ 150 GB. One copy fits on a few memory-heavy nodes; three replicas is about 450 GB.
+
+## API
+
+| Method | Path | Request | Response |
+| --- | --- | --- | --- |
+| POST | /sessions | `{ userId, roles }` | `201 { token, expiresAt }` |
+| GET | /sessions/current | `Authorization: Bearer <token>` | `200 { userId, roles, expiresAt }` or `404` |
+| DELETE | /sessions/current | `Authorization: Bearer <token>` | `204` |
+
+The token travels in a header, never in the path, so it does not land in access logs.
+
+## Data model
+
+One record per session, keyed by the token (a 128-bit random value, so keys spread evenly): `{ token, userId, roles, createdAt, expiresAt }`, with `expiresAt` as the store's TTL attribute. A key-value store fits: every access is a single-key get, put or delete, with no joins or range scans. A relational table would work at this size but buys nothing the access pattern needs.
+
+## High-level design
+
+Callers reach a load balancer with two instances, then a stateless session service (6 instances). Reads go to the cache first and fall back to the key-value store on a miss; writes and deletes go to the store and delete the cached entry. The store runs three nodes with quorum reads and writes, one per availability zone.
+
+## Deep dives
+
+### Cache restart at peak
+
+With a 90% hit rate the store sees about 10% of reads. If the cache restarts at peak, the store suddenly sees all 5,500 reads per second. Size the store to survive that (3 × 10,000 QPS here), coalesce concurrent misses for the same token, and shed load before the store saturates.
+
+### Logout within 5 seconds
+
+Delete the cached entry when the session is deleted, and cap the cache TTL at 5 seconds as a backstop for a lost invalidation.
+
+### Partitioning and hot keys
+
+Random tokens hash evenly across store nodes. A single hot session is one user, so it cannot get hot enough to matter; the hot-key risk is a shared service token, which should get its own short-lived local cache.
+
+## Trade-offs
+
+| Decision | Alternative | Why |
+| --- | --- | --- |
+| Key-value store | Relational table | Single-key access only; scales out without joins. |
+| Cache-aside with short TTL | Long TTL | Logout must take effect in seconds. |
+| Quorum reads and writes | Read from one replica | A deleted session must not reappear from a stale replica. |

@@ -15,6 +15,6 @@
     { "id": "what-to-cache", "title": "What to cache (and what not to)", "depth": "tradeoffs" }
   ],
   "simulatorIds": ["cache"],
-  "practiceCaseStudyIds": ["news-feed"],
+  "practiceCaseStudyIds": ["news-feed", "typeahead", "video-streaming"],
   "prerequisites": ["p1-http", "p1-reverse-proxy"]
 }

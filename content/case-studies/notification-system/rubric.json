@@ -1,0 +1,56 @@
+{
+  "criteria": [
+    { "id": "req-priorities", "step": "Requirements", "title": "Channels, priorities and guarantees", "levels": {
+      "0": "Lists 'send notifications' without separating transactional from marketing or asking about duplicates and provider failure.",
+      "1": "Names the three channels and that some messages are urgent, but leaves 'no duplicates' and the latency target vague.",
+      "2": "States transactional vs bulk with a numeric latency target (accepted under 200 ms, at the provider within seconds during a burst), zero loss after 202, a precise duplicate guarantee, preferences, quiet hours and per-user caps, and puts the in-app inbox out of scope." } },
+    { "id": "req-nfr-scale", "step": "Requirements", "title": "Scale and burst shape", "levels": {
+      "0": "No scale numbers.",
+      "1": "Uses 1B a day but ignores the 5× campaign bursts.",
+      "2": "Uses 1B a day, 200M users and 5× bursts, and notes campaigns are scheduled so capacity can be pre-scaled." } },
+    { "id": "est-rates", "step": "Estimation", "title": "Rates per channel against provider limits", "levels": {
+      "0": "No per-second rates.",
+      "1": "Derives about 11.6k/s average and 58k/s peak but not per channel.",
+      "2": "Splits by channel (for example 51.5k/s push, 5.8k/s email, 580/s SMS at peak), compares each with the provider limit and concludes the providers are the bottleneck, which motivates reserved quota." } },
+    { "id": "est-storage-workers", "step": "Estimation", "title": "Storage, log write rate and worker sizing", "levels": {
+      "0": "No storage or fleet sizing.",
+      "1": "Estimates storage only.",
+      "2": "Sizes preferences (~40 GB), dedup keys (~100 GB for 24 h), the log (~500 GB a day, write rate ~35k/s), and sizes worker pools by provider latency ÷ concurrency with ρ below 0.8 at peak." } },
+    { "id": "api-idempotent", "step": "API", "title": "Idempotent accept API", "levels": {
+      "0": "A send endpoint with no idempotency.",
+      "1": "Mentions an idempotency key but not its scope, TTL or conflict behaviour.",
+      "2": "POST returns 202 with a notification id; a required, caller-scoped Idempotency-Key returns the same id on retry and 409 on a different body; includes priority, category, template id and version, and expires_at; plus campaign, cancel, preferences, devices and status endpoints." } },
+    { "id": "data-stores", "step": "Data Model", "title": "Stores matched to access patterns", "levels": {
+      "0": "One database for everything with no reasoning.",
+      "1": "Picks reasonable stores without tying them to access patterns.",
+      "2": "Wide-column log with TTL keyed by notification id and by (user, month); preferences and devices by user id behind a cache; templates and campaigns in a relational store; dedup and caps in Redis with TTLs, with the consequence of losing Redis stated." } },
+    { "id": "hld-lanes", "step": "High-Level Design", "title": "Pipeline with separate lanes and per-channel senders", "levels": {
+      "0": "API calls providers synchronously.",
+      "1": "API → queue → workers → providers, one shared queue.",
+      "2": "Accept API → transactional and bulk topics → routers (preferences, dedup, render) → per-channel queues → sender pools → providers, with status to the log, retry queues, a DLQ, campaign fan-out and provider webhooks, each request type walked through." } },
+    { "id": "dd-priority", "step": "Deep Dives", "title": "Head-of-line blocking during campaigns", "levels": {
+      "0": "Not addressed.",
+      "1": "Separate queues only.",
+      "2": "Separate lanes, reserved provider quota per lane (token buckets), and bulkheaded worker pools; explains why a priority field on one FIFO log fails and what to alert on (oldest-message age)." } },
+    { "id": "dd-retries", "step": "Deep Dives", "title": "Retries, DLQ and provider outages", "levels": {
+      "0": "Just 'retry on failure'.",
+      "1": "Backoff and a DLQ, but all errors treated the same.",
+      "2": "Classifies permanent, throttled and transient errors; backoff with jitter until expires_at; non-blocking retry queues; DLQ with owner and redrive; circuit breaker per provider; transactional fails over to a second provider while bulk waits." } },
+    { "id": "dd-dedup", "step": "Deep Dives", "title": "Honest duplicate semantics", "levels": {
+      "0": "Claims exactly-once.",
+      "1": "Dedups caller retries only.",
+      "2": "Idempotency key at accept, idempotent stages on (notification id, channel), and an explicit per-category policy for the in-doubt provider timeout (collapse ids for push, retry OTPs, do not retry marketing SMS), measured as a metric." } },
+    { "id": "dd-user-controls", "step": "Deep Dives", "title": "Preferences, quiet hours, caps and kill switch", "levels": {
+      "0": "Preferences mentioned only.",
+      "1": "Preferences and quiet hours, checked at accept time.",
+      "2": "Checks at routing time so opt-outs stop in-flight campaigns; quiet hours via a scheduled store with jittered release; per-user marketing caps that suppress; a campaign kill switch." } },
+    { "id": "wrap-failures", "step": "Wrap-up", "title": "Failure modes and 10× plan", "levels": {
+      "0": "No failure analysis.",
+      "1": "Lists failures without detection or mitigation.",
+      "2": "Covers provider slow or down, sender crash in doubt, Redis and broker loss, AZ loss with N+1 sizing, poison messages and wrong-segment campaigns; at 10× names provider limits first, then dedup memory and log volume, with concrete changes." } },
+    { "id": "wrap-tradeoffs", "step": "Wrap-up", "title": "Trade-offs and monitoring", "levels": {
+      "0": "No trade-offs stated.",
+      "1": "Mentions trade-offs generically.",
+      "2": "States each decision with its alternative and the deciding reason (lanes vs priority field, late preference checks, effectively-once inside, 3 AZs at N+1) and names the key metrics: oldest-message age per lane, provider error rate, in-doubt count, DLQ growth." } }
+  ]
+}

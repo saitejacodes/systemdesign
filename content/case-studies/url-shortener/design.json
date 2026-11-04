@@ -1,0 +1,384 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "creators",
+      "kind": "client",
+      "x": 0,
+      "y": 128,
+      "label": "Link creators",
+      "props": {
+        "platform": "web",
+        "users": 10000000
+      }
+    },
+    {
+      "id": "visitors",
+      "kind": "client",
+      "x": 0,
+      "y": 448,
+      "label": "Visitors following links",
+      "props": {
+        "platform": "both",
+        "users": 500000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 0,
+      "label": "DNS (sho.rt)",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "w": 1232,
+      "h": 736,
+      "label": "Region (primary)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 320,
+      "label": "Load balancer (TLS)",
+      "props": {
+        "layer": "L7",
+        "algorithm": "round-robin",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "w": 320,
+      "h": 192,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "link-a",
+      "kind": "service",
+      "x": 48,
+      "y": 64,
+      "label": "Link service AZ-a (x3)",
+      "props": {
+        "name": "link",
+        "instances": 3,
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 272,
+      "w": 320,
+      "h": 192,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "link-b",
+      "kind": "service",
+      "x": 48,
+      "y": 64,
+      "label": "Link service AZ-b (x3)",
+      "props": {
+        "name": "link",
+        "instances": 3,
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 512,
+      "w": 320,
+      "h": 192,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "link-c",
+      "kind": "service",
+      "x": 48,
+      "y": 64,
+      "label": "Link service AZ-c (x3)",
+      "props": {
+        "name": "link",
+        "instances": 3,
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "cache",
+      "kind": "cache",
+      "x": 688,
+      "y": 144,
+      "label": "Redis cache (hot codes, 64 GB)",
+      "props": {
+        "sizeGb": 64,
+        "hitRate": 90,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "kv",
+      "kind": "nosql-db",
+      "x": 688,
+      "y": 368,
+      "label": "KV store: links (6 nodes, RF=3)",
+      "props": {
+        "nodes": 6,
+        "consistency": "quorum",
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "clicks",
+      "kind": "queue",
+      "x": 688,
+      "y": 576,
+      "label": "Kafka: click events",
+      "props": {
+        "partitions": 32,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "analytics",
+      "kind": "worker",
+      "x": 928,
+      "y": 576,
+      "label": "Analytics consumers",
+      "props": {
+        "instances": 4,
+        "processingMs": 2,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "lake",
+      "kind": "object-storage",
+      "x": 928,
+      "y": 368,
+      "label": "Data lake + daily_stats",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 928,
+      "y": 144,
+      "label": "Monitoring (hit rate, p99, drops)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-creators-dns",
+      "source": "creators",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-visitors-dns",
+      "source": "visitors",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-creators-lb",
+      "source": "creators",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "POST /v1/links"
+    },
+    {
+      "id": "e-visitors-lb",
+      "source": "visitors",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GET /{code}"
+    },
+    {
+      "id": "e-lb-link-a",
+      "source": "lb",
+      "target": "link-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-link-a-cache",
+      "source": "link-a",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "get code"
+    },
+    {
+      "id": "e-link-a-kv",
+      "source": "link-a",
+      "target": "kv",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "miss / insert-if-absent"
+    },
+    {
+      "id": "e-link-a-clicks",
+      "source": "link-a",
+      "target": "clicks",
+      "kind": "async",
+      "direction": "forward",
+      "label": "click event"
+    },
+    {
+      "id": "e-lb-link-b",
+      "source": "lb",
+      "target": "link-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-link-b-cache",
+      "source": "link-b",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "get code"
+    },
+    {
+      "id": "e-link-b-kv",
+      "source": "link-b",
+      "target": "kv",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "miss / insert-if-absent"
+    },
+    {
+      "id": "e-link-b-clicks",
+      "source": "link-b",
+      "target": "clicks",
+      "kind": "async",
+      "direction": "forward",
+      "label": "click event"
+    },
+    {
+      "id": "e-lb-link-c",
+      "source": "lb",
+      "target": "link-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-link-c-cache",
+      "source": "link-c",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "get code"
+    },
+    {
+      "id": "e-link-c-kv",
+      "source": "link-c",
+      "target": "kv",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "miss / insert-if-absent"
+    },
+    {
+      "id": "e-link-c-clicks",
+      "source": "link-c",
+      "target": "clicks",
+      "kind": "async",
+      "direction": "forward",
+      "label": "click event"
+    },
+    {
+      "id": "e-clicks-analytics",
+      "source": "clicks",
+      "target": "analytics",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-analytics-lake",
+      "source": "analytics",
+      "target": "lake",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "aggregates"
+    }
+  ]
+}

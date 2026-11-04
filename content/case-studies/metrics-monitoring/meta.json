@@ -1,0 +1,56 @@
+{
+  "id": "metrics-monitoring",
+  "title": "Metrics & alerting",
+  "summary": "Ten million samples a second, dashboards from the last hour to the last year, and pages that must still go out while the infrastructure is on fire.",
+  "difficulty": 3,
+  "weekRecommended": 15,
+  "relatedSectionIds": ["p5-metrics", "p5-alerting", "p2-olap-vs-oltp", "p2-consistent-hashing", "p4-quorums", "p2-object-storage", "p4-bulkheads-load-shedding", "p1-estimation", "p5-slos"],
+  "interviewerPrompt": "Let's design a metrics and alerting system, something like Prometheus or Datadog, for our own infrastructure. Agents on every host report numbers, engineers look at dashboards, and when something goes wrong the on-call engineer gets paged. How would you approach it?",
+  "clarifyingQuestions": [
+    { "question": "How many hosts, and how much does each report?", "answer": "About 100,000 hosts, each reporting 1,000 time series every 10 seconds. A time series is a metric name plus a set of labels, such as http_requests_total with service and status labels." },
+    { "question": "Do agents push, or does the system scrape them?", "answer": "Agents push batches to the system. Assume they buffer locally and can retry when the system is unreachable or busy." },
+    { "question": "How fresh must the data be?", "answer": "A sample should be queryable within 30 seconds of being sent, for dashboards and for alerts." },
+    { "question": "How often are alert rules evaluated, and how many are there?", "answer": "Every rule at least once a minute. Assume about 150,000 alert and recording rules across all teams." },
+    { "question": "How far back do engineers query?", "answer": "Dashboards range from the last hour to the last year. Full 10-second resolution is only needed for about two weeks; older data can be coarser." },
+    { "question": "How are people notified?", "answer": "Through an external paging provider that accepts about 100 requests per second. Alerts should be grouped and deduplicated, and can be silenced during maintenance." },
+    { "question": "What matters more, dashboards or alerts?", "answer": "Alerts. Dashboards can be slow during an incident, but pages must keep going out, even when parts of the infrastructure the system runs on are failing." },
+    { "question": "Is the system shared by many teams?", "answer": "Yes, each team is a tenant with its own metrics and rules. One team's mistake must not degrade monitoring for everyone else." },
+    { "question": "Should we handle logs and traces too?", "answer": "No, only metrics and alerting. Logs and traces have their own pipelines." },
+    { "question": "How much data loss is acceptable?", "answer": "A few seconds of samples on a crash is tolerable. Data that has been acknowledged and flushed must not be lost." }
+  ],
+  "deepDiveQuestions": [
+    "How does the write path absorb 10M samples/s, and what happens when someone adds a high-cardinality label?",
+    "How do you store time series compactly? (awareness)",
+    "How do downsampling and the query path serve both the last hour and the last year quickly?",
+    "How do you evaluate alert rules reliably at least once a minute, and keep alerting when the infrastructure is failing?"
+  ],
+  "trafficProfile": {
+    "qps": 12600,
+    "readWriteRatio": 0.26,
+    "peakMultiplier": 2,
+    "requestTypes": [
+      { "id": "push", "name": "Push a batch of 1,000 samples", "op": "write", "weight": 1, "target": { "kinds": ["nosql-db"] } },
+      { "id": "rule-eval", "name": "Alert / recording rule evaluation", "op": "read", "weight": 25, "target": { "kinds": ["nosql-db"] } },
+      { "id": "dashboard", "name": "Dashboard query (query_range)", "op": "read", "weight": 1, "target": { "kinds": ["nosql-db"] } }
+    ]
+  },
+  "runChallenge": {
+    "id": "metrics-burst-lose-az",
+    "title": "Agents replay a backlog while a zone is down",
+    "description": "Run at the 2× burst (about 25,200 requests per second) and lose the availability zone holding the most components after 10 s. Ingest and queries must keep at least 24,000 requests per second succeeding with under 1% errors and a p99 under 150 ms, with no single point of failure.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "minOkQps": 24000, "maxErrorRatePct": 1, "maxP99Ms": 150, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Sizing only in samples per second and never estimating active series, when series count is what sets ingester memory, index size and query cost.",
+    "Storing samples in a relational table or one cell per sample in a wide-column store, at 10 to 20 times the bytes of compressed time-series chunks and with no index over labels.",
+    "Allowing unbounded label values such as user_id or request_id with no per-tenant series limits, so one deploy can exhaust memory for every team.",
+    "Downsampling by keeping only averages, which makes maxima, counter rates and percentiles over long ranges impossible to compute correctly.",
+    "Running alert evaluation through the same query path as dashboards, so the dashboard surge during an incident delays the pages about that incident.",
+    "A single alert manager or rule evaluator, or one that pages once per alert instance, so a zone outage either sends nothing or sends 50,000 pages into a provider that accepts 100 a second.",
+    "Assuming the monitoring system will report its own death, with no dead man's switch or independent meta-monitoring.",
+    "Replicating ingesters without zone awareness, so losing one zone can remove all copies of some series."
+  ]
+}

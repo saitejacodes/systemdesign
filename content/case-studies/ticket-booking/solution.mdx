@@ -1,0 +1,317 @@
+## Requirements
+
+Ticket booking hides a contention problem inside a traffic problem. A million people want 50,000 seats in the same minute, and the most wanted seats are a few thousand rows in one table. Most of the work is not "scale the database" but **controlling how many people reach it at once**, then making the few writes that matter impossible to get wrong.
+
+### Functional
+
+1. **Browse** events and a venue's seat map with live availability.
+2. **Hold** specific seats (up to 4 per account) for 10 minutes while paying. A hold is all-or-nothing: you get every seat you asked for or none.
+3. **Pay** through an external payment service provider (PSP); on success the seats are sold and tickets issued.
+4. **Release** unpaid holds on time so the seats go back on sale.
+5. **Waiting room** during big on-sales: arrivals queue fairly, are admitted at a controlled rate, and learn quickly if the show sells out.
+
+### Non-functional
+
+| Property | Target | Why it matters here |
+|---|---|---|
+| No double sale | a seat is sold at most once, ever | Two fans in one seat is the failure that makes the news |
+| Hold accuracy | holds released within seconds of expiry, never while a payment is in flight | Released late wastes inventory; released early resells a seat someone is paying for |
+| Availability during on-sale | the site stays up at twice the forecast crowd | The busiest minutes are the only ones that matter |
+| Fairness | waiting fans are served in a fair order; bots gain little | A fan who waited 20 minutes should not lose to a script |
+| Latency | seat map and hold under 200 ms at p99 for admitted shoppers | Shoppers are racing for seats |
+| Payment correctness | never charge for seats we did not sell | Charging without a ticket is a refund, a complaint and a chargeback |
+
+### Out of scope
+
+Resale, dynamic pricing, venue configuration tools, and the bot-detection model itself (we assume a score per session and design to limit what a bot can do).
+
+## Estimation
+
+Every number is an assumption of this problem, derived step by step. The profile describes the **on-sale**, the only time the system is stressed.
+
+**Arrivals.** 1M people in the first minute: 1,000,000 ÷ 60 = **16,667 joins per second**. Planning for a crowd twice the forecast gives 33,333/s. Forecasts for hot shows are often wrong: Ticketmaster publicly attributed its November 2022 Eras Tour presale problems to demand far beyond what it had planned for, including bot traffic.
+
+**Waiting-room polls.** Each waiting fan's page checks its status every 10 s (an assumption): 1M ÷ 10 = **100,000 requests per second**, 200,000 at 2×. At about 300 B each, 30 MB/s (240 Mbps), trivial for a CDN.
+
+**Inventory.** 50,000 seats; assume 2 seats per order, so **25,000 orders** sell the show out.
+
+**Admission rate.** We cap *active shoppers* (people allowed to see the seat map and hold) at 10,000, and assume a shopping session lasts about 5 minutes. To keep 10,000 active, admit 10,000 ÷ 5 = **2,000 people per minute** (33/s).
+
+**Sell-out time.** Assume 60% of admitted shoppers complete an order: 2,000 × 0.6 = 1,200 orders per minute, so 25,000 ÷ 1,200 ≈ **21 minutes**, during which about 25,000 ÷ 0.6 ≈ 41,700 people are admitted. The other ~958,000 will not get tickets. The waiting room does not create seats; it makes the sale orderly, and it must tell them early.
+
+**Seat writes.** New shoppers: 10,000 ÷ 300 s = 33/s, each making about 2 hold attempts (the first often loses a race): **67 holds/s**. Confirmations: 1,200 ÷ 60 = **20/s**. Expired holds released: 33 − 20 = **13/s**. Total about **100 writes per second**, 200 at 2×.
+
+**Seat-map reads.** 10,000 active shoppers refreshing every 5 s: **2,000/s**, 4,000 at 2×.
+
+**Payments.** 20 authorizations per second, 40 at 2×, against a PSP limit of 2,000/s: about 2%.
+
+**The counterfactual.** Without a waiting room, 1M people refreshing the seat map every 5 s is 200,000 requests per second at the booking API, and 1M × 2 hold attempts aimed at the best few thousand seats in the first minute is about 33,000 conditional writes per second fighting over the same rows. Nearly all of them fail, but each takes a row lock. **The waiting room turns an unwinnable contention problem into a small one.**
+
+**Run profile.** Queue polls 100,000/s + joins 16,667/s + seat writes 100/s = **116,767 requests per second**, a read-to-write ratio of 100,000 ÷ 16,767 = **5.96**, and 2× peak = 233,534/s. (Seat-map reads are served by the booking API and Redis; the profile's three request types cover the waiting room and the writes that must never be wrong.)
+
+**Storage.** Seats: assume 10,000 events on sale averaging 20,000 seats = 200M rows × 200 B = **40 GB**. Orders: assume 100M tickets a year at 2 per order = 50M orders × 1 KB = **50 GB a year**. Waiting-room tokens: 1M × 200 B = 200 MB per on-sale. All of it fits one relational database comfortably.
+
+**Instances.** Every tier is sized for ρ ≤ 0.6 at 2× with one of three zones lost:
+
+| Tier | Load at 2× | Assumed capacity | Arithmetic | Result |
+|---|---|---|---|---|
+| Waiting-room service | 33,333 joins/s | 2,000/s per instance (auth check, one conditional write, sign a token) | 33,333 ÷ (0.6 × 2,000) = 27.8 in two zones | **14 per zone, 42 total** |
+| Queue store (key-value) | 33,333 writes/s | 10,000/s per node | 33,333 ÷ (0.6 × 10,000) = 5.6 | **6 nodes**, RF 3 across zones |
+| Booking API | 4,000 reads + 200 writes/s | 500/s per instance | 4,200 ÷ (0.6 × 500) = 14 in two zones | **7 per zone, 21 total** |
+| Inventory database | 200 writes + 133 reads/s on the primary | 5,000/s per node | Seat-map misses: 4,000 × 10% = 400/s over 3 nodes | **1 primary + 2 replicas**, ρ ≈ 0.07 |
+
+<Callout type="tip" title="What the numbers say">
+The front door takes 233,000 requests per second; the inventory database sees a few hundred. That ratio is the design. The database's job is correctness under contention, not throughput.
+</Callout>
+
+## API design
+
+```http
+POST /v1/events/ev_812/queue          → join the waiting room
+Authorization: Bearer <session>
+
+201 Created
+{ "token": "eyJldiI6ImV2XzgxMiIsInUiOiJ1XzkxIiwicyI6MC40MTd9.sig", "score": 0.417 }
+```
+
+The token is signed (HMAC) and carries the event, the user and a **score**. Joining twice returns the same token: the queue store allows one token per account per event.
+
+```http
+GET https://cdn.example.com/events/ev_812/now-serving.json   (cached at the CDN, 2 s)
+
+{ "admitBelow": 0.0213, "status": "on-sale", "queueAhead": [ … score histogram … ] }
+```
+
+The client compares its own score with `admitBelow`. Every waiting fan reads the **same** object, which is why it can be cached and why a million pollers cost the origin almost nothing. When `status` becomes `sold-out`, every page learns it within seconds.
+
+```http
+GET /v1/events/ev_812/seats?section=112          (admitted token required)
+200 { "section": "112", "version": 88412, "available": "base64 bitmap of seat ids" }
+
+POST /v1/holds
+Idempotency-Key: 5d0e…
+{ "eventId": "ev_812", "seats": ["112-K-14", "112-K-15"], "token": "…" }
+
+201 { "holdId": "h_7Pq", "expiresAt": "2026-11-04T19:10:00Z", "seats": [ … ] }
+409 { "error": "seats_unavailable", "taken": ["112-K-15"] }
+403 { "error": "not_admitted" }   429 { "error": "hold_limit" }
+```
+
+```http
+POST /v1/holds/h_7Pq/pay
+Idempotency-Key: 9a41…
+{ "paymentMethod": "tok_psp_4f9b…" }
+
+200 { "orderId": "ord_3Lm", "status": "confirmed", "tickets": [ … ] }
+202 { "orderId": "ord_3Lm", "status": "processing" }       ← payment outcome unknown, poll the order
+410 { "error": "hold_expired" }
+```
+
+`expiresAt` comes from the database clock, and the page's countdown is computed from it, so a fan's laptop clock cannot disagree with the server about when a hold ends.
+
+## Data model
+
+| Entity | Key | Fields | Notes |
+|---|---|---|---|
+| `seat` | (`event_id`, `seat_id`) | section, row, number, price tier, `status` (available, held, paying, sold), `hold_id`, `hold_expires_at`, `order_id` | One row per seat per event; the contended table |
+| `hold` | `hold_id` | event_id, user_id, seat ids, expires_at, state | One per hold attempt that succeeded |
+| `order` | `order_id` | hold_id, user_id, amount, `payment_state`, psp_reference | Created at "pay"; `order_id` is the PSP idempotency key |
+| `outbox` | `event_id` | type, payload, published_at | Written in the same transaction as the change |
+| Queue token | (`event_id`, `user_id`) | score, issued_at, admitted_at | Key-value store, conditional put |
+| Seat availability | `event:section` | bitmap of available seat ids, version | Redis; derived, never authoritative |
+
+**Database choice: Postgres for seats and orders.** The deciding reasons: a hold of several seats must be **all-or-nothing** (a multi-row transaction), the "is it still free?" check must be atomic with the write (a conditional update), confirmation must move seats and the order together, and the data is small (40 GB). One primary with a synchronous replica in another zone means a committed hold or sale survives the loss of a zone.
+
+**The queue store is separate** (a partitioned key-value store such as DynamoDB) because its load is the opposite shape: 33,000 independent single-key conditional puts per second for a few minutes, keyed by (event, user), with no relation to seats. Keeping it apart means the on-sale burst can never slow down a seat hold.
+
+**Redis holds seat-availability bitmaps** for the seat map: 50,000 seats is a 6.25 KB bitmap. They are updated after each committed change and expire after a few seconds, so a stale map can only show a seat as free that is not; the hold then fails with `409` and a fresh map. The database is the <Term slug="source-of-truth">source of truth</Term>.
+
+## High-level design
+
+<Figure caption="FIG. 1 · TICKET BOOKING · REFERENCE ARCHITECTURE">
+  <Diagram label="Fans poll a cached now-serving file through the CDN and join the waiting room through a load balancer, which issues one token per account from a key-value queue store. Admitted fans use the booking API, which reads seat availability from Redis and holds, confirms and releases seats in Postgres, and authorizes payments with the PSP. An admission controller publishes the admit threshold; a sweeper releases expired holds; an outbox relay feeds workers that capture payments and issue tickets." chart={`flowchart LR
+    F[Fans] -->|poll every 10 s| CDN[CDN]
+    CDN --> NS[(now-serving.json)]
+    F --> LB[Load balancer]
+    subgraph Region
+      LB --> WR[Waiting-room service x42, 3 AZs]
+      WR --> Q[(Queue store: 1 token per account)]
+      LB --> API[Booking API x21, 3 AZs]
+      API --> RC[(Redis: seat availability)]
+      API --> DB[(Postgres: seats, holds, orders)]
+      AC[Admission controller] --> Q
+      AC --> DB
+      AC -->|publish admit threshold| NS
+      SW[Hold-expiry sweeper] --> DB
+      RL[Outbox relay] --> DB
+      RL -.-> K[[Kafka: order events]]
+      K -.-> FW[Payment follow-up and ticket workers]
+      FW --> DB
+    end
+    API -->|authorize| PSP[PSP]
+    FW -->|capture, void, status| PSP`} />
+</Figure>
+
+**Joining and waiting.** The fan opens the event page and calls `POST /queue`. The waiting-room service checks the session and its bot score, assigns a score (deep dive 3), and writes the token with a conditional put, so one account gets one place. The page then polls `now-serving.json` through the CDN every 10 s; when its score drops below `admitBelow`, it moves on with an admitted token, valid for 15 minutes.
+
+**Admission.** The admission controller (two instances, one active through a <Term slug="lease">lease</Term>) runs every 2 s. It reads the number of active shoppers and the unsold-plus-held seat count, raises `admitBelow` enough to admit about 66 more people (2,000 a minute), and writes the file to object storage. When unsold plus held reaches zero it writes `sold-out`; if holds later expire, it can reopen admission for a few more.
+
+**Holding.** An admitted fan loads a section map (Redis), picks seats and calls `POST /holds`. The booking API runs one conditional update in Postgres (deep dive 1); on success it updates the Redis bitmap and returns the expiry.
+
+**Paying and confirming.** `POST /holds/{id}/pay` moves the seats to `paying`, authorizes with the PSP, and on success sells the seats, writes the order and an outbox event in one transaction (deep dive 4). Workers consume the event to capture the payment and issue tickets.
+
+**Expiry.** A sweeper releases holds whose time has passed (deep dive 2).
+
+Latency for a hold: load balancer 1 ms, booking API about 20 ms, one Postgres transaction about 5 ms: well under the 200 ms target even with a zone lost.
+
+## Deep dives
+
+### How do you stop two fans from getting the same seat: optimistic or pessimistic locking, in the database or in Redis?
+
+The broken version is a check followed by a write: `SELECT status` → "available" → `UPDATE … SET status = 'held'`. Two fans run the SELECT at the same moment, both see "available", both write, both get the seat. Every correct answer makes the check and the write one atomic step.
+
+| Option | How | Under contention | Verdict |
+|---|---|---|---|
+| <Term slug="pessimistic-locking">Pessimistic</Term> | `SELECT … FOR UPDATE` the seats, check, update, commit | Losers wait for the lock, then see "held" | Correct; holds locks across application round trips |
+| <Term slug="optimistic-locking">Optimistic</Term> with versions | Read seats with a version; `UPDATE … WHERE version = v`; retry if 0 rows | Losers fail fast and retry | Correct; wasted retries when many fight for one seat |
+| **Conditional update** | One `UPDATE … WHERE status = 'available'` | Losers wait a few ms for the row lock, then match 0 rows | **Chosen**: one statement, shortest possible lock |
+| Redis `SET seat NX PX 600000` | Atomic set-if-absent with an expiry | Very fast | Not durable enough on its own (below) |
+
+The chosen hold:
+
+```sql
+BEGIN;
+UPDATE seat
+   SET status = 'held', hold_id = 'h_7Pq', hold_expires_at = now() + interval '10 minutes'
+ WHERE event_id = 'ev_812'
+   AND seat_id IN ('112-K-14', '112-K-15')
+   AND (status = 'available' OR (status = 'held' AND hold_expires_at < now()))
+RETURNING seat_id;
+-- if fewer rows than requested: ROLLBACK and return 409; otherwise:
+INSERT INTO hold (hold_id, event_id, user_id, seat_ids, expires_at) VALUES (…);
+COMMIT;
+```
+
+Why it is safe: under Postgres's default READ COMMITTED isolation, when two `UPDATE`s target the same row, the second waits for the first to commit and then **re-evaluates its WHERE clause against the new row version**, as the PostgreSQL documentation on transaction isolation describes. The second finds `status = 'held'` and updates nothing. No anomaly is possible because the condition and the write are one statement on the row itself.
+
+Two details. **Deadlocks**: two holds for overlapping seats can lock rows in opposite orders. Lock in a fixed order (sort seat ids and `SELECT … FOR UPDATE` in that order, or retry on the database's deadlock error). **Best available**: when the system chooses seats, `SELECT … FOR UPDATE SKIP LOCKED LIMIT n` lets concurrent requests take different free seats instead of queueing on the same ones.
+
+**Why not Redis as the record?** `SET NX` with an expiry is fast and expires holds automatically, which is why it is tempting. But Redis replication is asynchronous: a primary can acknowledge a hold and fail before the replica has it, and the promoted replica then grants the same seat again. A multi-seat hold also needs a Lua script to be all-or-nothing. Redis is fine as a **front filter** (reject requests for seats it already knows are taken) or for the seat map, but the final word must be a durable, transactional store.
+
+<TradeoffBox title="Where to decide who gets the seat" items={[
+  { gain: "Postgres conditional update: atomic, durable, all-or-nothing across seats", cost: "Throughput of one primary; fine because the waiting room keeps it to hundreds of writes per second" },
+  { gain: "Redis SET NX: tens of thousands of holds per second, expiry built in", cost: "Asynchronous replication can lose an acknowledged hold on failover, so it cannot be the record of a sale" }
+]} />
+
+### How do temporary holds work, and how are they released on time?
+
+A hold is a <Term slug="lease">lease</Term> on seats: it is valid until `hold_expires_at` unless renewed by payment. Three ways to release it:
+
+- **A timer per hold** in an application server: lost when that server restarts, and judged by that server's clock.
+- **Store TTLs** (Redis key expiry): accurate, but only if the store is the source of truth, which we just rejected.
+- **Lazy expiry plus a sweeper** (chosen). The hold statement above already treats an expired hold as free (`OR (status = 'held' AND hold_expires_at < now())`), so correctness never depends on the sweeper running on time. The sweeper exists for **visibility**: every few seconds it runs `UPDATE seat SET status = 'available', hold_id = NULL WHERE status = 'held' AND hold_expires_at < now()`, then refreshes Redis and tells the admission controller that seats came back.
+
+**One clock.** Every expiry is set and compared with the database's `now()`, never an application server's clock, so <Term slug="clock-skew">clock skew</Term> between machines cannot make a hold end early. The sweeper is idempotent and safe to run on two machines at once: the conditional update releases each seat at most once.
+
+**Limits.** At most 4 seats per account per event and one live hold per account, enforced in the same transaction. Without this a bot that gets through the waiting room can hold hundreds of seats for 10 minutes at a time, then do it again.
+
+### How does a virtual waiting room absorb a million arrivals in a minute and stay fair?
+
+The waiting room is <Term slug="admission-control">admission control</Term> for a whole site: rather than letting a million people in and <Term slug="load-shedding">shedding load</Term> with errors, it lets them in at the rate the inventory can absorb and tells everyone else where they stand. The AWS Builders' Library article "Using load shedding to avoid overload" makes the general case for rejecting or deferring work early and cheaply rather than accepting work you will fail.
+
+**Ordering.** Two populations:
+
+- **Arrived before the sale opened** (the lobby): each gets a **random** score in [0, 1). Whoever clicked first during a 30-minute lobby has no real claim to be first, and randomising removes the incentive to hammer refresh or run a script at 09:59:59.
+- **Arrived after opening**: score = 1 + seconds since opening, so earlier arrivals go first.
+
+**Publishing position.** The controller raises `admitBelow` every 2 s and publishes a histogram of scores (built from the queue store's change stream) so each page can show "about 31,400 people ahead of you". Because the file is identical for everyone, the CDN serves 200,000 polls per second while the origin sees a few hundred refreshes. A per-user position endpoint would be 100,000 origin requests per second for the same information.
+
+**Enforcing it.** The admitted token is signed, bound to the account, and expires after 15 minutes; the booking API rejects requests without one (`403`). One token per account means a fan opening 10 tabs gets one place, and a bot needs one verified account per place.
+
+**Alternatives.** A CDN <Term slug="edge-function">edge function</Term> can issue tokens at the edge with no origin call (hosted products such as Cloudflare Waiting Room run at the CDN edge); it removes the 33,000 joins/s from our origin but makes "one place per account" harder to enforce. Scaling the booking tier to absorb everyone (400 instances, a database fighting 33,000 conflicting writes per second) costs more and is less fair: the fastest connections win. A lottery for very high-demand shows (registered fans drawn at random) is the policy answer when demand exceeds supply by 20 times; it is a product decision, not an engineering one.
+
+<NotWhenBox title="A waiting room" items={[
+  "Demand rarely exceeds a few times capacity: autoscaling and a per-user rate limit are simpler, and a queue page annoys people who did not need to wait.",
+  "General admission with no seat choice: a counter decremented with a conditional update has little contention and needs no admission pacing."
+]} />
+
+### What happens when payment is slow, fails or times out while a hold is about to expire?
+
+The danger is the race between two clocks: the hold's 10 minutes and the PSP's answer. The rules:
+
+1. **Paying freezes the hold.** `POST /pay` moves the seats from `held` to `paying` in a conditional update (only if `hold_id` matches and the hold has not expired), with a payment deadline of `now() + 5 minutes`. The sweeper never releases `paying` seats; only the payment flow does.
+2. **Authorize, then confirm, then capture.** Authorize with the PSP using `order_id` as the PSP's idempotency key. On success, one transaction moves seats `paying → sold`, marks the order confirmed and writes an outbox event; workers then capture and issue tickets. Because authorization only reserves money, any failure before confirmation is undone with a **void**, which moves no money.
+3. **Declined**: seats go back to `held` with their original expiry, and the fan can try another card.
+4. **Timeout or 5xx: the outcome is unknown.** The order becomes `payment_unknown` and the seats **stay `paying`**. A worker queries the PSP by `order_id` with backoff, and the PSP's webhook may arrive first. Authorized → confirm and sell. Failed → release.
+5. **Bounded wait.** If the outcome is still unknown after 15 minutes, release the seats, mark the order failed, and **void any authorization that appears later**. We may lose a sale, but we never sell a seat twice and never keep money without a ticket.
+
+The fan sees "Processing your payment" and gets an email either way. The deciding trade-off: a seat sits unsellable for up to 15 minutes in rare cases, in exchange for never selling a seat whose buyer might already have paid.
+
+<Misconception wrong="If the payment provider times out, treat it as failed and release the seats." right="A timeout means you do not know. The charge may have succeeded. Keep the seats until you find out, and if you must give up, void whatever authorization later appears." />
+
+## Failure modes & mitigations
+
+| Failure | Detection | Effect without mitigation | Mitigation |
+|---|---|---|---|
+| Crowd 2× forecast | Join rate, queue length | Booking tier overload | Admission rate is set by inventory, not arrivals; only the waiting room grows |
+| Booking API zone lost | Load balancer health checks | A third of capacity gone | 7 per zone sized for two zones |
+| Postgres primary fails | Failover alarm, hold error rate | Holds and confirms fail | Promote the synchronous replica; pause admission; extend holds (timeline below) |
+| Redis seat cache lost | Cache error rate | Seat maps slow or stale | Maps rebuilt from Postgres replicas; holds unaffected |
+| Admission controller dies | Lease not renewed | `admitBelow` stops moving | Standby takes the lease within seconds; the queue waits, nothing breaks |
+| PSP timeouts | Unknown-payment count | Seats lost or double-sold | `paying` state, status checks, bounded wait, void late authorizations |
+| Bots through the waiting room | Holds per account, bot score | Inventory locked by scripts | One token and one hold per account, 4-seat limit |
+| Sweeper stops | Count of expired-but-held seats | Seat map shows fewer free seats | Lazy expiry keeps holds correct; alert at 60 s |
+
+**Failure timeline: the inventory primary fails 5 minutes into the on-sale.**
+
+| Time | Fans see | System does |
+|---|---|---|
+| T+0 | Hold and pay clicks spin | Primary gone; booking API gets connection errors, returns `503` with retry-after 5 s |
+| T+5 s | Queue page unchanged | Admission controller sees the error rate and freezes `admitBelow`: nobody new is admitted into a broken system |
+| T+15–30 s | "Still working…" | Automated failover promotes the synchronous replica, which holds every committed hold and sale |
+| T+30–60 s | Holds succeed again | The API reconnects; one statement extends every live hold by the outage length, so nobody loses seats they held |
+| T+60 s | Payments complete | Authorizations made during the outage are confirmed using the same `order_id`; seats were still `paying` |
+| T+2 min | Queue moves | Admission resumes at the normal rate, not a catch-up burst |
+
+Detection is the hold error rate and the failover alarm. The key decision is pausing admission: the queue absorbs the outage, so 10,000 shoppers are affected instead of a million.
+
+## Scaling to 10×
+
+Ten such on-sales at once, or one with 10M arrivals:
+
+1. **The queue store and waiting-room service break first**: 333,000 joins per second at 2×. The store partitions by (event, user), so it grows by adding nodes; the service scales linearly to about 140 instances per zone. At this point issuing tokens at the CDN edge becomes attractive, with an account check deferred to admission time.
+2. **CDN polls** reach 2M per second, still fine for a CDN, but longer poll intervals for fans far back in the queue (60 s for people more than 30 minutes away) cut it by most of that.
+3. **The inventory database** sees 10 concurrent on-sales at about 2,000 seat writes per second plus seat-map misses, still one primary. Beyond that, shard by `event_id`: all seats of one event live together, so a hold never crosses shards. A single huge event is limited by the admission rate, not by sharding.
+4. **Hot sections.** Within one event, the floor and front rows concentrate holds; the conditional update and `SKIP LOCKED` for best-available keep lock times in milliseconds.
+5. **Fairness at 10M** becomes a policy question: registration and lottery ahead of the sale, since 99% of the queue will leave empty-handed.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| Waiting room admitting by inventory | Scale everything for the crowd | Keeps seat writes in the hundreds per second; fairer than fastest-refresh-wins |
+| Random order for the lobby, arrival order after opening | Pure arrival order | Removes the incentive to script the opening second |
+| One shared, CDN-cached now-serving file | Per-user position API | 200,000 polls/s at the edge instead of the origin |
+| Postgres conditional update for holds | Redis SET NX as the record | Atomic, durable, all-or-nothing; the waiting room makes its throughput enough |
+| Lazy expiry plus sweeper, database clock | Per-hold timers or store TTLs | Correctness never depends on a timer firing; one clock |
+| `paying` state that freezes the hold | Let the hold timer run during payment | No seat is resold while its buyer may have paid |
+| Authorize, confirm, then capture | Charge immediately | A failure before confirmation is a free void, not a refund |
+| Separate queue store | Queue tokens in the inventory database | The 33,000/s join burst cannot slow a seat hold |
+
+## What interviewers look for
+
+- **Seeing that it is an admission problem.** Computing that 1M arrivals for 50,000 seats means most people leave empty-handed, and designing the front door around that.
+- **A race-free hold** written out: the check and the write as one conditional statement, all-or-nothing across seats, and why read-then-write fails.
+- **Optimistic versus pessimistic** explained by contention, and the reason Redis alone is not the record of a sale.
+- **Holds as leases on one clock**, with lazy expiry so correctness never depends on a background job.
+- **Payment timeouts handled as unknown**, with a `paying` state and a bounded wait that voids late authorizations.
+- **Fairness and abuse**: one token per account, a lobby lottery, hold limits.
+- **Failure thinking**: pausing admission during a database failover so the queue absorbs the outage.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "Two fans click the same seat in the same millisecond. Walk me through what each database transaction sees.",
+  "A fan's hold expires at 10:00:00 and their payment authorizes at 10:00:02. What happens?",
+  "Why not keep holds in Redis with a 10-minute TTL?",
+  "How would you change the design for general admission with no seat choice?",
+  "The show sells out in 4 minutes but 900,000 people are still in the queue. What do they see, and when?"
+]} />

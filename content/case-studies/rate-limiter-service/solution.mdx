@@ -1,0 +1,346 @@
+## Requirements
+
+A <Term slug="rate-limiter">rate limiter</Term> looks like a counter and an `if`. What makes it a design problem is the combination this one asks for: a million checks a second, limits that hold across 50 servers rather than per server, at most 5 ms added to every request, and a hard rule that the limiter failing must never take the API down. Those four requirements pull against each other, and the interview is about how you trade them.
+
+### Functional
+
+1. **Check every API request** against the rules that match it: today 100 requests per minute per user and 10,000 per minute per API key. Every request carries both, so every request is checked against both.
+2. **Reject** over-limit requests with `429 Too Many Requests`, a readable message and a `Retry-After` hint; tell every caller their remaining allowance in response headers.
+3. **Manage rules** without deploys: product teams add or change rules a few times a week, and a new rule can run in *shadow mode* (log what it would reject, reject nothing) before it is enforced.
+4. **Mark some rules as critical** (login attempts per account) so their behaviour during a limiter outage differs from ordinary fairness rules.
+
+### Non-functional
+
+| Property | Target | Why |
+|---|---|---|
+| Throughput | 1M checked requests/s at peak, 2M counter operations/s | Given; two rules per request |
+| Added latency | 5 ms at p99, including the network | Given; every request pays it |
+| Accuracy | Limits hold fleet-wide; overshoot of a few percent acceptable | Given; exactness costs latency |
+| No boundary bursts | Never about 2× the limit in a short span | Given: no 200 requests in 2 s on a 100/min rule |
+| Availability | A limiter outage degrades limiting, never the API | Given |
+| Rule propagation | A changed rule is live everywhere within about 10 s | Rules change weekly, not per second |
+
+### Out of scope
+
+Authentication (we receive a verified user ID and API key), billing quotas measured over months (a usage pipeline, not a per-request counter), and volumetric DDoS protection, which happens at the network edge long before a request reaches an API server.
+
+## Estimation
+
+Every number is derived from the problem's assumptions, not from any real company.
+
+**Traffic.** Peak is given as 1M requests/s across 50 servers. Assuming peak is 2× average, the average is **500,000 requests/s**, or 500,000 × 86,400 = **43.2 billion requests a day**.
+
+**Counter operations.** Two rules per request, so **2M checks/s at peak**. Each check is one script call on Redis (deep dive 2), so the store must sustain 2M script calls/s at peak and 1M on average.
+
+**Redis primaries.** Assume one Redis primary runs **50,000 short script calls/s** at saturation. This is an assumption to benchmark: Redis executes commands on one thread, and a short script does several commands' work, so it is deliberately well below the 100,000+ simple commands per second a single Redis process commonly handles. We want each primary at most 50% busy at peak, because queueing delay on a single thread grows as 1 ÷ (1 − ρ) and the budget is 5 ms. So 2,000,000 ÷ (50,000 × 0.5) = **80 primaries**, each with one replica in a different availability zone: **160 Redis nodes**.
+
+**Memory.** Assume at most 2M distinct users and 50,000 API keys are active in any two-minute span. A sliding-window counter is one small hash per identity per rule, about 100 B with overhead: 2.05M × 100 B ≈ **205 MB**, about 2.6 MB per primary. Memory is irrelevant here; **operations per second size the cluster**, which is the first thing an interviewer wants you to notice.
+
+**Network.** A script call is about 150 B out and 50 B back: 2M × 200 B = 400 MB/s across the cluster (3.2 Gbit/s), or 5 MB/s per primary. Not a constraint.
+
+**Per API server.** 1,000,000 ÷ 50 = 20,000 requests/s per server at peak, which means 40,000 script calls/s from each server. With 2 pooled connections from each server to each primary, every primary holds 50 × 2 = 100 client connections: fine. We assume the API fleet runs at about 50% at peak, so each server can take **40,000 requests/s**; with one of three zones lost, 33 servers carry 1M at ρ = 1,000,000 ÷ (33 × 40,000) = 0.76.
+
+**Latency budget.**
+
+| Step | Typical | Notes |
+|---|---|---|
+| Match request to rules | under 0.05 ms | In-memory rule table, pushed every 10 s |
+| Redis round trip | 0.3–1 ms | Two-thirds of primaries live in another zone; cross-zone round trips are slower (assumption) |
+| Script execution | about 0.02 ms | A few hash operations |
+| Queueing on the primary at ρ 0.5 | roughly doubles service time | Single-threaded server |
+| **Both rules, in parallel** | **about 1 ms; p99 about 2 ms** | Leaves room under 5 ms; the call times out at 3 ms |
+
+**Rules.** About 1,000 rules × 1 KB = 1 MB, pushed as a snapshot every 10 s. Trivial.
+
+<Callout type="tip" title="What the numbers say">
+Data is tiny (hundreds of megabytes) and the operation rate is huge (2M/s). So the store is chosen and sized for operations per second and tail latency, the algorithm must be cheap per call, and the design's hard part is what happens when one of 80 primaries is slow or gone.
+</Callout>
+
+## API design
+
+There are three interfaces: what callers see, the call an API server makes, and the rules API.
+
+**What a caller sees.** Every response carries the caller's tightest remaining allowance:
+
+```http
+HTTP/1.1 200 OK
+RateLimit-Policy: "per-user";q=100;w=60
+RateLimit: "per-user";r=37;t=21
+```
+
+A rejection:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 4
+RateLimit-Policy: "per-user";q=100;w=60
+RateLimit: "per-user";r=0;t=4
+Content-Type: application/json
+
+{ "error": "rate_limited",
+  "message": "User u_42 exceeded 100 requests per minute. Retry after 4 seconds.",
+  "rule": "per-user", "retryAfterSeconds": 4 }
+```
+
+`429` is defined in RFC 6585 and `Retry-After` in RFC 9110. The `RateLimit` and `RateLimit-Policy` fields follow the IETF HTTPAPI working group's draft for rate-limit headers; many APIs instead use the older `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset` convention (GitHub's API does). Either works if it is documented; what matters is that well-behaved clients can back off without guessing.
+
+**The check an API server makes**, as an in-process library call:
+
+```ts
+const d = await limiter.check({ userId: "u_42", apiKey: "k_9f3a", route: "POST /v1/orders" });
+// d = { allowed: false, rule: "per-user", remaining: 0, retryAfterMs: 3600, failMode: null }
+```
+
+`failMode` is `"open"` or `"closed"` when the decision came from the outage path (deep dive 4), so it can be logged and counted.
+
+**Rules API** (used by product teams; the rules service validates and pushes snapshots):
+
+```http
+PUT /v1/rules/per-user HTTP/1.1
+If-Match: "v17"
+Content-Type: application/json
+
+{ "match": { "descriptor": "user_id" },
+  "limit": 100, "windowSeconds": 60, "algorithm": "sliding-window-counter",
+  "onLimiterFailure": "open", "mode": "enforce" }
+```
+
+```http
+HTTP/1.1 200 OK
+ETag: "v18"
+```
+
+`If-Match` stops two teams overwriting each other's edits; `mode: "shadow"` lets a new rule report what it would reject for a few days before it is switched to `enforce`.
+
+## Data model
+
+**Counters: Redis Cluster.** One hash per (identity, rule):
+
+| Key | Fields | TTL |
+|---|---|---|
+| `rl:{u:42}:per-user` | `win` (window number), `cur` (count in this window), `prev` (count in the previous window) | 2 windows (120 s) |
+| `rl:{k:9f3a}:per-key` | same | 120 s |
+
+The braces are a Redis Cluster hash tag: only the part inside `{}` is hashed to choose one of the cluster's 16,384 <Term slug="hash-slot">hash slots</Term>. It does not matter much for a one-key script, but it keeps every counter of one identity on one shard, so a future rule that checks two windows of the same user (per minute and per hour) can still run as one atomic script.
+
+**Why Redis.** The access pattern is "read-modify-write one tiny record, a million times a second, in about a millisecond". That needs an in-memory store with server-side atomic logic. Redis gives single-threaded execution (so a script is atomic), Lua scripting, key expiry that cleans up idle identities, and Redis Cluster for partitioning. Alternatives:
+
+- **Memcached** has atomic `incr` but no scripting, so a sliding window or token bucket needs several round trips and races between them.
+- **A database** (DynamoDB conditional updates, Postgres `UPDATE … RETURNING`) is durable, which we do not need, at several times the latency.
+- **Counters in each API server's memory** are fastest but per-server, which the requirements rule out.
+
+Durability is deliberately not a goal. Redis replication is asynchronous, so a failover can lose the last few increments; the cost is that a few callers briefly get a little more allowance. We turn persistence (AOF and RDB snapshots) off on these nodes; a counter that survives a restart is not worth the write latency.
+
+**Rules: PostgreSQL.** A few hundred rows, a few writes a week, versioned and audited. The rules service reads them and pushes a snapshot to every API server every 10 s; the hot path never queries Postgres.
+
+```sql
+CREATE TABLE rules (
+  rule_id        text PRIMARY KEY,           -- 'per-user'
+  descriptor     text NOT NULL,              -- 'user_id', 'api_key', 'user_id+route'
+  limit_count    integer NOT NULL,
+  window_seconds integer NOT NULL,
+  algorithm      text NOT NULL,              -- 'sliding-window-counter' | 'token-bucket'
+  on_failure     text NOT NULL CHECK (on_failure IN ('open','closed')),
+  mode           text NOT NULL CHECK (mode IN ('shadow','enforce')),
+  version        bigint NOT NULL,
+  updated_by     text NOT NULL,
+  updated_at     timestamptz NOT NULL DEFAULT now()
+);
+```
+
+## High-level design
+
+<Figure caption="FIG. 1 · RATE LIMITER · LIBRARY IN EVERY API SERVER, SHARED REDIS COUNTERS">
+  <Diagram label="Callers reach a load balancer that spreads requests over 50 API servers in three availability zones. Each API server runs the limiter as an in-process library: it matches the request to rules held in memory, then runs two Lua scripts in parallel on a Redis Cluster of 80 primaries and 80 replicas, with a 3 ms timeout. A rules service backed by PostgreSQL pushes rule snapshots every 10 seconds. Decisions and fail-open counts go to monitoring." chart={`flowchart LR
+    C[API callers] --> LB[Load balancer]
+    subgraph Region
+      LB --> A1[API servers AZ-a x17]
+      LB --> A2[API servers AZ-b x17]
+      LB --> A3[API servers AZ-c x16]
+      A1 & A2 & A3 -->|2 Lua scripts, 3 ms timeout| R[(Redis Cluster 80 primaries + 80 replicas)]
+      RS[Rules service x2] -.->|rule snapshot every 10 s| A1 & A2 & A3
+      RS --> PG[(PostgreSQL rules)]
+      A1 & A2 & A3 -.->|decisions, fail-open count| M[Monitoring]
+    end`} />
+</Figure>
+
+**An allowed request.**
+1. The load balancer picks an API server. Before running the handler, the server's limiter library matches the request against its in-memory rules: `per-user` for `u_42` and `per-key` for `k_9f3a`.
+2. It checks a small **local deny cache** first: if this identity was rejected earlier in the current window, the answer is still "rejected" until the stored retry time, with no network call.
+3. Otherwise it sends both checks to Redis **in parallel**, each as one `EVALSHA` of the sliding-window script (deep dive 2) to the primary that owns that key, with a 3 ms timeout.
+4. Both say allowed: the handler runs, and the response carries the tighter of the two remaining counts.
+
+**A rejected request.** The script that rejects returns a retry time; the server answers `429` with `Retry-After`, puts the identity in the local deny cache until that time, and never runs the handler. A client hammering at 10,000 requests a second therefore costs Redis about one call per server per window, not 10,000.
+
+**A rule change.** A product team `PUT`s a rule; the rules service validates it (limit is positive, descriptor exists, shadow before enforce for new rules), writes version 18 to Postgres, and the next 10-second push delivers it to every server, which swaps its rule table atomically.
+
+**Redis slow or down.** The call times out at 3 ms or the per-shard circuit breaker is open; the rule's `onLimiterFailure` setting decides (deep dive 4).
+
+## Deep dives
+
+### Which algorithm: fixed window, sliding log, sliding-window counter, token bucket or leaky bucket, and what does each cost in memory and accuracy?
+
+| Algorithm | State per identity | Accuracy | Behaviour at the edge |
+|---|---|---|---|
+| Fixed window | 1 counter | Allows up to **2× the limit** across a boundary: 100 at 0:59 and 100 at 1:00 | Simple; the burst violates our requirement |
+| Sliding log | One timestamp per request in the window | Exact | 10,000 entries for a 10,000/min key, roughly 0.5 MB with sorted-set overhead: about 25 GB for 50,000 keys |
+| <Term slug="sliding-window">Sliding-window counter</Term> | 2 counters | Approximate: assumes the previous window's requests were evenly spread | Smooth; no boundary burst |
+| <Term slug="token-bucket">Token bucket</Term> | Tokens + last-refill time | Exact for "rate r, burst b" | Allows a burst of up to b, then a steady rate |
+| <Term slug="leaky-bucket">Leaky bucket</Term> (as a queue) | A queue of requests | Exact output rate | Delays requests instead of rejecting them; suits traffic shaping, not an API that must answer now |
+
+The sliding-window counter estimates the count over the last 60 s as `prev × (1 − elapsed ÷ 60) + cur`. Example: 20 s into the current minute, with 90 requests in the previous minute and 30 so far in this one, the estimate is 90 × (40 ÷ 60) + 30 = 90. One more request is allowed, and the caller gets about 10 more before rejection. Cloudflare's 2017 engineering post on building its rate limiting describes this same approximation and reports that its error was very small on real traffic; the error only matters when traffic inside a window is very uneven.
+
+**Decision: sliding-window counter for these rules.** The rules are stated as "N per minute", the boundary burst must not happen, and two counters cost about 100 B per identity instead of up to half a megabyte. A token bucket is equally cheap and is the better fit when the product sells "a sustained rate plus a burst" (Stripe's engineering post "Scaling your API with rate limiters" describes token buckets in Redis for exactly that). The `algorithm` column in the rules table lets a rule choose either; the store and the outage behaviour do not change. A related scheme, GCRA (the generic cell rate algorithm), behaves like a token bucket but stores a single timestamp per identity; the `redis-cell` module implements it.
+
+<NotWhenBox title="A sliding-window counter" items={[
+  "The product promises bursts ('1,000 a second, up to 5,000 at once'): use a token bucket, which models the burst directly.",
+  "Exactness matters more than memory, for a small number of identities (a few hundred paid integrations): a sliding log is affordable and exact."
+]} />
+
+### How do you keep counters correct when 50 servers update them at once: Redis, Lua scripts and atomicity?
+
+The naive version reads the count, decides, and writes it back as three commands. Two servers handling the same user at the same moment both read 99, both decide "allowed", and both write 100: the user got 101. With 50 servers and a busy key, that race is constant, not rare.
+
+Options:
+
+- **`INCR` first, then decide.** `INCR` is atomic and returns the new value, so for a fixed window it is enough: if the result exceeds the limit, reject. But a sliding window must read the previous window too, and a rejected request has already been counted.
+- **`MULTI`/`EXEC` transactions.** They make several commands atomic but cannot branch on a value read inside the transaction, so "increment only if allowed" is not expressible without `WATCH` and retries, which fail repeatedly on exactly the hot keys that matter.
+- **A Lua script.** Redis runs a script to completion without running any other command in between, so read, decide and write are one atomic step and one round trip. **Chosen.**
+
+```lua
+-- KEYS[1] = rl:{u:42}:per-user   ARGV[1] = limit   ARGV[2] = window in seconds
+local t = redis.call('TIME')                         -- Redis's clock, not the caller's
+local now_ms = t[1] * 1000 + math.floor(t[2] / 1000)
+local win_ms = tonumber(ARGV[2]) * 1000
+local win = math.floor(now_ms / win_ms)
+local h = redis.call('HMGET', KEYS[1], 'win', 'cur', 'prev')
+local w, cur, prev = tonumber(h[1]) or win, tonumber(h[2]) or 0, tonumber(h[3]) or 0
+if win > w then                                      -- roll forward to the current window
+  prev = (win == w + 1) and cur or 0
+  cur = 0
+end
+local elapsed = now_ms % win_ms
+local estimate = prev * (1 - elapsed / win_ms) + cur
+local limit = tonumber(ARGV[1])
+if estimate + 1 > limit then
+  local retry_ms = win_ms - elapsed                  -- wait for the next window...
+  if prev > 0 and cur + 1 <= limit then              -- ...or until the old window has decayed enough
+    retry_ms = math.max(1, math.ceil(win_ms * (1 - (limit - cur - 1) / prev) - elapsed))
+  end
+  return {0, 0, retry_ms}
+end
+redis.call('HSET', KEYS[1], 'win', win, 'cur', cur + 1, 'prev', prev)
+redis.call('PEXPIRE', KEYS[1], win_ms * 2)
+return {1, math.floor(limit - estimate - 1), 0}
+```
+
+Three details make this correct, not just atomic:
+
+1. **The clock is Redis's.** If each API server computed the window from its own clock, two servers with a few hundred milliseconds of <Term slug="clock-skew">clock skew</Term> would count the same second into different windows. Since Redis 5, scripts are replicated by their effects rather than re-executed on replicas, which is what makes calling `TIME` inside a script safe.
+2. **Rejected requests are not counted**, so a client that backs off recovers on schedule instead of being punished for its own rejected retries.
+3. **One key per script.** In Redis Cluster all keys a script touches must live in one hash slot. The user rule and the key rule hash to different slots, so they are two scripts on (usually) two shards, sent in parallel. The consequence: if the user rule allows and increments but the key rule rejects, the user was charged for a request that did not run. We accept that small overcount; refunding it would add a third call to every rejection.
+
+The script is loaded once with `SCRIPT LOAD` and called by its SHA with `EVALSHA`, so each call sends a 40-character hash rather than the script text.
+
+**Hot keys.** A per-user or per-key counter sees at most its limit (10,000 a minute is 167 a second), so no single key is hot. A **global** rule, such as "all calls to `/v1/search` at most 50,000 a second", would put 50,000 operations a second on one key and one shard. For those, split the counter into 16 sub-keys chosen at random and sum them in the check, or give each server a local share that it renews from Redis every second (a <Term slug="lease">lease</Term>).
+
+### Where does the limiter run: a library in each API server, a sidecar, or a separate service, and how does that fit a 5 ms budget?
+
+| Placement | Network hops per check | What it costs | When it wins |
+|---|---|---|---|
+| **Library in the API server** | 1 (server → Redis) | A client library per language; every server holds Redis connections | One or two languages, a modest fleet |
+| <Term slug="sidecar-proxy">Sidecar</Term> (for example Envoy next to each server) | 1 + a local hop | A proxy on every host; Envoy's global rate limiting calls an external rate-limit service, adding a second hop | You already run a service mesh |
+| Separate limiter service (gRPC) | 2 (server → limiter → Redis) | A fleet to run, size and keep available | Many languages and teams; connection counts to Redis too high; central batching |
+
+The separate service is what the title suggests, so it is worth sizing before rejecting it. Assume one limiter instance handles 50,000 checks a second. Peak is 1M; with a zone lost we want it under about 60% busy, so 1,000,000 ÷ (50,000 × 0.6) ≈ 34 instances in the two surviving zones, **51 instances across three zones**: a fleet as large as the 50 API servers it serves, adding a network hop and a new failure point on every request. Envoy's reference rate-limit service (originally built at Lyft, a Go service in front of Redis) is a good implementation of this shape and the right choice when the fleet is polyglot.
+
+**Decision: a library in each API server, plus a small rules service.** It costs one hop (about 1 ms at p99) instead of two, adds no fleet, and the "service" part that must be shared, the counters and the rules, is shared through Redis and the rules service. The decision flips when the API fleet becomes many services in several languages (one library per language becomes a maintenance burden) or grows to the point where every server holding connections to every Redis primary becomes the problem (at 10×, below).
+
+### What happens when Redis is slow or down: fail open or fail closed?
+
+<Term slug="fail-open">Failing open</Term> admits requests when the limiter cannot answer; <Term slug="fail-closed">failing closed</Term> rejects them. The requirement settles the default: a limiter outage must not become an API outage, so ordinary rules fail open. But not every rule is ordinary:
+
+| Rule type | On limiter failure | Why |
+|---|---|---|
+| Fairness (`per-user`, `per-key`) | Open, with a local backstop | A few minutes of unfairness is cheap; rejecting all traffic is not |
+| Abuse protection (login attempts per account) | Closed: `503` for that endpoint only | Unlimited password guessing during an outage is the attack |
+| Protects a fragile backend (an expensive report) | Closed, or a strict local cap | The limit is protecting availability itself |
+
+Failing open needs a **backstop**, or an outage means unlimited traffic. Each server keeps a local token bucket per API key at (limit ÷ 50) × 2, generous because traffic is not spread evenly. It does not work for per-user rules: a client on one keep-alive connection sends everything to one server and would be cut to 4 requests a minute. So per-user rules fail fully open, and the server's own concurrency limit and <Term slug="load-shedding">load shedding</Term> remain the last line of defence for capacity.
+
+**Detection must be fast and cheap.** Every Redis call has a 3 ms <Term slug="timeout">timeout</Term>. A per-shard <Term slug="circuit-breaker">circuit breaker</Term> opens after, say, 20% of calls to that shard fail within one second; while open, checks for that shard go straight to the failure path without waiting 3 ms, and one probe per second tests recovery. Without the breaker, a dead shard costs 3 ms on every request that touches it.
+
+<Callout type="warning" title="Failure timeline · one Redis primary dies at peak">
+t = 0: primary 37 of 80 loses power. The 1/80 of users and keys whose slots it owns, about 25,000 checks a second, start timing out at 3 ms. Their requests still succeed, 3 ms slower. t + 1 s: the breaker for shard 37 opens on every API server; those checks now fail open instantly and `limiter_fail_open_total{shard="37"}` climbs. No caller sees an error. t + 15 s to 20 s: the other primaries agree the node is down after the cluster's node timeout (15 s by default) and promote its replica in another zone. t + 21 s: clients follow the `MOVED` redirects and refresh the slot map; breaker probes succeed and close. Counts written in the last moments before the crash may be lost, because replication is asynchronous, so a few thousand identities get a little extra allowance this minute. Alert: fail-open rate above 1% for 30 s pages the on-call; the rejection rate falling to zero is the symptom to watch.
+</Callout>
+
+If the whole cluster is down (a bad config push, a network partition), every rule takes its failure path at once. That is why the outage behaviour is part of each rule's definition and is tested regularly by deliberately blocking Redis from one canary server.
+
+### How do limits hold across several regions?
+
+Next year the API runs in three regions. Options for a per-key limit of 10,000 a minute:
+
+| Option | Accuracy | Latency | Verdict |
+|---|---|---|---|
+| One global Redis in a home region | Exact | A cross-region round trip, often 60–150 ms: 12–30× the whole budget | Rejected |
+| Independent limits per region | A key spread over 3 regions gets up to 3× its limit | Local | Fine only if traffic is pinned to one region |
+| Split the limit by each region's recent share | Close, while shares are stable | Local | Workable; drifts when traffic shifts |
+| **Local counting + asynchronous exchange of counts** | Overshoot bounded by sync delay | Local | **Chosen for per-key rules** |
+
+In the chosen design each region counts locally and every second publishes its per-key counts for the current window to the other regions; each region checks `local + remote counts` against the limit. Remote counts only grow within a window, so they merge like a <Term slug="g-counter">grow-only counter</Term>: add, never conflict. The overshoot is bounded: a key sending at its full rate of 167 a second through all three regions can be over-admitted by at most what the other two regions admit during one sync interval, 2 × 167 × 1 s ≈ 333 requests a minute, **about 3.3%** of the limit. That is within "a few percent".
+
+Per-user rules are simpler: users are routed to their nearest region by GeoDNS and rarely move, so per-region limits are effectively global. If a user is spread across regions, the same count exchange applies.
+
+## Failure modes & mitigations
+
+| Failure | Detection | Effect on callers | Mitigation |
+|---|---|---|---|
+| One Redis primary dies | Timeouts, breaker opens, cluster failover | 1/80 of identities unlimited for about 20 s | Replica in another zone promoted; per-shard breaker; fail open with backstop |
+| Redis shard slow (a big key, a noisy client) | Per-shard p99 above 2 ms | Checks on that shard hit the 3 ms timeout | Timeout + breaker; investigate with slow log |
+| Whole Redis cluster unreachable | Fail-open rate near 100% | Fairness limits off; critical rules return 503 | Per-rule failure mode; local key backstop; load shedding |
+| An availability zone is lost | LB health checks | A third of API servers and some primaries gone | 33 servers carry peak at ρ 0.76; replicas in other zones promoted |
+| Bad rule pushed (limit 1 instead of 1,000) | Shadow mode; 429 rate per rule alarm | Mass 429s on one rule | Shadow before enforce; rules versioned with one-click rollback |
+| Rules service down | Push age metric | None: servers keep the last snapshot | Last-known-good rules in memory and on local disk |
+| Abusive client at 100k requests/s | 429 rate per identity | Its own requests rejected | Local deny cache: about one Redis call per server per window |
+| Retry storm after a 429 wave | Retry ratio | Load on API servers | Accurate `Retry-After`; clients use jittered backoff |
+| Clock skew between API servers | None needed | None | Window computed from Redis `TIME` inside the script |
+
+## Scaling to 10×
+
+At 10M requests/s: 20M script calls/s.
+
+1. **Redis breaks first, as a cluster, not as a node.** At the same density, 20,000,000 ÷ 25,000 = 800 primaries plus 800 replicas. Redis Cluster's gossip protocol and slot management are designed for clusters up to about a thousand nodes, so this is at the edge. Split into several independent clusters (cells), each owning a hash range of identities, or reduce operations per request (item 3).
+2. **Connections.** 500 API servers × 800 primaries × 2 connections = 800,000 connections, 1,000 per primary. This is where a separate limiter tier earns its extra hop: a few dozen limiter instances hold the Redis connections and batch checks.
+3. **Fewer calls per request.** Most calls answer "allowed, plenty left". Servers can take a small lease of allowance for busy identities (say 10 requests at a time) and settle with Redis once per lease, cutting Redis calls several-fold for heavy users, at the cost of overshoot up to one lease per server.
+4. **Rules.** A thousand rules become ten thousand with per-customer overrides; matching moves from a list scan to an index by descriptor, still in memory.
+5. **Multi-region sync volume** grows with active keys: send only keys whose counts changed in the last second, compressed.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| Sliding-window counter | Fixed window; sliding log; token bucket | No boundary burst, 2 counters per identity; token bucket kept for burst-shaped plans |
+| Lua script per check | Read then write; `MULTI`/`EXEC` | Atomic read-decide-write in one round trip |
+| Redis's clock inside the script | API server clocks | Removes clock skew between servers |
+| In-process library + shared Redis | Separate limiter service | One hop instead of two and no extra fleet of about 51 instances |
+| 80 primaries at ρ 0.5 | Fewer, busier primaries | Single-threaded queueing; protects the 5 ms p99 |
+| No persistence, async replication | Durable counters | Losing a second of counts is harmless; write latency is not |
+| Fail open by default, closed for critical rules | Always fail closed | A limiter outage must not be an API outage; abuse rules are the exception |
+| Local counts + per-second exchange across regions | Global counter in a home region | 3.3% overshoot instead of a 60–150 ms round trip |
+
+## What interviewers look for
+
+- **Estimation that changes the design**: 2M operations a second against 205 MB of data, so the cluster is sized by throughput and single-thread queueing, not memory.
+- **A reasoned algorithm choice**: the fixed-window boundary burst, the sliding log's memory cost, and when a token bucket fits better.
+- **The race, and why Lua fixes it**: naming the read-modify-write race and why `MULTI`/`EXEC` alone does not solve it.
+- **Clock and cluster details**: Redis's clock inside the script, one key per script under hash slots, and the overcount when two rules disagree.
+- **Failure thinking**: a 3 ms timeout, per-shard breakers, fail open versus closed decided per rule, and a backstop that does not break per-user rules.
+- **Staff extras**: a bounded multi-region overshoot (about 3.3%), shadow-mode rules, and knowing when a separate limiter service becomes worth its hop.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "Two servers check the same user at the same instant. Walk me through why your design never lets request 101 through.",
+  "A Redis primary dies. What do callers see in the next 30 seconds?",
+  "Product wants 1,000 requests a second with bursts up to 5,000. What changes?",
+  "Your login-attempt limit fails open during an outage. Is that acceptable?",
+  "We add two regions. How far over its limit can one API key get?"
+]} />

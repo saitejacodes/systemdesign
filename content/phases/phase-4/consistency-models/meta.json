@@ -15,6 +15,6 @@
     { "id": "choosing-a-model", "title": "Choosing a model in real products", "depth": "tradeoffs" }
   ],
   "simulatorIds": ["cap"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["file-sync", "ride-sharing"],
   "prerequisites": ["p4-cap-pacelc", "p2-replication"]
 }

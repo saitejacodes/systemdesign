@@ -1,0 +1,58 @@
+{
+  "id": "food-delivery",
+  "title": "Food delivery",
+  "summary": "A three-sided marketplace (customers, restaurants and couriers) where an order must be charged once, assigned a courier in seconds and tracked live through a 4× dinner rush.",
+  "difficulty": 3,
+  "weekRecommended": 15,
+  "relatedSectionIds": ["p2-idempotency", "p2-transactions", "p2-locking", "p2-search", "p3-event-driven", "p1-realtime", "p3-cache-strategies", "p4-distributed-transactions", "p4-bulkheads-load-shedding", "p4-timeouts-retries", "p2-sharding"],
+  "interviewerPrompt": "Let's design a food delivery app, something like Swiggy, Zomato or DoorDash. Customers order from nearby restaurants, and someone delivers the food. How would you build the backend?",
+  "clarifyingQuestions": [
+    { "question": "How big is it?", "answer": "About 5M orders a day across a few hundred cities, 30M customers who order at least once a month, 500k restaurants and 1M registered couriers." },
+    { "question": "How uneven is the load through the day?", "answer": "Very. Lunch and dinner peaks run at about 4× the daily average, and nearly every order in a city is placed within those two windows." },
+    { "question": "Which flows are in scope?", "answer": "Browsing and searching restaurants near the customer, menus, cart and checkout with payment, the restaurant accepting and preparing the order, assigning a courier, and live tracking until delivery." },
+    { "question": "How fast must a courier be assigned?", "answer": "Within 30 seconds of the restaurant accepting the order. A courier must never be assigned two orders that the system did not deliberately batch together." },
+    { "question": "How do couriers report where they are?", "answer": "The courier app sends its GPS position every 5 seconds while the courier is online." },
+    { "question": "Do we compute routes and ETAs ourselves?", "answer": "No. Routing and travel-time estimates come from an external maps provider, rate-limited to about 20,000 requests a second for our account." },
+    { "question": "How does payment work?", "answer": "Through an external payment service provider (PSP), rate-limited to about 2,000 requests a second. Some methods confirm asynchronously, minutes later, by webhook. Every order must be charged exactly once, and refunded if it cannot be fulfilled." },
+    { "question": "What do restaurants use?", "answer": "A tablet app at the counter, often on shop Wi-Fi or a mobile hotspot. Tablets go offline regularly, sometimes in the middle of the dinner rush." },
+    { "question": "Can a courier carry more than one order?", "answer": "Yes, the system may batch two orders onto one courier when the restaurants and drop-offs are close, as long as the first customer's delivery is not delayed much." },
+    { "question": "How fresh must the courier's position on the customer's map be?", "answer": "A few seconds behind is fine. What matters more is that order status changes (accepted, picked up, arriving) reach the customer reliably, even with the app closed." },
+    { "question": "What is out of scope?", "answer": "Restaurant onboarding, courier payouts and pay calculation, promotions, ratings and reviews, customer support tooling and fraud models. Mention where they plug in." }
+  ],
+  "deepDiveQuestions": [
+    "How do you place an order and charge exactly once when payment confirmations arrive late, twice or never?",
+    "How do you model the order state machine across customer, restaurant and courier so that late, duplicate or out-of-order events cannot corrupt it?",
+    "How do you assign a courier within 30 seconds without double-booking anyone, and when should you batch two orders onto one courier?",
+    "How do you ingest 83,000 courier positions a second and show live tracking without a database write per ping?",
+    "What happens when a restaurant tablet goes offline mid-rush, and how does the platform survive the lunch and dinner peaks?"
+  ],
+  "trafficProfile": {
+    "qps": 23600,
+    "readWriteRatio": 0.109,
+    "peakMultiplier": 4,
+    "requestTypes": [
+      { "id": "browse", "name": "Browse / search restaurants and menus", "op": "read", "weight": 1, "target": { "kinds": ["search-index"] } },
+      { "id": "location", "name": "Courier location update (every 5 s)", "op": "write", "weight": 45, "target": { "kinds": ["nosql-db"] } },
+      { "id": "order", "name": "Place order / order state transition", "op": "write", "weight": 1, "target": { "nodeId": "orders-db" } }
+    ]
+  },
+  "runChallenge": {
+    "id": "dinner-peak-lose-az",
+    "title": "Dinner rush with a zone down",
+    "description": "Run the 4× dinner peak (about 94,400 requests per second, most of them courier pings) and lose the busiest availability zone after 10 s. Browsing, ordering and location ingestion must keep working with under 1% errors and a p99 under 300 ms, with no single point of failure.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "minOkQps": 93000, "maxErrorRatePct": 1, "maxP99Ms": 300, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Treating it as ride-sharing with food: ignoring that the restaurant's preparation time, not the courier's drive, usually decides when the courier should arrive, and that orders can be batched.",
+    "Writing every courier GPS ping to the orders database, which turns the busiest write stream in the system into load on the store that must never fall over.",
+    "Charging the card inside the 'place order' request with no idempotency key, so a client retry after a timeout creates a second order and a second charge.",
+    "Modelling the order as one linear status enum, which breaks as soon as the food is ready before a courier is assigned or the courier arrives before the food is ready.",
+    "Calling the external maps provider for every restaurant in a browse list, which at peak would need about 185,000 ETA requests a second against a 20,000 limit.",
+    "Preventing double-booking with a lock in Redis or in the dispatcher's memory instead of a conditional write in the database that holds the courier's assignment.",
+    "Assuming the restaurant tablet is always online, with no acknowledgement timeout, no fallback channel and no automatic cancellation and refund.",
+    "Sizing for the daily average and relying on reactive autoscaling for a peak that arrives at the same time every day and is entirely predictable."
+  ]
+}

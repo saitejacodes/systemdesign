@@ -1,0 +1,342 @@
+## Requirements
+
+In payments, "it usually works" is a failing grade. The traffic is modest; what makes it hard is that every payment crosses into a system you do not control (the payment service provider, or PSP), that call can fail *without telling you what happened*, and being wrong costs somebody money. State the invariants first and derive the architecture from them.
+
+### Functional
+
+1. **Pay at checkout.** A buyer pays for an order with a card. We **authorize** at checkout (the bank reserves the amount) and **capture** when the seller ships (the money actually moves). Cancelling before shipment **voids** the authorization.
+2. **Refund** all or part of a captured payment.
+3. **Ledger.** Every money movement (capture, fee, refund, PSP settlement, seller payout) is recorded as balanced double-entry ledger entries.
+4. **Seller payouts.** Once a day, each seller with a positive balance receives a bank transfer.
+5. **Reconciliation.** Daily, our ledger is matched line by line against the PSP's settlement report; every difference is classified and resolved.
+6. **Status.** Buyers see the state of a payment; sellers see their balance and payout history.
+
+### Non-functional
+
+| Property | Target | Why it matters here |
+|---|---|---|
+| Correctness | each order charged exactly once; no money created or destroyed | A double charge is a support ticket and a chargeback; a lost entry is an accounting incident |
+| Durability | an acknowledged payment is never lost (RPO = 0) | We may have charged the card; forgetting that is the worst outcome |
+| Checkout availability | 99.95% | A failed checkout is a lost sale, but the buyer can retry |
+| Checkout latency | p99 under 3 s end to end, including the PSP's ~800 ms | The buyer is watching a spinner |
+| Auditability | every entry immutable and attributable; corrections are new entries | Finance, auditors and regulators read this data for years |
+| Security | no raw card numbers on our servers | Keeps us out of most PCI DSS scope |
+
+**Correctness and durability beat availability.** When unsure whether a charge happened, the system stops and finds out, even if checkout gets slower. That is the opposite trade-off from a feed, and saying so early is a strong signal.
+
+### Out of scope
+
+Fraud scoring (a service answers yes or no before we authorize), 3-D Secure challenges (handled by the PSP's client SDK), tax, invoicing, multi-currency and foreign exchange (mentioned at 10×), and disputes or chargebacks beyond recording them in the ledger.
+
+## Estimation
+
+All numbers are assumptions of this problem, derived step by step.
+
+**Payments.** 10M a day ÷ 86,400 s = **115.7 per second**, call it 116/s. Sale-day peak at 10× = **1,157 per second**.
+
+**Money.** Assume an average payment of $50 ($500M a day), our fee 10% ($5) and the PSP's fee about 3% ($1.50). Each payment therefore splits into at least three ledger amounts.
+
+**PSP calls.** One authorization per payment at checkout; one capture per payment later, when the item ships; refunds on 2%. That is about 10M + 10M + 0.2M = **20.2M calls a day**. At peak, authorizations alone are 1,157/s. Our contract allows 2,000 calls per second per PSP. With two PSPs sharing traffic (deep dive 1 explains why two), each sees 579/s; if one fails, the other takes all 1,157/s, **58% of its limit**. Captures are not on the checkout path, so workers throttle them to at most 400/s per PSP on sale days: 1,157 + 400 = 1,557/s, still 78% of one PSP's limit in the worst case.
+
+**Database transactions per checkout.** Two synchronous transactions: (1) create the payment and its idempotency record before calling the PSP; (2) record the authorization outcome and its outbox event after. That is 2 × 116 = **231/s on average, 2,315/s at peak**. Captures and webhooks add about 348/s more on average, asynchronously and throttled on sale days.
+
+**Ledger entries.** Per payment: capture writes 3 entries (debit PSP receivable $50, credit seller payable $45, credit fee revenue $5); settlement writes 3 (debit cash $48.50, debit PSP fees $1.50, credit PSP receivable $50). Payouts add 2 entries per seller per day. Assume 20% of the 1M sellers are paid on a given day: 200,000 payouts × 2 = 0.4M. Total: 6 × 10M + 0.4M = **60.4M entries a day**, about 700/s on average.
+
+**Reads.** Assume 5 status reads per payment (the checkout page polling 3 times, the order page once, a seller dashboard view once): 5 × 116 = **579/s, 5,787/s at peak**.
+
+**Run profile.** Authorizations 116/s + database writes 231/s + reads 579/s = **926 requests per second on average**, a read-to-write ratio of 579 ÷ 347 = **1.67**, and **9,260/s at the 10× peak**.
+
+**Storage.**
+
+| Data | Arithmetic | Per day | Per year |
+|---|---|---|---|
+| Ledger entries | 60.4M × 200 B (row plus indexes) | 12 GB | 4.4 TB |
+| Payments with state history | 10M × 1 KB | 10 GB | 3.7 TB |
+| Idempotency records | 10M × 500 B (includes the stored response), kept 7 days | 5 GB | 35 GB live |
+
+About 22 GB a day, 8 TB a year. We keep 13 months online (about 8.7 TB, partitioned by month) and archive older partitions to object storage; assuming 7 years of retention, about 56 TB.
+
+**Payments API instances.** Peak load 9,260/s. Assume one instance serves 500 requests per second (TLS, auth, the fraud check, JSON, and waiting on I/O; an assumption to benchmark). We want utilisation under 0.6 even with one of three zones lost: 9,260 ÷ (0.6 × 500) = 30.9 instances in the two surviving zones, so **16 per zone, 48 in total**. With all zones up they run at ρ = 9,260 ÷ 24,000 = 0.39; with a zone lost, 9,260 ÷ 16,000 = 0.58.
+
+**Concurrency, by Little's law.** In-flight authorizations = arrival rate × time in system = 1,157/s × about 0.85 s ≈ **980 concurrent PSP calls**, about 31 per instance with a zone lost. If the PSP slows to a 10 s timeout, that becomes 11,570 in flight: this is why each PSP gets its own bounded connection pool (a <Term slug="bulkhead">bulkhead</Term>), so one slow provider cannot consume every thread.
+
+**Database.** One Postgres primary with a synchronous replica in a second zone and an asynchronous replica in the third. Assume a node handles 8,000 simple transactions per second (a benchmark assumption). At peak the primary takes all 2,315 writes plus a third of the 5,787 reads: 2,315 + 1,929 = 4,244/s, **ρ ≈ 0.53**. A single primary is enough at this scale; it is the first thing to change at 10×.
+
+**Payouts.** 200,000 transfers ÷ 50 per second = 4,000 s, about 67 minutes at the bank API's full rate (83 at a polite 40/s), so the run starts well before the bank's daily cut-off.
+
+<Callout type="tip" title="What the numbers say">
+1,157 payments per second is not a scaling problem. The hard parts are the PSP boundary (unknown outcomes, rate limits, 800 ms calls holding connections) and the correctness of the money. Spend the interview there.
+</Callout>
+
+## API design
+
+The buyer's client never sends card numbers to us. The PSP's client SDK collects the card and returns a **token**; we send that token to the PSP. This is <Term slug="data-tokenization">tokenization</Term>, and it keeps our servers out of most of PCI DSS scope.
+
+```http
+POST /v1/payments HTTP/1.1
+Authorization: Bearer <buyer session>
+Idempotency-Key: 3f6a2c1e-8d47-4b9a-a0e2-5c9d1f7b6e21
+Content-Type: application/json
+
+{ "orderId": "ord_7Hq2", "amount": 5000, "currency": "USD",
+  "paymentMethod": "tok_psp_a_4f9b..." }
+```
+
+```http
+HTTP/1.1 201 Created
+{ "paymentId": "pay_01JC8Z6", "status": "authorized", "amount": 5000 }
+```
+
+- Amounts are **integers in minor units** (cents); floating point cannot represent 0.10 exactly.
+- The <Term slug="idempotency-key">idempotency key</Term> is generated by the client once per checkout attempt and reused on every retry. A retry with the same key and the same body returns the stored response; the same key with a different body returns `422`. Stripe's API popularised this header, and an IETF draft now standardises it.
+- `402 Payment Required` with a decline reason for a declined card; `409` if a request with this key is still in progress; `202 Accepted` with `"status": "processing"` when the PSP's answer is unknown (deep dive 1). The client then polls:
+
+```http
+GET /v1/payments/pay_01JC8Z6
+→ 200 { "paymentId": "pay_01JC8Z6", "status": "authorized", "updatedAt": "2026-11-04T10:12:45Z" }
+```
+
+Internal and seller-facing endpoints:
+
+```http
+POST /v1/payments/pay_01JC8Z6/capture   (Idempotency-Key)  → 202, captured asynchronously
+POST /v1/payments/pay_01JC8Z6/refunds   (Idempotency-Key)  { "amount": 2000 } → 202
+GET  /v1/sellers/sel_19/balance                            → { "available": 1834500, "pending": 220000 }
+GET  /v1/sellers/sel_19/payouts?cursor=…                   → paged payout history
+POST /v1/webhooks/psp-a                                    ← PSP events, signature-verified
+```
+
+Webhooks are verified with the PSP's signature, deduplicated by the PSP's event id, and applied **through the state machine**, never written straight into a status column, because they arrive late, twice and out of order.
+
+## Data model
+
+| Entity | Key | Fields | Notes |
+|---|---|---|---|
+| `payment` | `payment_id` | order_id, buyer_id, amount, currency, `state`, psp, psp_reference, version | `state` changes only by compare-and-set |
+| `payment_event` | (`payment_id`, seq) | from_state, to_state, cause, actor, time | Append-only transition history |
+| `idempotency_key` | (`buyer_id`, key) | request hash, payment_id, response code and body, recovery point, locked_until | Same database, same transaction as the payment |
+| `ledger_transaction` | `txn_id` | payment_id or payout_id, kind (capture, settlement, refund, payout, reversal), created_at | Groups entries that must balance |
+| `ledger_entry` | `entry_id` | txn_id, account_id, direction (debit or credit), amount | Immutable; unique on (txn_id, account_id, direction) |
+| `account` | `account_id` | type (asset, liability, revenue, expense), owner | Seller payable, PSP receivable, cash, fees |
+| `outbox` | `event_id` | aggregate_id, type, payload, published_at | Written in the same transaction as the change it announces |
+| `processed_webhook` | (psp, psp_event_id) | received_at | Deduplication of PSP events |
+
+**Database choice: a relational database (Postgres) with synchronous replication.** The deciding reasons:
+
+- **Multi-row atomicity.** Recording an outcome touches `payment`, `payment_event`, possibly `ledger_entry` rows and an `outbox` row. They must commit together or not at all. That is one local ACID transaction in Postgres.
+- **Constraints as a safety net.** Unique constraints make duplicate entries impossible rather than unlikely; a check run in the transaction rejects any ledger transaction whose debits and credits differ.
+- **Compare-and-set state changes**: `UPDATE payment SET state = 'captured', version = version + 1 WHERE payment_id = $1 AND state = 'capturing' AND version = $2`. Zero rows updated means someone else moved it first.
+- **Size.** 8.7 TB online and about 4,244 operations per second at peak fit one well-provisioned primary.
+
+A wide-column store such as Cassandra would scale writes further but gives up multi-row transactions and constraints, which we would then reimplement badly.
+
+**Durability.** Commits wait for the synchronous replica in another zone, so losing the primary's zone loses no acknowledged payment. The cost is a millisecond or two per commit, which is nothing next to an 800 ms PSP call.
+
+## High-level design
+
+<Figure caption="FIG. 1 · PAYMENT SYSTEM · REFERENCE ARCHITECTURE">
+  <Diagram label="A load balancer spreads buyer and seller requests over 48 payments API instances in three zones. The API writes to Postgres before and after authorizing with one of two PSPs. An outbox relay feeds Kafka for capture and status workers; reconciliation and payout jobs read the ledger." chart={`flowchart LR
+    B[Buyers] --> LB[Load balancer]
+    S[Sellers] --> LB
+    subgraph Region
+      LB --> A1[Payments API AZ-a x16]
+      LB --> A2[Payments API AZ-b x16]
+      LB --> A3[Payments API AZ-c x16]
+      A1 & A2 & A3 --> DB[(Postgres: payments + ledger, sync replica + async replica)]
+      R[Outbox relay] -->|poll outbox| DB
+      R -.-> K[[Kafka: payment events]]
+      K -.-> W[Capture, refund and status workers]
+      W --> DB
+      REC[Reconciliation jobs] --> DB
+      REC --> OS[(Settlement reports and ledger archive)]
+      PO[Payout workers] --> DB
+    end
+    A1 & A2 & A3 -->|authorize| PA[PSP A]
+    A1 & A2 & A3 -->|authorize| PB[PSP B]
+    W -->|capture, refund, status| PA
+    W --> PB
+    PO -->|transfers| BANK[Bank payouts API]`} />
+</Figure>
+
+**Checkout (`POST /v1/payments`).** This follows the three-phase shape Airbnb described in its 2019 post "Avoiding Double Payments in a Distributed Payments System": a local transaction before the remote call, the remote call with no transaction open, and a local transaction after.
+
+1. **Pre-call transaction.** Insert the idempotency record (or find the existing one and return its stored response), choose a PSP, and insert `payment` in state `authorizing` with a fresh `payment_id`. Commit. The fraud check runs just before this, outside any transaction, for the same reason the PSP call does.
+2. **Remote call.** Call the chosen PSP's authorize endpoint with the card token, the amount and **our `payment_id` as the PSP's idempotency key and merchant reference**. Timeout 10 s. No database transaction is open, so no locks are held while we wait.
+3. **Post-call transaction.** Move `authorizing → authorized` or `authorizing → declined` by compare-and-set, append `payment_event`, write an `outbox` row, update the idempotency record with the final response. Commit and return `201`.
+4. If step 2 timed out or returned a 5xx, the outcome is **unknown**. Move to `unknown`, enqueue a status check, and return `202 processing`. Never call authorize again with a new reference.
+
+Latency at peak: load balancer 1 ms, API work about 30 ms, two transactions about 10 ms, PSP about 800 ms: roughly 850 ms on average and about 2.6 s at p99 with a zone lost, inside the 3 s target.
+
+**Capture, refund and status checks (asynchronous).** An outbox relay polls unpublished `outbox` rows and publishes them to Kafka, keyed by `payment_id` so events for one payment stay in order. Workers consume them: on "order shipped", call capture (again with an idempotency key derived from `payment_id` and the operation), then in one transaction move `capturing → captured`, write the three ledger entries, and add an outbox event. Workers are <Term slug="idempotent-consumer">idempotent consumers</Term>: replaying an event finds the state already advanced and does nothing.
+
+**Webhooks.** `POST /v1/webhooks/psp-a` verifies the signature, then in one transaction inserts `processed_webhook` (a duplicate fails the unique constraint and returns `200` immediately) and applies the event as a state transition, so an event is never marked processed without its effect. An event that is not a legal transition from the current state (a "captured" arriving before "authorized" was recorded) is parked and retried, not forced.
+
+## Deep dives
+
+### How do you charge a buyer exactly once when the client retries and the PSP call times out with an unknown outcome?
+
+"Exactly once" cannot be achieved by delivery: networks lose and duplicate messages, so any request may arrive zero, one or many times. What we can achieve is **exactly-once effects**: at-least-once attempts, each made safe by an idempotency check at every hop. There are three hops.
+
+**Hop 1: buyer client to us.** The client's idempotency key, stored in the **same database and transaction** as the payment. Brandur Leach's 2017 post "Implementing Stripe-like Idempotency Keys in Postgres" describes this design: the key row records how far the request got (a recovery point), so a retry resumes from that point instead of starting over. Two concurrent requests with one key are serialised by the key's unique constraint; the loser gets `409` and retries later.
+
+Storing keys only in Redis is the common mistake: an eviction, failover or expiry during a long retry loop silently re-opens the door to a second charge.
+
+**Hop 2: us to the PSP.** We send our `payment_id` as the PSP's idempotency key. A retry of the same authorization with the same key returns the original result instead of charging again. This only works if we **reuse the key**: retrying with a new key is a new charge.
+
+**Hop 3: PSP back to us.** Webhooks deduplicated by event id and applied as state transitions.
+
+**The unknown outcome.** The PSP call times out after 10 s. The bank may have authorized; we do not know. The options:
+
+| Option | What happens | Verdict |
+|---|---|---|
+| Treat as failed; buyer retries | A second authorization may succeed | Wrong: double charge |
+| Retry with the same PSP key | Safe if the PSP honours the key; adds load to a struggling PSP | Once, with backoff |
+| Mark `unknown`, query the PSP by our reference, await the webhook | Resolves in seconds to minutes | **Chosen** |
+| Retry at the other PSP | Could authorize at both | **Never**, until the first confirms failure |
+
+The status-check worker queries the PSP with <Term slug="exponential-backoff">exponential backoff</Term> (1 s, 2 s, 4 s … up to an hour); after 24 hours with no record at the PSP, the payment is marked failed and reconciliation catches anything missed. Meanwhile the buyer sees "processing". Authorizations that resolve too late (the buyer paid with another card) are **voided**, releasing the hold without moving money.
+
+This is the core trade-off of the whole system: **an unknown outcome is resolved by asking, never by guessing.** The cost is a slower, less available checkout during PSP trouble; the alternative costs buyers' money.
+
+**Why two PSPs.** One PSP is a single point of failure for every checkout. A second, kept warm with about half of the traffic (routed by card type or region), lets a <Term slug="circuit-breaker">circuit breaker</Term> move *new* payments to B when A degrades; in-flight payments stay with the PSP that started them. The costs: a second integration, a second settlement report, and per-PSP card tokens (a token from A is useless at B, so the client must tokenize with whichever PSP the payment is routed to).
+
+<NotWhenBox title="A second PSP" items={[
+  "Volume is small enough that a PSP outage costs less than building and reconciling a second integration.",
+  "You rely on PSP-specific features (saved cards, subscriptions, marketplace payouts) that do not exist at the other provider."
+]} />
+
+### What does the payment state machine look like, and how do you move between states without dual writes?
+
+```text
+created ──► authorizing ──► authorized ──► capturing ──► captured ──► settled
+                 │               │              │            │
+                 ├──► declined   └──► voided    └──► unknown └──► refunding ──► refunded
+                 └──► unknown ──► authorized | failed
+```
+
+Each arrow is one row in an allowed-transitions table. Every change is a compare-and-set (`WHERE state = <expected> AND version = <v>`), so two actors racing to move the same payment (a webhook and a worker, say) cannot both succeed: one updates a row, the other updates zero rows and re-reads. Terminal states (`declined`, `voided`, `refunded`, `failed`) have no outgoing arrows, so a late webhook cannot resurrect a voided payment.
+
+**The dual-write problem.** After capturing, three things must happen: the payment row changes, ledger entries are written, and downstream systems (order fulfilment, seller notifications) are told. Writing to the database and then publishing to Kafka is a <Term slug="dual-write">dual write</Term>: a crash between the two leaves the ledger saying "captured" and fulfilment never hearing it, or the reverse.
+
+The fix is the <Term slug="transactional-outbox">transactional outbox</Term>: the event is a row in the same transaction as the state change. The relay publishes it afterwards, at least once; consumers deduplicate by `event_id`. Alternatives considered:
+
+- **Change data capture** from the database log: no outbox table, but consumers see table changes rather than designed events and couple to your schema.
+- **Two-phase commit** across the database and Kafka: Kafka does not join an XA transaction with Postgres, and an in-doubt coordinator blocks both sides.
+- **Event sourcing**, where the event log *is* the source of truth: elegant for a ledger, but every read becomes a projection; a large commitment for a team.
+
+The PSP call cannot be inside any transaction, so the system is a <Term slug="saga">saga</Term>: local transactions joined by idempotent remote calls, with **compensations** (void an authorization, refund a capture) instead of rollbacks. Authorizing first makes compensation cheap: a void moves no money, so a checkout that fails after authorization costs no refund fee and no ledger entries.
+
+### How do you design a double-entry ledger that never loses money, stays auditable and avoids hot accounts?
+
+**Double entry.** Every ledger transaction is a set of entries whose debits equal its credits. Money is never "set"; it moves from one account to another. A capture of $50:
+
+| Account | Type | Debit | Credit |
+|---|---|---|---|
+| PSP receivable (A) | asset | 5000 | |
+| Seller payable: sel_19 | liability | | 4500 |
+| Fee revenue | revenue | | 500 |
+
+Because every transaction balances, total debits always equal total credits; a one-sided write is rejected inside the transaction, and a global imbalance is a one-query alarm.
+
+**Immutability and audit.** Entries are never updated or deleted; the application's database role has no `UPDATE` or `DELETE` permission on `ledger_entry`. A mistake is corrected by a **reversing transaction** (debits and credits swapped) plus a correct one, both referencing the original, so the history shows what we believed and when we corrected it. Every transaction records its cause and, for manual adjustments, the operator and approval.
+
+**Balances.** A seller's balance is the sum of their entries. Summing billions of rows per request is too slow, so we keep a materialised balance per account, updated in the same transaction as the entries with a version check. That works for seller accounts, each touched a few times a day.
+
+**Hot accounts.** It fails for platform accounts. "Fee revenue" and "PSP receivable" take an entry from every capture: up to 800 updates per second on one row when sale-day captures run at their throttle. Each transaction holds that row's lock for its whole commit, including the synchronous replica round trip; at a couple of milliseconds per commit, one row tops out at a few hundred updates per second. Options:
+
+- **Do not maintain a running balance for platform accounts**; compute it periodically from entries. Platform balances are read by finance daily, not per request.
+- **Split the account** into N sub-accounts (`fee_revenue_00` … `fee_revenue_15`) chosen by a hash of `payment_id`; the balance is their sum.
+
+We compute platform balances asynchronously, removing the hot row; sub-accounts are the answer if a balance must be current.
+
+<Misconception wrong="A payments table with a status column and an amount is a ledger." right="A status column records what you believe now and forgets what you believed before. A ledger is append-only and balanced, so a wrong number traces back to the transaction that produced it." />
+
+### How do you reconcile against the PSP's settlement report, and what do you do with each kind of mismatch?
+
+Every mechanism above can still be defeated: a webhook lost for good, an operator mistake, a PSP bug. **Reconciliation catches what everything else missed.**
+
+Each day the PSP publishes a settlement report: every capture, refund and chargeback it settled, its fees, and the net amount it will pay into our bank account. A reconciliation job loads the file into object storage, parses it, and matches each line to our ledger by **our `payment_id`, which we sent as the merchant reference**. That one decision in the checkout path is what makes matching mechanical instead of fuzzy.
+
+| Break | Likely cause | Resolution |
+|---|---|---|
+| In the PSP report, not in our ledger | Lost webhook; payment stuck in `unknown` | Auto-resolve: apply the transition and post the entries; if the order was already abandoned, refund |
+| In our ledger, not in the PSP report | Captured near the cut-off; or the capture really failed | Carry forward one day; if still missing, query the PSP and reverse our entries if it failed |
+| Amount differs | Partial capture or refund recorded wrongly; fee differs from contract | Post an adjusting transaction; alert if fees deviate from the contracted rate |
+| Report total differs from the bank deposit | PSP payout batched differently, or held for a reserve | Match at the payout level; escalate to finance |
+
+The target: **more than 99.9% of lines match automatically**; the rest go to a finance operations queue with the evidence attached. An hourly version uses the PSP's API for payments in `unknown` or `capturing`, fixing most breaks before the daily file arrives. The bank statement is matched against our payouts the same way.
+
+<TradeoffBox title="Real-time versus daily reconciliation" items={[
+  { gain: "Hourly checks via the PSP API catch stuck payments while the buyer still cares", cost: "More PSP API calls, and API answers can differ from the final settlement" },
+  { gain: "The daily settlement file is the PSP's authoritative statement of money moved", cost: "A day of delay before a missing capture is noticed" }
+]} />
+
+## Failure modes & mitigations
+
+| Failure | Detection | Effect without mitigation | Mitigation |
+|---|---|---|---|
+| PSP call times out | Client-side 10 s timeout | Retry charges twice, or a charge is forgotten | `unknown` state, status checks with the same reference, webhook, reconciliation |
+| Client retries checkout | Same idempotency key | Second payment | Key row in the same transaction returns the stored response |
+| API crashes after the PSP charged, before the post-call commit | `authorizing` older than 30 s | Charged but not recorded | Sweeper moves it to `unknown`; status check resolves it |
+| Webhook duplicated or out of order | Unique constraint; illegal transition | Double ledger entries; state regression | Dedup by event id; only allowed transitions; park and retry |
+| Postgres primary fails | Replication health checks | Checkout writes fail | Promote the synchronous replica (RPO 0) in under a minute; `503` with retry-after meanwhile |
+| A zone is lost | Load balancer health checks | A third of API capacity gone | 16 instances per zone sized for two zones (ρ 0.58) |
+| Outbox relay stops | Age of the oldest unpublished row | Captures and notifications delayed, never lost | Two relay instances with a lease; alert at 60 s of age |
+| PSP rate limit exceeded | `429` from the PSP | Checkout failures on sale day | Captures throttled below a per-PSP budget; authorizations have priority |
+| Bank payout rejected | Bank error | Funds in limbo | Payout state machine; a reversing transaction returns funds to seller payable |
+
+**Failure timeline: PSP A degrades during a sale-day peak.**
+
+| Time | What buyers see | What the system does |
+|---|---|---|
+| T+0 | Checkouts routed to A start hanging | A's latency rises from 800 ms to over 10 s; its bulkhead fills to its connection cap |
+| T+10 s | First buyers on A see "processing" | Timeouts move payments to `unknown`; status-check jobs are queued |
+| T+30 s | New checkouts succeed | A's circuit breaker opens at a 50% error rate over 20 s; *new* payments go to B (1,157/s, 58% of its limit), tokenized for B by the client |
+| T+1–15 min | "Processing" orders confirm or fail | Status checks against A resolve most unknowns; late authorizations for abandoned checkouts are voided |
+| T+20 min | Normal | The breaker half-opens, A passes probes, traffic is shared again |
+| T+1 day | Nothing | Reconciliation confirms every A transaction from the incident matches the ledger |
+
+Detection: the count of payments in `unknown` and the per-PSP error rate. **In-flight payments never fail over**, only new ones.
+
+## Scaling to 10×
+
+At 100M payments a day: 1,157/s on average and **11,570/s at peak**.
+
+1. **The PSP rate limit breaks first.** 11,570 authorizations per second exceeds two PSPs at 2,000/s each: negotiate higher limits, add PSPs or acquirers by region, keep captures off-peak.
+2. **The single Postgres primary.** About 23,000 writes per second at peak, plus captures and webhooks, exceeds one primary. Shard by `payment_id`: everything a payment touches (its state, its events, its ledger transactions, its outbox rows) lives on one shard, so every transaction stays local. Account balances become **projections**: a consumer of the ledger stream aggregates entries per account across shards. Seller payable balances stay a few seconds behind, which is fine because payouts run daily.
+3. **Hot accounts** are already off the synchronous path; at 10× the asynchronous aggregation must itself be partitioned by account.
+4. **Reconciliation volume** reaches a billion lines a day; move matching to a distributed batch job keyed by merchant reference.
+5. **Multiple currencies and regions.** Each currency is a separate set of accounts; a conversion is a ledger transaction through an FX account with the rate recorded. Data residency may require regional ledgers with a home region per merchant.
+6. **API fleet** grows linearly: 92,600 ÷ (0.6 × 500) ≈ 309 instances in two surviving zones, so about 155 per zone.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| Authorize at checkout, capture on shipment | Charge immediately | Cancelling is a free void instead of a paid refund; captures move off the peak path |
+| Idempotency keys in the payment database | Keys in Redis | Same transaction and durability as the payment; no eviction can re-open a double charge |
+| Our `payment_id` as the PSP key and reference | PSP-generated ids only | Safe retries at the PSP and mechanical reconciliation |
+| `unknown` state resolved by asking the PSP | Treat timeouts as failures | Slower checkout during incidents, never a double charge |
+| Two active PSPs, new payments only fail over | One PSP | Removes the largest single point of failure; costs a second integration and report |
+| Postgres with a synchronous replica | Wide-column store | Multi-row transactions and constraints are the safety net; scale fits one primary |
+| Transactional outbox | Publish after commit | No dual write; events published at least once and deduplicated |
+| Immutable double-entry ledger with reversals | Balance columns updated in place | Every cent explainable; errors are corrected visibly |
+| Asynchronous balances for platform accounts | Locked running balance | Removes the hot row; finance reads those balances daily |
+
+## What interviewers look for
+
+- **Invariants first**, and correctness ahead of availability.
+- **A precise answer to "the PSP timed out, now what?"**: *unknown*, query by our reference, never re-charge with a new key, never fail over in-flight payments.
+- **Idempotency at every hop**, stored durably next to the data it protects.
+- **A real ledger.** Balanced, immutable entries, reversals for corrections, and an answer for hot platform accounts.
+- **No dual writes.** The outbox or CDC, and the saga framing of the PSP call with void and refund as compensations.
+- **Reconciliation as a first-class component**, with a classification of breaks and a plan for each.
+- **Numbers that find the real constraint**: not 1,157 payments a second, but the PSP's rate limit, connection pools under PSP latency, and hot rows.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "The PSP returned a 500 to your authorize call. Is it safe to call it again? With what key?",
+  "Your relay published an event twice and fulfilment shipped twice. Where was the bug, and how do you prevent it?",
+  "Finance says the ledger is $12,400 short against yesterday's settlement report. Walk me through how you find it.",
+  "Why not keep a balance column on each seller and update it on every sale?",
+  "How would you add a third PSP for a new country without touching the checkout code?"
+]} />

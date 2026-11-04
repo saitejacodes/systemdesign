@@ -1,0 +1,58 @@
+{
+  "id": "chat-app",
+  "title": "Chat app (WhatsApp)",
+  "summary": "1:1 and group messaging for 500M daily users: 240M open connections, per-conversation ordering, ticks that never lie, and push for everyone offline.",
+  "difficulty": 2,
+  "weekRecommended": 14,
+  "relatedSectionIds": ["p1-realtime", "p1-load-balancers", "p1-estimation", "p2-consistent-hashing", "p3-partitioning-ordering", "p3-delivery-semantics", "p4-time-ordering", "p2-sql-vs-nosql", "p3-redis"],
+  "interviewerPrompt": "Let's design a chat app like WhatsApp. People send messages to each other and to groups, and see when their messages were delivered and read. How would you build it?",
+  "clarifyingQuestions": [
+    { "question": "How many users, and how much do they send?", "answer": "500M daily active users, each sending about 40 messages a day. Assume the evening peak is about twice the daily average." },
+    { "question": "1:1 only, or groups too? How big can a group be?", "answer": "Both. Groups have up to 500 members. Assume about 90% of messages are 1:1 and the rest go to groups with about 10 other members on average." },
+    { "question": "Do we keep message history on the server?", "answer": "Yes, forever, and a user's phone and laptop must both show the full history in the same order." },
+    { "question": "What does the sender's tick promise?", "answer": "One tick means the server has stored the message durably; it must never be lost after that. Two ticks mean it reached at least one of the recipient's devices; blue means read." },
+    { "question": "How fast must delivery be?", "answer": "Under 500 ms end to end to a recipient who is online, at p99. Recipients who are offline get the message when they reconnect, and a mobile push notification wakes them." },
+    { "question": "Does order matter?", "answer": "Within one conversation, every member's devices must show messages in the same order, and no device may show a gap without knowing it has one. There is no ordering requirement across conversations." },
+    { "question": "Do we need online presence and typing indicators?", "answer": "Online / last seen, yes. Typing indicators are nice to have. Both may be slightly stale or lost; they are never worth delaying a message for." },
+    { "question": "Media?", "answer": "Photos, voice notes and video are allowed, but uploading and storing the bytes is a separate blob service; the message carries a pointer and a key. Focus on text messages." },
+    { "question": "End-to-end encryption?", "answer": "Messages should be end-to-end encrypted so the server cannot read them. Understand what that changes in the design; you do not need to design the cryptography." },
+    { "question": "How are offline users woken up?", "answer": "Through Apple and Google push services (APNs and FCM). Assume our combined send quota with them is about 100,000 notifications per second." },
+    { "question": "Multiple devices per user?", "answer": "Yes: assume 1.3 devices per user on average (most have only a phone). All of a user's devices receive every message." }
+  ],
+  "deepDiveQuestions": [
+    "How do you hold 240M open connections, and how does a message find the gateway its recipient is connected to?",
+    "How do you guarantee that every device shows a conversation's messages in the same order, with no silent gaps?",
+    "How do delivered and read receipts and offline delivery work without losing or duplicating messages?",
+    "How do group messages fan out, and how does presence work without flooding the system?",
+    "What does end-to-end encryption change in this design?"
+  ],
+  "trafficProfile": {
+    "qps": 578700,
+    "readWriteRatio": 0.25,
+    "peakMultiplier": 2,
+    "requestTypes": [
+      { "id": "send", "name": "Send message (persist, then ack)", "op": "write", "weight": 1, "target": { "nodeId": "messages" } },
+      { "id": "receipt", "name": "Delivered / read receipt", "op": "write", "weight": 1, "target": { "nodeId": "inbox" } },
+      { "id": "sync", "name": "Sync missed messages on reconnect", "op": "read", "weight": 1, "target": { "nodeId": "messages" } }
+    ]
+  },
+  "runChallenge": {
+    "id": "chat-evening-peak-zone-loss",
+    "title": "Evening peak with a zone down",
+    "description": "Run at the 2× evening peak (about 1.16M requests per second: sends, receipts and reconnect syncs) and lose the availability zone holding the most components after 10 s. Senders must still get their tick within 200 ms at p99, with under 0.5% errors and no single point of failure.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "minOkQps": 1100000, "maxP99Ms": 200, "maxErrorRatePct": 0.5, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Ordering messages by the sender's device clock, or by server wall-clock timestamps from different machines, so two members of a group see the same conversation in different orders.",
+    "Acknowledging the send (one tick) before the message is durably stored, then losing it when a gateway or broker dies.",
+    "Sizing the WebSocket tier by messages per second instead of by open connections, which come out at hundreds of thousands per machine and decide the fleet size.",
+    "Storing user-to-gateway routing in the gateway that holds the connection, with no shared registry, so nobody else can find where to deliver.",
+    "Broadcasting every presence change to every contact, which turns presence into the largest traffic source in the system.",
+    "Sending one push notification per message to offline users, which blows through the push providers' quotas within minutes during a busy group chat.",
+    "Treating at-least-once delivery as a bug to be eliminated instead of making delivery idempotent with a client-generated message ID.",
+    "Claiming end-to-end encryption while also designing server-side search, spam scanning of message text, or server-generated link previews."
+  ]
+}

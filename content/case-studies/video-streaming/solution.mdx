@@ -1,0 +1,352 @@
+## Requirements
+
+Video streaming is two systems joined by object storage. The **write side** turns a multi-gigabyte upload into many small encoded files: a batch problem measured in CPU-hours. The **read side** delivers those files to millions of screens: a bandwidth problem measured in terabits per second, almost none of which should reach a server you wrote. Separate the two early and spend the time on the pipeline, adaptive bitrate and the CDN.
+
+### Functional
+
+1. **Upload.** A creator uploads a video file (often several gigabytes) and can resume after a dropped connection. They set a title, description and visibility.
+2. **Process.** Each upload is transcoded into a **bitrate ladder**: the same video encoded at several resolutions and bitrates (for example 240p to 1080p), cut into short segments, plus thumbnails.
+3. **Watch.** A viewer presses play on a phone, TV or browser and the player switches quality as bandwidth changes (adaptive bitrate). Seeking works.
+4. **Video pages.** Title, channel, duration, thumbnails and a view count.
+5. **View counts.** Counted from playback events, deduplicated, shown within minutes.
+
+### Non-functional
+
+| Property | Target | Why it matters here |
+|---|---|---|
+| Playback start | under 2 s from pressing play to first frame | Abandonment rises with every second of startup |
+| Rebuffering | well under 1% of watch time stalled | Stalls are what viewers remember |
+| Upload to watchable | a few minutes for the first rendition | Creators check their video straight away |
+| Playback availability | 99.99% | Every viewer feels an outage at once |
+| Upload availability | 99.9% | Resumable uploads tolerate a short outage |
+| Durability | an acknowledged upload is never lost | The creator may have deleted the original |
+| View counts | minutes fresh, deduplicated, never on the playback path | Counting must not cost a single stall |
+
+### Out of scope
+
+Live streaming, recommendations, search, comments, ads and DRM. We note where copyright matching and moderation plug into the pipeline, and protect content with signed URLs only.
+
+## Estimation
+
+Every number is derived from the stated assumptions, not from any real company.
+
+**Watch time.** 200M viewers × 1 hour = **200M viewer-hours a day**. Spread over 24 hours that is 200M ÷ 24 = **8.33M concurrent viewers on average**, and **16.7M at the 2× evening peak**.
+
+**Egress bandwidth.** Assume an average delivered bitrate of **3 Mbps** (phones at 720p pull less, TVs at 1080p more). 8.33M × 3 Mbps = **25 Tbps on average, 50 Tbps at peak**. Per day: 25 × 10¹² bit/s × 86,400 s = 2.16 × 10¹⁸ bits = **270 PB a day**. This one number drives the whole design: nothing but a CDN can serve it.
+
+**Segment requests.** Segments are **6 seconds** long (deep dive 3). Each viewer fetches one segment per 6 s: 8.33M ÷ 6 = **1.39M segment requests per second on average, 2.78M at peak**. One segment at 3 Mbps × 6 s = 18 Mbit = **2.25 MB**.
+
+**Play starts.** Assume a viewer watches 10 minutes per video, so 6 videos per viewer-hour: 200M × 6 = **1.2B plays a day** = 1.2 × 10⁹ ÷ 86,400 = **13,889 per second, 27,778 at peak**. Each play makes one play-info API call.
+
+**Playback events.** One `start` event per play plus one heartbeat per minute of watching (for watch time and abandoned-view detection): 8.33M ÷ 60 = 138,889 heartbeats/s + 13,889 starts/s = **152,778 events/s on average, 305,556 at peak**. At about 200 B each that is 30.6 MB/s, or **2.6 TB a day** of raw events.
+
+**Uploads.** 500 hours a minute = 500 × 3,600 s ÷ 60 s = **30,000 seconds of video arriving every second**. At 10 minutes per video: 720,000 hours a day × 6 = **4.32M videos a day, 50 per second**.
+
+**Upload ingress and storage.** Assume uploads average 10 Mbps (1080p): 10 Mbps × 3,600 s ÷ 8 = 4.5 GB per hour of video, and 720,000 h × 4.5 GB = **3.24 PB a day of originals**, an ingress of 3.24 PB ÷ 86,400 s = 37.5 GB/s ≈ **300 Gbps**. The H.264 ladder (deep dive 3) sums to about 10.4 Mbps, so renditions add 10.4 × 3,600 ÷ 8 = 4.68 GB per hour, about **3.4 PB a day**. Together that is **6.6 PB a day, about 2.4 EB a year** before the storage system's redundancy overhead. Storage is the second cost driver after egress.
+
+**Transcoding compute.** Assume encoding the full ladder in software costs **4 CPU-seconds per second of source** (an assumption to benchmark; 1080p dominates it). 30,000 s/s × 4 = **120,000 vCPUs busy all the time**. On 64-vCPU machines that is 1,875 machines at 100%, so **2,500 machines** to run at 75% and absorb upload bursts. Work is cut into 60-second chunks per rendition: 30,000 ÷ 60 × 5 renditions = **2,500 tasks a second**, each about 60 × 4 ÷ 5 = 48 CPU-seconds.
+
+**Metadata.** 4.32M videos a day × 2 KB = 8.6 GB a day, 3.2 TB a year, **16 TB over 5 years, 47 TB with 3 replicas**: 12 nodes at 4 TB each. Reads that miss the cache: 5% of 27,778 = 1,389/s at peak. The 12 nodes (assumed 5,000 operations/s each, 60,000 total) are sized by storage and can even take all 27,778/s if the cache is lost (46% busy).
+
+**Play-info cache.** Assume 50M distinct videos are played in a day; at 2 KB of play-info each that is **100 GB**, so three 64 GB Redis shards with replicas. We assume a **95% hit rate**, conservative given the skew.
+
+**Service instances.** Assume one playback-API instance serves **2,000 requests/s** (two cache reads, a URL signature, a small JSON response) and one event collector **20,000 events/s** (validate, batch, append). We want under about 50% utilisation normally and under 80% with one of three zones lost:
+- Playback: 27,778 ÷ 2,000 = 13.9 at 100%. With 27 instances (9 per zone): 27,778 ÷ 54,000 = **51%**, and with 18 left after a zone loss, 27,778 ÷ 36,000 = **77%**.
+- Collectors: 305,556 ÷ 20,000 = 15.3 at 100%. With 30 (10 per zone): **51%** normally, 305,556 ÷ 400,000 = **76%** with a zone lost.
+- View-count aggregators fold events in memory at an assumed 20,000 events/s each: 24 instances give 480,000/s, **64%** busy at peak.
+
+<Callout type="tip" title="What the numbers say">
+The API tier sees about 330,000 requests/s at peak; the CDN about 2.8M requests/s and 50 Tbps; transcoding needs a six-figure vCPU fleet. The metadata store is the easy part.
+</Callout>
+
+## API design
+
+Uploads use a session: the API hands out <Term slug="presigned-url">presigned URLs</Term> and the bytes go straight to object storage.
+
+```http
+POST /v1/uploads HTTP/1.1
+Authorization: Bearer <token>
+Idempotency-Key: 0b9d6c1e-1f42-4a8e-9a2d-6c7e3f1b2a90
+Content-Type: application/json
+
+{ "fileName": "trip-vlog.mp4", "sizeBytes": 3221225472, "contentType": "video/mp4",
+  "title": "Three days in Hampi", "visibility": "public" }
+```
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{ "uploadId": "up_7Hq2", "videoId": "v_Xk93LmQ2", "partSizeBytes": 67108864, "partCount": 48,
+  "parts": [ { "partNumber": 1, "url": "https://uploads.example-cdn.net/raw/v_Xk93LmQ2?partNumber=1&uploadId=...&X-Amz-Signature=..." } ],
+  "urlsExpireAt": "2026-11-04T12:10:00Z" }
+```
+
+- The client `PUT`s each part to its URL and keeps the returned `ETag`. `POST /v1/uploads/{uploadId}/parts?from=11&count=10` presigns the next batch, so URLs stay short-lived.
+- `POST /v1/uploads/{uploadId}/complete` with `{ "parts": [{ "partNumber": 1, "etag": "\"9b2c…\"" }] }` returns `202 Accepted` with `{ "videoId": "v_Xk93LmQ2", "status": "processing" }`.
+- `GET /v1/uploads/{uploadId}` lists the parts already received, which is how a client resumes after a crash.
+- `GET /v1/videos/{videoId}/processing` shows pipeline progress per rendition.
+
+Playback:
+
+```http
+GET /v1/videos/v_Xk93LmQ2/play HTTP/1.1
+```
+
+```json
+{ "videoId": "v_Xk93LmQ2", "durationS": 612, "resumeAtS": 0,
+  "manifestUrl": "https://v3.example-cdn.net/v/v_Xk93LmQ2/master.m3u8?exp=1762263600&sig=f3a1…",
+  "fallbackManifestUrl": "https://v7.other-cdn.net/v/v_Xk93LmQ2/master.m3u8?exp=1762263600&sig=c81d…",
+  "thumbnailsUrl": "https://img.example-cdn.net/v_Xk93LmQ2/storyboard.jpg" }
+```
+
+The master manifest (HLS shown) lists the ladder; the player picks a rendition and then fetches that rendition's playlist and segments:
+
+```text
+#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=640x360,CODECS="avc1.4d401e,mp4a.40.2"
+360p/index.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=3000000,RESOLUTION=1280x720,CODECS="avc1.4d401f,mp4a.40.2"
+720p/index.m3u8
+```
+
+Events are batched by the player every 60 s, or on pause and exit:
+
+```http
+POST /v1/events HTTP/1.1
+Content-Type: application/json
+
+{ "sessionId": "ps_51c0", "events": [
+  { "type": "start", "videoId": "v_Xk93LmQ2", "ts": "2026-11-04T19:02:11Z", "positionS": 0 },
+  { "type": "heartbeat", "videoId": "v_Xk93LmQ2", "ts": "2026-11-04T19:03:11Z", "positionS": 60, "rebufferMs": 0, "bitrateKbps": 2800 } ] }
+```
+
+`202 Accepted`; the collector never waits for counting. `GET /v1/videos/{videoId}` returns metadata with `viewCount`.
+
+## Data model
+
+| Entity | Key | Fields | Store |
+|---|---|---|---|
+| `video` | `video_id` (partition key) | `channel_id`, `title`, `description`, `duration_s`, `status` (uploading, processing, ready, failed, removed), `visibility`, `renditions` (codec, height, bitrate, playlist key), `manifest_key`, `source_key`, `created_at` | Metadata store |
+| `channel_video` | `channel_id` (partition), `created_at` desc, `video_id` | none | Metadata store |
+| `upload_session` | `upload_id` | `video_id`, storage multipart ID, `part_size`, `status`, `expires_at` | Pipeline DB |
+| `job` / `task` | `job_id`; `task_id` = (`job_id`, stage, chunk, rendition) | `status`, `attempts`, `lease_until`, `output_key` | Pipeline DB |
+| `view_count` | `video_id` | `views`, `watch_seconds`, `updated_at` | Counter store |
+| Objects | `raw/{video_id}/source`, `v/{video_id}/{rendition}/{n}.m4s`, `v/{video_id}/master.m3u8` | bytes | Object storage |
+
+**Metadata store: a partitioned key-value store** (a <Term slug="wide-column-store">wide-column store</Term> such as Cassandra, or DynamoDB): point reads by `video_id`, about 50 new videos a second, 16 TB over five years. Sharded MySQL is equally good for a team that wants relational queries; Vitess, the MySQL sharding system, was created at YouTube for this kind of metadata. Operational familiarity decides, not scale.
+
+**Pipeline DB: Postgres.** Task state needs transactions ("mark this chunk done and, if it was the last, make packaging runnable") and is small: at most 2,500 completions a second, kept 30 days. A workflow engine such as Temporal or Netflix's Conductor can replace hand-rolled DAG tables.
+
+**Object keys are deterministic**: a task's output key depends only on (video, rendition, chunk). A retried task overwrites the same object with the same bytes, which is what makes retries safe.
+
+## High-level design
+
+<Figure caption="FIG. 1 · VIDEO STREAMING · REFERENCE ARCHITECTURE">
+  <Diagram label="Creators upload parts straight to object storage with presigned URLs from the upload service, which then enqueues a transcoding DAG; transcode workers write renditions back and call the service to publish. Viewers fetch manifests and segments from a tiered CDN backed by object storage, call playback services in three zones that read play-info from Redis or the metadata store, and send events to collectors that feed zone-local Kafka buffers and view-count aggregators." chart={`flowchart LR
+    CR[Creators] -->|init, complete| ULB[Upload LB]
+    CR -->|PUT parts, presigned| OS[(Object storage)]
+    V[Viewers] -->|manifest, segments| CDN[CDN edge + shield]
+    CR --> CDN
+    CDN -->|miss| OS
+    V -->|play start, events| LB[API LB]
+    CR --> LB
+    subgraph Region
+      ULB --> VS[Upload and video service]
+      VS --> PDB[(Pipeline DB)]
+      VS -.->|DAG| TQ[[Transcode queue]]
+      TQ -.-> TW[Transcode workers x2500]
+      TW --> OS
+      TW -->|publish| VS
+      VS --> META[(Metadata store 12 nodes)]
+      LB --> P[Playback API x27 in 3 AZs]
+      P --> R[(Redis play-info)]
+      P -->|miss| META
+      LB --> COL[Collectors x30 in 3 AZs]
+      COL -.-> K[[Kafka per AZ]]
+      K -.-> AGG[Aggregators x24]
+      AGG --> CNT[(View counters)]
+      AGG --> R
+    end`} />
+</Figure>
+
+**Upload.** `POST /v1/uploads` creates the `video` row (`status = uploading`), starts a <Term slug="multipart-upload">multipart upload</Term> and returns presigned part URLs; the client uploads parts in parallel straight to storage. On `complete`, storage assembles the parts into one durable object, and only then does the service return `202` and enqueue the DAG (deep dive 1).
+
+**Transcode.** Workers lease tasks, each encoding one 60-second chunk of one rendition to a deterministic key. Packaging writes the playlists and master manifest, then calls the video service to set `status = ready` (deep dive 2).
+
+**Play.** The player calls `GET /v1/videos/{id}/play`. The playback API reads play-info from Redis (on a miss, from the metadata store; this is <Term slug="cache-aside">cache-aside</Term>), checks visibility, and signs a manifest URL that expires in a few hours. The player then talks only to the CDN: master manifest, a rendition playlist, then segments.
+
+Startup budget for the 2 s target: DNS and a QUIC handshake, about 150 ms on mobile; play-info, about 100 ms; manifest and one playlist from an edge, about 100 ms; the first segment at 360p (0.8 Mbps × 6 s = 600 KB) over 10 Mbps, about 500 ms. Roughly **0.85 s**. Returning the rendition playlist inside play-info saves a round trip.
+
+**Events.** The player batches events to a collector in any zone; the collector validates them, adds the server timestamp and appends to its zone's Kafka buffer. Aggregators fold them into per-video counts (deep dive 5).
+
+In Run mode, the play-start p99 is about 64 ms at the evening peak and about 165 ms with a zone lost (18 playback instances at 77%), within the 200 ms budget the challenge sets.
+
+## Deep dives
+
+### How do creators upload multi-gigabyte files reliably, and why should the bytes never pass through your application servers?
+
+Proxying uploads through the API puts 300 Gbps of ingress on servers built for small JSON requests, and a dropped connection loses the whole file. Instead the API hands out **presigned URLs**: storage URLs with an expiry and a signature, so the client can `PUT` exactly that part and nothing else, without holding credentials.
+
+**Multipart upload** makes it resumable. S3's multipart API, which most object stores imitate, allows up to 10,000 parts of at least 5 MiB each (except the last). We choose 64 MiB parts: a 3 GB file is 48 parts, uploaded 4 at a time. If the connection drops, the client asks `GET /v1/uploads/{id}` which parts arrived and sends only the missing ones; it loses at most the parts in flight. Each part's checksum is verified by storage on receipt, so corruption is caught at the part, not after transcoding.
+
+| Option | Resumable | Load on our servers | Verdict |
+|---|---|---|---|
+| Single `POST` through the API | No | All bytes | Fails at multi-gigabyte sizes |
+| Chunked upload to our own upload servers | Yes | All bytes, plus storage of partial files | Only if you need to inspect bytes inline |
+| Presigned multipart direct to storage | Yes | Small control calls | **Chosen** |
+
+**Durability.** The `202` after `complete` is the acknowledgement promise: it is sent only after storage has assembled the object, so a crash after it loses nothing. Before `complete`, the creator still has the file and a resumable session. Abandoned sessions are cleaned by a bucket lifecycle rule (S3 calls the action `AbortIncompleteMultipartUpload`) after 7 days, because orphaned parts are billed but invisible.
+
+<NotWhenBox title="Presigned direct uploads" items={[
+  "Small payloads (avatars of a few kilobytes) where a single request through the API is simpler and you want to validate the body inline.",
+  "When regulation requires scanning bytes before they land anywhere: then a dedicated upload tier that streams through a scanner is worth its cost."
+]} />
+
+### How does the transcoding pipeline, a DAG of jobs, turn one upload into a playable bitrate ladder within minutes?
+
+One worker encoding a 10-minute video spends 40 CPU-minutes: 40 minutes before anyone can watch, and a crash at minute 39 starts over. Instead, cut the work into independent tasks arranged as a **DAG** (directed acyclic graph: tasks with "runs after" edges and no cycles):
+
+1. **Probe**: read the container, duration, resolution and keyframe positions. Reject undecodable files.
+2. **Encode** (fan-out): one task per (60-second chunk, rendition). A 10-minute video is 10 chunks × 5 renditions = 50 tasks that run in parallel. Workers read only their chunk's byte range from the original, so there is no separate split step.
+3. **Package** per rendition: join the chunk outputs into 6-second CMAF segments and write the HLS and DASH playlists.
+4. **Side branches** that do not block playback: audio, thumbnails and the seek storyboard, captions, and the copyright and moderation checks.
+5. **Publish**: write the master manifest and mark the video `ready`.
+
+Tasks average 48 CPU-seconds; low rungs finish in well under a minute, so a 10-minute upload is watchable **about a minute after upload** and complete in a few minutes. Publication waits for 360p, 720p and a moderation pass; higher rungs are appended to the manifest later.
+
+**Scheduling.** Runnable tasks go to the transcode queue; a worker takes a <Term slug="lease">lease</Term> on a task (here, a <Term slug="visibility-timeout">visibility timeout</Term> of 5 minutes, renewed while running). If the worker dies, the lease lapses and the task runs again elsewhere. That is <Term slug="at-least-once">at-least-once</Term> execution, made harmless by **idempotent tasks**: deterministic output keys mean a rerun overwrites identical bytes, and "mark task done" is an upsert. A task that fails 3 times is a <Term slug="poison-message">poison message</Term>; it goes to a <Term slug="dead-letter-queue">dead-letter queue</Term> and the video is marked `failed` with a reason, so one corrupt file cannot loop forever.
+
+**Priority lanes.** Two queues: first renditions (360p, 720p) of new uploads, and everything else (1080p, extra codecs, backfills). Workers drain the first lane before the second, so a backlog makes 1080p late rather than making videos unwatchable.
+
+**Chunk boundaries.** Each chunk starts on a keyframe so it decodes independently, with identical encoder settings so joins are invisible.
+
+**Smarter encodes.** A fixed ladder wastes bits on simple content and starves complex content; Netflix's "Per-Title Encode Optimization" post (December 2015) describes choosing the ladder per title. Our cheap version: the standard H.264 ladder for every upload, and a more efficient codec (VP9 or AV1) only once a video passes a view threshold, because those encodes cost several times more CPU and pay off only on popular videos.
+
+<TradeoffBox title="Chunk length" items={[
+  { gain: "Shorter chunks (10 s): more parallelism, faster first rendition, less work lost per crash", cost: "More tasks and keyframes, more per-task start-up overhead, more joins" },
+  { gain: "Longer chunks (60 s): fewer tasks (2,500/s fleet-wide), better encoder efficiency", cost: "A 10-minute video has only 10 chunks per rendition, so its slowest chunk sets the finish time" }
+]} />
+
+### How does adaptive bitrate streaming work with HLS or DASH, and how do you choose the ladder and the segment length?
+
+**Adaptive bitrate (ABR) streaming** encodes several bitrates, cuts each into segments aligned at the same timestamps, and lets the *player* choose the rendition for each next segment from measured throughput and buffer level. The server is a plain HTTP file server, so any CDN can cache it.
+
+Two formats dominate: **HLS** (from Apple, documented in RFC 8216) and **MPEG-DASH** (ISO/IEC 23009-1): a manifest listing renditions, and playlists listing segments. With **CMAF** (ISO/IEC 23000-19), one set of fragmented-MP4 segments serves both, halving storage and cache footprint. We store CMAF segments once, plus an `.m3u8` and an `.mpd`.
+
+**The ladder** (assumption, H.264):
+
+| Rung | Resolution | Bitrate | Typical use |
+|---|---|---|---|
+| 1 | 240p | 0.4 Mbps | Weak mobile signal |
+| 2 | 360p | 0.8 Mbps | Start-up rung |
+| 3 | 480p | 1.4 Mbps | Mobile |
+| 4 | 720p | 2.8 Mbps | Phones, laptops |
+| 5 | 1080p | 5.0 Mbps | TVs, good Wi-Fi |
+
+The rungs sum to 10.4 Mbps, the figure used for storage. Adjacent rungs differ by roughly 1.7–2×, so a switch is a visible but not jarring step.
+
+**Segment length** trades start-up and switching speed against request count and encoding efficiency. Apple's HLS authoring guidance recommends 6-second segments, which we follow. Halving to 3 s would double our CDN request rate to about 5.6M/s at peak and add keyframes that cost bitrate; doubling to 12 s means slower quality switches and slower start-up.
+
+**Player logic** decides rebuffering. Throughput-based players pick the highest rung below recent download speed, which overreacts on noisy mobile links. Buffer-based players pick from buffer occupancy: Huang et al., "A Buffer-Based Approach to Rate Adaptation" (SIGCOMM 2014, measured on Netflix), reported fewer rebuffers. Real players blend both: start at a safe rung, climb as the buffer fills toward 30 s, drop fast when it shrinks.
+
+<Misconception wrong="The server decides which quality each viewer gets." right="In HLS and DASH the player decides, segment by segment. The server only offers the ladder; that is why the read path can be a cache serving static files." />
+
+### How do you deliver 50 Tbps at peak through CDN tiers without the long tail or a hot release overwhelming the origin?
+
+A <Term slug="cdn">CDN</Term> is a network of caches; each location is a <Term slug="point-of-presence">point of presence</Term> (PoP). Popular videos hit everywhere; the long tail, millions of videos watched a few times a day, misses at most edges.
+
+We use **three tiers**:
+
+1. **Edge PoPs** near viewers, with an assumed **95%** hit rate.
+2. An **<Term slug="origin-shield">origin shield</Term>**: a regional mid-tier cache that every edge asks on a miss. It turns thousands of edge misses for the same segment into one origin read. Assume 80% of edge misses hit here.
+3. **Object storage** as origin, which sees 5% × 20% = **1% of requests**: 27,800 segment reads/s and about 0.5 Tbps at peak.
+
+**Cache keys.** The <Term slug="cache-key">cache key</Term> is the path without the signature query string, so a segment is cached once no matter how many signed URLs point at it; the edge validates the signature, then looks up the normalised path. Segments are immutable, so they carry `Cache-Control: max-age=31536000, immutable`. The master manifest changes when rungs are added or a video is taken down, so it gets `max-age=60` and an explicit <Term slug="cache-purge">purge</Term> on takedown.
+
+**Hot release.** When a big channel publishes, tens of thousands of players request the same first segments within seconds. Each edge collapses concurrent misses for one key into a single upstream fetch (<Term slug="request-coalescing">request coalescing</Term>), and the shield does the same, so the origin sees roughly one request per segment per shield. For scheduled releases, push the first minutes of every rung to the shields beforehand.
+
+**Pre-positioning.** Netflix's Open Connect appliances, inside internet providers' networks, are filled with predicted-popular content off-peak. That works for a predictable catalogue, not for user-uploaded long-tail content, which is why the shield exists.
+
+**Multi-CDN.** At 50 Tbps one provider is too large a <Term slug="blast-radius">blast radius</Term>. Play-info carries a fallback manifest URL on a second CDN; the player switches after two failed fetches, and steering shifts the default split using quality data from the event stream.
+
+**Failure timeline: an edge PoP fails at peak.**
+- t = 0: a PoP serving about 500,000 viewers stops answering. Each player has 15–30 s of video buffered, so nobody sees anything yet.
+- t ≈ 2–6 s: players' segment requests time out (2 s timeout, one retry). Players with 6 s of buffer or more keep playing from the buffer.
+- t ≈ 10 s: after two failures each player switches to the fallback URL. Viewers who were at the edge of their buffer see a short stall; the others see nothing.
+- t ≈ 30–60 s: the CDN's health checks withdraw the PoP from <Term slug="anycast">anycast</Term> or DNS steering, and new sessions go to neighbouring PoPs.
+- Detection: rebuffer ratio and segment error rate per PoP from heartbeats, alerting within a minute. The neighbouring PoPs miss on their long tail for a few minutes, so shield load rises; the shield and origin were sized with 2× headroom for exactly this.
+
+### How do you count views at 300,000 events per second without slowing playback or double counting?
+
+`UPDATE videos SET views = views + 1` per play puts a write on the playback path and makes a hit video one hot row. Counting is instead a <Term slug="stream-processing">stream-processing</Term> job.
+
+**Collect.** Collectors accept batched events, stamp them and append to Kafka; they return `202` without waiting for anything else. Each zone has its own Kafka buffer, so the highest-volume write stream never crosses zones (cross-zone transfer is billed per gigabyte) and a zone outage cannot stall the other two. The trade-off: if a zone dies, its unconsumed events (a few seconds of lag, about a third of 300,000/s) are lost. For approximate counts that is acceptable; for billing data it would not be.
+
+**Decide what a view is.** A `start` alone is not a view: autoplay previews and instant bounces would inflate counts. Our rule (a product decision): a session counts once per video when its heartbeats show at least 30 s watched, or the whole video if shorter. Each event carries a `sessionId`, so the aggregator deduplicates per (session, video) inside a 24-hour window; repeated plays from one session count once.
+
+**Aggregate.** Kafka partitions by `video_id`, so all events for a video reach one aggregator, which keeps per-video deltas in memory and flushes them every 60 s as increments to the counter store. Assuming about 500,000 distinct videos receive a view in a given minute, that is about 8,300 writes/s, instead of 300,000. The aggregator commits Kafka offsets only after a flush succeeds; a crash replays at most a minute of events, and each flush carries (partition, offset range) so a replayed flush is detected and skipped. That makes the aggregator an <Term slug="idempotent-consumer">idempotent consumer</Term>.
+
+**Hot videos.** A viral video is one busy aggregator thread folding in memory, not a hot database row. Aggregators also push the top 100,000 videos' counts to Redis every 10 s so trending counts move.
+
+**Fraud.** A batch job over raw events (30 days in the data lake) recomputes counts with heavier bot rules and corrects the streaming count, so displayed counts can go down: a product decision to make explicitly.
+
+<Callout type="info" title="Unique viewers">
+"How many distinct people watched" needs a <Term slug="hyperloglog">HyperLogLog</Term> sketch per video per day (about 12 KB at Redis's default precision, roughly 0.8% error) instead of a set of viewer IDs.
+</Callout>
+
+## Failure modes & mitigations
+
+| Failure | Detection | Effect | Mitigation |
+|---|---|---|---|
+| One availability zone lost | Zone health alarms, LB health checks | A third of playback and collector capacity gone | N+1 sizing: 18 playback instances at 77%, 20 collectors at 76%; that zone's Kafka buffer lost (seconds of events) |
+| Edge PoP down | Per-PoP segment errors and rebuffers from heartbeats | Stalls for viewers with short buffers | Player retry, fallback CDN in play-info, anycast and DNS steering |
+| Origin overload from tail misses or a takedown purge | Origin request rate, shield miss ratio | Slow segments, rising rebuffering | Shield with request coalescing; purge only manifests, never segments |
+| Redis play-info cache lost | Hit rate falls from 95% to 0 | Metadata reads rise from 1,389/s to 27,778/s | Store sized at 60,000 ops/s; in-process cache of the hottest videos |
+| Transcode worker dies | Lease expiry | Its tasks delayed up to 5 min | Leases, idempotent tasks, deterministic output keys |
+| Corrupt or hostile upload | Probe failure, repeated task failure | One video fails | Probe first, 3 attempts, dead-letter queue, `failed` status with reason |
+| Upload surge (a holiday weekend) | Queue depth and age of oldest task | 1080p late | Priority lanes keep first renditions fast; autoscale the second lane |
+| Aggregator crash | Consumer lag | Counts minutes stale | Offset commit after flush; idempotent flushes; replay |
+| Takedown of a published video | Legal or moderation request | Must stop within minutes | `removed` status checked at play start; manifest purged; signed URLs expire within hours |
+
+## Scaling to 10×
+
+At 2B viewer-hours a day: 250 Tbps average and 500 Tbps peak, 28M segment requests/s and 3M events/s at peak, and 5,000 hours uploaded a minute.
+
+1. **Egress breaks first.** No single CDN contract or set of PoPs carries 500 Tbps economically. The step is caches inside internet providers' networks, filled off-peak for predicted demand, plus traffic steering across several CDNs by measured quality and price. Shield capacity has to grow with the long tail.
+2. **Transcoding** needs about 25,000 64-vCPU machines in software. Hardware encoding changes the cost curve: Google's ASPLOS 2021 paper "Warehouse-Scale Video Acceleration" describes deploying its own video-encoding chips for this reason. Before that, encode fewer rungs for videos nobody watches and add rungs lazily on the first views.
+3. **Storage** reaches about 24 EB a year. Lifecycle policies move originals to an archive tier after 30 days and delete rarely watched top rungs, since they can be re-encoded from the original on demand.
+4. **Event ingestion** at 3M events/s: more collector instances and Kafka partitions; players send heartbeats every 2 minutes instead of every minute; aggregation moves to a stream processor with windowed state.
+5. **Metadata and APIs** scale linearly (270 playback instances); serve play-info active-active from several regions, writing video rows in the uploader's home region.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| Presigned multipart uploads direct to storage | Upload through API servers | Keeps 300 Gbps of ingress off the API; resumable per part |
+| Chunked encode tasks in a DAG | One job per video | Watchable in about a minute; a crash loses one chunk |
+| At-least-once tasks with deterministic outputs | Exactly-once scheduling | Retries are harmless; no coordination needed |
+| 6 s CMAF segments, HLS + DASH manifests | 2 s segments, or separate files per format | Half the requests of 3 s segments; one copy of the bytes for both formats |
+| H.264 ladder for all, VP9/AV1 only when popular | Every codec for every upload | Expensive encodes only where views repay them |
+| Edge + shield + origin, plus a second CDN | Single-tier CDN | Origin sees about 1% of requests; no single provider can take playback down |
+| KV store for metadata | Vitess-sharded MySQL | Point reads by ID at modest volume; Vitess is equally valid for a MySQL team |
+| Zone-local Kafka for events | One cross-zone cluster | No cross-zone transfer for the largest stream; loses seconds of approximate data in a zone failure |
+| Streaming view aggregation | Counter increment per play | No write on the playback path; one hot video is a busy thread, not a hot row |
+
+## What interviewers look for
+
+- **Splitting the problem** into a batch write side and a bandwidth read side, with both estimated: 25 Tbps average egress, 120,000 vCPUs of encoding.
+- **Bytes never touch the API**: presigned multipart uploads, resumability, a clear durability point.
+- **A real pipeline**: chunk-level DAG, leases, idempotent retries, poison handling, priority for first renditions.
+- **ABR fluency**: player-driven selection, a concrete ladder, why 6 s segments, CMAF for HLS and DASH.
+- **CDN depth**: per-tier hit rates, the long tail, cache keys with signed URLs, immutable segments vs short-lived manifests, coalescing, multi-CDN.
+- **Counting done right**: off the playback path, a defined view, deduplication, idempotent replay.
+- **Staff-level extras**: codec cost vs popularity, hardware encoders and ISP caches at 10×, and choosing to lose seconds of view events in a zone failure.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "A creator's 40 GB upload keeps failing at 90%. What do you check, and what does the client do?",
+  "A celebrity premieres a video at 8 pm. Walk me through the first 60 seconds at the CDN and origin.",
+  "Why not encode every upload in AV1 straight away?",
+  "A video must be taken down for legal reasons. How fast can it stop playing everywhere, and what limits that?",
+  "View counts went down overnight for a popular video. Is that a bug?"
+]} />

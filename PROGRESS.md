@@ -18,11 +18,11 @@
 - [x] 15 Phase 6 Content + Simulators
 - [x] 16 Algorithm Sandboxes
 - [x] 17 Design Studio: Canvas
-- [ ] 18 Design Studio: Run Mode
-- [ ] 19 Interview Mode
-- [ ] 20a Case Studies 1–5
-- [ ] 20b Case Studies 6–10
-- [ ] 20c Case Studies 11–15
+- [x] 18 Design Studio: Run Mode
+- [x] 19 Interview Mode
+- [x] 20a Case Studies 1–5
+- [x] 20b Case Studies 6–10
+- [x] 20c Case Studies 11–15
 - [ ] 20d Phase 7 Interview Mastery
 - [ ] 21 AI Features
 - [ ] 22 Reference Library & Capstone

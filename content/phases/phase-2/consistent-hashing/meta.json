@@ -36,9 +36,7 @@
   "simulatorIds": [
     "consistent-hashing"
   ],
-  "practiceCaseStudyIds": [
-    "url-shortener"
-  ],
+  "practiceCaseStudyIds": ["url-shortener", "web-crawler", "chat-app"],
   "prerequisites": [
     "p2-sharding"
   ]

@@ -1,0 +1,286 @@
+## Requirements
+
+A search engine has two halves that run at completely different speeds. The indexing side is a batch-and-stream pipeline that turns hundreds of millions of changed pages a day into compact, immutable index files. The serving side answers 100,000 queries a second, and each query fans out to hundreds of machines that must all reply within a fraction of 200 ms. The interview is about the data structure that connects them (the inverted index), how you split it across machines, and how you keep the slowest machine from deciding every user's latency.
+
+The crawler is a separate system (see the web crawler case study). It already fetches pages, stores them as compressed WARC files in object storage, removes near-duplicates with SimHash, and publishes a "page fetched" event for each stored page. This design starts from that event.
+
+### Functional
+
+1. **Index** every page the crawler delivers: about 10B pages in the index, with about **500M new, changed or deleted pages a day**.
+2. **Search.** Keyword queries (implicit AND), phrase queries in quotes, per language and country. Return the top 10 results with title, URL and a snippet showing the query words.
+3. **Did you mean.** Suggest a corrected spelling when a query looks misspelled.
+4. **Removal.** Pages removed for legal reasons disappear from results quickly.
+
+### Non-functional
+
+| Property | Target | Why |
+|---|---|---|
+| Latency | under 200 ms at p99, at our servers | Search is interactive; slowness measurably reduces use |
+| Freshness | a crawled page is searchable within a day | Stale results are the visible failure of a search engine |
+| Degradation | with part of the index missing, return results from the rest, never an error page | "Slightly worse results" beats no results |
+| Availability | losing a zone must not stop search | |
+| Removal latency | legally removed pages gone within hours | Legal obligation |
+
+### Out of scope
+
+Crawling, ads, images, maps, answer boxes, per-user personalisation, and the internals of ranking models (we cover where ranking runs and what it costs).
+
+## Estimation
+
+These are assumptions of the problem, not any real search engine's figures. The crawler case was sized for 1B pages a month; delivering 500M a day assumes that crawler scaled up about fifteenfold, beyond the 10× its own scaling section describes.
+
+**Queries.** 100,000/s at peak, 50,000/s on average: 50,000 × 86,400 = **4.3B queries a day**.
+
+**Result cache.** Popular queries repeat. Assume **50%** of queries are answered from a cache of recent result pages. The index tier then sees **50,000 queries/s at peak**.
+
+**Indexing rate.** 500M ÷ 86,400 = **5,787 pages/s** on average.
+
+**Text per page.** The crawler's pages average 100 KB of HTML. Assume 10 KB of visible text after stripping markup, about **1,500 words (tokens)** of which about **600 are distinct**.
+
+**Postings.** A posting is one (document, term) entry in the index. 10B pages × 600 distinct terms = **6 × 10¹² postings**. Stored as compressed gaps between sorted document IDs plus a term frequency, assume 1.5 B each: **9 TB**. Word positions, needed for phrase queries and proximity scoring, are one per token: 10B × 1,500 = 1.5 × 10¹³ at about 1 B each compressed = **15 TB**. Total inverted index ≈ **24 TB**.
+
+**Shards.** Split the documents into shards of **50M pages**: 10B ÷ 50M = **200 shards** of about 24 TB ÷ 200 = **120 GB** each. That fits in the memory of a 256 GB server with room for new segments, so postings are served from RAM.
+
+**Document store for snippets.** Compressed text at about 3 KB per page plus 200 B of title and URL: 10B × 3.2 KB = **32 TB**, 96 TB with three replicas.
+
+**Index servers.** Assume one server answers **1,000 queries/s** against its 50M-document shard (dynamic pruning makes most queries touch a small part of each postings list; this is the number to benchmark). Every query goes to all 200 shards, so a **row** of 200 servers, one per shard, together answers 1,000 queries/s. Size so that losing a zone leaves ρ ≤ 0.7: 50,000 ÷ (0.7 × 1,000) = 71.4, so 72 rows in two zones, **36 rows per zone, 108 rows** in total. That is 108 × 200 = **21,600 index servers**. Normal ρ = 50,000 ÷ 108,000 = **0.46**; after a zone loss 50,000 ÷ 72,000 = **0.69**.
+
+**Fan-out.** 50,000 queries/s × 200 shards = **10M shard requests a second** inside the data centre. Internal traffic is 200 times the user traffic; this is the number that drives the deep dives.
+
+**Query service.** Parsing, cache lookup, scatter-gather, merge and snippet assembly. Assume **2,000 queries/s per instance** (mostly waiting on network). The same zone-loss rule: 100,000 ÷ (0.7 × 2,000) = 71.4 → **36 per zone, 108 instances**.
+
+**Doc servers.** 50,000 uncached queries × 10 results = 500,000 snippet lookups/s at peak. At 10,000/s per node and ρ = 0.5: **100 nodes**, about 1 TB each.
+
+**Indexers.** Assume 20 ms of CPU per page to parse, tokenize and extract features. 5,787 × 0.02 = 116 cores on average; with 2× headroom to catch up after an outage, about 230 cores: **40 machines of 8 cores**.
+
+**Weekly base rebuild.** 10B × 20 ms = 2 × 10⁸ core-seconds ≈ 55,600 core-hours: about **28 hours on 250 machines of 8 cores**.
+
+<Callout type="tip" title="What the numbers say">
+The index is only 24 TB, and each shard fits in RAM. What is large is the fan-out: 10M shard requests a second, and every user query waits for the slowest of 200. Capacity is cheap to add; latency under fan-out is the design problem.
+</Callout>
+
+For Run mode the workload is 50,000 search reads/s average at a 2× peak; read:write (queries per indexed page) is 50,000 ÷ 5,787 ≈ 8.6.
+
+## API design
+
+```http
+GET /search?q=%22tail+at+scale%22+latency&hl=en&gl=GB&start=0 HTTP/1.1
+```
+
+```json
+{ "query": "\"tail at scale\" latency",
+  "spelling": null,
+  "partial": false,
+  "coverage": 1.0,
+  "results": [
+    { "url": "https://research.example.org/tail-at-scale",
+      "title": "The Tail at Scale",
+      "snippet": "…techniques that tolerate <b>latency</b> variability… <b>tail at scale</b>…",
+      "docId": "9c3e01d2a4b5f607" } ],
+  "next": "start=10" }
+```
+
+- `partial` and `coverage` say whether some shards did not answer in time. The page still renders; logs and dashboards track coverage.
+- `spelling` carries a suggestion such as `{ "text": "latency", "original": "latnecy" }`.
+- Pages are 10 results; deep pagination beyond a few pages is capped, because each page re-runs the scatter-gather with a larger k.
+
+Internal RPCs (gRPC), each carrying a **deadline**:
+
+```json
+// query service → index server for shard 117
+{ "terms": ["tail", "at", "scale", "latency"], "phrases": [["tail", "at", "scale"]],
+  "lang": "en", "k": 30, "deadlineMs": 100 }
+// → { "shard": 117, "hits": [ { "docId": "9c3e01d2a4b5f607", "score": 17.2, "features": [0.31, 4.0, 0.88] } ] }
+
+// query service → doc server
+{ "docIds": ["9c3e01d2a4b5f607"], "terms": ["tail", "at", "scale", "latency"], "deadlineMs": 30 }
+// → { "docs": [ { "docId": "9c3e01d2a4b5f607", "title": "The Tail at Scale", "url": "…", "snippet": "…" } ] }
+```
+
+## Data model
+
+| Structure | Key | Contents | Where |
+|---|---|---|---|
+| Term dictionary (per shard) | term | offset of its postings, document frequency | In memory |
+| Postings (per shard) | term | doc IDs sorted ascending, delta-encoded and compressed in blocks, term frequencies, positions; per-block maximum scores for pruning | In memory, from immutable segment files |
+| Per-document static data | doc ID | static quality score (link-based authority, spam score), length, language | In memory with postings |
+| Deletion bitmap (per shard) | doc ID | 1 bit: deleted or superseded | In memory |
+| Document store | doc ID | URL, title, compressed text for snippets | Doc servers (key-value, SSD) |
+| URL map | URL fingerprint | doc ID, shard, version | Key-value store, used by indexers |
+| Segment manifest | shard | list of base and delta segments, versions | Small, strongly consistent store |
+
+An <Term slug="inverted-index">inverted index</Term> maps each term to its postings list. Sorting postings by document ID lets the engine intersect lists ("tail" AND "scale") by walking them together and skipping ahead, and makes gaps between IDs small so they compress well.
+
+**Document IDs** are assigned per shard. **Shard assignment** uses the crawler's 64-bit URL fingerprint: `shard = hash(urlFp) mod 200`. A changed page is re-indexed into the same shard, so its old version is masked in the same deletion bitmap. Hashing spreads popular sites across shards so no shard is dominated by one domain.
+
+**Segments are immutable.** A shard is a base segment plus a few delta segments, like an <Term slug="lsm-tree">LSM tree</Term>. Updates never rewrite postings in place; they add a new segment and set bits in the deletion bitmap. This is what Lucene (and Elasticsearch on top of it) does with its segments and merges.
+
+## High-level design
+
+<Figure caption="FIG. 1 · SEARCH ENGINE · INDEXING PIPELINE AND QUERY PATH">
+  <Diagram label="The crawler's page-fetched events feed indexers that write hourly delta segments to object storage and page text to doc servers; a weekly batch rebuilds base segments. Searches reach a query service in three zones that checks a result cache, scatters the query to one row of 200 index shards, merges and reranks, and fetches snippets from doc servers." chart={`flowchart LR
+    CR[(Crawled WARC files)] -.->|page-fetched events| K[[Kafka]]
+    K -.-> IX[Indexers 40 x 8 cores]
+    IX -->|read page| CR
+    IX -->|hourly delta segments| SEG[(Segment store)]
+    IX -->|text, title| DOC[(Doc servers x100)]
+    BB[Weekly base build] --> SEG
+    U[Searchers] --> LB[Load balancer]
+    subgraph Serving region
+      LB --> Q[Query service x108]
+      Q --> RC[(Result cache)]
+      Q --> SP[Spell correction]
+      Q -->|scatter to one row| ROW[Index row: 200 shard servers, 108 rows]
+      SEG -->|pull segments| ROW
+      Q -->|top 10 snippets| DOC
+    end`} />
+</Figure>
+
+**Indexing a page.**
+1. A "page fetched" event (URL fingerprint, WARC object, offset, length) lands in Kafka. Near-duplicates were already filtered by the crawler.
+2. An indexer reads the WARC record, strips markup, detects language, tokenizes and normalises terms, extracts title and anchor text, and computes per-page features.
+3. It looks up the URL map: a known URL is an update (mask the old doc ID), a 404 or 410 is a deletion (mask only).
+4. Each hour, indexers emit one **delta segment per shard** (about 500M ÷ 24 ÷ 200 ≈ 104,000 pages, about 250 MB) plus deletion bits, write it to object storage and update the manifest. Page text goes to the doc servers.
+5. Index servers poll the manifest, download new segments and load them beside the existing ones. A page is searchable about 1–2 hours after the crawler stored it, well inside a day.
+
+**Answering a query.**
+1. The load balancer picks a query-service instance, which normalises the query and checks the **result cache** keyed by (normalised query, language, country, page). About half hit and return in a few milliseconds.
+2. In parallel it asks **spell correction** for a suggestion, with a 10 ms budget.
+3. It picks one row and sends the query to all 200 shard servers in it (scatter). Each returns its top 30 by first-stage score, with features.
+4. It merges the 6,000 candidates, applies a learned reranker to the best few hundred, takes the top 10, and fetches their snippets from the doc servers.
+5. Budget at p99: query service 5 ms, scatter-gather up to the 100 ms shard deadline, merge and rerank 15 ms, snippets 30 ms, response 10 ms: about **160 ms**, inside 200.
+
+## Deep dives
+
+### How do crawled pages become a searchable inverted index, and how do you keep it within a day of fresh?
+
+**Option 1: full rebuild every time.** A batch job (MapReduce or Spark) reads all 10B pages, emits (term, doc) pairs, sorts by term and writes postings. Simple and produces optimally compressed, well-ordered shards. But 55,600 core-hours per build means a daily rebuild costs 2,300 cores running permanently just to make 5% of the index fresh.
+
+**Option 2: update postings in place.** Every changed page edits hundreds of postings lists. Compressed, sorted lists cannot be edited cheaply, and the shard must serve 1,000 queries/s while being modified.
+
+**Option 3 (chosen): base plus immutable deltas.** A **weekly base build** produces clean segments. Between builds, **hourly delta segments** carry new and changed pages, and a **deletion bitmap** masks superseded and deleted documents. Queries search the base and all deltas and skip masked IDs. A background merge folds hourly deltas into daily ones so a shard never searches more than about 30 segments. Google's Percolator paper (Peng and Dabek, OSDI 2010) describes the same move away from repeated full batch builds to incremental processing, and reports that it cut the average age of documents in Google's search results by 50%.
+
+The cost of deltas: each extra segment adds a little per-query work, and statistics such as document frequency (used by BM25) drift slightly between builds. Both are reset weekly. Across a week about 3.5B pages change, so up to a third of base documents may be masked by the end; that wasted space is why the base is rebuilt weekly, not monthly.
+
+**Faster than hourly.** For breaking news, a small **real-time tier** indexes the newest pages within minutes in memory on separate servers, queried alongside the main rows. It is only worth building if the product needs minute-level freshness; the one-day requirement does not.
+
+### Should you partition the index by document or by term, and how many shards and replicas do you need?
+
+| | Document partitioning (chosen) | Term partitioning |
+|---|---|---|
+| What a shard holds | Full index for 50M pages | Complete postings for a range of terms |
+| Shards per query | All 200 | One per query term (2–4) |
+| Load balance | Even: every shard does similar work | Skewed: shards holding "the", "new" or "weather" are hot |
+| Multi-term queries | Intersected locally on each shard | Postings for each term must be shipped to one place to intersect; common terms have billions of postings |
+| Updating one page | Touches one shard | Touches every shard holding any of its 600 terms |
+| One shard lost | 0.5% of pages missing; results slightly worse | Every query containing those terms fails or is badly wrong |
+
+**Document partitioning wins** on balance, updates and graceful degradation, which is an explicit requirement. Its cost is the fixed per-query overhead on every shard and the fan-out tail (next deep dive). Barroso, Dean and Hölzle's 2003 IEEE Micro paper, "Web Search for a Planet: The Google Cluster Architecture", describes document-sharded index servers with replicated pools behind each shard, the same shape as here.
+
+**Shard size** trades fan-out against per-shard latency. Bigger shards (say 200M pages, 50 shards) mean fewer RPCs but slower evaluation per shard and 480 GB that no longer fits in RAM. Smaller shards (10M, 1,000 shards) shorten each evaluation but multiply RPCs and make the tail worse. 50M pages and 120 GB in memory sits between.
+
+**Replicas** come from throughput, not durability: segments are durable in object storage, and a replica is just a copy loaded into memory. 108 rows is what 50,000 queries/s at 1,000 per row needs with a zone of headroom.
+
+**Tiering** is the next optimisation. Put the 2B highest-quality pages in a first tier of 40 shards that every query searches, and the other 8B in a second tier searched only when the first tier lacks enough good results (assume 25% of queries). Rows then cost 40 shards for 50,000 queries/s plus 160 shards for 12,500 queries/s, about 60% fewer servers.
+
+### How do you keep p99 under 200 ms when every query fans out to 200 shards?
+
+Suppose each shard server is slow (say over 100 ms, from a garbage-collection pause, a busy neighbour or a cold cache) on 1% of requests. A query waits for all 200: the chance none are slow is 0.99²⁰⁰ ≈ 0.134, so **87% of queries hit at least one slow shard**. This is the effect Dean and Barroso describe in "The Tail at Scale" (Communications of the ACM, 2013): at high fan-out, rare per-server slowness becomes the common case for users. To keep user p99 low, each shard must be fast at roughly its p99.995.
+
+Techniques, all used together:
+
+- **Deadlines.** Every shard request carries a deadline (100 ms here). A shard that will miss it returns what it has or nothing; it never queues work nobody will use.
+- **<Term slug="hedged-request">Hedged requests</Term>.** If a shard has not answered by its p95 latency (say 40 ms), send the same request to that shard's server in another row and take whichever answers first. This adds about 5% more shard load and removes most of the tail.
+- **Partial results.** At the deadline, merge what has arrived and set `coverage` (for example 199 of 200 shards = 0.995). Losing 0.5% of the corpus rarely changes the top 10. This also satisfies the "keep serving when part of the index is unavailable" requirement for free. Below a floor (say 95% coverage) the query is retried on another row.
+- **Dynamic pruning** keeps per-shard latency low and steady: algorithms such as WAND (Broder and colleagues, 2003) and its block-max variants skip postings whose maximum possible score cannot reach the current top k.
+- **Avoid self-inflicted slowness.** Load new segments and run merges on a few rows at a time, take those rows out of rotation while they warm up, and keep ρ under 0.7 so queueing does not amplify every hiccup.
+
+<NotWhenBox title="Hedged requests" items={[
+  "When servers are already near saturation: the extra 5% load can push them into the slow regime you were hedging against. Cap hedges with a budget.",
+  "When requests are not idempotent: search reads are, but never hedge a write."
+]} />
+
+### How does ranking work in stages, and where does each stage run?
+
+Running an expensive model over every matching document is impossible: a common query matches hundreds of millions of pages. Ranking is a funnel.
+
+1. **First stage, on each shard.** <Term slug="bm25">BM25</Term>, a refinement of <Term slug="tf-idf">TF-IDF</Term> that rewards query terms appearing in a document, discounts very common terms and normalises for document length (Robertson and Zaragoza summarise it in "The Probabilistic Relevance Framework: BM25 and Beyond", 2009), combined with query-independent **static rank**: link-based authority in the spirit of PageRank (Brin and Page, 1998), spam and quality scores. Dynamic pruning finds the top 30 per shard cheaply.
+2. **Second stage, at the query service.** A learned model, typically gradient-boosted trees trained with a learning-to-rank objective (Burges's 2010 overview "From RankNet to LambdaRank to LambdaMART" covers the family), rescores the best few hundred of the 6,000 merged candidates using richer features: proximity of query terms, title and anchor-text matches, freshness, click history for the query.
+3. **Optional third stage.** A heavier neural model on the top few dozen, if its latency fits the budget.
+
+Each stage sees roughly 10–100 times fewer documents than the one before, so the expensive models run on hundreds of documents, not billions. The trade-off is recall: a document the first stage misses can never be rescued, which is why first-stage features are tuned for recall and the top-k per shard is 30, not 10.
+
+### How do you cache query results without serving removed pages, and where do spell correction and typeahead fit?
+
+**Result cache.** Keyed by (normalised query, language, country, page), holding the rendered top 10 (about 3 KB). A 600 GB Redis cluster holds about 200M entries, more than an hour of peak traffic, with a **1-hour TTL**: well within one-day freshness, and it bounds staleness after index updates. Assume a 50% hit rate; query popularity is heavy-headed, but a large share of queries are seen only once and can never hit.
+
+Cache invalidation has one hard case: a page removed for legal reasons. The removal is added to a **removal list** checked by the query service on every response, cached or not, so it disappears immediately; the cache entries containing it age out within the hour, and the next delta masks it in the index. Never rely on TTL alone for removals.
+
+Inside the index servers, a second cache holds postings and partial results for frequent terms; at 120 GB in RAM per shard it matters less than it would on disk.
+
+**Spell correction** is a separate service. A "noisy channel" model, built offline from query logs (people often retype a misspelled query correctly), proposes the most likely intended query. It runs in parallel with the search with a 10 ms budget and **fails open**: if it is slow or down, the page simply has no "did you mean".
+
+**Typeahead** is a separate system on the search box, before the query exists (see the typeahead case study). It shares the query logs, and typeahead suggestions are heavily cached queries, which in turn raises this result cache's hit rate.
+
+## Failure modes & mitigations
+
+| Failure | Detection | Effect | Mitigation |
+|---|---|---|---|
+| One index server slow or dead | Per-shard latency, health checks | Queries to that row miss one shard | Hedge to another row; partial results with coverage |
+| A zone is lost | Zone alarms | A third of rows and query instances gone | Sized for ρ ≈ 0.69 on two zones |
+| Result cache flushed | Hit-rate drop | Index load doubles to 100,000/s | 108 rows run at ρ ≈ 0.93: shed lower-priority traffic (bots, deep pages), raise hedge thresholds, warm the cache from recent popular queries |
+| Bad delta segment (corrupt or broken ranking) | Canary rows: zero-result rate, click-through, latency | Worse or missing results | Staged rollout, segments are immutable so rollback is dropping one from the manifest |
+| Indexing pipeline down | Index-age alarm per shard | Freshness slips | Serving unaffected; Kafka retains 7 days; catch up at 2× |
+| Doc servers slow | Snippet latency | Results without snippets | Short deadline; render title and URL only |
+| Spell service down | Error rate | No "did you mean" | Fail open |
+| Legal removal | Removal list | Page must vanish | Filter at the query service on every response |
+
+**Failure timeline: a delta segment with a broken tokenizer is published.**
+
+- **T+0.** An indexer release mis-handles a script used in one language and writes delta segments whose terms for that language are wrong.
+- **T+0 to T+20 min.** Segments roll out to one canary row per zone (3 of 108 rows). About 3% of uncached queries land there; users searching in that language get fewer or worse results. Nothing errors.
+- **T+20 min.** The canary comparison flags that row's zero-result rate for that language at 4× baseline and click-through falling. The rollout halts automatically and the pipeline owner is paged.
+- **T+25 min.** The manifest drops the bad segments; canary rows unload them within a minute. The deletion bits written with them are reverted too, so older good versions of those pages reappear.
+- **T+1 h.** Indexers on the previous release reprocess the hour from Kafka and publish clean deltas. Result-cache entries from the canary rows expire within the hour.
+- **Without canaries:** all 108 rows load the bad segments within an hour, and the fix requires reprocessing while every user in that language sees broken results.
+
+## Scaling to 10×
+
+At 1M queries/s peak (500,000/s to the index tier) and the same 10B pages:
+
+1. **Rows break first.** 500,000 ÷ (0.7 × 1,000) ≈ 715 rows, 143,000 index servers. Tiering (deep dive 2) is now mandatory and cuts that by about 60%; better pruning and caching of popular postings come next.
+2. **Fan-out RPCs** reach 100M/s. Group shards so one server holds several (fewer, larger RPCs), and add an intermediate aggregation layer so the query service talks to 20 aggregators, each to 10 shards, instead of 200 shards directly.
+3. **Multi-region.** Serve from several regions, each with a full set of rows, routed by GeoDNS. The index is read-only between segment pushes, so regions replicate segments from object storage with no conflicts.
+
+If instead the corpus grows 10× to 100B pages, shards grow to 2,000 at 50M each, every query fans out 2,000 ways, and the tail problem dominates: tiering and multi-level aggregation become the first step.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| Document-partitioned index | Term-partitioned | Even load, one-shard updates, losing a shard loses 0.5% of pages, not whole terms |
+| 50M pages per shard, 120 GB in RAM | Larger or smaller shards | Balances per-shard latency against fan-out |
+| Weekly base + hourly immutable deltas + deletion bitmap | Daily full rebuild; in-place updates | Meets one-day freshness at a fraction of the cost; no in-place edits |
+| Scatter to one row with deadlines, hedging, partial results | Wait for every shard | Keeps p99 bounded; partial results are the graceful degradation |
+| Staged ranking (BM25 + static rank, then learned rerank) | One model over all matches | Expensive models run on hundreds of documents, not millions |
+| Result cache with 1-hour TTL + removal filter | No cache; long TTL | Halves index load; removals never wait for TTL |
+| Spell correction as a fail-open side call | Inline in the query path | A slow speller never slows search |
+| Segments in object storage, loaded by rows | Index servers as the store of record | Rows are disposable; rollout and rollback are manifest changes |
+
+## What interviewers look for
+
+- **A clean boundary with the crawler.** Starting from crawler output and using its fingerprints, not redesigning crawling.
+- **Index arithmetic.** Postings and positions from documents × terms, shard size that fits in RAM, and the 10M-RPC fan-out it implies.
+- **Partitioning with reasons.** Document vs term compared on balance, updates and failure, with a decision.
+- **Tail-latency literacy.** The 1 − 0.99²⁰⁰ calculation and concrete remedies: deadlines, hedging, partial results.
+- **Freshness without rebuilding everything.** Immutable deltas and a deletion bitmap, merged in the background.
+- **Ranking as a funnel.** Knowing where BM25, static rank and learned rerankers run, without getting lost in model details.
+- **Safe operations.** Canary rows for segment pushes, removal filters, and a sized answer for a cache flush.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "A shard's replicas in one row keep timing out. How do you find out why, and what do users see meanwhile?",
+  "How would you get breaking news into results within five minutes?",
+  "Why not just use Elasticsearch for this?",
+  "How would you handle a query in a language you have very little text for?",
+  "Your result-cache hit rate drops from 50% to 20% after a ranking change. Why might that happen?"
+]} />

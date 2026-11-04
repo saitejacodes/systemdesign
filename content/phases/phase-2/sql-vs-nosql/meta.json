@@ -41,9 +41,7 @@
   "simulatorIds": [
     "sql-sandbox"
   ],
-  "practiceCaseStudyIds": [
-    "url-shortener"
-  ],
+  "practiceCaseStudyIds": ["url-shortener", "instagram", "chat-app"],
   "prerequisites": [
     "p1-estimation"
   ]

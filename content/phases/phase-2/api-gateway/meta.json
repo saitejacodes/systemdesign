@@ -46,9 +46,7 @@
   "simulatorIds": [
     "rate-limiter"
   ],
-  "practiceCaseStudyIds": [
-    "rate-limiter-service"
-  ],
+  "practiceCaseStudyIds": ["rate-limiter-service", "api-gateway"],
   "prerequisites": [
     "p1-reverse-proxy",
     "p2-rest"

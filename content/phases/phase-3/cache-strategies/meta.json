@@ -15,6 +15,6 @@
     { "id": "choosing", "title": "Choosing a strategy", "depth": "tradeoffs" }
   ],
   "simulatorIds": ["cache"],
-  "practiceCaseStudyIds": ["news-feed"],
+  "practiceCaseStudyIds": ["news-feed", "url-shortener", "search-engine"],
   "prerequisites": ["p3-cache-layers"]
 }

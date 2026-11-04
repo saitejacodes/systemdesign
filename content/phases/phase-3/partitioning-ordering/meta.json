@@ -41,9 +41,7 @@
   "simulatorIds": [
     "message-queue"
   ],
-  "practiceCaseStudyIds": [
-    "notification-system"
-  ],
+  "practiceCaseStudyIds": ["notification-system", "chat-app", "job-scheduler"],
   "prerequisites": [
     "p3-delivery-semantics",
     "p2-sharding"

@@ -1,0 +1,57 @@
+{
+  "id": "rag-docs-assistant",
+  "title": "RAG docs assistant",
+  "summary": "Cited answers over 5M internal documents that change all day, where every passage must respect its document's permissions and every question spends from a metered model quota.",
+  "difficulty": 2,
+  "weekRecommended": 15,
+  "relatedSectionIds": ["p6-rag", "p6-embeddings-vector-search", "p6-evals-guardrails", "p6-llm-cost-latency", "p6-llm-serving", "p6-ai-reliability", "p2-search", "p3-event-driven", "p5-access-control"],
+  "interviewerPrompt": "We want an internal assistant that answers employees' questions from our documentation and shows where each answer came from. The documents live in our wiki, shared drives and ticketing system. How would you build it?",
+  "clarifyingQuestions": [
+    { "question": "How big is the corpus, and what kinds of documents are in it?", "answer": "About 5M documents: wiki pages, PDFs and tickets, pulled from several source systems. Assume they average about 2,000 tokens." },
+    { "question": "How many people use it, and how much?", "answer": "200,000 employees have access; about 50,000 use it on a given day and ask about 10 questions each. Traffic follows working hours." },
+    { "question": "Can everyone see every document?", "answer": "No. Each document has its own permissions in its source system, and an answer may only draw on documents the asking user is allowed to read there." },
+    { "question": "How quickly must changes show up?", "answer": "An edited document should be reflected within 15 minutes. Deletions and permission removals matter even more." },
+    { "question": "How fast must answers be?", "answer": "The first words should appear within 2 seconds; the rest can stream." },
+    { "question": "Which models do we use?", "answer": "Hosted model APIs for embeddings and for answers. Both have rate limits (3,000 and 1,000 requests per minute) and charge per token." },
+    { "question": "Do the source systems tell us when something changes?", "answer": "Some send webhooks, some can only be polled, and every source API is rate limited, about 200 requests per second in total." },
+    { "question": "Does the assistant need to take actions, like filing a ticket?", "answer": "No. It only answers questions, with citations." },
+    { "question": "Do conversations matter, or single questions?", "answer": "Users ask follow-ups in a conversation, such as 'and for contractors?'." },
+    { "question": "Is there a budget?", "answer": "Yes. Finance wants a predictable cost per question and protection against runaway use." },
+    { "question": "How will we know if answers are good?", "answer": "That is part of the design. Users can rate answers, but we expect you to propose how quality is measured before and after changes ship." }
+  ],
+  "deepDiveQuestions": [
+    "How do you ingest and chunk 5M documents and reflect an edit within 15 minutes?",
+    "How does hybrid retrieval find the right passages, and what does each stage cost?",
+    "How do you enforce document permissions so an answer never uses a passage the user cannot read?",
+    "How do you keep cost and latency in check: caching, token budgets and model rate limits?",
+    "How do you know answers are good, and catch regressions before users do?"
+  ],
+  "trafficProfile": {
+    "qps": 17.4,
+    "readWriteRatio": 1,
+    "peakMultiplier": 2.4,
+    "requestTypes": [
+      { "id": "retrieve", "name": "Question: hybrid search (BM25 + vector)", "op": "read", "weight": 1, "target": { "kinds": ["search-index"] } },
+      { "id": "model-calls", "name": "Question: embedding + chat model calls", "op": "read", "weight": 2, "target": { "kinds": ["llm-api"] } }
+    ]
+  },
+  "runChallenge": {
+    "id": "rag-monday-peak-lose-az",
+    "title": "Monday-morning peak with a zone down",
+    "description": "Run at the 2.4× peak hour (about 42 model and search calls per second from 13.9 questions per second) and lose the availability zone holding the most components after 10 s. Questions must keep succeeding with under 1% errors, stay within the 2 s first-token budget at p99, and no single component may be able to stop answers.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "minOkQps": 40, "maxErrorRatePct": 1, "maxP99Ms": 2000, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Enforcing permissions by telling the model to ignore documents the user cannot see, or by filtering the answer afterwards, so restricted text still reaches the prompt.",
+    "Post-filtering vector search results by ACL, so users who can read only a small slice of the corpus get no results and the bug looks like poor answer quality.",
+    "An upsert-only nightly crawl that never removes deleted pages or revoked permissions, with no reconciliation against the source systems.",
+    "Using a semantic cache keyed only by question similarity, which returns answers built from documents the new asker cannot read, or the opposite answer to a near-identical question.",
+    "Never checking the model API's rate limit: at peak this design uses 71% of one deployment's quota, and one deployment is a single point of failure.",
+    "Vector search only, which misses error codes, ticket ids and product names that keyword search finds instantly.",
+    "Re-embedding the corpus in place when the embedding model changes, leaving an index with vectors from two incompatible models, or falling back to a different embedding provider during an outage.",
+    "Judging quality by reading a few answers, with no evaluation set, no retrieval hit rate and no permission-leak slice to gate changes."
+  ]
+}

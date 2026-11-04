@@ -1,0 +1,262 @@
+## Requirements
+
+Typeahead looks like a data-structures question ("use a trie"), and candidates who treat it that way spend 30 minutes on tree traversal. The real problem is a read path that runs on nearly every keystroke under a 100 ms budget, a pipeline that turns billions of logged searches into a small read-only index, and a safety requirement (no blocked or private queries, ever) that cuts across both. The trie is one detail.
+
+### Functional
+
+1. **Suggest.** Given the prefix typed so far, return up to 10 completions, ranked by recent popularity, for the user's language and country.
+2. **Learn from searches.** Completed searches and clicked suggestions are logged and feed the ranking.
+3. **Trending.** A query that suddenly becomes popular appears in suggestions within an hour.
+4. **Safety.** Blocked terms (offensive, legally removed) are never suggested; a newly blocked term disappears within minutes. A query is only suggestable once enough distinct people have searched it, so nobody's private search ("john smith 12 elm street biopsy results") can leak.
+5. **Personalisation (awareness).** The user's own recent searches may be mixed in.
+
+### Non-functional
+
+| Property | Target | Why |
+|---|---|---|
+| Latency | under 100 ms keystroke-to-render at p99; about 60 ms of that for our edge and servers | Slower suggestions arrive after the next keystroke and are discarded |
+| Availability | 99.99% for the suggest path; degrade to "no suggestions", never block the search box | Suggestions are an aid; search must keep working without them |
+| Freshness | trending within 1 h; everything else within a day | Breaking news drives searches |
+| Block latency | blocked term gone everywhere within minutes | Legal and reputational risk |
+| Consistency | none needed between users; two users may briefly see different lists | Suggestions are advisory |
+
+### Out of scope
+
+The search results themselves, spelling correction (an extension: suggest "restaurant" for "resturant"), and ranking models beyond popularity.
+
+## Estimation
+
+Every number below is an assumption of this problem.
+
+**Suggestion requests.** 100M daily users × 5 searches × 12 requests per search (20 keystrokes, debounced) = **6B requests a day**. 6 × 10⁹ ÷ 86,400 s = **69,444 requests/s** on average. At a 3× peak: **208,333/s**.
+
+**Log events.** One event per completed search, carrying which suggestion (if any) was picked: 100M × 5 = 500M a day = **5,787/s**, 17,361/s at peak. At about 200 B each, 100 GB of logs a day.
+
+**Read:write.** 69,444 ÷ 5,787 = **12:1**. Total average load 69,444 + 5,787 ≈ **75,200 requests/s**.
+
+**Edge offload.** Short prefixes dominate: every search passes through "w", "we", "wea" before it gets specific, and those few thousand prefixes are identical for everyone in a market. Assume the CDN answers **50%** of requests from cache (5-minute TTL). Origin peak: 208,333 × 0.5 = **104,167 requests/s**.
+
+**Index size.** Assume 30M distinct queries pass the eligibility rules (searched by at least 50 distinct users in 30 days, not blocked). Average length 20 characters gives 600M prefix positions; assume half are shared with other queries, so about **300M distinct prefixes**. Each stores its top 10 as 4-byte query IDs (40 B) plus about 30 B of structure: 70 B × 300M = **21 GB**. The query strings and scores add 30M × 28 B ≈ 0.8 GB. About **22 GB per market**, and 44 GB while a new snapshot loads beside the old one, so each server needs 64 GB of RAM.
+
+**Suggest servers.** A lookup is a few memory accesses; the cost is HTTP, TLS and JSON. Assume **20,000 requests/s per server** (to benchmark). Keep ρ ≤ 0.75 with a zone lost: 104,167 ÷ (0.75 × 20,000) = 6.9, so 8 servers across two zones, **4 per zone, 12 in total**. Normal ρ = 104,167 ÷ 240,000 = **0.43**; after losing a zone, 104,167 ÷ 160,000 = **0.65**.
+
+**Event collectors.** Assume 10,000 events/s per collector. Two per zone (the minimum for redundancy) gives 60,000/s: ρ = 0.29 at peak, 0.43 with a zone down.
+
+**Bandwidth.** A response of 10 suggestions is about 500 B compressed: 208,333 × 500 B ≈ 104 MB/s at the edge at peak. Negligible.
+
+<Callout type="tip" title="What the numbers say">
+The whole index fits in one server's memory, so we replicate it rather than shard it. Half the traffic never needs to reach us. And the request rate is 12 times the search rate, which is why every millisecond and every cache layer matters.
+</Callout>
+
+For Run mode: 69,444 suggestion reads and 5,787 event writes per second (75,200/s, read:write 12:1), at a 3× peak.
+
+## API design
+
+```http
+GET /v1/suggest?q=weather%20in%20p&lang=en&cc=GB HTTP/1.1
+Host: suggest.example.com
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+Cache-Control: public, max-age=60, s-maxage=300
+X-Index-Version: 2026-11-04T06:00Z+ov1287
+
+{ "q": "weather in p",
+  "suggestions": [
+    { "text": "weather in paris", "kind": "query" },
+    { "text": "weather in prague", "kind": "query" },
+    { "text": "weather in porto", "kind": "query" }
+  ] }
+```
+
+- **Normalisation** happens on the client and again at the edge so equal prefixes share one cache entry: Unicode NFKC, lower-case, collapse runs of spaces, trim leading spaces. A trailing space is **kept**: "new " should complete to "new york", not "newspaper".
+- `max-age=60` lets the browser reuse an answer for a minute (backspacing re-requests nothing); `s-maxage=300` lets the CDN keep it 5 minutes. Both bound how long a blocked term can survive (deep dive 3).
+- `X-Index-Version` names the snapshot and overlay that answered, which makes "why did I see this?" debuggable.
+- An empty list is a valid answer. On any server error, the client shows nothing and the search box keeps working.
+
+```http
+POST /v1/suggest/events
+Content-Type: application/json
+
+{ "events": [ { "type": "search", "q": "weather in paris", "lang": "en", "cc": "GB",
+                "selectedRank": 1, "prefixLen": 12, "ts": "2026-11-04T09:31:02Z",
+                "anonId": "a8c1f0" } ] }
+
+202 Accepted
+```
+
+Events are batched by the client, accepted without waiting for Kafka, and may be lost; nothing user-visible depends on one event. `anonId` is a rotating pseudonymous ID used only to count distinct users.
+
+## Data model
+
+| Data | Shape | Where | Written by | Read by |
+|---|---|---|---|---|
+| Snapshot (per market) | Serialized trie: each node holds the top-10 query IDs; plus a query table (ID → text, score) | Object storage, versioned; loaded into each server's memory | Snapshot builder, every 6 h | Suggest servers |
+| Trending overlay | List of up to 10,000 `(query, score)` plus its prefix → top-k patch | Object storage, new version each minute, 2 h expiry | Trending aggregator | Suggest servers (poll) |
+| Blocklist | Exact terms and patterns, with timestamps and reasons | Small SQL table, pushed to servers and the builder | Trust and safety tools | Builder (filter), servers (filter on every response) |
+| Raw events | Append-only hourly files | Object storage (query-log lake), 30-day retention, then deleted | Log archiver | Builder |
+| Daily aggregates | `(market, query) → searches, distinct users (HyperLogLog), selections` | Object storage, one file per day | Daily batch job | Builder |
+
+Nothing on the read path is a database. The serving structure is **immutable**: built offline, validated, then swapped in whole. That removes locking, makes rollback a pointer change, and lets every server hold an identical copy.
+
+**Ranking score.** Each query's score is a decayed count of **distinct users**, not raw searches: score = Σ over the last 30 days of `distinct_users(day) × 0.5^(age_in_days ÷ 7)` (a 7-day half-life). Counting distinct users stops one script from pushing a query up by searching it a million times; the half-life lets last week's interests fade.
+
+## High-level design
+
+<Figure caption="FIG. 1 · TYPEAHEAD · SERVING PATH AND UPDATE PIPELINE">
+  <Diagram label="Searchers reach a CDN that answers about half of suggestion requests from cache. Misses go through a load balancer to twelve suggest servers in three zones, each holding the whole index in memory. Search events go to collectors and Kafka; a stream job builds a trending overlay each minute, an archiver writes logs to object storage, and a batch builder makes a new snapshot every six hours." chart={`flowchart LR
+    S[Searchers] -->|GET /suggest| CDN[CDN 5-min cache]
+    CDN -->|misses| LB[Load balancer]
+    subgraph Region
+      LB --> SA[Suggest AZ-a x4]
+      LB --> SB[Suggest AZ-b x4]
+      LB --> SC[Suggest AZ-c x4]
+      LB --> COL[Event collectors x6]
+      COL -.-> K[[Kafka: events]]
+      K -.-> TR[Trending aggregator]
+      K -.-> AR[Log archiver]
+      AR --> LAKE[(Logs + snapshots in object storage)]
+      TR -->|overlay every minute| LAKE
+      BLD[Snapshot builder every 6 h] --> LAKE
+      LAKE -->|load snapshot, poll overlay| SA & SB & SC
+    end`} />
+</Figure>
+
+**Read path (`GET /v1/suggest`).**
+1. The browser checks its own cache (60 s), then sends the request after a short debounce.
+2. The CDN edge nearest the user answers if it holds this exact normalised prefix (about 50% of the time).
+3. On a miss, the load balancer picks a suggest server. The server walks the trie by the prefix's characters (at most about 20 steps), reads the stored top-10 IDs, merges any trending-overlay entries for that prefix by score, removes anything matching the live blocklist, and returns up to 10.
+4. Latency: edge hit about 5 ms; on a miss, edge to origin about 20–40 ms (an assumption that depends on how close origins are to edges) plus about 3 ms of server time. Users' own network round trip makes up the rest of the 100 ms.
+
+**Write path (events to suggestions).**
+1. Clients batch events to the collectors, which validate them and produce to Kafka without waiting.
+2. The **trending aggregator** counts each query in 5-minute windows and compares the last hour with what the latest snapshot expects. Queries far above expectation, from enough distinct users, and not blocked, go into the overlay, published every minute.
+3. The **archiver** writes events to hourly files; a daily job rolls them into per-query aggregates.
+4. Every 6 hours the **snapshot builder** reads 30 days of aggregates, applies eligibility and the blocklist, scores, builds the trie, validates it and publishes a new version. Servers roll it out by canary.
+
+## Deep dives
+
+### Trie or precomputed top-k per prefix: what data structure serves suggestions, and how big is it?
+
+| Option | Lookup cost | Memory | Verdict |
+|---|---|---|---|
+| Sorted list of queries; binary-search the prefix, then sort all matches by score | Proportional to matches: "w" matches millions | 1 GB | Too slow for short prefixes, which are the most common |
+| <Term slug="trie">Trie</Term>, walk the subtree under the prefix at request time | Same problem: the subtree under "w" is enormous | Small | Too slow |
+| **Trie with the top 10 stored at every node** | Walk at most 20 nodes, read 10 IDs | About 22 GB | **Chosen** |
+| Hash map from every prefix string to its top 10 | One hash lookup | Larger: every prefix stored as its own string (300M × about 12 characters ≈ 3.6 GB more) | Fine too; simpler, a little bigger |
+| Weighted finite-state transducer (FST) | Search over weighted paths | Most compact | What Lucene's completion suggester uses; Elasticsearch's documentation describes it as an in-memory structure built for speed. A good choice if memory is tight |
+
+**Decision: precompute the top 10 for every prefix offline, store it in a trie serialized into a flat, memory-mapped file.** The insight is that the expensive part, ranking all completions of a prefix, does not depend on the request, so do it once per build, not 200,000 times a second. Lookups are then a short walk plus 10 reads.
+
+**Never update it in place.** A trie updated on every search needs locks or careful concurrency on the hottest read path, and each count change must propagate the new top 10 to up to 20 ancestors. Since suggestions only need to change every few hours (plus the overlay for trending), build a new immutable snapshot and swap a pointer. Rollback is swapping back.
+
+**Replicate, don't shard.** At 22 GB, every server holds the whole market. Each request is a single lookup on one server: no scatter-gather, no hot shard. Sharding by first letter, a common suggestion, would be badly skewed ("s" and "c" start far more queries than "x"). Shard only when one server cannot hold the data, and then **by market** (language and country), which also matches how requests arrive.
+
+### How do query logs become suggestions: the batch pipeline, and how trending queries get in within an hour?
+
+**Batch path (every 6 hours).** The builder reads 30 daily aggregates (30 × about 1 GB), sums decayed distinct-user counts, and filters:
+
+- **Eligibility:** at least 50 distinct users in 30 days. This is the privacy guarantee: a query typed by one person never becomes a suggestion for anyone else.
+- **Blocklist and classifiers:** exact terms, patterns and a classifier for offensive or dangerous completions. Removing queries here keeps them out of the snapshot entirely.
+- **Cleanup:** drop queries that look like URLs, email addresses or long numbers, and collapse near-duplicates ("weather paris" vs "weather in paris" can coexist, "weather in paris " vs "weather in paris" cannot).
+
+It then builds the trie bottom-up: each node's top 10 is the best 10 among its own query (if it is one) and its children's top-10 lists, so the build is linear in the number of nodes. On a single large machine this takes minutes, not hours; the 6-hour interval is set by how fresh the batch needs to be, not by build time.
+
+**Validation before publish.** The new snapshot must be within ±10% of the previous one in size and query count, must pass a full scan against the current blocklist, and must return expected results for a set of golden prefixes. A failed check keeps the previous snapshot live and pages the owner.
+
+**Streaming path (trending within an hour).** A batch every 6 hours cannot meet a one-hour freshness target, and building a full snapshot every few minutes would waste work. So a small <Term slug="stream-processing">stream-processing</Term> job counts queries per 5-minute window and flags those whose last-hour rate is far above what the snapshot predicts (for example 10× and at least 200 distinct users). The overlay holds at most 10,000 queries; the job precomputes, for each of their prefixes, the merged top 10, and publishes every minute. Servers poll it and merge at request time. Overlay entries expire after 2 hours, by which time the next batch snapshot has absorbed real trends, so a stuck overlay cannot pin yesterday's news.
+
+<NotWhenBox title="A streaming overlay" items={[
+  "When the freshness requirement is a day: a daily batch is simpler, cheaper and easier to make safe.",
+  "When trending terms are high-risk (for example during a breaking tragedy): route overlay candidates through human review or stricter classifiers, accepting slower freshness."
+]} />
+
+### How do you cache at the edge and in the browser without serving blocked or stale suggestions?
+
+Three caches, each with a different staleness bound:
+
+| Layer | Holds | TTL | How a block reaches it |
+|---|---|---|---|
+| Browser | Recent prefix responses | 60 s (`max-age`) | Cannot be purged; the TTL is the bound |
+| CDN | Normalised prefix + market | 300 s (`s-maxage`) | Purge the affected URLs |
+| Suggest server | The snapshot and overlay | Until the next version | Live blocklist filter on every response |
+
+**Why a CDN works here.** The response depends only on (normalised prefix, language, country), so it is the same for everyone in a market. Personalisation would break this (deep dive 4). With a 5-minute TTL, freshness is still far inside the one-hour trending target.
+
+**Blocking a term urgently.** The blocklist is pushed to every suggest server within seconds, and every response is filtered against it, so new origin responses are clean immediately. The CDN may still hold old responses for up to 5 minutes, so the block tool also **purges the CDN** for every prefix of the blocked query in that market (at most about 20 URLs per market). Browsers can hold a response for up to 60 more seconds. End to end, a term disappears within about a minute. The next snapshot removes it permanently.
+
+**Hit rate and the long tail.** Short prefixes are almost always cache hits; long ones ("weather in porthm") are often unique and miss. That is why the hit rate is about 50% rather than 95%, and why origin servers are sized for half the traffic.
+
+### How would you add personalization without breaking caching or privacy?
+
+The shared response must stay shared, so personal suggestions come from somewhere else:
+
+1. **On the device (preferred).** The app or browser keeps the user's last 100 or so searches locally and shows matching ones first, styled differently (for example with a clock icon). Zero server cost, nothing shared, and clearing history is local.
+2. **A separate personal call.** For signed-in users across devices, a second request `GET /v1/suggest/personal?q=` returns matches from the user's stored history with `Cache-Control: private, no-store`, and the client merges the two lists. It must never be cached at the CDN, and it can fail without affecting the shared list.
+
+Contextual personalisation (location, recent topics) can be done by choosing among a few precomputed variants (for example per city) without making each response unique. User history must never feed the global pool except through the same distinct-user threshold as everyone else.
+
+## Failure modes & mitigations
+
+| Failure | Detection | Effect | Mitigation |
+|---|---|---|---|
+| One suggest server dies | LB health check | Its requests retry elsewhere | 12 servers, stateless apart from the read-only snapshot |
+| A zone is lost | Zone alarms | Origin capacity drops a third | Sized to ρ = 0.65 on two zones |
+| CDN outage or purge of everything | Edge hit-rate metric | Origin load doubles to 208,333/s | All 12 servers reach ρ ≈ 0.87 (208,333 ÷ 240,000); autoscale, and clients back off on errors |
+| Bad snapshot (missing filter, truncated) | Pre-publish checks, canary metrics | Offensive or empty suggestions | Validation gate, canary, instant rollback to the previous version on disk |
+| Pipeline down for a day | Snapshot-age alarm (over 12 h) | Suggestions go stale | Servers keep serving the last good snapshot |
+| Trending job stuck | Overlay-age alarm | No new trends | Overlay entries expire after 2 h; batch path continues |
+| Kafka unavailable | Producer errors | Events lost | Collectors drop with a metric; suggestions unaffected |
+| Manipulation (bots pushing a query) | Distinct-user anomaly checks | Spam suggestion | Count distinct users, rate-limit events per ID, review trending candidates |
+
+**Failure timeline: a snapshot ships without the blocklist filter.**
+
+- **T+0.** A code change skips the blocklist step. The pre-publish blocklist scan finds 340 blocked queries in the snapshot and **refuses to publish**. Most incidents end here.
+- Suppose instead the bug is in the scan too. **T+0 to T+5 min:** the snapshot goes to one canary server per zone (3 of 12, a quarter of origin traffic). Users whose requests land there and miss the CDN can see a blocked completion, unless the live blocklist filter on the server, which is independent of the build, catches it. That second layer is why the filter runs at serve time as well.
+- **T+5 min.** A canary check compares the share of responses that the live filter had to modify (normally near zero) between canary and baseline servers; it jumps, the rollout halts, and the owner is paged.
+- **T+6 min.** Rollback: canaries switch back to the previous snapshot, still on disk, in seconds. The block tool purges affected CDN entries. Browser caches age out within 60 s.
+- **Total exposure:** a few minutes on a quarter of origin traffic, filtered by the serve-time check. Without canaries and the second filter, it would be up to 6 hours on everything.
+
+## Scaling to 10×
+
+At 1B daily users, origin peak is about 1.04M requests/s and events 174,000/s at peak.
+
+1. **Origin servers** grow linearly: 1.04M ÷ (0.75 × 20,000) ÷ 2 zones ≈ 35 per zone. Easy, because the index is replicated.
+2. **Markets multiply.** 10× users usually means many languages and countries. At 22 GB each, 50 markets are 1.1 TB, which no longer fits in one server: **shard by market**, routing on `lang` and `cc`, with big markets on dedicated pools.
+3. **Edge latency** becomes the binding part of the 100 ms. Serve the hottest few thousand prefixes per market directly from edge compute or edge key-value storage, so short prefixes never leave the edge.
+4. **The pipeline** grows to 1 TB of logs a day; daily aggregation moves to a distributed batch job, but the snapshot build stays small because it works on aggregates, not raw events.
+
+What does **not** break: the data structure. Ten times the users barely changes the number of eligible queries per market.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| Precomputed top 10 per prefix | Ranking at request time | Ranking is the same for every request; do it once per build |
+| Immutable snapshots, swapped whole | In-place trie updates | No locks on the read path, atomic rollout and rollback |
+| Replicate the full index | Shard by prefix or letter | 22 GB fits in memory; letter sharding is skewed |
+| Batch every 6 h + 1-minute trending overlay | Streaming the whole index | Meets 1-hour trending cheaply; most suggestions do not need it |
+| Distinct-user counts with 7-day half-life | Raw search counts | Resists manipulation; old interests fade |
+| Minimum 50 distinct users | Suggest anything seen | Prevents private queries leaking |
+| CDN with 5-min TTL + purge on block | No edge cache | Halves origin load; purge keeps blocks fast |
+| Serve-time blocklist filter as well as build-time | Build-time only | A block takes effect in seconds and survives a bad build |
+| Personalisation on device or a separate call | Personalised shared response | Keeps the shared response cacheable and private data private |
+
+## What interviewers look for
+
+- **Keystroke math.** Turning 5 searches a day into about 70,000 requests/s, and noticing the index fits in memory.
+- **Precompute, don't search.** Top-k per prefix built offline, with a size estimate, rather than walking a subtree per request.
+- **The pipeline as half the design.** Logs to aggregates to snapshot, plus a separate fast path for trends, with validation before publish.
+- **Caching with correct bounds.** Browser and CDN TTLs chosen against freshness and block latency, plus purge.
+- **Safety and privacy.** Distinct-user thresholds, blocklists enforced twice, and personalisation that never pollutes shared or cached results.
+- **Right-sizing.** Replicating a 22 GB index instead of building a distributed trie.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "A celebrity's name is trending with a defamatory completion. Walk me through the next ten minutes.",
+  "How would you support typo tolerance, so 'resturant' still suggests 'restaurant'?",
+  "Your CDN hit rate drops from 50% to 10% overnight. What could have caused it?",
+  "How would you suggest completions in the middle of a query, not just at the end?",
+  "How would you measure whether a new ranking formula is better?"
+]} />

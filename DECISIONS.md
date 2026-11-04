@@ -178,3 +178,28 @@
   - Undo history isn't persisted across reloads; saved versions are.
 - **Routes.** Designs live only in the browser, so `/studio/[designId]` loads client-side and shows "Design not found" for unknown ids. Smoke tests use `/studio/new`.
 - **Limitation.** Resizing a frame doesn't re-check which nodes are inside it; drag a node to move it in or out.
+
+## Prompt 18
+- **Built from the session cut off by the usage limit.** The run model, its tests and the editor wiring existed; this session found and fixed one bug before finishing.
+- **Availability with shared components.** A single bottom-up pass treats parallel branches as independent, so two servers in front of one database counted the database twice (99.988% instead of 99.890%). Nodes reached by two or more paths are now conditioned exactly (up/down, weighted). Above 12 shared nodes per request type the estimate falls back to the single pass, which overstates availability.
+
+## Prompt 19
+- **Layout.** Left = the 7 step panels; centre and right = the full Design Studio editor for the attempt's design, whose Notes tab is the "notes" column. Reusing the editor gives Run mode inside an interview for free, and the canvas also appears in /studio.
+- **Persistence.** The running session is a Dexie draft (`interviewDrafts`, one per case), so a reload resumes it. The clock is wall-clock based, so Mock keeps counting across a closed tab. Saving writes an InterviewAttempt and deletes the draft.
+- **Scoring.** Every criterion must be scored before saving. Mock subtracts 1 point per hint, Practice nothing. The dashboard trend uses stored self-scores, so it does not include the hint penalty.
+- **Hints** are derived from the case meta (clarifying questions, traffic profile, common mistakes), not stored per case, so every case gets them without a new schema field.
+- **Comparison.** Both designs run headlessly (steady state) at the case's peak with the case's run challenge. ▲ marks a metric more than 5% worse than the reference.
+- **Fixture.** `tests/fixtures/case-studies/fixture-kv-store` loads only when `SDL_FIXTURE_CASES=1` (unit tests, the e2e server).
+
+## Prompt 20
+- **Case pages.** `/case-studies` lists cases that have a rubric. `/case-studies/[id]` shows the interviewer's prompt behind a "try it first" fold, the solution, and a side column (reference design, traffic, run challenge, related lessons, common mistakes).
+- **Word count.** The spec says 2,500–5,000 words. The test counts prose without code fences and allows up to 5,500, because the richest cases (web-crawler, file-sync) run about 5% over with nothing worth cutting.
+- **Diagrams.** The High-level design diagram is the site's `<Diagram>` (Mermaid source inside a `<Figure>`) rather than a bare fenced block, so it gets a caption and an accessible label.
+- **Written by six parallel agents** from one brief (`drafts/BRIEF.md`, deleted afterwards), each confined to its own case folders, and checked by `lib/content/case-studies.test.ts`.
+- **Queue replication (Run mode).** Queues gained a "Replication factor" prop (default 1, so older designs are unchanged). With 2 or more copies a queue counts as redundant, so a Kafka topic at RF 3 on a request path is not a SPOF. Cost multiplies by it too, because brokers cost money.
+- **job-scheduler traffic.** Its `qps` is an ordinary top-of-hour burst (24,600/s) and its peak multiplier of 2 is midnight, not a daily average. The real average (~1,470/s) sizes nothing, and a uniform multiplier can't represent the hour mark. The solution explains this.
+- **Run-mode limits the cases work around**, each explained in a note node on the design:
+  - Every request type comes from every client in proportion to users.
+  - Background paths (fan-out, transcoding, ingestion) are drawn and sized in the prose but carry no Run traffic.
+  - A few edges are left off so one request type does not route through another's nodes.
+- **Lesson → case links.** Each lesson's `practiceCaseStudyIds` lists up to 3 cases whose `relatedSectionIds` include it, preferring cases that list it earliest.

@@ -1,0 +1,64 @@
+{
+  "criteria": [
+    { "id": "scope-and-readers", "step": "Requirements", "title": "Scope and ranking the readers",
+      "levels": {
+        "0": "Treats it as 'store metrics and show graphs', or drifts into logs, traces and anomaly detection without being asked.",
+        "1": "Covers push ingest, range queries, alert rules and paging, but treats dashboards and alerting as one equal read path.",
+        "2": "Covers push ingest, PromQL-style range queries, rule evaluation every minute, grouped and silenceable notifications and recording rules, and states explicitly that alerting outranks dashboards and must survive partial infrastructure failure." } },
+    { "id": "nfr-targets", "step": "Requirements", "title": "Non-functional targets",
+      "levels": {
+        "0": "No freshness, latency, retention or durability targets.",
+        "1": "Gives some targets (e.g. 30 s freshness) but no retention tiers or no statement of what data loss is acceptable.",
+        "2": "10M samples/s with a 2× replay burst, queryable within 30 s, separate p99 goals for last-hour and last-year queries, a few seconds of loss on crash at most, and tiered retention (raw 15 days, 5-minute 90 days, 1-hour 13 months)." } },
+    { "id": "series-math", "step": "Estimation", "title": "Series, samples and ingest bandwidth",
+      "levels": {
+        "0": "No numbers, or a sample rate stated without derivation.",
+        "1": "Derives 100M series and 10M samples/s but never estimates batches, bandwidth or churn.",
+        "2": "100,000 × 1,000 = 100M series; ÷ 10 s = 10M samples/s; 10,000 batches/s (20,000 at burst); about 2 Gbit/s compressed inbound; and daily series churn the index must absorb." } },
+    { "id": "memory-storage-math", "step": "Estimation", "title": "Memory, storage and why rollups pay",
+      "levels": {
+        "0": "Sizes storage at 16 bytes per sample or not at all.",
+        "1": "Uses a compression figure for storage but never sizes ingester memory or the replication factor's effect on it.",
+        "2": "About 1.5 B/sample from a cited source → 1.3 TB/day raw and about 48 TB with rollups; 300M replicated series × 4 KB ≈ 1.2 TB RAM → 30 ingesters; and the year-long query arithmetic (3.15B samples raw versus 8.8M points from 1-hour rollups)." } },
+    { "id": "api", "step": "API", "title": "Ingest, query and rule APIs",
+      "levels": {
+        "0": "Endpoints named without payloads or status codes.",
+        "1": "A push endpoint and a query endpoint with bodies, but no limit or retry semantics.",
+        "2": "Batched compressed push acknowledged after a quorum, 429 with Retry-After naming the exceeded limit and 400 for bad samples (not retried); query_range with step and the resolution used; versioned rule groups; notifications carrying a stable deduplication key." } },
+    { "id": "data-model", "step": "Data Model", "title": "Time-series data model and storage choice",
+      "levels": {
+        "0": "Rows of (metric, labels, timestamp, value) in a general-purpose database with no discussion.",
+        "1": "Picks a time-series store, but cannot say how label queries are answered or how retention works.",
+        "2": "Series id from the hashed label set, an inverted index of label pairs to series, compressed chunks, immutable time-partitioned blocks in object storage, retention by dropping blocks, rules in SQL, and why relational and wide-column stores lose on bytes and label queries." } },
+    { "id": "hld", "step": "High-Level Design", "title": "Architecture and the three paths",
+      "levels": {
+        "0": "Agents → database → dashboards, with no alerting path.",
+        "1": "Has distributors, storage and a ruler, but walks only the write path, or puts everything in one zone.",
+        "2": "Walks write (distributor validation and limits, hash ring, one replica per zone, quorum ack, WAL, 2-hour blocks), query (time splitting, results cache, ingesters for recent data, object storage for older) and alert (ruler on ingester memory, for: duration, alert manager grouping) separately, each tier sized for a lost zone." } },
+    { "id": "cardinality", "step": "Deep Dives", "title": "Write path and cardinality control",
+      "levels": {
+        "0": "Says 'shard the database' and never mentions cardinality.",
+        "1": "Knows high-cardinality labels are bad but has no mechanism to stop them.",
+        "2": "Shards by series hash (not metric name) with zone-aware RF 3; works a cardinality explosion with numbers; enforces per-tenant series and label limits at the distributor with a clear 429; adds growth visibility; and moves identifiers to logs and traces with exemplars." } },
+    { "id": "storage-rollups-query", "step": "Deep Dives", "title": "Compression, rollups and the query path",
+      "levels": {
+        "0": "No downsampling; year-long queries read raw data.",
+        "1": "Downsamples, but by averages only, or has no query limits or caching.",
+        "2": "Delta-of-delta and XOR encoding (awareness); rollups keeping count, sum, min and max per step and why averages break max, rate and percentiles; resolution picked by range; time splitting, results cache that skips the newest minutes, and per-query series and sample limits." } },
+    { "id": "alerting-reliability", "step": "Deep Dives", "title": "Reliable alert evaluation and notification",
+      "levels": {
+        "0": "One alerting process that queries the same path as dashboards.",
+        "1": "Shards or replicates rule evaluation, but no deduplication, grouping or plan for the monitor's own failure.",
+        "2": "Rule groups sharded with failover and restored for: state; replicated alert managers that deduplicate (duplicate page beats missing page); grouping and inhibition to fit the pager's 100/s; alert path isolated from dashboards and object storage; dead man's switch and meta-monitoring in a separate failure domain." } },
+    { "id": "failures-scale", "step": "Wrap-up", "title": "Failure modes and scaling to 10×",
+      "levels": {
+        "0": "Only 'add replicas'.",
+        "1": "Covers ingester and zone loss but not cardinality, compactor lag, paging-provider outage or what breaks first at 10×.",
+        "2": "A failure table with detection for each row, a timeline for a cardinality explosion with and without limits, and at 10× names ingester memory and query fan-out first, with shuffle sharding, edge aggregation, an ingest log and regional deployments as the changes." } },
+    { "id": "tradeoffs", "step": "Wrap-up", "title": "Trade-offs stated as decisions",
+      "levels": {
+        "0": "No trade-offs named.",
+        "1": "Generic trade-offs (consistency versus availability) not tied to this system.",
+        "2": "Push versus pull, series-hash versus metric sharding, direct replicated writes versus a log in front, rollup contents, a separate alert path, and cardinality limits, each with the alternative and why it lost here." } }
+  ]
+}

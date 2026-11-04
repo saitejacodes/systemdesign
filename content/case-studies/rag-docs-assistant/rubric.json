@@ -1,0 +1,69 @@
+{
+  "criteria": [
+    { "id": "scope-permissions", "step": "Requirements", "title": "Scope, with permissions as a first-class requirement",
+      "levels": {
+        "0": "Treats it as 'put documents in a vector database and call a model'; permissions not mentioned.",
+        "1": "Covers cited answers, follow-ups and ingestion, and mentions permissions, but as a filter on the final answer.",
+        "2": "Cited answers, follow-ups, ratings, 'not found' when the documents do not answer, edits, deletes and permission changes from the sources; states that an answer may only draw on documents the user can read, as a property of retrieval; excludes actions and structured-data questions." } },
+    { "id": "nfr", "step": "Requirements", "title": "Non-functional targets",
+      "levels": {
+        "0": "No latency, freshness or cost targets.",
+        "1": "Gives the 2 s and 15-minute targets but not grounding, cost or degraded-mode expectations.",
+        "2": "First token within 2 s with streaming, edits within 15 minutes and deletes and revocations faster, every citation verifiable, bounded cost per question and per user, and a degraded mode when the model API fails." } },
+    { "id": "traffic-tokens", "step": "Estimation", "title": "Traffic, tokens, cost and the binding rate limit",
+      "levels": {
+        "0": "No numbers, or QPS with no token or rate-limit reasoning.",
+        "1": "Derives questions per second but never compares model calls with the API quota, or never splits cost into input and output.",
+        "2": "500,000/day → 5.8/s average, 13.9/s peak; 3,750 input and 300 output tokens; about 2,100 P/day with input 76% of spend; 11.8 calls/s = 71% of a 16.7/s deployment; a first-token latency budget of about 1 s that fits under 2 s." } },
+    { "id": "corpus-math", "step": "Estimation", "title": "Corpus, index and ingestion budgets",
+      "levels": {
+        "0": "No index sizing.",
+        "1": "Counts chunks or vector bytes but not the embedding or source API budgets.",
+        "2": "5M × 2,000 tokens, 5 chunks per document with overlap → 25M chunks; 102 GB float32 (26 GB quantized) → 3 index nodes set by availability; embedding API at 29% of its limit at peak; initial load bound by the source API (about 9 hours) and re-embeds served from stored parsed text." } },
+    { "id": "api", "step": "API", "title": "Question, feedback and change-event APIs",
+      "levels": {
+        "0": "A single 'POST /ask' returning a string.",
+        "1": "Streams the answer but has no citation format, idempotency or error semantics.",
+        "2": "Streamed answer (SSE) with citations sent after validation, an idempotent client request id, 429 for quota and a search-only 503, a feedback endpoint, and an internal webhook taking updated, deleted and acl_changed events that only enqueues." } },
+    { "id": "data-model", "step": "Data Model", "title": "Chunks, ACLs and store choices",
+      "levels": {
+        "0": "Stores embeddings with no metadata.",
+        "1": "Has documents and chunks with metadata, but keeps ACLs only on the document or picks stores without reasons.",
+        "2": "ACL principals copied onto every chunk so the index can pre-filter, chunk and document hashes and versions, a Postgres registry as the source of truth for reconciliation, one engine for BM25 and vectors to avoid delete and ACL drift (pgvector named as an alternative), and a cache entry recording every context document's version." } },
+    { "id": "hld", "step": "High-Level Design", "title": "Question path and change path",
+      "levels": {
+        "0": "Question → vector DB → LLM, with no ingestion path.",
+        "1": "Both paths drawn, but the question path has no cache, reranking or citation check, or ingestion is a nightly batch only.",
+        "2": "Walks the question (principals, cache, embed, filtered hybrid search, rerank, budgeted prompt, gateway, stream, citation check, log) and changes (webhook, priority lanes, fetch, parse, chunk, hash, embed changed chunks, upsert), plus deletes, ACL changes, polling and reconciliation; services sized from the estimate." } },
+    { "id": "ingestion-freshness", "step": "Deep Dives", "title": "Ingestion, chunking and freshness",
+      "levels": {
+        "0": "Re-crawls everything nightly with fixed-size chunks.",
+        "1": "Event-driven updates and sensible chunking, but no plan for deletes, backlogs or embedding-model changes.",
+        "2": "Events plus polling plus reconciliation (and why polling misses deletes), priority lanes so a bulk import cannot delay a revocation, structure-aware chunks with heading paths, re-embedding only changed chunks by hash, and rebuild-and-swap for model or chunker changes." } },
+    { "id": "retrieval", "step": "Deep Dives", "title": "Hybrid retrieval and context assembly",
+      "levels": {
+        "0": "Top-k vector search pasted into the prompt.",
+        "1": "Adds BM25 or a reranker but cannot say how lists are merged or what reranking costs.",
+        "2": "Explains why internal docs need BM25 (codes, ids, names), fuses with RRF, retrieves wide and reranks narrow with a GPU cost estimate, packs a token budget strongest-first, handles follow-ups cheaply, and logs retrieved ids to trace failures to a stage." } },
+    { "id": "permissions", "step": "Deep Dives", "title": "Permission-aware retrieval",
+      "levels": {
+        "0": "Relies on the prompt or an answer filter to hide restricted content.",
+        "1": "Filters by ACL in retrieval, but post-filters, or never bounds how stale ACLs and memberships can be.",
+        "2": "Pre-filters during both searches, explains why post-filtering starves narrow-access users, bounds membership lag (cache TTL) and ACL lag (priority lane, reconciliation), adds a serve-time check for sensitive spaces, and walks a revocation timeline including the lost-webhook case." } },
+    { "id": "cost-evals", "step": "Deep Dives", "title": "Cost controls, safe caching and evaluation",
+      "levels": {
+        "0": "No caching, budgets or quality measurement, or a global semantic cache.",
+        "1": "Caches answers and sets max_tokens, but the cache ignores permissions, or evaluation is spot checks.",
+        "2": "Exact-match cache checked against current ACLs and document versions (and why not semantic), token budgets per answer, conversation and user, token-aware rate limiting with failover between deployments of the same model, and an evaluation set with retrieval hit rate, citation validity, a calibrated judge, a permission-leak slice and the statistics of 500 examples." } },
+    { "id": "failures-scale", "step": "Wrap-up", "title": "Failure modes and scaling to 10×",
+      "levels": {
+        "0": "Only 'add more servers'.",
+        "1": "Covers model API outages but not degraded modes, ingestion backlogs or what breaks first at 10×.",
+        "2": "Search-only mode, BM25-only when embeddings fail (and why another embedding provider is not a fallback), webhook silence alerts, bulk-import backlogs; at 10× names the chat quota and spend first, then index sharding and source limits, with routing, smaller contexts or self-hosting as levers." } },
+    { "id": "tradeoffs", "step": "Wrap-up", "title": "Trade-offs stated as decisions",
+      "levels": {
+        "0": "No trade-offs named.",
+        "1": "Generic trade-offs (accuracy versus cost) not tied to this design.",
+        "2": "ACL pre-filtering, one engine versus two, hybrid versus vectors, rerank depth, events versus crawl, exact versus semantic cache, two deployments versus a different fallback model, and rewrite versus prepend, each with the alternative and why it lost here." } }
+  ]
+}

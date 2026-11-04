@@ -3868,5 +3868,83 @@
     "slug": "zero-sharding",
     "definition": "The Zero Redundancy Optimizer (Rajbhandari et al., 2020): data parallelism that shards optimiser state (stage 1), gradients (stage 2) and weights (stage 3) across ranks instead of replicating them. PyTorch FSDP implements the same idea.",
     "sectionId": "p6-gpu-parallelism"
+  },
+  {
+    "term": "Geohash",
+    "slug": "geohash",
+    "definition": "A string that encodes a latitude/longitude cell by interleaving the bits of both coordinates and writing them in base 32; nearby points usually share a prefix, so a prefix scan finds candidates near a location (cells on either side of a boundary can share none, so searches also check neighbouring cells).",
+    "sectionId": "p2-indexing"
+  },
+  {
+    "term": "H3",
+    "slug": "h3",
+    "definition": "Uber's open-source hierarchical geospatial index that tiles the Earth in hexagons at 16 resolutions; every neighbour of a hexagon is the same distance away, which makes radius searches and area aggregates (such as supply and demand per cell) more even than square grids.",
+    "sectionId": "p2-indexing"
+  },
+  {
+    "term": "Double-entry ledger",
+    "slug": "double-entry-ledger",
+    "definition": "An accounting record where every movement of money is written as at least two entries, a debit and a credit, that sum to zero; balances are derived from the entries, so money can never appear or vanish without an entry showing where it came from.",
+    "sectionId": "p4-distributed-transactions"
+  },
+  {
+    "term": "Virtual waiting room",
+    "slug": "virtual-waiting-room",
+    "definition": "A queue in front of a site that admits visitors at the rate the backend can serve and holds the rest on a cheap, cacheable waiting page, turning a sudden crowd into a steady flow instead of an overload.",
+    "sectionId": "p4-bulkheads-load-shedding"
+  },
+  {
+    "term": "Cron expression",
+    "slug": "cron-expression",
+    "definition": "A schedule written as five fields (minute, hour, day of month, month, day of week), such as 0 2 * * * for 02:00 every day; schedulers turn it into the next fire times, and time zones and daylight-saving changes are the usual sources of bugs.",
+    "sectionId": "p4-time-ordering"
+  },
+  {
+    "term": "Timing wheel",
+    "slug": "timing-wheel",
+    "definition": "A circular array of buckets, one per time tick, where a timer is dropped into the bucket for its expiry and a pointer advances one bucket per tick; adding and expiring timers is O(1), which is why schedulers and Kafka use it for millions of timers (Varghese and Lauck, 1987).",
+    "sectionId": "p4-time-ordering"
+  },
+  {
+    "term": "Quadtree",
+    "slug": "quadtree",
+    "definition": "A tree that splits a 2-D area into four quadrants and keeps splitting any quadrant holding too many points, so dense cities get small cells and empty areas big ones; used to find nearby points without scanning everything.",
+    "sectionId": "p2-indexing"
+  },
+  {
+    "term": "Transcoding",
+    "slug": "transcoding",
+    "definition": "Decoding a media file and re-encoding it into other formats, resolutions or bitrates, for example turning one uploaded video into a set of renditions for different screens and networks.",
+    "sectionId": "p2-object-storage"
+  },
+  {
+    "term": "Bitrate ladder",
+    "slug": "bitrate-ladder",
+    "definition": "The set of renditions a video is encoded into, each a resolution and bitrate pair (such as 1080p at 5 Mb/s down to 240p at 300 kb/s), that an adaptive player switches between.",
+    "sectionId": "p3-cdn"
+  },
+  {
+    "term": "Adaptive bitrate streaming (ABR)",
+    "slug": "adaptive-bitrate",
+    "definition": "Delivering video as short segments at several bitrates and letting the player pick the next segment's bitrate from measured bandwidth and buffer level, so playback continues at lower quality instead of stalling.",
+    "sectionId": "p3-cdn"
+  },
+  {
+    "term": "HLS",
+    "slug": "hls",
+    "definition": "HTTP Live Streaming (RFC 8216): a playlist of short media segments fetched over plain HTTP, with a master playlist listing the available bitrates; because it is just files over HTTP, CDNs cache it like any other content.",
+    "sectionId": "p3-cdn"
+  },
+  {
+    "term": "MPEG-DASH",
+    "slug": "mpeg-dash",
+    "definition": "Dynamic Adaptive Streaming over HTTP (ISO/IEC 23009-1): the standards-body counterpart of HLS, describing segments and bitrates in an XML manifest (MPD).",
+    "sectionId": "p3-cdn"
+  },
+  {
+    "term": "CMAF",
+    "slug": "cmaf",
+    "definition": "Common Media Application Format (ISO/IEC 23000-19): a fragmented-MP4 segment format that both HLS and DASH can reference, so one set of encoded segments serves both protocols and halves CDN storage.",
+    "sectionId": "p3-cdn"
   }
 ]

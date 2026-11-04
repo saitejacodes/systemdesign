@@ -1,0 +1,64 @@
+{
+  "criteria": [
+    { "id": "scope-consistency", "step": "Requirements", "title": "Scope and consistency model",
+      "levels": {
+        "0": "Lists 'post and read feed' with no ranking, freshness or deletion requirements.",
+        "1": "Covers posting, a ranked feed and following, but not deletes, blocks or what the author sees after posting.",
+        "2": "Posting, ranked feed with scroll, follow/unfollow, deletes, blocks and mutes; eventual consistency for followers with read-your-own-writes for the author; recommendations and ads explicitly out of scope." } },
+    { "id": "nfrs", "step": "Requirements", "title": "Latency, freshness and availability targets",
+      "levels": {
+        "0": "No targets.",
+        "1": "States 300 ms and 'real time' without separating read availability from freshness.",
+        "2": "300 ms p99 for page one, one-minute freshness as the contract, feed reads more available than posting, and a stale feed accepted over an empty one." } },
+    { "id": "traffic-math", "step": "Estimation", "title": "Read, write and fan-out rates",
+      "levels": {
+        "0": "No numbers, or numbers without derivation.",
+        "1": "Derives feed reads and posts per second but not the fan-out rate or the celebrity cost.",
+        "2": "52k pages/s average and 156k at peak; 3.5k posts/s and 10.4k at peak; 140 inserts per post → 1.46M inserts/s at peak; one 50M-follower post = 35M inserts ≈ 23 s of spare capacity." } },
+    { "id": "sizing", "step": "Estimation", "title": "Cache, store and fleet sizing",
+      "levels": {
+        "0": "Guesses server counts.",
+        "1": "Sizes the feed cache by memory only, or the API fleet with no headroom for a zone.",
+        "2": "300 IDs × ~20 B ≈ 6 KB per user → 2.4 TB; timeline cluster sized by inserts (60 primaries); post store by bytes (48 nodes); API fleet sized for ρ ≤ 0.55 with a zone lost because latency, not throughput, sets it." } },
+    { "id": "api", "step": "API", "title": "Feed and post API",
+      "levels": {
+        "0": "Endpoints named without shapes.",
+        "1": "GET feed and POST post with bodies, but page-number pagination or no idempotency.",
+        "2": "Cursor-based GET /v1/feed with an opaque cursor and a new-posts count, POST /v1/posts with an Idempotency-Key, and presigned uploads so image bytes bypass the API." } },
+    { "id": "data-model", "step": "Data Model", "title": "Entities, keys and store choices",
+      "levels": {
+        "0": "One SQL table of posts joined against follows at read time.",
+        "1": "Separate posts, follows and a feed cache, but feeds hold full posts or store choices are unexplained.",
+        "2": "Snowflake post IDs, feeds of IDs only, author_posts for recent-by-author, follows in both directions sharded by user, feed sessions; wide-column posts and sharded MySQL graph justified by access pattern; feed cache treated as rebuildable." } },
+    { "id": "hld", "step": "High-Level Design", "title": "Write, fan-out and read paths",
+      "levels": {
+        "0": "A diagram without walkthroughs.",
+        "1": "Walks posting and reading but fan-out is a box with no detail.",
+        "2": "Post write then event; workers page followers, skip inactive and celebrity authors, insert IDs and trim; read merges timeline + celebrity posts, filters, ranks with a timeout, stores a session, hydrates; latency budget per step." } },
+    { "id": "fanout", "step": "Deep Dives", "title": "Push, pull and the hybrid",
+      "levels": {
+        "0": "Picks push or pull without considering the 50M-follower account.",
+        "1": "Proposes a hybrid but with an arbitrary threshold and no plan for the pull side's cost.",
+        "2": "Quantifies both extremes, derives the threshold from spare fan-out capacity and freshness (≤ ~2M, pick 1M with hysteresis), keeps celebrity posts in memory on API instances, skips inactive followers, does not fan out deletes." } },
+    { "id": "feed-cache", "step": "Deep Dives", "title": "Feed cache contents and rebuilds",
+      "levels": {
+        "0": "'Cache the feed' with no structure.",
+        "1": "Sorted set of IDs with a cap, but no answer for users without a cached feed.",
+        "2": "Capped sorted set with compact encoding traded against insert cost, sizing per primary, a rebuild path from following + recent-by-author lists, and the lost-shard case rate-limited with a fallback page." } },
+    { "id": "ranking-pagination", "step": "Deep Dives", "title": "Ranking in budget and cursor pagination",
+      "levels": {
+        "0": "Ranking ignored or unbounded; offset pagination.",
+        "1": "Ranks with a model but no timeout or fallback; timestamp cursors applied to a ranked feed.",
+        "2": "Two-stage candidates → light model with precomputed features, 80 ms timeout with chronological fallback and breaker; feed-session cursor for ranked pages with chronological continuation and a sized session store." } },
+    { "id": "failures", "step": "Wrap-up", "title": "Failure modes and the fan-out backlog",
+      "levels": {
+        "0": "Only 'add replicas'.",
+        "1": "Lists cache and zone failures but not fan-out lag.",
+        "2": "Covers lag, shard loss, ranker outage, cache loss, zone loss, Kafka outage and deletes; gives a live-event timeline with detection, the threshold lever and computed drain time." } },
+    { "id": "scale-tradeoffs", "step": "Wrap-up", "title": "10× and trade-offs",
+      "levels": {
+        "0": "'Add more servers'.",
+        "1": "Scales components linearly without naming what breaks first.",
+        "2": "Names fan-out writes as the first break (~600 primaries) with ordered levers, memory and ranking costs, per-region fan-out; each key decision stated with its alternative and the reason." } }
+  ]
+}

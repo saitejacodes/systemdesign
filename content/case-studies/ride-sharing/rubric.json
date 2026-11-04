@@ -1,0 +1,69 @@
+{
+  "criteria": [
+    { "id": "scope", "step": "Requirements", "title": "Scope: locations, matching, live trip, payment",
+      "levels": {
+        "0": "Lists 'request a ride and pay' only, or designs shared rides, ratings and onboarding unasked.",
+        "1": "Covers location tracking, matching and trips, but treats payment or the trip lifecycle as an afterthought.",
+        "2": "Covers drivers streaming location, nearby cars with fare estimates, request and offer/accept, live trip with ETAs, guarded lifecycle including cancellation, and end-of-trip charging; surge at awareness level; shared and scheduled rides out of scope." } },
+    { "id": "nfr", "step": "Requirements", "title": "Correctness and latency targets",
+      "levels": {
+        "0": "No targets beyond 'fast and scalable'.",
+        "1": "States match time and availability, but not the no-double-assignment or exactly-once charging guarantees.",
+        "2": "Match within 10 s, a driver never on two trips, exactly-once charging, positions a few seconds fresh, and explicitly best-effort durability for location updates; the two halves (firehose vs transaction) named as having different guarantees." } },
+    { "id": "traffic-math", "step": "Estimation", "title": "Location, trip and search rates",
+      "levels": {
+        "0": "No numbers, or numbers without derivation.",
+        "1": "Derives 250,000 updates/s but not trip writes, searches or concurrent trips.",
+        "2": "1M ÷ 4 s = 250,000 updates/s (25 MB/s), 231 trips/s (463 peak), about 3,240 trip writes/s at peak, about 24,500 searches/s, 555,600 concurrent trips, and the conclusion that 98% of writes are disposable while the critical writes fit on one primary." } },
+    { "id": "external-limits", "step": "Estimation", "title": "External quotas and sizing",
+      "levels": {
+        "0": "Ignores the maps and payment providers' limits.",
+        "1": "Mentions the limits without computing usage.",
+        "2": "Adds up maps calls (estimates, dispatch matrices, ETA refreshes ≈ 13,200/s, 66% of 20,000) and payment calls (926/s, 46%), and sizes gateways, dispatch and geo shards with N+1 zone headroom." } },
+    { "id": "api", "step": "API", "title": "Realtime and transactional interfaces",
+      "levels": {
+        "0": "REST endpoints for everything, including a location POST every 4 s, with no idempotency.",
+        "1": "WebSocket for locations and REST for trips, but no sequence numbers, no idempotency keys or no offer endpoints.",
+        "2": "Unacknowledged location frames with seq; nearby with anonymised IDs and quote; POST /trips with idempotency key returning 202 matching; offer accept/decline with 409 on expiry; guarded lifecycle endpoints; pushes for trip updates." } },
+    { "id": "data-model", "step": "Data Model", "title": "Two stores for two kinds of truth",
+      "levels": {
+        "0": "One database table of drivers updated with every GPS point.",
+        "1": "Separates positions from trips but keeps assignment state in an eventually consistent or asynchronously replicated store.",
+        "2": "In-memory geo index (rebuildable, latest-wins) for positions; Postgres with synchronous replica for driver status, trips, offers and outbox; ledger separate; city as the future shard key; explains why neither store can do the other's job." } },
+    { "id": "hld", "step": "High-Level Design", "title": "Architecture and walkthroughs",
+      "levels": {
+        "0": "Boxes with no request walkthroughs.",
+        "1": "Walks the location update or matching, but not the live trip or payment path.",
+        "2": "Walks location update (seq check, GEOADD, pub/sub to rider, Kafka), nearby search on replicas, request (auth hold, candidates, ETA matrix, offer, conditional assign), live trip pushes, and completion via outbox to payment, across zone-redundant tiers." } },
+    { "id": "location-ingest", "step": "Deep Dives", "title": "Location ingestion and the live index",
+      "levels": {
+        "0": "Writes every update to a relational table with a distance query.",
+        "1": "Uses an in-memory geo store but no plan for stale drivers, ordering, or sharding hot cities.",
+        "2": "WebSockets, latest-wins with seq, Redis geo sets per city on primaries with searches on replicas, staleness filter and sweeper, Kafka for history, and a zone-loss timeline with jittered reconnects." } },
+    { "id": "geo-index", "step": "Deep Dives", "title": "Geohash, quadtree, H3 and ranking",
+      "levels": {
+        "0": "Searches only the rider's own cell or computes distance to every driver.",
+        "1": "Explains geohash prefixes but not the neighbour cells, precision choice or alternatives.",
+        "2": "Cell plus 8 neighbours with precision chosen from radius, quadtree density adaptation, H3 hexagons for aggregation and surge, widening radius, and ranking by road ETA rather than straight-line distance." } },
+    { "id": "assignment", "step": "Deep Dives", "title": "Matching without double assignment",
+      "levels": {
+        "0": "Read-then-write assignment, or a lock with no fencing.",
+        "1": "Uses a conditional update but no reservation during offers, no expiry, or an asynchronously replicated store.",
+        "2": "Reserve-then-offer compare-and-set with expiry, accept transaction updating driver and trip conditionally, synchronous replication, offer strategy quantified against the 10 s target, and batch matching named as the next step." } },
+    { "id": "state-payment", "step": "Deep Dives", "title": "Trip state machine and exactly-once charging",
+      "levels": {
+        "0": "Free-form status updates and a direct charge call from the API.",
+        "1": "Has states and an idempotency key at the provider, but a dual write between trip update and payment event, or no reconciliation.",
+        "2": "Guarded transitions as conditional updates, transactional outbox, idempotent ledger keyed by (trip, kind), provider idempotency keys with retry on timeout, double-entry rows, daily reconciliation, and handling of failed captures." } },
+    { "id": "failures-scale", "step": "Wrap-up", "title": "Failure modes and 10×",
+      "levels": {
+        "0": "No failure discussion beyond 'add replicas'.",
+        "1": "Covers server and zone loss but not provider limits, GPS anomalies or what breaks first at 10×.",
+        "2": "Zone loss, geo shard and Postgres failover, maps and payment degradation with fallbacks, GPS jumps, reconnect storms; at 10× names the maps quota first, then payments, then sharding Postgres by city and splitting hot cities' geo sets." } },
+    { "id": "tradeoffs", "step": "Wrap-up", "title": "Trade-offs stated as decisions",
+      "levels": {
+        "0": "No trade-offs named.",
+        "1": "Generic trade-offs not tied to this design.",
+        "2": "Each key choice (WebSockets, in-memory index, Postgres for assignment, replica reads, geohash vs H3, ETA ranking, sequential offers, outbox-based payment, city sharding) comes with the alternative and the reason it lost." } }
+  ]
+}

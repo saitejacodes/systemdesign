@@ -12,7 +12,7 @@
     { "id": "http-caching-headers", "title": "Caching headers", "depth": "tradeoffs" }
   ],
   "simulatorIds": ["request-journey"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["url-shortener"],
   "prerequisites": ["p1-tcp-udp"]
 }
 

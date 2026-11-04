@@ -15,6 +15,6 @@
     { "id": "zero-downtime-migrations", "title": "Database migrations without downtime", "depth": "deep" }
   ],
   "simulatorIds": ["deployment"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["api-gateway"],
   "prerequisites": ["p5-ci-cd", "p5-kubernetes", "p5-slos"]
 }

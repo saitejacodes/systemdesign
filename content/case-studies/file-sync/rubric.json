@@ -1,0 +1,69 @@
+{
+  "criteria": [
+    { "id": "functional-scope", "step": "Requirements", "title": "Functional scope: sync, sharing, offline, history",
+      "levels": {
+        "0": "Treats it as 'upload and download files', with no mention of multiple devices, offline edits or sharing.",
+        "1": "Covers multi-device sync, sharing and resumable uploads, but never pins down offline duration, version history, or that co-editing inside a file is out of scope.",
+        "2": "Covers sync of create/edit/rename/move/delete, shared folders with roles, resumable 10 GB transfers, days-long offline, 30-day history and restore, on-demand mobile/web, and explicitly rules out real-time co-editing." } },
+    { "id": "nfr-invariant", "step": "Requirements", "title": "Non-functional targets and the no-lost-edit invariant",
+      "levels": {
+        "0": "No durability, propagation or correctness targets.",
+        "1": "States 10 s propagation and high availability, but treats 'never lose an edit' as a generic durability line rather than a conflict-handling requirement.",
+        "2": "States the invariant (an acknowledged version is never lost; no version is overwritten without telling the user), 10 s p99 propagation, metadata availability above block availability, and bandwidth efficiency as a goal." } },
+    { "id": "storage-math", "step": "Estimation", "title": "Storage and metadata sizing",
+      "levels": {
+        "0": "No storage numbers, or a total with no derivation.",
+        "1": "Gets 200 PB logical, but never separates metadata from bytes or never sizes the shard count.",
+        "2": "200 PB logical, dedup and erasure coding to about 450 PB raw; about 170 TB of metadata (file rows, journal, block index) giving 128 shards; and concludes shard count is set by storage, not throughput." } },
+    { "id": "traffic-math", "step": "Estimation", "title": "Commits, listings, bandwidth and connections",
+      "levels": {
+        "0": "No request or connection numbers.",
+        "1": "Derives commits per second but misses either upload bandwidth or the concurrent-connection count.",
+        "2": "400M commits/day = 4,630/s (13,900 at 3× peak), about 9,260 downloads and listings/s, 18.5 Gbps upload average, 15M open connections giving 450 gateways and 90 API instances sized for losing one of three zones." } },
+    { "id": "api", "step": "API", "title": "Block-check, commit and changes-since-cursor API",
+      "levels": {
+        "0": "A single 'upload file' endpoint that carries the bytes through the API.",
+        "1": "Separates block upload from commit, but the commit has no parent revision or idempotency key, or change listing has no cursor.",
+        "2": "/blocks/check returning presigned URLs for missing hashes, a commit with parent_rev and an idempotency key returning 409 on conflict, cursor-paged GET /changes, and a data-free doorbell channel." } },
+    { "id": "data-model", "step": "Data Model", "title": "Namespaces, journal and content-addressed blocks",
+      "levels": {
+        "0": "One 'files' table with a blob column, or no shard key.",
+        "1": "Separates metadata from blocks, but shards by user or file so a commit spans shards, or has no ordered journal.",
+        "2": "Shards metadata by namespace so a commit is one local transaction (journal append, file row, head increment), keeps a gap-free per-namespace journal, a separate block index sharded by hash, and justifies relational shards over a wide-column store." } },
+    { "id": "hld-paths", "step": "High-Level Design", "title": "Metadata plane, block plane and notification path",
+      "levels": {
+        "0": "Bytes flow through the API servers; no notification path.",
+        "1": "Draws presigned uploads and a metadata service, but change events are a dual write or the notification path is missing.",
+        "2": "Walks upload (hash, check, direct PUT, conditional commit), propagation (CDC or outbox to a topic, notifier, gateways or APNs/FCM, listing from cursor) and download, with a time budget for the 10 s target and shards replicated across zones." } },
+    { "id": "chunking-dedup", "step": "Deep Dives", "title": "Chunking, block size and dedup scope",
+      "levels": {
+        "0": "Uploads whole files, or splits without hashing.",
+        "1": "Uses fixed blocks keyed by hash, but cannot say why fixed blocks fail on insertions or what block size trades off.",
+        "2": "Compares whole-file, fixed 4 MiB and content-defined chunking, quantifies the index cost of smaller blocks, and treats cross-user dedup as a privacy side channel with a mitigation." } },
+    { "id": "sync-protocol", "step": "Deep Dives", "title": "Sync protocol: cursor, three trees, Merkle hashes",
+      "levels": {
+        "0": "Compares full folder listings on every sync.",
+        "1": "Uses a journal and cursor, but the client cannot distinguish a local delete from a remote add.",
+        "2": "Journal plus cursor for O(changes) catch-up, a remote, local and synced tree on the client, and Merkle directory hashes placed where they belong: convergence checks and recovery when a cursor is unusable." } },
+    { "id": "conflicts", "step": "Deep Dives", "title": "Conflict handling without data loss",
+      "levels": {
+        "0": "Last write wins by timestamp.",
+        "1": "Detects conflicts but resolves them with locks or an automatic merge that cannot work for binary files.",
+        "2": "Optimistic parent_rev check at commit, conflicted copy for the loser, edit-beats-delete, stable file ids so moves do not resurrect paths, and why version vectors are unnecessary with a per-namespace serialiser." } },
+    { "id": "notifications", "step": "Deep Dives", "title": "Change notifications at 15M connections",
+      "levels": {
+        "0": "Devices poll every few seconds.",
+        "1": "Uses WebSockets, but pushes full change data so a lost or duplicate message corrupts state, or ignores mobile.",
+        "2": "WebSocket or long poll on desktop, APNs/FCM on mobile, doorbell-only messages so correctness lives in the cursor, per-device coalescing, and jittered reconnects answered from the head cache." } },
+    { "id": "failures-scale", "step": "Wrap-up", "title": "Failure modes, timeline and 10× growth",
+      "levels": {
+        "0": "No failures beyond 'add replicas'.",
+        "1": "Covers instance and shard failover, but not the reconnect storm, GC racing a commit, or what breaks first at 10×.",
+        "2": "Gives a zone-loss timeline (sockets drop, replicas promoted, idempotent retries, jittered reconnect), GC with a grace period longer than history, mass-delete recovery, and at 10× names gateways and hot shared namespaces first, then directory-based resharding and a home region per namespace." } },
+    { "id": "tradeoffs", "step": "Wrap-up", "title": "Trade-offs stated as decisions",
+      "levels": {
+        "0": "No trade-offs named.",
+        "1": "Generic trade-offs (consistency vs availability) not tied to this design.",
+        "2": "Each key choice (planes split, 4 MiB fixed blocks, presigned transfers, namespace sharding, journal and cursor, conflicted copies, doorbells) with the alternative and the specific reason it lost." } }
+  ]
+}

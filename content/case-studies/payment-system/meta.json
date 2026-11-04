@@ -1,0 +1,57 @@
+{
+  "id": "payment-system",
+  "title": "Payment system",
+  "summary": "Charge buyers through an external PSP exactly once, record every cent in a double-entry ledger, reconcile daily and pay sellers out, without ever losing money.",
+  "difficulty": 3,
+  "weekRecommended": 15,
+  "relatedSectionIds": ["p2-idempotency", "p2-transactions", "p4-distributed-transactions", "p3-delivery-semantics", "p4-timeouts-retries", "p4-circuit-breakers", "p2-replication", "p3-event-driven", "p5-data-protection"],
+  "interviewerPrompt": "Let's design the payments backend for an online marketplace. Buyers pay at checkout, we take a cut, and sellers get their money. We use an external payment provider for cards. How would you build it?",
+  "clarifyingQuestions": [
+    { "question": "How many payments, and how spiky is traffic?", "answer": "About 10M payments a day. Sale days bring peaks of 10 times the average rate." },
+    { "question": "Do we process cards ourselves?", "answer": "No. An external payment service provider (PSP) talks to the card networks. We never store raw card numbers; the PSP gives us a token for the card." },
+    { "question": "Is the buyer charged at checkout or when the item ships?", "answer": "The card is authorized at checkout and captured when the seller ships, usually within a few days. A cancelled order voids the authorization." },
+    { "question": "How reliable is the PSP?", "answer": "Usually fine, but calls can time out without telling us whether the charge happened, and its webhooks can arrive late, twice or out of order." },
+    { "question": "What is the most important property?", "answer": "A buyer is charged exactly once for an order, even with client retries, timeouts and crashes, and no money is ever created or lost in our books." },
+    { "question": "How are sellers paid?", "answer": "Once a day, each seller with a positive balance gets a bank transfer of what they are owed, minus our fee, through a bank payouts API that allows about 50 requests per second." },
+    { "question": "What does finance need?", "answer": "Every money movement in a double-entry ledger, a full audit trail, and a daily reconciliation of our ledger against the PSP's settlement report, with every difference explained." },
+    { "question": "How fast must checkout be?", "answer": "The authorization itself takes the PSP about 800 ms on average. Our own overhead should be small, and the whole call should finish within about 3 seconds at p99." },
+    { "question": "Do we support refunds and multiple currencies?", "answer": "Refunds yes, about 2% of payments. Assume a single currency for this interview; mention what multi-currency would change." },
+    { "question": "Is fraud scoring, 3-D Secure or tax in scope?", "answer": "No. Assume a fraud service gives a yes or no before we authorize, and the PSP handles 3-D Secure challenges." },
+    { "question": "Is the PSP's rate limit a concern?", "answer": "Our contract allows about 2,000 calls per second per PSP. Treat it as a hard limit." }
+  ],
+  "deepDiveQuestions": [
+    "How do you charge a buyer exactly once when the client retries and the PSP call times out with an unknown outcome?",
+    "What does the payment state machine look like, and how do you move between states without dual writes?",
+    "How do you design a double-entry ledger that never loses money, stays auditable and avoids hot accounts?",
+    "How do you reconcile against the PSP's settlement report, and what do you do with each kind of mismatch?"
+  ],
+  "trafficProfile": {
+    "qps": 926,
+    "readWriteRatio": 1.6667,
+    "peakMultiplier": 10,
+    "requestTypes": [
+      { "id": "authorize", "name": "Authorize card at checkout (PSP call)", "op": "write", "weight": 1, "target": { "kinds": ["external-api"] } },
+      { "id": "record", "name": "Payment state + ledger transaction", "op": "write", "weight": 2, "target": { "kinds": ["sql-db"] } },
+      { "id": "status", "name": "Payment status / seller balance", "op": "read", "weight": 1, "target": { "kinds": ["sql-db"] } }
+    ]
+  },
+  "runChallenge": {
+    "id": "sale-day-lose-az",
+    "title": "Sale-day peak with a zone down",
+    "description": "Run at the 10x sale-day peak (about 9,260 requests per second, 1,157 of them card authorizations) and lose the busiest availability zone after 10 s. Checkout must keep serving at least 9,000 requests per second with under 0.1% errors and a p99 under 3 s including the PSP's own 800 ms, with no single point of failure.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "minOkQps": 9000, "maxErrorRatePct": 0.1, "maxP99Ms": 3000, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Retrying a timed-out PSP call with a new request or a new idempotency key, which can charge the buyer twice; an unknown outcome must be resolved by asking the PSP, not by charging again.",
+    "Keeping a database transaction open across the 800 ms PSP call, which holds locks and connections and still cannot make the remote charge atomic with the local write.",
+    "Updating a balance column in place instead of writing immutable, balanced debit and credit entries, so a bug or a crash silently creates or destroys money with no trail.",
+    "Writing the payment row and publishing the 'payment succeeded' event as two separate steps (a dual write), so a crash between them leaves fulfilment and the ledger disagreeing.",
+    "Trusting webhooks to arrive once and in order, instead of deduplicating by event id and applying them through the state machine's allowed transitions.",
+    "Storing idempotency keys only in Redis with a short TTL, separate from the payment record, so a cache failure or eviction re-opens the door to double charges.",
+    "Treating reconciliation as an afterthought, when it is the only control that catches mismatches every other mechanism missed.",
+    "Failing over a payment whose first attempt has an unknown outcome to a second PSP, which can charge the buyer at both."
+  ]
+}

@@ -1,0 +1,584 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "users",
+      "kind": "client",
+      "x": 0,
+      "y": 384,
+      "label": "Users",
+      "props": {
+        "platform": "both",
+        "users": 500000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 0,
+      "label": "DNS (chat.example)",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "w": 1600,
+      "h": 960,
+      "label": "Region (3 AZs)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 416,
+      "label": "L4 load balancer (least connections)",
+      "props": {
+        "layer": "L4",
+        "algorithm": "least-connections",
+        "instances": 4,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "w": 448,
+      "h": 272,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "gw-a",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "WebSocket gateways AZ-a (240 x 500k conns)",
+      "props": {
+        "name": "ws-gateway",
+        "instances": 240,
+        "capacityQps": 10000,
+        "latencyMs": 2,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "chat-a",
+      "kind": "service",
+      "x": 224,
+      "y": 144,
+      "label": "Chat service AZ-a (160, conversation owners)",
+      "props": {
+        "name": "chat",
+        "instances": 160,
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 336,
+      "w": 448,
+      "h": 272,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "gw-b",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "WebSocket gateways AZ-b (240 x 500k conns)",
+      "props": {
+        "name": "ws-gateway",
+        "instances": 240,
+        "capacityQps": 10000,
+        "latencyMs": 2,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "chat-b",
+      "kind": "service",
+      "x": 224,
+      "y": 144,
+      "label": "Chat service AZ-b (160, conversation owners)",
+      "props": {
+        "name": "chat",
+        "instances": 160,
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 640,
+      "w": 448,
+      "h": 272,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "gw-c",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "WebSocket gateways AZ-c (240 x 500k conns)",
+      "props": {
+        "name": "ws-gateway",
+        "instances": 240,
+        "capacityQps": 10000,
+        "latencyMs": 2,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "chat-c",
+      "kind": "service",
+      "x": 224,
+      "y": 144,
+      "label": "Chat service AZ-c (160, conversation owners)",
+      "props": {
+        "name": "chat",
+        "instances": 160,
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "recent",
+      "kind": "cache",
+      "x": 800,
+      "y": 64,
+      "label": "Redis: recent messages (1 TB)",
+      "props": {
+        "sizeGb": 1024,
+        "hitRate": 80,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "messages",
+      "kind": "nosql-db",
+      "x": 800,
+      "y": 272,
+      "label": "Message store (90 nodes, RF=3)",
+      "props": {
+        "nodes": 90,
+        "consistency": "quorum",
+        "capacityQps": 10000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "log",
+      "kind": "queue",
+      "x": 800,
+      "y": 496,
+      "label": "Kafka: fan-out log (512 partitions)",
+      "props": {
+        "partitions": 512,
+        "retentionH": 72,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "fanout",
+      "kind": "worker",
+      "x": 1056,
+      "y": 496,
+      "label": "Fan-out + receipt workers (200)",
+      "props": {
+        "instances": 200,
+        "processingMs": 0.125,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "registry",
+      "kind": "cache",
+      "x": 1056,
+      "y": 272,
+      "label": "Redis: connection registry + presence",
+      "props": {
+        "sizeGb": 128,
+        "hitRate": 99,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "inbox",
+      "kind": "nosql-db",
+      "x": 1056,
+      "y": 704,
+      "label": "Inbox / cursor store (120 nodes, RF=3)",
+      "props": {
+        "nodes": 120,
+        "consistency": "quorum",
+        "capacityQps": 25000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "media",
+      "kind": "object-storage",
+      "x": 800,
+      "y": 704,
+      "label": "Media blobs (encrypted)",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 1312,
+      "y": 64,
+      "label": "Monitoring (send p99, fan-out lag, conns)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "push",
+      "kind": "external-api",
+      "x": 2176,
+      "y": 384,
+      "label": "Push providers (APNs / FCM)",
+      "props": {
+        "latencyMs": 200,
+        "rateLimitQps": 100000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 1312,
+      "y": 704,
+      "label": "Note: what Run mode models",
+      "props": {
+        "text": "Run mode sends a request to one destination. In the real design a receipt does two things: the chat service writes the cursor to the inbox store and also publishes it to the fan-out log so the sender's devices see the tick. Run mode splits receipts between those two paths. Fan-out deliveries to recipients (about 1.9 per message) and the conversation-list upserts are sized in the solution, not loaded here."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-users-dns",
+      "source": "users",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-users-lb",
+      "source": "users",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "WebSocket (TLS)"
+    },
+    {
+      "id": "e-users-media",
+      "source": "users",
+      "target": "media",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "media via presigned URL"
+    },
+    {
+      "id": "e-lb-gw-a",
+      "source": "lb",
+      "target": "gw-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gw-a-chat-a",
+      "source": "gw-a",
+      "target": "chat-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "by conversation id"
+    },
+    {
+      "id": "e-gw-a-chat-b",
+      "source": "gw-a",
+      "target": "chat-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gw-a-chat-c",
+      "source": "gw-a",
+      "target": "chat-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-gw-b",
+      "source": "lb",
+      "target": "gw-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gw-b-chat-a",
+      "source": "gw-b",
+      "target": "chat-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gw-b-chat-b",
+      "source": "gw-b",
+      "target": "chat-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "by conversation id"
+    },
+    {
+      "id": "e-gw-b-chat-c",
+      "source": "gw-b",
+      "target": "chat-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-gw-c",
+      "source": "lb",
+      "target": "gw-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gw-c-chat-a",
+      "source": "gw-c",
+      "target": "chat-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gw-c-chat-b",
+      "source": "gw-c",
+      "target": "chat-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gw-c-chat-c",
+      "source": "gw-c",
+      "target": "chat-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "by conversation id"
+    },
+    {
+      "id": "e-chat-a-recent",
+      "source": "chat-a",
+      "target": "recent",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "recent messages"
+    },
+    {
+      "id": "e-chat-a-messages",
+      "source": "chat-a",
+      "target": "messages",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "persist, then ack"
+    },
+    {
+      "id": "e-chat-a-inbox",
+      "source": "chat-a",
+      "target": "inbox",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "receipt: cursor = max(old, new)"
+    },
+    {
+      "id": "e-chat-a-log",
+      "source": "chat-a",
+      "target": "log",
+      "kind": "async",
+      "direction": "forward",
+      "label": "fan-out + receipts"
+    },
+    {
+      "id": "e-chat-b-recent",
+      "source": "chat-b",
+      "target": "recent",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "recent messages"
+    },
+    {
+      "id": "e-chat-b-messages",
+      "source": "chat-b",
+      "target": "messages",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "persist, then ack"
+    },
+    {
+      "id": "e-chat-b-inbox",
+      "source": "chat-b",
+      "target": "inbox",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "receipt: cursor = max(old, new)"
+    },
+    {
+      "id": "e-chat-b-log",
+      "source": "chat-b",
+      "target": "log",
+      "kind": "async",
+      "direction": "forward",
+      "label": "fan-out + receipts"
+    },
+    {
+      "id": "e-chat-c-recent",
+      "source": "chat-c",
+      "target": "recent",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "recent messages"
+    },
+    {
+      "id": "e-chat-c-messages",
+      "source": "chat-c",
+      "target": "messages",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "persist, then ack"
+    },
+    {
+      "id": "e-chat-c-inbox",
+      "source": "chat-c",
+      "target": "inbox",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "receipt: cursor = max(old, new)"
+    },
+    {
+      "id": "e-chat-c-log",
+      "source": "chat-c",
+      "target": "log",
+      "kind": "async",
+      "direction": "forward",
+      "label": "fan-out + receipts"
+    },
+    {
+      "id": "e-log-fanout",
+      "source": "log",
+      "target": "fanout",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-fanout-registry",
+      "source": "fanout",
+      "target": "registry",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "who is online where"
+    },
+    {
+      "id": "e-fanout-inbox",
+      "source": "fanout",
+      "target": "inbox",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "cursors, conversation list"
+    },
+    {
+      "id": "e-fanout-push",
+      "source": "fanout",
+      "target": "push",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "offline push (collapsed)"
+    },
+    {
+      "id": "e-push-users",
+      "source": "push",
+      "target": "users",
+      "kind": "async",
+      "direction": "forward",
+      "label": "offline push"
+    }
+  ]
+}

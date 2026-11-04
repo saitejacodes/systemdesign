@@ -14,6 +14,6 @@
     { "id": "sortability", "title": "Sortability tradeoffs", "depth": "tradeoffs" }
   ],
   "simulatorIds": ["snowflake"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["url-shortener", "news-feed"],
   "prerequisites": ["p2-indexing", "p2-sharding", "p4-time-ordering"]
 }

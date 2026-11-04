@@ -13,6 +13,6 @@
     { "id": "service-auth", "title": "Service-to-service authentication", "depth": "deep" }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["rag-docs-assistant"],
   "prerequisites": ["p5-authn-authz", "p1-tls", "p1-reverse-proxy"]
 }

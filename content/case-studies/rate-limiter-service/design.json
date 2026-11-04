@@ -1,0 +1,337 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "callers",
+      "kind": "client",
+      "x": 0,
+      "y": 384,
+      "label": "API callers",
+      "props": {
+        "platform": "both",
+        "users": 10000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 160,
+      "label": "DNS",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "label": "Region (API fleet + limiter)",
+      "props": {
+        "scope": "region"
+      },
+      "w": 1232,
+      "h": 832
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 384,
+      "label": "Load balancer",
+      "props": {
+        "layer": "L7",
+        "algorithm": "round-robin",
+        "instances": 2,
+        "latencyMs": 0.5,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "w": 352,
+      "h": 224,
+      "parentId": "region"
+    },
+    {
+      "id": "api-a",
+      "kind": "service",
+      "x": 48,
+      "y": 80,
+      "label": "API servers AZ-a (x17, limiter client in-process)",
+      "props": {
+        "name": "api",
+        "instances": 17,
+        "capacityQps": 40000,
+        "latencyMs": 0.5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 304,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "w": 352,
+      "h": 224,
+      "parentId": "region"
+    },
+    {
+      "id": "api-b",
+      "kind": "service",
+      "x": 48,
+      "y": 80,
+      "label": "API servers AZ-b (x17, limiter client in-process)",
+      "props": {
+        "name": "api",
+        "instances": 17,
+        "capacityQps": 40000,
+        "latencyMs": 0.5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 576,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "w": 352,
+      "h": 224,
+      "parentId": "region"
+    },
+    {
+      "id": "api-c",
+      "kind": "service",
+      "x": 48,
+      "y": 80,
+      "label": "API servers AZ-c (x16, limiter client in-process)",
+      "props": {
+        "name": "api",
+        "instances": 16,
+        "capacityQps": 40000,
+        "latencyMs": 0.5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "redis",
+      "kind": "nosql-db",
+      "x": 720,
+      "y": 288,
+      "label": "Redis Cluster: counters (80 primaries + 80 replicas)",
+      "props": {
+        "nodes": 80,
+        "consistency": "one",
+        "capacityQps": 25000,
+        "latencyMs": 0.5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "rules",
+      "kind": "service",
+      "x": 720,
+      "y": 64,
+      "label": "Rules service (x2)",
+      "props": {
+        "name": "rules",
+        "instances": 2,
+        "capacityQps": 200,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "rulesdb",
+      "kind": "sql-db",
+      "x": 992,
+      "y": 64,
+      "label": "PostgreSQL: rules (1 replica)",
+      "props": {
+        "replicas": 1,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 720,
+      "y": 576,
+      "label": "Monitoring (429 rate, fail-open, Redis p99)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 0,
+      "y": 880,
+      "label": "",
+      "props": {
+        "text": "Each API request runs two checks (per user, per API key) as two Lua scripts on Redis. Redis capacity is drawn in checks per second: 80 primaries x 50,000 scripts/s / 2 scripts = 25,000 checks/s per primary. API server latency is only the limiter client's own work; the API's handler time is not part of this design."
+      },
+      "w": 420,
+      "h": 160
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-lb-api-a",
+      "source": "lb",
+      "target": "api-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-a-redis",
+      "source": "api-a",
+      "target": "redis",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "2 Lua scripts in parallel, 3 ms timeout"
+    },
+    {
+      "id": "e-rules-api-a",
+      "source": "rules",
+      "target": "api-a",
+      "kind": "async",
+      "direction": "forward",
+      "label": "rules snapshot every 10 s"
+    },
+    {
+      "id": "e-api-a-mon",
+      "source": "api-a",
+      "target": "mon",
+      "kind": "async",
+      "direction": "forward",
+      "label": "decisions, fail-open count"
+    },
+    {
+      "id": "e-lb-api-b",
+      "source": "lb",
+      "target": "api-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-b-redis",
+      "source": "api-b",
+      "target": "redis",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "2 Lua scripts in parallel, 3 ms timeout"
+    },
+    {
+      "id": "e-rules-api-b",
+      "source": "rules",
+      "target": "api-b",
+      "kind": "async",
+      "direction": "forward",
+      "label": "rules snapshot every 10 s"
+    },
+    {
+      "id": "e-api-b-mon",
+      "source": "api-b",
+      "target": "mon",
+      "kind": "async",
+      "direction": "forward",
+      "label": "decisions, fail-open count"
+    },
+    {
+      "id": "e-lb-api-c",
+      "source": "lb",
+      "target": "api-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-c-redis",
+      "source": "api-c",
+      "target": "redis",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "2 Lua scripts in parallel, 3 ms timeout"
+    },
+    {
+      "id": "e-rules-api-c",
+      "source": "rules",
+      "target": "api-c",
+      "kind": "async",
+      "direction": "forward",
+      "label": "rules snapshot every 10 s"
+    },
+    {
+      "id": "e-api-c-mon",
+      "source": "api-c",
+      "target": "mon",
+      "kind": "async",
+      "direction": "forward",
+      "label": "decisions, fail-open count"
+    },
+    {
+      "id": "e-callers-dns",
+      "source": "callers",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-callers-lb",
+      "source": "callers",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "HTTPS"
+    },
+    {
+      "id": "e-rules-rulesdb",
+      "source": "rules",
+      "target": "rulesdb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "read rules"
+    }
+  ]
+}

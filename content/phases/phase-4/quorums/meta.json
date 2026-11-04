@@ -14,6 +14,6 @@
     { "id": "anti-entropy", "title": "Anti-entropy and Merkle trees", "depth": "deep" }
   ],
   "simulatorIds": ["quorum"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["metrics-monitoring"],
   "prerequisites": ["p4-consistency-models", "p2-replication", "p2-consistent-hashing"]
 }

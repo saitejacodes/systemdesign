@@ -1,4 +1,10 @@
-// Every route from CLAUDE.md §3 (dynamic ones with a sample param).
+import fs from "node:fs";
+import path from "node:path";
+
+// Every case study folder, plus the fixture case the e2e server also loads (SDL_FIXTURE_CASES=1 in playwright.config.ts).
+const CASES = [...fs.readdirSync(path.join(process.cwd(), "content", "case-studies"), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name), "fixture-kv-store"];
+
+// Every route from CLAUDE.md §3 (dynamic ones with a sample param, or every id where the set is small).
 export const ROUTES = [
   "/",
   "/today",
@@ -38,9 +44,8 @@ export const ROUTES = [
   ...["backoff-jitter","bloom-filter","circuit-breaker","consistent-hash-ring","geohash","lamport-vector-clocks","leaky-bucket","lfu-cache","lru-cache","merkle-tree","quorum-read-repair","sliding-window-counter","snowflake-id","token-bucket","trie-autocomplete"].map((id) => `/simulators/code-labs/${id}`),
   "/studio",
   "/studio/new", // creates a blank design client-side, then shows the editor (designs live in IndexedDB)
-  "/interview/sample",
   "/case-studies",
-  "/case-studies/sample",
+  ...CASES.flatMap((id) => [`/case-studies/${id}`, `/interview/${id}`]),
   "/flashcards",
   "/dashboard",
   "/search",

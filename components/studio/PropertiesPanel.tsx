@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import { AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalDistributeCenter, Trash2 } from "lucide-react";
 import { ComponentIcon } from "@/components/studio/ComponentIcon";
-import { CATALOG, validateProp, type PropSpec } from "@/lib/studio/catalog";
+import { CATALOG, runProps, validateProp, type PropSpec } from "@/lib/studio/catalog";
 import { EDGE_KINDS, type ComponentKind, type EdgeKind, type PropValue, type StudioEdge, type StudioGraph, type StudioNode } from "@/lib/studio/types";
 import { align, connect, counts, distribute, summaryText, updateEdge, updateNode, type AlignMode } from "./ops";
 
@@ -166,6 +166,14 @@ function NodeProps({ node, graph, apply, lessons, onDelete }: { node: StudioNode
         ))}
         {lesson && <Link href={lesson.href} className="fm-btn fm-btn--tool justify-self-start">Open lesson · {lesson.title} <span aria-hidden>→</span></Link>}
       </Section>
+      {spec && runProps(spec.kind).length > 0 && (
+        <Section title="Run mode">
+          <p className="fm-help">Assumptions for Run mode&apos;s availability and cost estimates.</p>
+          {runProps(spec.kind).map((p) => (
+            <PropField key={p.key} spec={p} value={node.props[p.key] ?? p.default} onChange={(v, coalesce) => set({ props: { [p.key]: v } }, coalesce ? `prop:${node.id}:${p.key}` : undefined)} />
+          ))}
+        </Section>
+      )}
       {node.kind !== "frame" && <Connections node={node} graph={graph} apply={apply} />}
       <div className="px-3 py-3"><DeleteButton onDelete={onDelete} what={node.kind === "frame" ? "frame" : node.kind === "note" ? "note" : "component"} /></div>
     </div>

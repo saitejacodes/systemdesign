@@ -15,6 +15,6 @@
     { "id": "production-monitoring", "title": "Monitoring quality in production", "depth": "tradeoffs" }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["rag-docs-assistant"],
   "prerequisites": ["p6-rag", "p6-ai-reliability", "p5-data-protection"]
 }

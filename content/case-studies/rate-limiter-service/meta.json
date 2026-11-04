@@ -1,0 +1,55 @@
+{
+  "id": "rate-limiter-service",
+  "title": "Rate limiter service",
+  "summary": "A shared limiter that 50 API servers consult a million times a second: the algorithm, atomic counters in Redis, a 5 ms budget, and an outage that must not take the APIs down with it.",
+  "difficulty": 1,
+  "weekRecommended": 14,
+  "relatedSectionIds": ["p2-rate-limiting", "p3-redis", "p1-estimation", "p4-timeouts-retries", "p4-circuit-breakers", "p6-multi-region", "p2-api-gateway"],
+  "interviewerPrompt": "Our public API runs on a fleet of servers, and we need to rate-limit callers: things like 100 requests a minute per user. Design the rate limiter. How would you approach it?",
+  "clarifyingQuestions": [
+    { "question": "What limits do we need to enforce?", "answer": "Rules such as 100 requests per minute per user and 10,000 requests per minute per API key. Every request carries both a user ID and an API key. Product teams add and change rules a few times a week." },
+    { "question": "How much traffic?", "answer": "About 1M requests per second at peak across a fleet of 50 API servers. Assume peak is twice the daily average." },
+    { "question": "Must limits be exact across the fleet, or is per-server enough?", "answer": "They must hold across all servers. A user who spreads requests over the fleet must not get 50 times their limit. Small overshoot of a few percent is acceptable." },
+    { "question": "How much latency can the check add?", "answer": "At most 5 ms at p99 per request." },
+    { "question": "What does a rejected caller see?", "answer": "HTTP 429 with a clear message and a hint for when to retry." },
+    { "question": "What if the limiter itself is down?", "answer": "The API must keep working. An outage of the limiter must not become an outage of the API." },
+    { "question": "Do bursts matter, or only the per-minute total?", "answer": "The rule is stated per minute. A user should not be able to send 200 requests in two seconds by straddling a minute boundary." },
+    { "question": "Is this one region or several?", "answer": "One region today. We plan a second and third region next year, and per-key limits should then still mean roughly the same thing globally." },
+    { "question": "Are some limits more important than others?", "answer": "Yes. A few rules protect against abuse, such as login attempts per account. Those matter more than ordinary fairness limits." },
+    { "question": "Do callers need to see their remaining quota?", "answer": "Yes, in response headers on every request." }
+  ],
+  "deepDiveQuestions": [
+    "Which algorithm: fixed window, sliding log, sliding-window counter, token bucket or leaky bucket, and what does each cost in memory and accuracy?",
+    "How do you keep counters correct when 50 servers update them at once: Redis, Lua scripts and atomicity?",
+    "Where does the limiter run: a library in each API server, a sidecar, or a separate service, and how does that fit a 5 ms budget?",
+    "What happens when Redis is slow or down: fail open or fail closed?",
+    "How do limits hold across several regions?"
+  ],
+  "trafficProfile": {
+    "qps": 500000,
+    "readWriteRatio": 1,
+    "peakMultiplier": 2,
+    "requestTypes": [
+      { "id": "limit-check", "name": "Limit check (user + API key) on every API request", "op": "write", "weight": 1, "target": { "kinds": ["nosql-db"] } }
+    ]
+  },
+  "runChallenge": {
+    "id": "rate-limiter-peak-lose-az",
+    "title": "1M checks a second with a zone down",
+    "description": "Run at the 1M requests/s peak and lose the busiest availability zone after 10 s. Every API request must still get its limit check: at least 990k checks/s with under 0.1% errors, a p99 under 15 ms for the whole path to Redis, and no single point of failure.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "minOkQps": 990000, "maxErrorRatePct": 0.1, "maxP99Ms": 15, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Keeping counters in each API server's memory, so a user spread over 50 servers gets up to 50 times their limit.",
+    "Reading the counter, deciding, then writing it back as separate Redis commands, so two servers both read 99 and both allow request 100 and 101.",
+    "Choosing a fixed one-minute window without noticing that a caller can send twice the limit in two seconds across the boundary.",
+    "Storing a sliding log of every request timestamp for a 10,000-per-minute key, which costs hundreds of kilobytes per key when two counters would do.",
+    "Putting a Redis call with no timeout on the request path, so a slow Redis shard makes every API request slow.",
+    "Failing closed on every rule, so a Redis outage rejects all traffic and the limiter takes the API down.",
+    "Calling one central counter in a home region from every region, which adds a cross-region round trip far beyond a 5 ms budget.",
+    "Using each API server's own clock to pick the window, so servers with skewed clocks count into different windows."
+  ]
+}

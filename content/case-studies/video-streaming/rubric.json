@@ -1,0 +1,69 @@
+{
+  "criteria": [
+    { "id": "scope-split", "step": "Requirements", "title": "Scope: upload, process, watch, count",
+      "levels": {
+        "0": "Lists 'upload and watch' only, or drifts into recommendations, comments and live streaming unasked.",
+        "1": "Covers upload, transcoding and playback, but treats view counts or resumable uploads as an afterthought, or never says live is out of scope.",
+        "2": "Covers resumable upload, transcoding into a ladder, adaptive playback, video pages and deduplicated view counts; puts live, search, recommendations and DRM explicitly out of scope; names the write side (batch) and read side (bandwidth) as different problems." } },
+    { "id": "nfr-qoe", "step": "Requirements", "title": "Quality-of-experience and durability targets",
+      "levels": {
+        "0": "No latency, rebuffering or durability targets.",
+        "1": "States a start-up time and availability, but not rebuffering, upload-to-watchable time or when an upload counts as durable.",
+        "2": "Start-up under 2 s, rebuffering well under 1% of watch time, first rendition within minutes, 99.99% playback vs 99.9% upload availability, and an acknowledged upload never lost; counting never on the playback path." } },
+    { "id": "egress-math", "step": "Estimation", "title": "Concurrency, egress and request rates",
+      "levels": {
+        "0": "No numbers, or numbers without derivation.",
+        "1": "Derives concurrency or egress but not both, or no peak.",
+        "2": "200M viewer-hours ÷ 24 = 8.33M concurrent; × 3 Mbps = 25 Tbps (50 Tbps peak, 270 PB/day); 6 s segments → 1.39M requests/s; 13,889 plays/s; 152,778 events/s; concludes the CDN is the main design driver." } },
+    { "id": "pipeline-math", "step": "Estimation", "title": "Upload, storage and transcoding capacity",
+      "levels": {
+        "0": "Ignores the write side's size.",
+        "1": "Computes uploads per second or storage, but not encoding compute.",
+        "2": "500 h/min = 30,000 s of video per second, 50 videos/s, 3.24 PB/day of originals plus ~3.4 PB of renditions, and an encoding fleet derived from an explicit CPU-seconds-per-second assumption (about 120,000 vCPUs)." } },
+    { "id": "api", "step": "API", "title": "Upload, play and event APIs",
+      "levels": {
+        "0": "A single upload endpoint that receives the file, and a 'stream' endpoint.",
+        "1": "Presigned uploads and a play endpoint, but no resume, no completion step or no event batching.",
+        "2": "Upload session with idempotency key, presigned part URLs in batches, resume by listing parts, complete → 202 processing; play-info returning signed manifest URLs (with a fallback CDN); a manifest example; batched 202 event endpoint." } },
+    { "id": "data-model", "step": "Data Model", "title": "Metadata, pipeline state and object layout",
+      "levels": {
+        "0": "Stores videos 'in the database' with no separation of bytes and metadata.",
+        "1": "Separates object storage from metadata but has no place for job state or picks a store without a reason.",
+        "2": "Video and channel tables keyed for their access patterns, transactional pipeline state (or a workflow engine), deterministic object keys that make retries safe, a separate counter store, and a store choice justified by access pattern and operations (Vitess-style sharded MySQL named as valid)." } },
+    { "id": "hld", "step": "High-Level Design", "title": "Architecture and request walkthroughs",
+      "levels": {
+        "0": "A box diagram with servers streaming video from a database.",
+        "1": "Shows upload to storage, a transcoder and a CDN, but no walkthrough of play start or events.",
+        "2": "Walks upload, transcode, publish, play start (cache-aside play-info, signed URL, then CDN only) and events separately, with a start-up latency budget under 2 s and zone-redundant API tiers." } },
+    { "id": "upload-pipeline", "step": "Deep Dives", "title": "Resumable uploads and the transcoding DAG",
+      "levels": {
+        "0": "Proxies uploads through the API and transcodes each video as one job.",
+        "1": "Uses presigned multipart uploads and parallel encoding, but without leases, idempotent retries or failure handling.",
+        "2": "Multipart with part checksums and lifecycle cleanup; a DAG of probe, per-chunk-per-rendition encodes, packaging and publish; leases, deterministic outputs, dead-letter queue for poison videos, priority lanes so first renditions stay fast." } },
+    { "id": "abr", "step": "Deep Dives", "title": "Adaptive bitrate: ladder, segments, formats",
+      "levels": {
+        "0": "Serves a single MP4 file per resolution chosen by the server.",
+        "1": "Knows HLS/DASH and the player switching quality, but cannot justify segment length or the ladder.",
+        "2": "Player-driven ABR (throughput vs buffer-based), a concrete ladder with bitrates, 6 s segments justified by request count vs switching speed, CMAF serving both HLS and DASH, and per-title or popularity-based codec choice." } },
+    { "id": "cdn", "step": "Deep Dives", "title": "CDN tiers, long tail and hot releases",
+      "levels": {
+        "0": "'Put a CDN in front' with no hit rates or origin sizing.",
+        "1": "Has edge caching and a hit rate, but no shield, no plan for the long tail or a hot release.",
+        "2": "Edge + shield + origin with origin load derived (about 1% of requests), cache keys without signatures, immutable segments vs short-TTL manifests, request coalescing, pre-positioning, multi-CDN fallback, and a PoP-failure timeline." } },
+    { "id": "view-counts", "step": "Deep Dives", "title": "View counting at 300,000 events per second",
+      "levels": {
+        "0": "Increments a counter row per play.",
+        "1": "Sends events asynchronously but has no definition of a view, no deduplication or no replay safety.",
+        "2": "Collectors → Kafka → aggregators partitioned by video, a stated view rule, per-session dedup, batched flushes with idempotent replay, hot videos as busy threads not hot rows, and a batch fraud-correction pass." } },
+    { "id": "failures-scale", "step": "Wrap-up", "title": "Failure modes and 10×",
+      "levels": {
+        "0": "No failure discussion beyond 'add replicas'.",
+        "1": "Covers server and zone loss but not CDN, origin, poison uploads or what breaks first at 10×.",
+        "2": "Zone loss with N+1 sizing, PoP failure, origin overload, cache loss, poison uploads, takedowns; at 10× names egress first, then encoding cost (hardware encoders, lazy rungs) and storage tiering." } },
+    { "id": "tradeoffs", "step": "Wrap-up", "title": "Trade-offs stated as decisions",
+      "levels": {
+        "0": "No trade-offs named.",
+        "1": "Generic trade-offs not tied to this design.",
+        "2": "Each key choice (direct uploads, chunk length, segment length, codec policy, CDN tiers, zone-local event buffers, streaming aggregation) comes with the alternative and the reason it lost here." } }
+  ]
+}

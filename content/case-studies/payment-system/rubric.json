@@ -1,0 +1,69 @@
+{
+  "criteria": [
+    { "id": "functional-scope", "step": "Requirements", "title": "Money flows in scope: authorize, capture, refund, payout, reconcile",
+      "levels": {
+        "0": "Only 'charge the card', with no refunds, payouts or ledger.",
+        "1": "Covers charging, refunds and payouts, but never separates authorization from capture or leaves reconciliation out.",
+        "2": "Authorize at checkout, capture on shipment, void on cancel, refunds, a double-entry ledger for every movement, daily seller payouts and daily reconciliation; fraud, 3-D Secure and multi-currency explicitly out of scope." } },
+    { "id": "invariants", "step": "Requirements", "title": "Invariants and the correctness-over-availability decision",
+      "levels": {
+        "0": "Generic targets (fast, highly available) with nothing about money.",
+        "1": "Says 'no double charges' but does not rank correctness against availability or mention durability of acknowledged payments.",
+        "2": "Charged exactly once, money never created or destroyed, RPO 0 for acknowledged payments, no raw card data, and states that when an outcome is uncertain the system stops and finds out rather than staying available." } },
+    { "id": "volume-math", "step": "Estimation", "title": "Payment rate, PSP budget and database load",
+      "levels": {
+        "0": "No numbers, or numbers without derivation.",
+        "1": "Derives 116/s and a 10x peak of about 1,160/s but never compares them with the PSP rate limit or sizes the database.",
+        "2": "116/s average and 1,157/s peak; PSP calls checked against 2,000/s per PSP including failover (58%) and throttled captures (78%); 2 transactions per checkout giving about 4,244 ops/s on one primary at ρ ≈ 0.53; 60M ledger entries and 22 GB a day." } },
+    { "id": "concurrency-math", "step": "Estimation", "title": "Instances and in-flight calls (Little's law)",
+      "levels": {
+        "0": "Instance count guessed.",
+        "1": "Sizes the API fleet from QPS but ignores that each authorization holds a connection for about 800 ms.",
+        "2": "48 instances (16 per zone) from 9,260/s at 500 per instance with a zone lost; about 980 concurrent PSP calls by Little's law, rising to over 11,000 if the PSP slows to the timeout, which motivates per-PSP bulkheads." } },
+    { "id": "api", "step": "API", "title": "Checkout API with idempotency and honest status codes",
+      "levels": {
+        "0": "A POST /pay with a card number in the body.",
+        "1": "Uses a PSP token and an idempotency key, but has no answer for an unknown outcome or uses floating-point amounts.",
+        "2": "PSP-tokenized card, integer minor units, Idempotency-Key with stored response and 422 on a changed body, 402 for declines, 202 'processing' for unknown outcomes with a status endpoint, and signature-verified, deduplicated webhooks." } },
+    { "id": "data-model", "step": "Data Model", "title": "Payments, idempotency records, ledger and outbox in one ACID store",
+      "levels": {
+        "0": "A payments table with a status and amount column only.",
+        "1": "Has a ledger table, but entries are mutable, idempotency keys live in a cache, or the store choice is not justified.",
+        "2": "Payment with versioned state and transition history, idempotency records in the same database, immutable ledger entries grouped into balanced transactions, an outbox table, and Postgres with a synchronous replica chosen for multi-row transactions and constraints." } },
+    { "id": "hld-checkout", "step": "High-Level Design", "title": "Checkout flow around the PSP call",
+      "levels": {
+        "0": "Calls the PSP inside a database transaction, or writes to the DB only after the PSP answers.",
+        "1": "Records intent before the PSP call, but publishes events with a dual write or has no path for captures and webhooks.",
+        "2": "Pre-call transaction, PSP call with our payment_id as idempotency key and reference and no transaction open, post-call compare-and-set with outbox; asynchronous capture workers, webhook handling through the state machine, and a latency budget that meets 3 s p99." } },
+    { "id": "exactly-once", "step": "Deep Dives", "title": "Exactly-once effects and the unknown outcome",
+      "levels": {
+        "0": "Treats a timeout as a failure and lets the buyer retry.",
+        "1": "Uses idempotency keys at our API but not toward the PSP, or retries with a fresh key.",
+        "2": "Idempotency at all three hops, an unknown state resolved by status queries and webhooks with backoff, voids for late authorizations, and never failing over an in-flight payment to the second PSP." } },
+    { "id": "state-machine", "step": "Deep Dives", "title": "State machine, outbox and saga framing",
+      "levels": {
+        "0": "A free-form status column set by whoever arrives last.",
+        "1": "Draws states but transitions are unconditional updates, or events are published after commit.",
+        "2": "Allowed-transition table with compare-and-set, terminal states that late webhooks cannot leave, transactional outbox compared with CDC, 2PC and event sourcing, and void/refund as saga compensations." } },
+    { "id": "ledger", "step": "Deep Dives", "title": "Double-entry ledger and hot accounts",
+      "levels": {
+        "0": "Balances updated in place with no entries.",
+        "1": "Balanced entries, but corrections edit rows or every payment locks the platform's fee account.",
+        "2": "Balanced immutable entries with a worked example, reversing transactions for corrections, no UPDATE/DELETE privilege, materialised seller balances, and platform hot accounts handled by asynchronous balances or sub-accounts." } },
+    { "id": "reconciliation", "step": "Deep Dives", "title": "Reconciliation against settlement reports",
+      "levels": {
+        "0": "Not mentioned.",
+        "1": "Mentions a daily comparison but has no matching key or no plan for each kind of break.",
+        "2": "Matches by our reference sent to the PSP, classifies breaks (missing on either side, amount, bank deposit) with a resolution for each, aims for over 99.9% automatic matches, and adds hourly API-based checks for unknown payments." } },
+    { "id": "failures-scale", "step": "Wrap-up", "title": "Failure timeline and 10x growth",
+      "levels": {
+        "0": "No failure discussion beyond 'retry'.",
+        "1": "Covers database failover and zone loss but not PSP degradation, or misidentifies what breaks first at 10x.",
+        "2": "A PSP-degradation timeline (bulkhead fills, unknowns, breaker opens, new payments to B, unknowns resolved, reconciliation confirms); at 10x names the PSP rate limit first, then sharding by payment_id with balances as projections." } },
+    { "id": "tradeoffs", "step": "Wrap-up", "title": "Trade-offs stated as decisions",
+      "levels": {
+        "0": "No trade-offs named.",
+        "1": "Generic trade-offs not tied to payments.",
+        "2": "Each key choice (auth then capture, keys in the payment DB, unknown state, two PSPs, Postgres, outbox, immutable ledger, asynchronous platform balances) with the alternative and why it lost here." } }
+  ]
+}

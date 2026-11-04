@@ -1,0 +1,551 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "operators",
+      "kind": "client",
+      "x": 0,
+      "y": 512,
+      "label": "Crawl operators",
+      "props": {
+        "platform": "web",
+        "users": 50
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 208,
+      "y": 0,
+      "w": 1120,
+      "h": 1056,
+      "label": "Region (crawl home)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 32,
+      "y": 512,
+      "label": "Load balancer",
+      "props": {
+        "layer": "L7",
+        "algorithm": "round-robin",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "sql",
+      "kind": "sql-db",
+      "x": 32,
+      "y": 32,
+      "label": "Crawl config + host policy (SQL)",
+      "props": {
+        "replicas": 1,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "ctl",
+      "kind": "service",
+      "x": 32,
+      "y": 192,
+      "label": "Crawl control API",
+      "props": {
+        "name": "crawl-control",
+        "instances": 2,
+        "capacityQps": 200,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 32,
+      "y": 880,
+      "label": "Monitoring (frontier size, per-host errors, fetch rate)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 224,
+      "y": 32,
+      "w": 608,
+      "h": 288,
+      "label": "Cell A (zone a)",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "frontier-a",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Frontier shard A (host-partitioned)",
+      "props": {
+        "name": "frontier-a",
+        "instances": 4,
+        "capacityQps": 8000,
+        "latencyMs": 2,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "bloom-a",
+      "kind": "cache",
+      "x": 32,
+      "y": 176,
+      "label": "URL-seen Bloom filter A",
+      "props": {
+        "sizeGb": 12,
+        "hitRate": 90,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "fq-a",
+      "kind": "queue",
+      "x": 224,
+      "y": 48,
+      "label": "Fetch-task queue A",
+      "props": {
+        "partitions": 12,
+        "retentionH": 24,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "fw-a",
+      "kind": "worker",
+      "x": 416,
+      "y": 48,
+      "label": "Fetch + parse workers A",
+      "props": {
+        "instances": 3,
+        "processingMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 224,
+      "y": 368,
+      "w": 608,
+      "h": 288,
+      "label": "Cell B (zone b)",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "frontier-b",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Frontier shard B (host-partitioned)",
+      "props": {
+        "name": "frontier-b",
+        "instances": 4,
+        "capacityQps": 8000,
+        "latencyMs": 2,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "bloom-b",
+      "kind": "cache",
+      "x": 32,
+      "y": 176,
+      "label": "URL-seen Bloom filter B",
+      "props": {
+        "sizeGb": 12,
+        "hitRate": 90,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "fq-b",
+      "kind": "queue",
+      "x": 224,
+      "y": 48,
+      "label": "Fetch-task queue B",
+      "props": {
+        "partitions": 12,
+        "retentionH": 24,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "fw-b",
+      "kind": "worker",
+      "x": 416,
+      "y": 48,
+      "label": "Fetch + parse workers B",
+      "props": {
+        "instances": 3,
+        "processingMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 224,
+      "y": 704,
+      "w": 608,
+      "h": 288,
+      "label": "Cell C (zone c)",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "frontier-c",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Frontier shard C (host-partitioned)",
+      "props": {
+        "name": "frontier-c",
+        "instances": 4,
+        "capacityQps": 8000,
+        "latencyMs": 2,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "bloom-c",
+      "kind": "cache",
+      "x": 32,
+      "y": 176,
+      "label": "URL-seen Bloom filter C",
+      "props": {
+        "sizeGb": 12,
+        "hitRate": 90,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "fq-c",
+      "kind": "queue",
+      "x": 224,
+      "y": 48,
+      "label": "Fetch-task queue C",
+      "props": {
+        "partitions": 12,
+        "retentionH": 24,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "fw-c",
+      "kind": "worker",
+      "x": 416,
+      "y": 48,
+      "label": "Fetch + parse workers C",
+      "props": {
+        "instances": 3,
+        "processingMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "urls",
+      "kind": "nosql-db",
+      "x": 896,
+      "y": 336,
+      "label": "URL + host store (wide-column, RF 3 across zones)",
+      "props": {
+        "nodes": 6,
+        "consistency": "quorum",
+        "capacityQps": 10000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "obj",
+      "kind": "object-storage",
+      "x": 896,
+      "y": 640,
+      "label": "Page store (WARC files)",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "web",
+      "kind": "external-api",
+      "x": 1424,
+      "y": 512,
+      "label": "Public web (origin sites)",
+      "props": {
+        "latencyMs": 500,
+        "rateLimitQps": 100000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 1424,
+      "y": 768,
+      "w": 320,
+      "h": 160,
+      "label": "Run-mode note",
+      "props": {
+        "text": "Outlinks found by the workers go back to the frontier shard that owns each host (an async loop not drawn, since Run mode models one pass). Politeness (1 req/s per host, robots.txt) lives in the frontier and is not modelled by Run mode."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-operators-lb",
+      "source": "operators",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "seeds, status"
+    },
+    {
+      "id": "e-lb-ctl",
+      "source": "lb",
+      "target": "ctl",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "operator API"
+    },
+    {
+      "id": "e-ctl-sql",
+      "source": "ctl",
+      "target": "sql",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-frontier-a",
+      "source": "lb",
+      "target": "frontier-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "crawl loop"
+    },
+    {
+      "id": "e-frontier-a-bloom-a",
+      "source": "frontier-a",
+      "target": "bloom-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "URL seen?"
+    },
+    {
+      "id": "e-bloom-a-urls",
+      "source": "bloom-a",
+      "target": "urls",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "new URLs"
+    },
+    {
+      "id": "e-frontier-a-fq-a",
+      "source": "frontier-a",
+      "target": "fq-a",
+      "kind": "async",
+      "direction": "forward",
+      "label": "lease due URLs"
+    },
+    {
+      "id": "e-fq-a-fw-a",
+      "source": "fq-a",
+      "target": "fw-a",
+      "kind": "async",
+      "direction": "forward"
+    },
+    {
+      "id": "e-fw-a-web",
+      "source": "fw-a",
+      "target": "web",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conditional GET"
+    },
+    {
+      "id": "e-fw-a-obj",
+      "source": "fw-a",
+      "target": "obj",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "WARC append"
+    },
+    {
+      "id": "e-lb-frontier-b",
+      "source": "lb",
+      "target": "frontier-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "crawl loop"
+    },
+    {
+      "id": "e-frontier-b-bloom-b",
+      "source": "frontier-b",
+      "target": "bloom-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "URL seen?"
+    },
+    {
+      "id": "e-bloom-b-urls",
+      "source": "bloom-b",
+      "target": "urls",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "new URLs"
+    },
+    {
+      "id": "e-frontier-b-fq-b",
+      "source": "frontier-b",
+      "target": "fq-b",
+      "kind": "async",
+      "direction": "forward",
+      "label": "lease due URLs"
+    },
+    {
+      "id": "e-fq-b-fw-b",
+      "source": "fq-b",
+      "target": "fw-b",
+      "kind": "async",
+      "direction": "forward"
+    },
+    {
+      "id": "e-fw-b-web",
+      "source": "fw-b",
+      "target": "web",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conditional GET"
+    },
+    {
+      "id": "e-fw-b-obj",
+      "source": "fw-b",
+      "target": "obj",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "WARC append"
+    },
+    {
+      "id": "e-lb-frontier-c",
+      "source": "lb",
+      "target": "frontier-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "crawl loop"
+    },
+    {
+      "id": "e-frontier-c-bloom-c",
+      "source": "frontier-c",
+      "target": "bloom-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "URL seen?"
+    },
+    {
+      "id": "e-bloom-c-urls",
+      "source": "bloom-c",
+      "target": "urls",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "new URLs"
+    },
+    {
+      "id": "e-frontier-c-fq-c",
+      "source": "frontier-c",
+      "target": "fq-c",
+      "kind": "async",
+      "direction": "forward",
+      "label": "lease due URLs"
+    },
+    {
+      "id": "e-fq-c-fw-c",
+      "source": "fq-c",
+      "target": "fw-c",
+      "kind": "async",
+      "direction": "forward"
+    },
+    {
+      "id": "e-fw-c-web",
+      "source": "fw-c",
+      "target": "web",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conditional GET"
+    },
+    {
+      "id": "e-fw-c-obj",
+      "source": "fw-c",
+      "target": "obj",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "WARC append"
+    }
+  ]
+}

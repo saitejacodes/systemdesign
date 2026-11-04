@@ -37,7 +37,7 @@
     "isolation-lab",
     "sql-sandbox"
   ],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["ticket-booking", "food-delivery", "ride-sharing"],
   "prerequisites": [
     "p2-transactions"
   ]

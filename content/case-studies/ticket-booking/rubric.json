@@ -1,0 +1,69 @@
+{
+  "criteria": [
+    { "id": "functional-scope", "step": "Requirements", "title": "Scope: seat map, all-or-nothing holds, payment, release, waiting room",
+      "levels": {
+        "0": "Only 'book a ticket', with no holds or expiry.",
+        "1": "Covers seat selection, holds and payment, but never says holds are all-or-nothing, never sets a per-account limit, or leaves out the waiting room.",
+        "2": "Browse with live availability, all-or-nothing holds of up to 4 seats for 10 minutes, payment through the PSP, on-time release, and a waiting room that tells late arrivals early; resale and dynamic pricing out of scope." } },
+    { "id": "nfr-invariants", "step": "Requirements", "title": "No double sale, hold accuracy and fairness",
+      "levels": {
+        "0": "Generic targets only.",
+        "1": "States 'never sell a seat twice' but not what fair means or what must happen to a hold while payment is in flight.",
+        "2": "No seat sold twice, holds released within seconds but never during a payment, never charge without a ticket, survive twice the forecast crowd, and a definition of fairness that defeats fastest-refresh-wins." } },
+    { "id": "admission-math", "step": "Estimation", "title": "Arrivals, admission rate and sell-out time",
+      "levels": {
+        "0": "No numbers, or treats 1M arrivals as 1M bookings.",
+        "1": "Derives 16,667 joins/s but never connects the admission rate to inventory or notices most arrivals leave empty-handed.",
+        "2": "16,667 joins/s (33,333 at 2x), 100,000 polls/s, 10,000 active shoppers admitted at 2,000/min, about 21 minutes to sell 25,000 orders, about 958,000 people who must be told early, and the counterfactual of 200,000 req/s and 33,000 conflicting writes/s without a waiting room." } },
+    { "id": "sizing-math", "step": "Estimation", "title": "Write rate and tier sizing",
+      "levels": {
+        "0": "Instance counts guessed.",
+        "1": "Sizes the front door but not the inventory writes, or sizes the database for the full crowd.",
+        "2": "About 100 seat writes/s (67 holds, 20 confirms, 13 releases), 2,000 seat-map reads/s, 42 waiting-room instances, 6 queue-store nodes, 21 booking API instances, and one Postgres primary at ρ ≈ 0.07, each sized for a zone loss." } },
+    { "id": "api", "step": "API", "title": "Queue, hold and pay endpoints",
+      "levels": {
+        "0": "A single POST /book endpoint.",
+        "1": "Separate hold and pay calls, but no idempotency keys, no expiry in the response, or no status for an unknown payment.",
+        "2": "Join returning a signed token, one shared CDN-cached now-serving file, hold with Idempotency-Key returning expiresAt from the server clock and 409 with taken seats, pay returning 200, 202 'processing' or 410 'hold expired'." } },
+    { "id": "data-model", "step": "Data Model", "title": "Seat rows, holds and orders in a transactional store",
+      "levels": {
+        "0": "Seat counts per section with no per-seat state.",
+        "1": "Per-seat rows, but holds live only in a cache or the store choice is unjustified.",
+        "2": "Per-seat status (available, held, paying, sold) with hold id and expiry in Postgres for all-or-nothing conditional updates, orders keyed for PSP idempotency, a separate key-value queue store, and Redis bitmaps that are derived and never authoritative." } },
+    { "id": "hld-flows", "step": "High-Level Design", "title": "Waiting room, admission, hold, pay and expiry flows",
+      "levels": {
+        "0": "Fans go straight to the booking service and database.",
+        "1": "Has a queue in front, but admission is not tied to inventory or the payment and expiry flows are missing.",
+        "2": "Join with one token per account, CDN polling of one shared file, an admission controller pacing by active shoppers and unsold seats, conditional holds, pay with a paying state and outbox, and a sweeper; with a latency budget." } },
+    { "id": "contention", "step": "Deep Dives", "title": "Preventing double booking: locking choices",
+      "levels": {
+        "0": "Read-then-write with no lock or condition.",
+        "1": "Uses SELECT FOR UPDATE or a version check correctly but cannot compare them, or relies on Redis SETNX as the record.",
+        "2": "Compares pessimistic, optimistic, single conditional update and Redis; explains READ COMMITTED re-evaluation, deadlock ordering, SKIP LOCKED for best-available, and why asynchronous Redis replication rules it out as the record." } },
+    { "id": "holds", "step": "Deep Dives", "title": "Holds as leases with on-time release",
+      "levels": {
+        "0": "Holds never expire, or expire via application-server timers.",
+        "1": "Uses a TTL or a sweeper, but correctness depends on the sweeper running on time or on several machine clocks.",
+        "2": "Lazy expiry in the hold condition so correctness never waits for a job, an idempotent sweeper for visibility, the database clock as the only clock, and per-account hold limits against bots." } },
+    { "id": "waiting-room", "step": "Deep Dives", "title": "Virtual waiting room and fairness",
+      "levels": {
+        "0": "No admission control; 'autoscale'.",
+        "1": "A FIFO queue with a per-user position API that itself takes 100,000 req/s.",
+        "2": "Random order for the lobby and arrival order after opening, a shared CDN-cached threshold, signed account-bound tokens, admission paced by inventory, early sold-out notice, and edge-issued tokens or a lottery as alternatives." } },
+    { "id": "payment-timeout", "step": "Deep Dives", "title": "Payment timeouts versus hold expiry",
+      "levels": {
+        "0": "Releases seats when the PSP times out.",
+        "1": "Keeps seats during payment but has no bound or no plan for authorizations that arrive late.",
+        "2": "Paying state that freezes the hold, authorize then confirm then capture, decline returns to held, unknown resolved by status checks keyed by order_id, and a bounded wait after which seats are released and late authorizations voided." } },
+    { "id": "failures-scale", "step": "Wrap-up", "title": "Failure timeline and 10x",
+      "levels": {
+        "0": "No failure discussion.",
+        "1": "Mentions database failover but not what the queue and existing holds experience, or what breaks first at 10x.",
+        "2": "A primary-failover timeline that pauses admission and extends holds by the outage; at 10x names the queue store and waiting-room service first, edge tokens, longer polls far back, sharding inventory by event, and lotteries as policy." } },
+    { "id": "tradeoffs", "step": "Wrap-up", "title": "Trade-offs stated as decisions",
+      "levels": {
+        "0": "No trade-offs named.",
+        "1": "Generic trade-offs not tied to ticketing.",
+        "2": "Each key choice (waiting room, lobby lottery, shared now-serving file, Postgres conditional update, lazy expiry, paying state, auth then capture, separate queue store) with the alternative and why it lost here." } }
+  ]
+}

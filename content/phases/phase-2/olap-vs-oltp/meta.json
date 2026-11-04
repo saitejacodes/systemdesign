@@ -34,9 +34,7 @@
     }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": [
-    "typeahead"
-  ],
+  "practiceCaseStudyIds": ["typeahead", "metrics-monitoring"],
   "prerequisites": [
     "p2-indexing",
     "p2-replication"

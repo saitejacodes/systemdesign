@@ -1,0 +1,57 @@
+{
+  "id": "ticket-booking",
+  "title": "Ticket booking",
+  "summary": "Pick-your-seat booking that survives a million fans arriving in a minute: a waiting room in front, conditional seat holds that expire on time, and payments that never sell a seat twice.",
+  "difficulty": 2,
+  "weekRecommended": 14,
+  "relatedSectionIds": ["p2-locking", "p2-transactions", "p4-distributed-locks", "p4-bulkheads-load-shedding", "p2-rate-limiting", "p3-cdn", "p6-edge-computing", "p2-idempotency", "p3-cache-strategies"],
+  "interviewerPrompt": "Design a ticket booking site for concerts and sports, something like Ticketmaster. Fans pick their seats on a map and pay. Some shows sell out in minutes. Where do you start?",
+  "clarifyingQuestions": [
+    { "question": "How many users, and what does a big on-sale look like?", "answer": "About 20M registered users. For a popular show, assume 1M people arrive in the first minute for 50,000 seats." },
+    { "question": "Do fans pick exact seats, or does the system assign them?", "answer": "Fans pick specific seats on a seat map. A 'best available' option that picks for them is nice to have." },
+    { "question": "How long can a fan hold seats while paying?", "answer": "10 minutes. If they have not paid by then, the seats go back on sale." },
+    { "question": "How strict is 'never sell a seat twice'?", "answer": "Absolute. Two people with tickets for the same seat at the same show is the worst failure we can have." },
+    { "question": "How do payments work?", "answer": "Through an external payment service provider (PSP) that takes about 800 ms per call and can time out without telling us whether it charged." },
+    { "question": "What should happen to the people who arrive after the seats are gone?", "answer": "They should find out quickly and fairly. The site must not crash or show seats that are not really available." },
+    { "question": "What does 'fair' mean here?", "answer": "People who were waiting when the sale opened should not lose to whoever has the fastest connection or a bot. After the sale opens, earlier arrivals go first." },
+    { "question": "Are there per-customer limits?", "answer": "Yes: at most 4 tickets per account per show." },
+    { "question": "Is the resale marketplace or dynamic pricing in scope?", "answer": "No. Fixed prices per seat tier, primary sale only." },
+    { "question": "How big are venues?", "answer": "Up to about 50,000 seats for a stadium; most events are far smaller. Around 10,000 events are on sale at any time." },
+    { "question": "What about bots?", "answer": "Assume an existing bot-detection product scores each session. You should limit the damage a bot that gets through can do." }
+  ],
+  "deepDiveQuestions": [
+    "How do you stop two fans from getting the same seat: optimistic or pessimistic locking, in the database or in Redis?",
+    "How do temporary holds work, and how are they released on time?",
+    "How does a virtual waiting room absorb a million arrivals in a minute and stay fair?",
+    "What happens when payment is slow, fails or times out while a hold is about to expire?"
+  ],
+  "trafficProfile": {
+    "qps": 116767,
+    "readWriteRatio": 5.964,
+    "peakMultiplier": 2,
+    "requestTypes": [
+      { "id": "queue-poll", "name": "Waiting-room status poll (CDN)", "op": "read", "weight": 1, "target": { "kinds": ["object-storage"] } },
+      { "id": "join", "name": "Join the waiting room", "op": "write", "weight": 166.67, "target": { "kinds": ["nosql-db"] } },
+      { "id": "hold", "name": "Hold, confirm or release seats", "op": "write", "weight": 1, "target": { "kinds": ["sql-db"] } }
+    ]
+  },
+  "runChallenge": {
+    "id": "onsale-rush-lose-az",
+    "title": "On-sale rush at twice the forecast, with a zone down",
+    "description": "Run at 2x the forecast on-sale load (about 233,500 requests per second: 200,000 queue polls, 33,300 joins and 200 seat writes) and lose the busiest availability zone after 10 s. The site must keep serving at least 230,000 requests per second with under 0.1% errors and a p99 under 200 ms, with no single point of failure.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "minOkQps": 230000, "maxErrorRatePct": 0.1, "maxP99Ms": 200, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Checking availability with a SELECT and then writing the hold in a separate statement without a condition or lock, so two fans both see the seat free and both get it.",
+    "Letting a million fans hit the seat map and booking API directly and trying to scale the database for it, instead of admitting shoppers at a rate the inventory can absorb.",
+    "Using Redis SETNX with a TTL as the only record of holds and sales, then losing holds on a Redis failover and selling the same seat twice.",
+    "Releasing a hold on a timer while the fan's payment is still in flight, so the seat is resold and the first fan is charged for nothing.",
+    "Running holds on application-server timers or cron jobs that use their own clocks, so a hold expires early or late depending on which machine checks.",
+    "Treating a PSP timeout as a failure and releasing the seats, when the charge may have succeeded.",
+    "A waiting room that admits by who refreshes fastest, which rewards bots and punishes people on slow connections.",
+    "Keeping 950,000 people waiting for seats that no longer exist, instead of telling the queue as soon as unsold plus held seats reach zero."
+  ]
+}

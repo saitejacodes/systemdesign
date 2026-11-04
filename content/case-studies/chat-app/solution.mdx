@@ -1,0 +1,305 @@
+## Requirements
+
+A chat app sounds like "store a message, forward a message". The interview is about what that hides: hundreds of millions of connections open for hours, an order that must hold on every device of every member, and ticks that are promises. Pin the promises down first; every later decision follows from them.
+
+### Functional
+
+1. **1:1 and group conversations.** Groups have up to 500 members. Text messages are the focus; media (photos, voice notes, video) is uploaded to a blob store and the message carries a pointer and a decryption key.
+2. **Ticks.** One tick: the server has the message durably. Two ticks: it reached at least one of each recipient's devices. Blue: the recipient read it. In groups, the ticks aggregate over members.
+3. **Offline delivery.** A recipient who is offline gets the message when they reconnect, and a mobile push notification through Apple (APNs) or Google (FCM) wakes the app.
+4. **History and multi-device.** History is kept forever on the server and shown identically on every device a user has (1.3 on average: mostly a phone, sometimes a laptop).
+5. **Presence.** "Online" and "last seen", plus typing indicators as a nice-to-have.
+6. **End-to-end encryption (E2EE).** The server cannot read message content. We design around this but not the cryptography itself.
+
+### Non-functional
+
+| Property | Target | Why it matters here |
+|---|---|---|
+| Delivery latency | under 500 ms end to end to an online recipient, p99 | Chat feels broken above about half a second |
+| Sender ack | one tick within 200 ms at p99, measured at our servers | The sender stares at the clock icon |
+| Durability | no message lost after the first tick | The tick is a promise |
+| Ordering | within a conversation, one order on every device; gaps detectable | Group replies that appear above their question are confusing and look like loss |
+| Delivery semantics | at-least-once on the wire, exactly-once on the screen | Networks retry; users must not see duplicates |
+| Presence | best effort, seconds stale is fine | Never worth delaying a message |
+| Availability | losing a whole availability zone must not stop messaging | Chat is used most exactly when things are going wrong |
+
+### Out of scope
+
+Voice and video calls, stories, payments, spam and abuse systems (which E2EE makes much harder; see deep dive 5), the media pipeline itself, and account signup. We assume an authenticated user and device ID on every connection.
+
+## Estimation
+
+These are the problem's assumptions, not any real company's figures.
+
+**Messages.** 500M daily users × 40 messages = **20B messages a day**. 20 × 10⁹ ÷ 86,400 s = **231,481 messages/s** average. With a 2× evening peak: **463,000 messages/s**.
+
+**Recipients per message.** Assume 90% of messages are 1:1 (one recipient) and 10% go to groups with about 10 other members: 0.9 × 1 + 0.1 × 10 = **1.9 recipients per message**. User deliveries are 231,481 × 1.9 = 440,000/s average and **880,000/s at peak**. With 1.3 devices per user, device deliveries at peak are 880,000 × 1.3 = **1.14M/s**.
+
+**Receipts.** A naive design sends a delivered and a read receipt per message per recipient, 2 × 1.9 = 3.8 per message. We will make receipts **cursors** ("delivered up to seq 18,234") that clients coalesce, so assume **1 receipt write per message sent**: 231,481/s average, 463,000/s at peak.
+
+**Reconnect syncs.** Mobile apps lose and regain their connection constantly (backgrounding, network changes). Assume 20 syncs per user per day: 500M × 20 = 10B a day = **115,741/s** average, 231,000/s at peak.
+
+**Total request load.** 231,481 sends + 231,481 receipts + 115,741 syncs = **578,700 requests/s** average and **1.16M/s at peak**. Reads (syncs) to writes (sends and receipts): 115,741 ÷ 462,963 = **0.25**. Chat is write-heavy, unlike most systems you design.
+
+**Concurrent connections.** Assume 40% of daily users online at peak (200M) with 1.2 devices each: **240M connections**.
+
+**WebSocket gateways.** A gateway is sized by connections, not messages. Assume each holds **500,000 connections** (at about 20 KB of kernel and TLS buffers each, 10 GB of memory; an assumption to load-test). 240M ÷ 500,000 = 480 gateways. To survive losing one of three zones, the other two must hold everything: **720 gateways, 240 per zone**. Frames are modest by comparison: after a zone loss, 1.16M inbound ÷ 480 = 2,411/s per gateway, and outbound (1.14M deliveries + 0.6M receipt notifications) ÷ 480 = 3,630/s, against an assumed 10,000/s per direction. Heartbeats every 60 s (240M ÷ 60 = 4M/s, about 5,600/s per gateway) are answered locally.
+
+**Chat service.** Assume one instance handles **5,000 requests/s** (route, assign a sequence number, write to the store). Peak 1.16M with one zone lost and ρ ≤ 0.75 needs 1.16M ÷ (0.75 × 5,000) = 309 instances in two zones; we run **160 per zone, 480 total**: ρ = 0.48 normally, 0.72 with a zone down.
+
+**Message storage.** Assume 300 B per stored message: about 100 B of text, encryption overhead, IDs and timestamps, plus storage-engine overhead. 20B × 300 B = **6 TB a day**, 2.2 PB a year. Keep 30 days hot in the database: 180 TB, **540 TB with three replicas**. Older messages move to a cold tier in object storage (deep dive 2). This assumes one stored ciphertext per message; per-device encryption of 1:1 messages would raise 1:1 storage by about 1.6× (deep dive 5).
+
+**Message store load.** 463,000 writes/s plus sync misses: if 80% of syncs are served from a cache of the last couple of hours of messages, 231,000 × 0.2 = 46,000 reads/s. Total 509,000/s. At an assumed 10,000 operations/s per node, ρ ≈ 0.57 needs **90 nodes**, about 6 TB each: within normal limits for a wide-column store.
+
+**Per-user conversation rows (the inbox store).** Each message updates the conversation row of every recipient and of the sender (1.9 + 1 = 2.9 tiny upserts), so 463,000 × 2.9 = 1.34M/s at peak, plus 463,000 receipt cursors: **1.8M writes/s**. These are tiny overwrites; at an assumed 25,000/s per node and ρ ≈ 0.6, that is **120 nodes**. This, not the message bodies, is the biggest write load in the system.
+
+**Fan-out log and workers.** Messages and receipts go into a Kafka log: 926,000 events/s at peak × about 1 KB = 0.93 GB/s, 2.8 GB/s with three replicas. 512 partitions. Workers spend an assumed 1 ms of CPU per event; an 8-core worker does 8,000/s, so 926,000 ÷ (0.6 × 8,000) ≈ **200 workers**.
+
+**Push.** Assume half of user deliveries go to users with no device connected: 880,000 × 0.5 = 440,000/s. One push per message would be 4.4× the 100,000/s provider quota. Collapsing to one push per user per conversation per 30 s, assume a 5× reduction: **88,000 pushes/s at peak**, 88% of quota. Push is the tightest external limit in the design.
+
+<Callout type="tip" title="What the numbers say">
+Gateways are sized by memory for connections, not CPU for messages. The heaviest database load is not storing messages but updating everyone's conversation rows. And the push quota is nearly used at peak. Those three facts decide most of the architecture.
+</Callout>
+
+For Run mode the workload is 231,481 sends, 231,481 receipts and 115,741 syncs per second (578,700/s, read:write 0.25), at a 2× peak.
+
+## API design
+
+Clients keep one <Term slug="websocket">WebSocket</Term> open (TLS, then an HTTP upgrade) for real-time traffic, and use plain HTTPS for bulk sync, history and media. Frames are shown as JSON for readability; in production a compact binary encoding such as Protocol Buffers saves bandwidth and battery.
+
+```json
+// client → server: send
+{ "type": "send", "clientMsgId": "8f14e45f-ceea-4e7a-9b2c-1d5a7e3c0b11",
+  "conversationId": "c_7Hq2", "ciphertext": "AwgBEiEF…", "mediaRef": null }
+
+// server → sender: one tick, after the message is durable
+{ "type": "ack", "clientMsgId": "8f14e45f-ceea-4e7a-9b2c-1d5a7e3c0b11",
+  "conversationId": "c_7Hq2", "seq": 18234, "serverTs": "2026-11-04T19:02:11.412Z" }
+
+// server → each recipient device
+{ "type": "deliver", "conversationId": "c_7Hq2", "seq": 18234,
+  "senderId": "u_91", "senderDevice": 2, "ciphertext": "AwgBEiEF…" }
+
+// recipient → server: cursors, coalesced (two ticks / blue ticks)
+{ "type": "receipt", "conversationId": "c_7Hq2", "delivered": 18234, "read": 18230 }
+
+// server → sender's devices
+{ "type": "receipt", "conversationId": "c_7Hq2", "userId": "u_42", "delivered": 18234, "read": 18230 }
+
+// presence: subscribe only while a chat with that contact is open
+{ "type": "presence.sub", "userIds": ["u_42"] }
+{ "type": "presence", "userId": "u_42", "state": "online" }
+```
+
+- `clientMsgId` is generated on the device and acts as an <Term slug="idempotency-key">idempotency key</Term>: a send retried after a dropped connection returns the original `seq` instead of creating a second message.
+- `seq` is the per-conversation <Term slug="sequence-number">sequence number</Term> (deep dive 2). Every device sorts by it and notices a gap when it jumps.
+- Receipts are cursors, so they are idempotent and order-insensitive: the server keeps `max(old, new)`.
+
+HTTP endpoints:
+
+```http
+GET /v1/sync?token=eyJ0IjoxNzMwNzQ2OTMxfQ        → conversations changed since the token, with up to 50 newest messages each, and a new token
+GET /v1/conversations/c_7Hq2/messages?beforeSeq=18000&limit=50   → older history, newest first
+POST /v1/groups                                   → { "name": "Trip", "members": ["u_42", "u_77"] } → 201 { "conversationId": "c_9Kd1" }
+POST /v1/media/uploads                            → 201 { "uploadUrl": "https://…", "mediaRef": "m_5x…" }
+```
+
+Media goes straight from the device to object storage through a <Term slug="presigned-url">presigned URL</Term>; the encrypted blob never passes through the gateways.
+
+## Data model
+
+| Entity | Key | Fields | Access pattern |
+|---|---|---|---|
+| `message` | partition `(conversation_id, bucket)` where `bucket = seq ÷ 10,000`; clustering `seq` desc, `owner_epoch` | `client_msg_id`, `sender_id`, `sender_device`, `ciphertext`, `media_ref`, `server_ts` | Append; range read "newest N" or "after seq X" |
+| `conversation` | `conversation_id` | `type`, `member_count`, `last_seq`, `last_published_seq`, `created_at` | Read on owner takeover |
+| `member` | partition `conversation_id`, clustering `user_id` | `role`, `joined_seq` | Fan-out list; members only see messages after `joined_seq` |
+| `user_conversation` (inbox store) | partition `user_id`, clustering `conversation_id` | `last_seq`, `delivered_seq`, `read_seq`, `muted`, `updated_at` | Whole-partition read on sync (a few hundred rows, about 15 KB) |
+| `device` | partition `user_id`, clustering `device_id` | push token, public identity key, `last_seen` | Push and key lookup |
+| connection registry (Redis) | `conn:{user_id}` | map `device_id → (gateway_id, connection_id)`, TTL 2 min, refreshed by heartbeats | Lookup on every delivery |
+| presence (Redis) | `presence:{user_id}` | `online` or `last_seen`, TTL | Read on subscribe |
+
+**Why a <Term slug="wide-column-store">wide-column store</Term>** (Cassandra or ScyllaDB): the load is write-heavy (463,000 appends and 1.8M small upserts per second at peak), every read is a range within one partition ("messages of conversation X after seq Y"), there are no joins, and replication across zones is built in. Its <Term slug="lsm-tree">LSM-tree</Term> storage turns appends and overwrites into sequential writes. Discord's 2017 engineering post "How Discord Stores Billions of Messages" describes the same shape on Cassandra: partition by channel plus a bucket, cluster by message ID.
+
+**Why `bucket` comes from `seq`, not time:** time buckets make a busy group's partition huge and scatter a quiet chat over near-empty ones. Sequence buckets cap every partition at 10,000 messages (about 3 MB) and need no lookup.
+
+**Why sharded SQL lost:** Postgres or MySQL sharded by conversation would work for messages, but 1.8M upserts a second means hundreds of shards, manual resharding, and transactions we do not need. Small relational account data stays in SQL.
+
+**Hot/cold tiering.** Rows older than 30 days are compacted per conversation bucket into files in object storage and expire from the database. Scrolling far back reads the cold file: slower (about 50–100 ms) and rare.
+
+## High-level design
+
+<Figure caption="FIG. 1 · CHAT APP · REFERENCE ARCHITECTURE">
+  <Diagram label="Devices connect over WebSocket to 720 gateways in three zones. Each send goes to the conversation's owner in the chat service, which stores it, acks, and appends it to a Kafka log. Fan-out workers find recipients in a Redis registry, deliver to online devices, update inbox rows and push to offline users." chart={`flowchart LR
+    U[Users' devices] -->|WebSocket TLS| LB[L4 load balancer]
+    U -->|presigned upload| OBJ[(Media blobs)]
+    subgraph Region
+      LB --> G1[Gateways AZ-a x240]
+      LB --> G2[Gateways AZ-b x240]
+      LB --> G3[Gateways AZ-c x240]
+      G1 & G2 & G3 -->|by conversation id| CS[Chat service: conversation owners x480]
+      CS -->|persist then ack| MS[(Message store 90 nodes)]
+      CS -->|sync reads| RC[(Redis recent messages)]
+      CS -->|receipt cursors| IB[(Inbox store 120 nodes)]
+      CS -.->|append| K[[Kafka fan-out log]]
+      K -.-> W[Fan-out workers x200]
+      W -->|who is online where| REG[(Redis registry + presence)]
+      W -->|deliver frame| G1 & G2 & G3
+      W -->|conversation rows| IB
+    end
+    W -->|collapsed push| P[APNs / FCM]
+    P -.-> U`} />
+</Figure>
+
+**Connect.** The device opens a WebSocket through the L4 load balancer (least connections) to a gateway, authenticates with a device token, and the gateway writes `conn:{user_id}[device_id] = (gateway_id, connection_id)` into the registry with a 2-minute TTL that heartbeats refresh. Then the device calls `sync`.
+
+**Send (one tick).**
+1. The gateway hashes `conversation_id` onto the chat-service ring and forwards the frame to the owner (deep dive 2).
+2. The owner checks `clientMsgId` against its recent-send map (a retry returns the stored ack), assigns `seq = next_seq++`, and writes the message at `LOCAL_QUORUM` (two of three replicas in different zones).
+3. Only after the write succeeds does it send `ack` to the sender. This is the one tick: the message now survives the loss of any single machine or zone.
+4. It appends the message to the Kafka fan-out log, partitioned by `conversation_id` so one conversation's messages stay in order, and updates `last_published_seq`.
+
+**Deliver (two ticks).**
+1. A fan-out worker consumes the message, reads the member list (cached), and for each recipient looks up their devices in the registry.
+2. Online devices get a `deliver` frame through their gateway. Offline users get a collapsed push.
+3. The worker upserts each recipient's `user_conversation.last_seq` so sync can find the conversation.
+4. The recipient device acks with a receipt cursor; the chat service writes `delivered_seq = max(old, new)` and publishes the receipt so the sender's devices show two ticks.
+
+**Latency budget for an online recipient** (assumed one-way mobile latency of 100 ms each side): uplink 100 ms + gateway and owner 5 ms + quorum write 10 ms + Kafka append with `acks=all` 10 ms + consume and registry lookup 10 ms + recipient gateway 2 ms + downlink 100 ms ≈ **240 ms median**, leaving about 260 ms for the tail within the 500 ms target.
+
+**Sync.** On reconnect the device sends its sync token. The chat service reads the user's `user_conversation` partition, returns conversations whose `last_seq` is beyond what the token covers, and attaches up to 50 newest messages each from the recent-messages cache (80% hit rate assumed), falling back to the message store.
+
+## Deep dives
+
+### How do you hold 240M open connections, and how does a message find the gateway its recipient is connected to?
+
+**Why WebSocket.** A <Term slug="websocket">WebSocket</Term> is a full-duplex channel over one TCP connection, so the server pushes a message the moment it arrives. <Term slug="long-polling">Long polling</Term> costs a new request after every delivery; <Term slug="sse">server-sent events</Term> only push one way, so sends need a second channel. Long polling stays as the fallback for networks that block upgrades.
+
+**Gateways hold connections and nothing else.** With no business logic they rarely need redeploying, and a redeploy drains connections over 10–15 minutes instead of disconnecting 500,000 devices at once. Far more per box is possible: WhatsApp's 2012 engineering post "1 million is so 2011" reported over 2 million TCP connections on one FreeBSD server running Erlang. We plan for 500,000 to leave headroom for TLS memory and reconnect bursts.
+
+**L4, not L7, load balancing.** The balancer only spreads new connections and passes bytes; parsing every frame at layer 7 costs CPU for nothing.
+
+**The connection registry** is how anyone finds a user. Each device's entry carries a `connection_id`, so when a device reconnects to a different gateway, the old gateway's delayed "disconnected" event cannot delete the new entry (it deletes only if the ID matches). TTLs remove entries of gateways that died without cleaning up. A delivery to a stale entry fails at the old gateway, and the message is still safe in the store: the device gets it on its next sync. The registry is an optimisation for speed, never the source of truth.
+
+**Alternative considered:** a pub/sub topic per user that gateways subscribe to. It removes the lookup but means 240M subscriptions churning with every reconnect; a registry lookup per delivery (880,000/s at peak) is simpler.
+
+### How do you guarantee that every device shows a conversation's messages in the same order, with no silent gaps?
+
+| Option | How | Problem |
+|---|---|---|
+| Device clock | Sender's timestamp | Phones are minutes off; <Term slug="clock-skew">clock skew</Term> reorders replies |
+| Server timestamp | Receiving server's clock | Different servers' clocks disagree by milliseconds; two quick messages can swap |
+| <Term slug="snowflake-id">Snowflake</Term>-style IDs | Time-ordered unique IDs | One consistent order (everyone sorts by the same ID), but not gap-free: a device cannot tell "missed a message" from "none was sent" |
+| Conditional counter in the store | `UPDATE … SET next = next + 1 IF next = n` | A consensus round per message (Cassandra's lightweight transactions take several round trips) at 463,000/s |
+| **Single owner per conversation** | One chat-service instance assigns `seq` in memory | Needs ownership handover done carefully (below) |
+
+**Decision: a single owner per conversation assigns gap-free sequence numbers.** Conversations map onto chat-service instances with <Term slug="consistent-hashing">consistent hashing</Term>; ring membership lives in a coordination service (etcd or ZooKeeper), and each instance holds a <Term slug="lease">lease</Term> with an epoch number for its ranges. Ordering is decided in one place, in memory, for free. The load is even because there are millions of conversations; the busiest 500-member group sends a few messages a second, far below one instance's 5,000/s.
+
+**Takeover.** When an owner dies, its lease expires (10 s) and its conversations move to the next instances on the ring. A new owner learns `next_seq` lazily from the newest stored row, and re-publishes messages above `last_published_seq`, closing the window where the old owner persisted a message but died before appending it to Kafka.
+
+**The zombie owner.** An owner paused by a long garbage collection might wake after its lease expired and assign a `seq` that the new owner also assigns. Because `owner_epoch` is part of the clustering key, the two rows do not overwrite each other; every device orders by `(seq, owner_epoch)`, so all devices still agree, and an alarm fires because this should be very rare. The epoch acts like a <Term slug="fencing-token">fencing token</Term> without needing a conditional write on the hot path.
+
+**Gaps.** A device that gets seq 18,236 after 18,234 fetches 18,235. Ordering is per conversation only; a cross-conversation order would force a global sequencer.
+
+### How do delivered and read receipts and offline delivery work without losing or duplicating messages?
+
+**Durability first.** The one tick follows a quorum write. If the gateway or owner dies before the ack, the app retries with the same `clientMsgId`, and the owner (or its successor, via a short-lived dedupe index on `(conversation_id, client_msg_id)`) returns the existing `seq`.
+
+**Delivery is <Term slug="at-least-once">at-least-once</Term>.** Kafka redelivers after crashes; sync may repeat a live message. Devices deduplicate by `(conversation_id, seq)`, so the screen is exactly-once; making the wire exactly-once would add coordination for no visible gain.
+
+**Receipts as cursors.** "Delivered up to 18,234" replaces receipts for every message below it, so a device sends one receipt per batch, out-of-order receipts are harmless (`max` wins), and a lost receipt is repaired by the next one. In groups, the sender's two ticks appear when every member's `delivered_seq` reaches the message; computing that costs a read of 499 rows for a large group, so large groups show aggregate ticks only on demand ("message info").
+
+**Offline delivery.** Nothing special is stored for offline users: the message is in the conversation and their `user_conversation.last_seq` was bumped, so sync finds it. This is why messages are stored **once per conversation**, not copied into per-user mailboxes (500 copies per message in a full group).
+
+**Push** wakes the app. The worker sends at most one push per user per conversation per 30 s, using the providers' collapse features (APNs' `apns-collapse-id` header and FCM's collapse key) so a busy group shows one "12 new messages" notification. With E2EE the push carries no text: either a generic "New message" or an encrypted payload the app decrypts on the device. Muted conversations send nothing.
+
+### How do group messages fan out, and how does presence work without flooding the system?
+
+**Store once, fan out pointers.** A group message is written once to the conversation and then fanned out: a `deliver` frame to each online member device, and a tiny upsert of each member's conversation row. This is <Term slug="fan-out">fan-out</Term> on write, which is safe here precisely because groups are capped at 500 members: the worst case is 499 upserts and about 650 frames per message. A broadcast channel with a million followers would need fan-out on read instead (followers pull from the channel log), which is the news-feed problem.
+
+<TradeoffBox title="Fan-out through a Kafka log vs direct from the owner" items={[
+  { gain: "Kafka log: absorbs bursts, survives worker crashes, can be replayed after a bug; the owner's job ends at the append", cost: "Adds an append and a consume, roughly 10–20 ms, and another system to operate" },
+  { gain: "Owner pushes straight to recipient gateways: lowest latency", cost: "The owner must buffer and retry when gateways are slow, so a slow gateway can back up a whole conversation's sends" }
+]} />
+
+We take the log; the 500 ms budget has room for it.
+
+**Presence.** Heartbeats (every 60 s, which also keep mobile NAT mappings open) end at the gateway; only **transitions** go further. The gateway writes `presence:{user}` to Redis with a TTL and publishes the change only to devices that subscribed by opening a chat with that contact. Broadcasting each change to every contact would cost transitions × contacts: at an assumed 20 connects a day per user and 200 contacts, 2 × 20 × 500M × 200 = 4 trillion messages a day, about **46M/s**, two hundred times the message rate. Subscribe-on-view cuts this to the handful of people looking. Going "offline" waits a 30 s grace period so a phone switching from Wi-Fi to mobile data does not flicker. Typing indicators are sent through the gateway to the conversation's currently connected members, never stored, and dropped first under load.
+
+### What does end-to-end encryption change in this design?
+
+With E2EE, devices hold the private keys and the server stores and forwards **ciphertext it cannot read**. The widely used design is the Signal Protocol (Signal publishes its X3DH key agreement and Double Ratchet specifications at signal.org/docs): each pair of devices has its own session, and for groups each sender distributes a "sender key" to every member device once and then encrypts each group message a single time.
+
+What it changes for us:
+
+- **A key directory.** The server stores each device's public identity key and a batch of one-time pre-keys so someone can start a session with an offline device. This is a new, small service and a trust anchor: if it handed out the wrong key, it could intercept messages, which is why apps let users compare safety numbers.
+- **Per-device fan-out.** A 1:1 message must be encrypted separately for each of the recipient's devices and the sender's other devices, so the stored and delivered payload per 1:1 message grows by about 1.6× (1.3 recipient devices + 0.3 other sender devices). Groups using sender keys stay at one ciphertext.
+- **New devices and history.** A newly linked laptop cannot decrypt history encrypted to other devices' keys. History must be transferred from an existing device, re-encrypted for the new one, or the user accepts that a new device starts empty.
+- **Lost server features.** Server-side search, server-generated link previews and content-based spam detection need plaintext; they move to the device or go, and abuse detection relies on metadata and reports.
+
+<Misconception wrong="With E2EE the server knows nothing about conversations." right="The server cannot read content, but it still sees metadata: who talks to whom, when, how often, group membership and IP addresses. Protecting metadata is a separate, much harder design problem." />
+
+## Failure modes & mitigations
+
+| Failure | Detection | Effect | Mitigation |
+|---|---|---|---|
+| One gateway dies | LB health check, registry TTLs | 500,000 devices reconnect | Jittered reconnect; sync closes any gap; 720 gateways leave room |
+| A whole zone is lost | Zone alarms, connection count drops by a third | 80M devices reconnect; a third of conversations change owner | Gateways sized N+1 zone; leases expire in 10 s; owners re-derive `next_seq` from the store |
+| Chat-service owner dies mid-send | Lease expiry | Sender gets no ack, retries | Idempotent `clientMsgId`; successor re-publishes above `last_published_seq` |
+| Zombie owner after a long pause | Duplicate `seq` alarm | Two messages share a seq | `owner_epoch` in the key; all devices order identically |
+| Kafka partition leader fails | Producer errors, consumer lag | Delivery pauses seconds for those conversations | Replication factor 3, `acks=all`; messages are already durable in the store |
+| Fan-out workers fall behind | <Term slug="consumer-lag">Consumer lag</Term> per partition | Live delivery slows; ticks lag | Autoscale workers; devices still get messages on sync |
+| Push provider throttles | 429 responses, quota metric | Offline users are not woken | Collapse harder, prioritise 1:1 over groups, retry with backoff |
+| Message store node lost | Store failure detector | None at quorum | RF = 3 across zones; quorum reads and writes |
+| Recent-messages cache flushed | Hit rate drops from 80% | Sync reads on the store rise 5× | Store has headroom; syncs are prioritised below sends |
+
+**Failure timeline: losing availability zone a at the evening peak.**
+
+- **T+0 s.** Zone a's network fails. 80M devices lose their gateway; 160 owners become unreachable. Senders mid-send see a clock icon.
+- **T+1–10 s.** Sending devices miss their ack after 5 s and reconnect; idle ones notice at the next heartbeat (up to 60 s). The load balancer marks zone-a gateways unhealthy; the send-p99 alert pages the on-call.
+- **T+10 s.** Zone-a owners' leases expire; the ring hands their conversations to zones b and c. The first message in each moved conversation pays one extra store read to learn `next_seq`.
+- **T+10–120 s.** Devices reconnect with <Term slug="full-jitter">full jitter</Term> spread over about two minutes: 80M ÷ 120 s ≈ 670,000 new connections a second over 480 gateways, about 1,400 TLS handshakes per gateway per second, which is affordable. Each reconnect also syncs, roughly tripling sync load; most return "nothing new" from the inbox rows. Without jitter, 80M devices would reconnect within seconds, overload the gateways and the registry, time out, and retry again: a <Term slug="metastable-failure">metastable failure</Term> that outlives its cause.
+- **T+2–5 min.** Steady state on two zones: gateways at about 2,400 inbound frames/s each, chat service at ρ ≈ 0.72. No acked message was lost, because every acked message was on two replicas, at least one outside zone a.
+- **Recovery.** When zone a returns, nobody forces connections back; least-connections refills it as devices naturally reconnect.
+
+## Scaling to 10×
+
+Suppose message volume grows 10× (more users, more groups, more media messages): 2.3M messages/s average, **4.6M/s at peak**.
+
+1. **Push quota breaks first.** 880,000 pushes/s against a 100,000/s quota. Collapse harder (one push per user per minute) and negotiate quota; push becomes a ration.
+2. **The inbox store's upserts** grow to 18M/s. Coalesce in the workers: 20 messages in one second in a busy group become one upsert per member.
+3. **The fan-out log** reaches about 9 GB/s at peak. Split it into several Kafka clusters by conversation hash; ordering is per conversation, so nothing needs a global log.
+4. **Storage** reaches 60 TB a day; the 30-day hot tier becomes 5.4 PB replicated. Shorten the hot window to 7 days and lean on the cold tier.
+5. **Multi-region.** Each conversation gets a **home region** (where its owner runs); members elsewhere connect to local gateways that forward sends to the home region, adding one inter-region round trip (about 100–200 ms) that still fits the 500 ms budget. Do not run multi-writer conversations across regions: two regions assigning sequence numbers is exactly the ordering problem deep dive 2 avoids.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| WebSocket with long-polling fallback | Long polling or SSE only | Full duplex, one connection, lowest cost per idle device |
+| Gateways separate from chat logic | One service does both | Gateways hold 500,000 connections each and should almost never restart |
+| Single owner per conversation assigns seq | Timestamps, Snowflake IDs, conditional counters | Gap-free order decided in memory; no consensus per message |
+| Persist at quorum, then ack, then publish | Ack on receipt, persist asynchronously | The tick promises durability; the extra 10 ms is affordable |
+| Store messages once per conversation | Per-recipient mailbox copies | A 500-member group would write 500 copies; offline delivery comes free from sync |
+| Receipts as monotonic cursors | Per-message receipts | One write per batch, order-insensitive, self-repairing |
+| Wide-column store | Sharded SQL | Append and range-by-partition at 2M+ writes/s; no joins needed |
+| Fan-out via Kafka | Direct push from the owner | Buffering and replay for about 15 ms more latency |
+| Presence on subscribe, transitions only | Broadcast to all contacts | Avoids about 46M presence messages a second |
+| Collapsed pushes | One push per message | Keeps 88,000/s under a 100,000/s provider quota |
+
+## What interviewers look for
+
+- **Precise promises.** Defining the ticks, then persist-before-ack and idempotent retries to keep them.
+- **Connection math.** 240M concurrent connections, gateways sized by memory rather than message rate.
+- **A real ordering answer.** Per-conversation sequence numbers, who assigns them, and what happens when that owner fails or pauses.
+- **Delivery semantics.** At-least-once on the wire, dedup on the device, receipts as cursors, offline delivery through sync.
+- **Bounded fan-out.** The 500-member cap is what makes fan-out on write safe; presence must not broadcast.
+- **Operational depth.** The reconnect storm after a zone loss, jitter, and the push quota as the first limit.
+- **E2EE consequences.** Not the cryptography, but what the server can no longer do and what it must now store.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "A user says a reply showed up above the message it answered. How could that happen in your design?",
+  "The sender saw one tick, then the message never arrived. Walk me through where it could be.",
+  "How would you support channels with 5 million followers?",
+  "A gateway release has a memory leak. How do you roll it back without disconnecting everyone at once?",
+  "How do you show 'last seen' to some contacts and hide it from others?"
+]} />

@@ -14,6 +14,6 @@
     { "id": "revocation", "title": "The revocation problem", "depth": "deep" }
   ],
   "simulatorIds": ["jwt-inspector"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["api-gateway"],
   "prerequisites": ["p1-client-server", "p1-http", "p1-tls", "p2-api-gateway"]
 }

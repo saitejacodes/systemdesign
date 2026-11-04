@@ -1,0 +1,69 @@
+{
+  "criteria": [
+    { "id": "functional-scope", "step": "Requirements", "title": "Job model and scope",
+      "levels": {
+        "0": "Says 'run cron jobs' with no job definition, retry, overlap or visibility requirements.",
+        "1": "Covers one-off and cron jobs with retries, but leaves out time zones, overlap policy, cancellation or run history and logs.",
+        "2": "Defines a job (image, schedule with time zone, timeout, retry and overlap policy), runs as the unit of execution, pause/edit/manual run/cancel, per-run status and logs, and puts DAGs explicitly out of scope." } },
+    { "id": "nfr-guarantees", "step": "Requirements", "title": "Punctuality and delivery guarantees",
+      "levels": {
+        "0": "No targets, or promises exactly-once execution.",
+        "1": "States the 5 s start target and at-least-once, but not that a skipped or lost run must be visible, or that the hour mark is the design point.",
+        "2": "Start within 5 s at p99, no silent loss (executed or visibly skipped/dead), duplicates rare and visible, firing more available than the owner API, and the hour-mark and midnight peaks named as the design point." } },
+    { "id": "burst-math", "step": "Estimation", "title": "Average vs hour-mark load",
+      "levels": {
+        "0": "Only the daily average, or numbers with no derivation.",
+        "1": "Computes about 116 runs/s and notes a peak, but never quantifies runs due in one second or the fire rate needed.",
+        "2": "10M ÷ 86,400 = 115.7/s; 1.2M hour-aligned ÷ 24 = 50,000 due at once → 10,000 fires/s for the 5 s target, 20,000/s at midnight; concludes the average sizes nothing." } },
+    { "id": "concurrency-math", "step": "Estimation", "title": "Concurrency, reports and fleet size",
+      "levels": {
+        "0": "No estimate of running jobs or worker capacity.",
+        "1": "Estimates concurrent runs but not heartbeat and claim load on the run store, or the worker slots needed.",
+        "2": "Little's law: 115.7 × 120 s = 13,889 running, about 63,900 after an hour mark and 113,900 at midnight; claims + heartbeats ≈ 14,400/s and about 28,000/s; 32 slots per host → about 600 hosts normally, 2,000 and 3,600 pre-warmed." } },
+    { "id": "api", "step": "API", "title": "Owner API and worker protocol",
+      "levels": {
+        "0": "A 'create job' endpoint with no shapes, and no worker protocol.",
+        "1": "Job CRUD and run status with bodies, but no idempotency, no starting deadline, or no fencing in the worker calls.",
+        "2": "POST /v1/jobs with Idempotency-Key, cron + time zone, retry, overlap and starting deadline; run IDs derived from job + scheduled time; manual run, pause, cancel, paged history; claim/heartbeat/complete carrying the attempt number and returning 409 when the lease is lost." } },
+    { "id": "data-model", "step": "Data Model", "title": "Stores matched to access patterns",
+      "levels": {
+        "0": "One table of jobs polled by everything.",
+        "1": "Separates jobs from runs but has no index for 'what is due', or no conditional writes for claims.",
+        "2": "Postgres jobs with (partition, next_fire_at) index and per-partition epoch and fired_through; runs in a KV store keyed by job + scheduled time with conditional writes and TTL; leases in etcd; history in a search index; logs in object storage." } },
+    { "id": "hld-walkthrough", "step": "High-Level Design", "title": "Architecture and lifecycle walkthrough",
+      "levels": {
+        "0": "A box diagram with a 'scheduler' and 'workers' and no flow.",
+        "1": "Walks create and fire, but claim, heartbeat, retry and the reaper are vague.",
+        "2": "Walks create, look-ahead, fire (enqueue only), claim with conditional write, heartbeat and log streaming, reaper and retry, and owner reads, over a multi-AZ layout sized from the estimates." } },
+    { "id": "triggers", "step": "Deep Dives", "title": "Turning schedules into on-time triggers",
+      "levels": {
+        "0": "Scans every job every second, or relies on one cron daemon.",
+        "1": "Uses a next-run index but fires only when due, with no look-ahead, or ignores time zones and daylight saving.",
+        "2": "Indexed next_fire_at in UTC, 60 s look-ahead into an in-memory timing wheel or heap, Postgres writes spread before the hour, and an explicit daylight-saving policy for skipped and repeated hours." } },
+    { "id": "partitioning-fencing", "step": "Deep Dives", "title": "Leader election vs partitions, and no double firing",
+      "levels": {
+        "0": "Several schedulers with no coordination, or one leader with no failover story.",
+        "1": "Leases or leader election, but no fencing, so a paused scheduler can act after losing ownership.",
+        "2": "Compares one leader with partitioned leases and chooses by failover blast radius and throughput; epoch fencing on writes; idempotent run ID so duplicate fires are harmless; takeover re-fires from a watermark rather than assuming." } },
+    { "id": "execution-semantics", "step": "Deep Dives", "title": "At-least-once execution and idempotent jobs",
+      "levels": {
+        "0": "Claims exactly-once, or has no way to detect a dead worker.",
+        "1": "Uses a visibility timeout or heartbeats, but zombie workers can still report results, or owners get no guidance on idempotency.",
+        "2": "Explains why exactly-once is impossible; queue visibility until claim, then run-row lease with heartbeats; attempt number as fencing token; scheduled time and run ID passed to jobs; maxAttempts 1 for non-idempotent jobs with a LOST alert." } },
+    { "id": "retries-herd", "step": "Deep Dives", "title": "Retries, overlap and the hour-mark herd",
+      "levels": {
+        "0": "Immediate unlimited retries; no plan for 50,000 simultaneous runs.",
+        "1": "Backoff and a dead state, but no jitter or overlap policy, or the herd handled only by 'autoscale'.",
+        "2": "Exponential backoff with full jitter, permanent exit codes, DEAD state, retries below on-time runs; allow/forbid/replace overlap; pre-materialise, pre-warm from the known schedule, H-style spreading; a zone-loss timeline at midnight." } },
+    { "id": "visibility", "step": "Deep Dives", "title": "Run visibility and detecting a late scheduler",
+      "levels": {
+        "0": "Owners check logs on the worker; no platform health signal beyond CPU.",
+        "1": "Run history and failure alerts, but nothing detects a scheduler that silently stopped.",
+        "2": "Timestamped run states and chunked logs, absence alerts per job, schedule-lag SLO, expected-vs-fired auditor per partition, and an external dead man's switch fed by canary jobs." } },
+    { "id": "wrapup", "step": "Wrap-up", "title": "Failure modes, 10× and trade-offs",
+      "levels": {
+        "0": "No failures or trade-offs discussed.",
+        "1": "Covers instance loss and names generic trade-offs, but not etcd quorum loss, a silent stop, or what breaks first at 10×.",
+        "2": "Covers scheduler death and pauses, etcd and Postgres failure, worker death, retry storms and silent stops; at 10× names worker cost first and mandatory spreading; each key decision is paired with its alternative and the reason it lost." } }
+  ]
+}

@@ -9,7 +9,7 @@ import {
   applyEdgeChanges, applyNodeChanges, Background, BackgroundVariant, ConnectionMode, Controls, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow,
   type Connection, type EdgeChange, type NodeChange,
 } from "@xyflow/react";
-import { PanelLeft, PanelRight, Redo2, Undo2, X } from "lucide-react";
+import { PanelLeft, PanelRight, Pencil, Play, Redo2, Undo2, X } from "lucide-react";
 import { SetHud } from "@/components/layout/SetHud";
 import { getAdapter } from "@/lib/db/adapter";
 import type { Design, DesignVersion } from "@/lib/db/types";
@@ -17,6 +17,8 @@ import { CATALOG } from "@/lib/studio/catalog";
 import { toSvg } from "@/lib/studio/export-svg";
 import { canRedo, canUndo, commit, createHistory, redo, undo, type History } from "@/lib/studio/history";
 import { copySelection, exportJson, fromFlow, pasteClip, toFlow, type Clip, type FlowEdge, type FlowNode } from "@/lib/studio/serialize";
+import { defaultProfile } from "@/lib/studio/sim";
+import type { TrafficProfile } from "@/lib/studio/sim/types";
 import { templateById } from "@/lib/studio/templates";
 import { StudioGraph, type NodeKind } from "@/lib/studio/types";
 import { downloadBlob, slug, svgToPng } from "./download";
@@ -25,6 +27,12 @@ import { edgeTypes, EdgeMarkers, NodeEvents, nodeTypes } from "./nodes";
 import { addNode, connect, counts, deleteIds, nudge, reparent, sameGraph, summaryText } from "./ops";
 import { DRAG_MIME, Palette } from "./Palette";
 import { PropertiesPanel, type Lessons } from "./PropertiesPanel";
+import { fmtMs, fmtPct, fmtQps, savedProfile, STATUS_TEXT, type CaseRuns } from "./run/config";
+import { RunViewContext, type RunView } from "./run/context";
+import { RunInfo } from "./run/RunInfo";
+import { RunPanel } from "./run/RunPanel";
+import { fmtClock, RunStrip } from "./run/RunStrip";
+import { useRun } from "./run/useRun";
 import { createDesign, designGraph, designNotes, listVersions, saveDesign } from "./store";
 
 type Flow = { nodes: FlowNode[]; edges: FlowEdge[] };
@@ -75,7 +83,7 @@ export function NewDesign({ templateId }: { templateId?: string }) {
 
 type Load = { s: "loading" } | { s: "missing" } | { s: "broken"; design: Design } | { s: "ready"; design: Design; graph: StudioGraph };
 
-export function DesignEditor({ designId, lessons }: { designId: string; lessons: Lessons }) {
+export function DesignEditor({ designId, lessons, caseRuns = {} }: { designId: string; lessons: Lessons; caseRuns?: CaseRuns }) {
   const [load, setLoad] = useState<Load>({ s: "loading" });
   useEffect(() => {
     let live = true;
@@ -88,7 +96,7 @@ export function DesignEditor({ designId, lessons }: { designId: string; lessons:
     return () => { live = false; };
   }, [designId]);
 
-  if (load.s === "ready") return <ReactFlowProvider><Editor key={load.design.id} design={load.design} initial={load.graph} lessons={lessons} /></ReactFlowProvider>;
+  if (load.s === "ready") return <ReactFlowProvider><Editor key={load.design.id} design={load.design} initial={load.graph} lessons={lessons} caseRuns={caseRuns} /></ReactFlowProvider>;
   return (
     <div className="grid gap-3 p-8">
       <h1 className="fm-h4">{load.s === "loading" ? "Loading design…" : load.s === "missing" ? "Design not found" : load.design.title}</h1>
@@ -99,7 +107,7 @@ export function DesignEditor({ designId, lessons }: { designId: string; lessons:
   );
 }
 
-function Editor({ design, initial, lessons }: { design: Design; initial: StudioGraph; lessons: Lessons }) {
+function Editor({ design, initial, lessons, caseRuns }: { design: Design; initial: StudioGraph; lessons: Lessons; caseRuns: CaseRuns }) {
   const rf = useReactFlow<FlowNode, FlowEdge>();
   const coarse = useSyncExternalStore(subscribeCoarse, () => coarseQuery().matches, () => false);
 
@@ -109,7 +117,12 @@ function Editor({ design, initial, lessons }: { design: Design; initial: StudioG
   const flowRef = useRef(flow);
   const [title, setTitleState] = useState(design.title);
   const [notes, setNotesState] = useState(designNotes(design));
-  const latest = useRef({ title: design.title, notes: designNotes(design) });
+  const latest = useRef<{ title: string; notes: string; run?: string }>({ title: design.title, notes: designNotes(design), run: design.panels?.run });
+  const [mode, setMode] = useState<"edit" | "run">("edit");
+  const modeRef = useRef(mode);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+  const [runInfo, setRunInfo] = useState(false);
+  const [savedRun, setSavedRun] = useState<TrafficProfile | null>(() => savedProfile(design.panels));
 
   const [save, setSave] = useState<{ state: "saved" | "saving" | "error"; at?: Date; error?: string }>({ state: "saved" });
   const [tab, setTab] = useState<"properties" | "notes" | "history">("properties");
@@ -130,7 +143,9 @@ function Editor({ design, initial, lessons }: { design: Design; initial: StudioG
   const flush = useCallback(async (force = false) => {
     clearTimeout(timer.current);
     pending.current = false;
-    const d: Design = { ...design, title: latest.current.title, graph: histRef.current.present, panels: { ...design.panels, notes: latest.current.notes } };
+    const panels: Record<string, string> = { ...design.panels, notes: latest.current.notes };
+    if (latest.current.run) panels.run = latest.current.run; else delete panels.run;
+    const d: Design = { ...design, title: latest.current.title, graph: histRef.current.present, panels };
     try {
       const r = await saveDesign(d, { force, lastSnapshotAt: lastSnapshot.current });
       if (r.snapshotAt) lastSnapshot.current = r.snapshotAt;
@@ -219,6 +234,13 @@ function Editor({ design, initial, lessons }: { design: Design; initial: StudioG
       if (typing(t) || document.querySelector("[role=dialog]")) return;
       const mod = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
+      if (modeRef.current === "run") {
+        // Run mode is read-only: selection keys only, so arrows and Delete can't move or remove anything.
+        if (k === "escape") selectAll(false);
+        else if (mod && k === "a") { e.preventDefault(); selectAll(true); }
+        else if (/^(arrow|delete|backspace)/.test(k) && !mod) { e.preventDefault(); e.stopPropagation(); }
+        return;
+      }
       if (mod && k === "z") { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo(); return; }
       if (mod && k === "y") { e.preventDefault(); doRedo(); return; }
       if (mod && k === "c") { if (window.getSelection()?.toString()) return; if (doCopy()) e.preventDefault(); return; }
@@ -256,6 +278,7 @@ function Editor({ design, initial, lessons }: { design: Design; initial: StudioG
     apply(reparent(fromFlow(f.nodes, f.edges), moved));
   }, [apply]);
   const onConnect = useCallback((c: Connection) => {
+    if (modeRef.current === "run") return;
     const r = connect(histRef.current.present, c.source, c.target, "sync");
     if (r) { apply(r.graph, undefined, [r.id]); setAnnounce("Connected"); }
   }, [apply]);
@@ -289,6 +312,17 @@ function Editor({ design, initial, lessons }: { design: Design; initial: StudioG
   };
 
   const graph = hist.present;
+  const caseRun = design.caseStudyId && caseRuns[design.caseStudyId] ? { caseId: design.caseStudyId, ...caseRuns[design.caseStudyId] } : undefined;
+  const caseProfile = caseRun?.trafficProfile;
+  const baseProfile = useMemo(() => caseProfile ?? defaultProfile(graph), [caseProfile, graph]);
+  const profile = savedRun ?? baseProfile;
+  const running = mode === "run";
+  const run = useRun(graph, profile, running);
+  const runView = useMemo<RunView>(() => ({ on: running, state: run.state, faults: run.faults }), [running, run.state, run.faults]);
+  const setProfile = (p: TrafficProfile) => { setSavedRun(p); latest.current.run = JSON.stringify(p); scheduleSave(); };
+  const resetProfile = () => { setSavedRun(null); latest.current.run = undefined; scheduleSave(); setAnnounce("Traffic reset to the default"); };
+  const enterRun = () => { setMode("run"); run.reset(); setSheet(null); setConnecting(false); setAnnounce("Run mode. Editing is paused. Press Play to send traffic."); };
+  const exitRun = () => { setMode("edit"); run.stop(); setSheet(null); setAnnounce("Edit mode"); };
   const selection = useMemo(() => [...flow.nodes.filter((n) => n.selected).map((n) => n.id), ...flow.edges.filter((e) => e.selected).map((e) => e.id)], [flow]);
   const summary = summaryText(graph);
   const c = counts(graph);
@@ -299,17 +333,30 @@ function Editor({ design, initial, lessons }: { design: Design; initial: StudioG
 
   return (
     <div ref={rootRef} className="flex h-full min-h-[560px] flex-col">
-      <SetHud live={`Studio · ${title}`} items={[{ k: "Components", v: String(c.components) }, { k: "Links", v: String(c.connections) }]} right={saveText} />
+      {running ? (
+        <SetHud live={`Studio · ${title} · Run · ${run.playing ? "running" : "paused"}`} right={`${run.speed}×`} items={[
+          { k: "T", v: fmtClock(run.state?.t ?? 0) },
+          { k: "Served", v: `${fmtQps(run.state?.totals.okQps ?? 0)}/s` },
+          { k: "Errors", v: fmtPct(run.state?.totals.errorRatePct ?? 0, 1), tone: (run.state?.totals.errorRatePct ?? 0) >= 1 ? "over" : "ok" },
+          ...(run.state?.requestTypes ?? []).map((r) => ({ k: `${r.name} p99`, v: r.reachable ? fmtMs(r.p99Ms) : "unreachable" })),
+        ]} />
+      ) : (
+        <SetHud live={`Studio · ${title}`} items={[{ k: "Components", v: String(c.components) }, { k: "Links", v: String(c.connections) }]} right={saveText} />
+      )}
       <div className="flex flex-wrap items-center gap-2 border-b border-ink px-3 py-2">
-        <button type="button" className="fm-btn fm-btn--tool lg:hidden" aria-expanded={sheet === "palette"} onClick={() => setSheet(sheet === "palette" ? null : "palette")}>
+        <button type="button" className={`fm-btn fm-btn--tool lg:hidden ${running ? "hidden" : ""}`} aria-expanded={sheet === "palette"} onClick={() => setSheet(sheet === "palette" ? null : "palette")}>
           <PanelLeft size={14} aria-hidden /> Add
         </button>
         <Link href="/studio" className="fm-cap hidden hover:text-ink sm:inline">Studio /</Link>
         <TitleEditor title={title} onRename={rename} />
         <span className={`fm-cap ${save.state === "error" ? "!text-status-over" : ""}`} aria-live="polite" data-testid="save-status">{save.state === "error" ? "■ " : ""}{saveText}</span>
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          <button type="button" className="fm-btn fm-btn--tool !px-2" onClick={doUndo} disabled={!canUndo(hist)} aria-label="Undo" title="Undo (Ctrl/⌘+Z)"><Undo2 size={14} aria-hidden /></button>
-          <button type="button" className="fm-btn fm-btn--tool !px-2" onClick={doRedo} disabled={!canRedo(hist)} aria-label="Redo" title="Redo (Ctrl/⌘+Shift+Z)"><Redo2 size={14} aria-hidden /></button>
+          <div role="group" aria-label="Mode" className="flex">
+            <button type="button" aria-pressed={!running} className={`fm-btn fm-btn--tool !rounded-r-none ${!running ? "is-on" : ""}`} onClick={() => running && exitRun()}><Pencil size={14} aria-hidden /> Edit</button>
+            <button type="button" aria-pressed={running} className={`fm-btn fm-btn--tool -ml-px !rounded-l-none ${running ? "is-on" : ""}`} onClick={() => !running && enterRun()}><Play size={14} aria-hidden /> Run</button>
+          </div>
+          <button type="button" className="fm-btn fm-btn--tool !px-2" onClick={doUndo} disabled={running || !canUndo(hist)} aria-label="Undo" title="Undo (Ctrl/⌘+Z)"><Undo2 size={14} aria-hidden /></button>
+          <button type="button" className="fm-btn fm-btn--tool !px-2" onClick={doRedo} disabled={running || !canRedo(hist)} aria-label="Redo" title="Redo (Ctrl/⌘+Shift+Z)"><Redo2 size={14} aria-hidden /></button>
           <button type="button" className="fm-btn fm-btn--tool max-sm:hidden" onClick={() => { void flush(true); setAnnounce("Version saved"); }}>Save version</button>
           <ExportMenu onExport={(k) => void doExport(k)} />
           <button type="button" className="fm-btn fm-btn--tool lg:hidden" aria-expanded={sheet === "panel"} onClick={() => setSheet(sheet === "panel" ? null : "panel")}>
@@ -320,10 +367,12 @@ function Editor({ design, initial, lessons }: { design: Design; initial: StudioG
           </button>
         </div>
       </div>
+      {running && <RunStrip run={run} onInfo={() => setRunInfo(true)} />}
+      <RunInfo open={runInfo} onOpenChange={setRunInfo} />
 
       <div className="relative flex min-h-0 flex-1">
         {sheet && <button type="button" aria-label="Close drawer" className="fixed inset-0 z-30 bg-ink/20 lg:hidden" onClick={() => setSheet(null)} />}
-        <aside aria-label="Component palette" className={`flex w-[248px] shrink-0 flex-col border-r border-ink ${drawer} max-lg:left-0 ${sheet === "palette" ? "" : "max-lg:hidden"}`}>
+        <aside aria-label="Component palette" className={`flex w-[248px] shrink-0 flex-col border-r border-ink ${drawer} max-lg:left-0 ${sheet === "palette" ? "" : "max-lg:hidden"} ${running ? "!hidden" : ""}`}>
           <div className="flex justify-end p-1 lg:hidden"><button type="button" className="fm-btn fm-btn--tool !px-2" aria-label="Close palette" onClick={() => setSheet(null)}><X size={14} aria-hidden /></button></div>
           <Palette onAdd={(k) => addKind(k)} />
         </aside>
@@ -333,10 +382,10 @@ function Editor({ design, initial, lessons }: { design: Design; initial: StudioG
           aria-label="Design canvas"
           aria-describedby="sdl-canvas-help"
           className="relative min-w-0 flex-1"
-          onDragOver={(e) => { if (e.dataTransfer.types.includes(DRAG_MIME)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+          onDragOver={(e) => { if (!running && e.dataTransfer.types.includes(DRAG_MIME)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
           onDrop={(e) => {
             const kind = e.dataTransfer.getData(DRAG_MIME) as NodeKind;
-            if (!kind) return;
+            if (!kind || running) return;
             e.preventDefault();
             addKind(kind, rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
           }}
@@ -345,9 +394,10 @@ function Editor({ design, initial, lessons }: { design: Design; initial: StudioG
             Diagram canvas. Add components from the palette with Enter. Tab moves between components; Enter selects one; arrow keys nudge the selection (Shift for 10 pixels); Delete removes it. Edit and connect the selection in the Properties panel.
           </p>
           <EdgeMarkers />
+          <RunViewContext.Provider value={runView}>
           <NodeEvents.Provider value={nodeEvents}>
             <ReactFlow<FlowNode, FlowEdge>
-              className={`sdl-flow${connecting ? " is-connecting" : ""}`}
+              className={`sdl-flow${connecting ? " is-connecting" : ""}${running ? ` is-run${run.playing ? "" : " is-paused"}` : ""}`}
               nodes={flow.nodes}
               edges={flow.edges}
               nodeTypes={nodeTypes}
@@ -357,7 +407,9 @@ function Editor({ design, initial, lessons }: { design: Design; initial: StudioG
               onConnect={onConnect}
               onConnectStart={() => setConnecting(true)}
               onConnectEnd={() => setConnecting(false)}
-              onNodeDragStop={(_, __, dragged) => commitFromFlow(dragged.map((n) => n.id))}
+              onNodeDragStop={(_, __, dragged) => { if (!running) commitFromFlow(dragged.map((n) => n.id)); }}
+              nodesDraggable={!running}
+              nodesConnectable={!running}
               connectionMode={ConnectionMode.Loose}
               snapToGrid
               snapGrid={[16, 16]}
@@ -380,6 +432,7 @@ function Editor({ design, initial, lessons }: { design: Design; initial: StudioG
               <Controls showInteractive={false} aria-label="Zoom controls" />
             </ReactFlow>
           </NodeEvents.Provider>
+          </RunViewContext.Provider>
           {graph.nodes.length === 0 && (
             <div className="pointer-events-none absolute inset-0 grid place-items-center p-6 text-center">
               <div className="grid gap-2">
@@ -390,9 +443,14 @@ function Editor({ design, initial, lessons }: { design: Design; initial: StudioG
           )}
           <p className="fm-cap pointer-events-none absolute left-3 top-2 bg-paper/80 px-1" data-testid="canvas-summary">{summary}</p>
           <p className="sr-only" role="status" aria-live="polite">{announce}</p>
+          {running && <p className="sr-only" aria-live="polite" data-testid="run-summary">{runSummary(run.state, run.playing)}</p>}
         </section>
 
-        <aside id="sdl-right" aria-label="Properties, notes and history" className={`flex shrink-0 flex-col border-l border-ink lg:w-[340px] ${panelOpen ? "" : "lg:hidden"} ${drawer} max-lg:right-0 ${sheet === "panel" ? "" : "max-lg:hidden"}`}>
+        <aside id="sdl-right" aria-label={running ? "Run panel" : "Properties, notes and history"} className={`flex shrink-0 flex-col border-l border-ink lg:w-[340px] ${panelOpen ? "" : "lg:hidden"} ${drawer} max-lg:right-0 ${sheet === "panel" ? "" : "max-lg:hidden"}`}>
+          {running ? (
+            <RunPanel graph={graph} run={run} profile={profile} onProfile={setProfile} onResetProfile={resetProfile} selection={selection} caseRun={caseRun} onClose={() => setSheet(null)}
+              defaultFrom={caseRun ? `the case study “${caseRun.title}”` : "the Users on this design's clients"} select={(id) => apply(histRef.current.present, undefined, [id])} />
+          ) : <>
           <div className="flex items-end gap-2 pl-3 pr-1 pt-2">
             <div role="tablist" aria-label="Panel" className="fm-tabs flex-1">
               {TABS.map(([id, label]) => (
@@ -406,8 +464,19 @@ function Editor({ design, initial, lessons }: { design: Design; initial: StudioG
             {tab === "notes" && <NotesTab notes={notes} onChange={changeNotes} />}
             {tab === "history" && <HistoryTab versions={versions} onRestore={restore} onSaveVersion={() => { void flush(true); setAnnounce("Version saved"); }} />}
           </div>
+          </>}
         </aside>
       </div>
     </div>
   );
+}
+
+/** One sentence for screen readers; it only changes when the picture does (status counts, errors present), not every tick. */
+function runSummary(state: ReturnType<typeof useRun>["state"], playing: boolean): string {
+  if (!state) return "";
+  const counts = { ok: 0, hot: 0, overloaded: 0, down: 0 };
+  for (const n of Object.values(state.nodes)) counts[n.status]++;
+  const parts = (["down", "overloaded", "hot"] as const).filter((k) => counts[k]).map((k) => `${counts[k]} ${STATUS_TEXT[k].word.toLowerCase()}`);
+  const err = state.totals.errorRatePct;
+  return `Simulation ${playing ? "running" : "paused"}. ${parts.length ? parts.join(", ") : "All components OK"}. ${err >= 0.05 ? `Errors about ${err >= 10 ? Math.round(err / 5) * 5 : Math.ceil(err)}%.` : "No errors."}`;
 }

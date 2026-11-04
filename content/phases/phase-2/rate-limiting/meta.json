@@ -36,9 +36,7 @@
   "simulatorIds": [
     "rate-limiter"
   ],
-  "practiceCaseStudyIds": [
-    "rate-limiter-service"
-  ],
+  "practiceCaseStudyIds": ["rate-limiter-service", "api-gateway", "ticket-booking"],
   "prerequisites": [
     "p2-api-gateway"
   ]

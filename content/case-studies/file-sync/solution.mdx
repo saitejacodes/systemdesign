@@ -1,0 +1,341 @@
+## Requirements
+
+A file sync service looks like "upload files, download files", but storage is the easy half. The hard half is keeping several copies of a tree of files (laptop, phone, a colleague's desktop) converging when any of them can edit while offline for days, without ever throwing away someone's work.
+
+**Functional requirements**
+
+1. A user installs a client on several devices; creating, editing, renaming, moving or deleting anything inside the synced folder appears on their other devices.
+2. A folder can be shared with other users (view or edit). Changes inside it reach every member's devices.
+3. Uploads and downloads of files up to 10 GB resume after a dropped connection without starting again.
+4. Devices can be offline for days; on reconnect they upload their local changes and download everyone else's.
+5. When two devices changed the same file concurrently, both versions are kept and the user is told.
+6. Version history: earlier versions and deleted files can be restored for 30 days (our assumption for this design).
+7. Mobile and web clients browse the tree and download on demand rather than syncing everything.
+
+**Non-functional requirements**
+
+| Property | Target | Why this number |
+|---|---|---|
+| Durability | An acknowledged file version is never lost | Losing a file is the one failure users never forgive; it outranks availability |
+| Propagation | A change appears on other online devices within 10 s (p99) | The problem statement's target; it makes "save on laptop, open on phone" feel instant |
+| Correctness | No silent data loss on conflicts; all devices converge to the same tree | Sync bugs that eat files destroy trust in the product |
+| Availability | 99.99% for metadata (browse, commit, list changes) | Block transfers are retried by the client, so they can tolerate brief errors |
+| Efficiency | Only changed bytes cross the network; identical content is stored once | Upload bandwidth on home connections is the user's scarcest resource |
+| Security | TLS in transit, encryption at rest, sharing enforced on every request | The service holds people's most private files |
+
+**Out of scope:** real-time co-editing inside a document (that needs operational transforms or a <Term slug="crdt">CRDT</Term>, a different problem), full-text search inside files, thumbnail and preview generation (an async consumer of the same change events), billing and admin consoles.
+
+<Callout type="tip" title="Say the invariant out loud">
+The single sentence to anchor everything: **a file version the server has acknowledged is never lost, and a version a device wrote is never overwritten by another without the user being told.** Every later decision (content-addressed blocks, an append-only journal, conditional commits, conflicted copies) exists to keep that sentence true.
+</Callout>
+
+## Estimation
+
+Every number here is an assumption of this problem, chosen to be plausible and derived step by step; none is a fact about a real company.
+
+**Storage**
+
+| Quantity | Assumption and arithmetic | Result |
+|---|---|---|
+| Logical data | 100M users × 2 GB | **200 PB** |
+| Files | Assume an average file of 1 MB: 2 GB ÷ 1 MB = 2,000 files per user × 100M | 200 billion files |
+| After dedup | Assume block-level dedup (identical blocks across versions, copies and users) saves 25%: 200 PB × 0.75 | 150 PB unique |
+| Raw disk | Erasure coding at about 1.5× overhead in each of two regions: 150 PB × 1.5 × 2 | **≈ 450 PB raw** |
+| Version history | Daily uploads (below) of 200 TB, assume half of it replaces existing data and is kept 30 days: 100 TB × 30 | 3 PB, small next to the base |
+
+**Writes (commits) and uploads**
+
+| Quantity | Assumption and arithmetic | Result |
+|---|---|---|
+| Commits per day | 20M DAU × 20 changed files each | 400M per day |
+| Average commit rate | 400M ÷ 86,400 s | **≈ 4,630 /s** |
+| Peak | Sync follows the working day, so assume a peak hour at 3× the average | ≈ 13,900 /s |
+| Upload bytes | 400M × 1 MB = 400 TB/day before savings; assume delta sync and dedup halve it | 200 TB/day |
+| Upload bandwidth | 200 × 10¹² B ÷ 86,400 s = 2.3 GB/s × 8 | ≈ 18.5 Gbps average, ≈ 56 Gbps peak |
+
+**Reads (change listings and downloads)**
+
+| Quantity | Assumption and arithmetic | Result |
+|---|---|---|
+| Downloads per commit | Each user has about 3 devices (2 others to update), plus shared-folder members; assume 2 downloads per commit on average | 800M per day |
+| Download rate | 800M ÷ 86,400 | **≈ 9,260 /s** |
+| Download bandwidth | 2 × 200 TB/day = 400 TB/day | ≈ 37 Gbps average, ≈ 111 Gbps peak |
+| Change listings | Each notified device lists changes once per notification; conservatively one listing per downloaded file | **≈ 9,260 /s** |
+
+**Connections and metadata**
+
+| Quantity | Assumption and arithmetic | Result |
+|---|---|---|
+| Concurrent devices | Assume 75% of DAU online at the peak hour, one connected device each: 20M × 0.75 | 15M open connections |
+| Notification gateways | Design for 50,000 idle connections per gateway; must survive losing one of three AZs: 15M ÷ 50k = 300 needed in two AZs, so 150 per AZ | **450 gateways** |
+| File metadata | 200B rows × ≈300 B (path, ids, revision, size, block list pointer) | 60 TB |
+| Journal | 400M entries/day × 200 B × 90 days kept online | 7 TB |
+| Block index | 150 PB ÷ ≈0.75 MB average block = 200B blocks × 80 B (hash, location, refcount) | 16 TB |
+| Metadata total | (60 + 7 + 16) TB ≈ 83 TB, × 2 for secondary indexes | ≈ 170 TB |
+| Shards | ≈ 1.5 TB per MySQL or Postgres shard, so 113, rounded up to a power of two | **128 shards** |
+
+**Service sizing at peak**
+
+- Metadata API traffic at peak: 13,900 commits + 27,800 change listings (9,260 × 3) = **41,700 requests/s**.
+- At an assumed 1,000 requests/s per instance and a target utilisation under 0.7 even after losing one of three AZs: 41,700 ÷ 700 = 60 instances in the two surviving AZs, so **30 per AZ, 90 in total**. With all three AZs up they run at ρ ≈ 0.46. The `/blocks/check` call before a commit and the presigned-URL call before a download are single-key block-index lookups batched per file; we assume they are folded into the 1,000/s figure, which is an assumption to benchmark, not a measurement.
+- Database load at peak: every commit is a transaction (13,900/s). Change listings mostly ask "has anything happened since cursor N?", which a cache of each namespace's latest journal id answers; assume 60% are answered there, leaving 0.4 × 27,800 ≈ 11,100 reads. Total ≈ 25,000/s across 128 shards, about 200/s per shard. **The shard count is set by storage, not throughput**, which leaves the headroom we need for hot namespaces.
+- Namespace-head cache: assume 150M namespaces (user roots plus shared folders) × about 100 B (id, head, overhead) = 15 GB, so a **64 GB Redis** cluster with replicas holds all of them.
+- Notifier workers: one event per commit, 13,900/s at peak; at an assumed 2 ms per event (registry lookup plus sends) a worker handles 500/s, so 28 at full load; for ρ under 0.6 with a zone lost, **48 workers, 16 per AZ**.
+
+The run profile counts the requests that reach our servers or the block store: commits (4,630/s), change listings (9,260/s) and block downloads (9,260/s), **23,150/s on average, a 4:1 read-to-write ratio, peaking at 3×**. Block uploads go straight to object storage with presigned URLs and are sized above as bandwidth.
+
+## API design
+
+Clients talk to two planes. The **metadata plane** (our API) decides what the tree looks like; the **block plane** (object storage reached with <Term slug="presigned-url">presigned URLs</Term>) moves bytes. Keeping bytes off the API servers is what lets 90 instances serve 100M users.
+
+**1. Ask which blocks the server is missing.** The client splits the file into blocks (deep dive 1) and hashes each with SHA-256.
+
+```http
+POST /v1/blocks/check
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "namespace_id": "ns_81f2", "hashes": ["9f2c…a1", "07be…44", "c3d0…9e"] }
+
+200 OK
+{ "missing": [
+    { "hash": "07be…44", "upload_url": "https://blocks.example.com/07be…44?X-Sig=…&Expires=900" }
+  ] }
+```
+
+Blocks the server already has are never uploaded again. A 10 GB file is about 2,400 blocks of 4 MiB; a dropped connection loses at most the block in flight, and "resume" is just calling `/blocks/check` again. The presigned PUT carries the expected SHA-256 so the store rejects corrupted bytes, and the object key **is** the hash, so a retried upload is naturally idempotent.
+
+**2. Commit the new version.** Only after every block is stored does the client commit metadata, conditionally on the revision it started from.
+
+```http
+POST /v1/files/commit
+Idempotency-Key: dev_7c1e-op-55120
+Content-Type: application/json
+
+{ "namespace_id": "ns_81f2", "path": "/Reports/q3.xlsx",
+  "parent_rev": 41, "size": 12583012, "client_mtime": "2026-11-04T09:12:44Z",
+  "blocks": ["9f2c…a1", "07be…44", "c3d0…9e"] }
+
+200 OK
+{ "rev": 42, "journal_id": 918274, "file_id": "f_55a0" }
+
+409 Conflict
+{ "error": "parent_rev_mismatch", "current_rev": 42, "current_blocks": ["…"] }
+```
+
+The <Term slug="idempotency-key">idempotency key</Term> (device id plus a local operation counter) makes a retried commit after a timeout return the original result instead of creating revision 43. A `409` is not an error to the user: it is the conflict path (deep dive 3).
+
+**3. List changes since a cursor.** The cursor is an opaque encoding of the last journal id the device has applied, per namespace.
+
+```http
+GET /v1/changes?namespace_id=ns_81f2&cursor=ZXlKcWFXUWlPamt4T0RJM01YMD0&limit=500
+
+200 OK
+{ "entries": [
+    { "journal_id": 918274, "op": "upsert", "path": "/Reports/q3.xlsx", "rev": 42,
+      "size": 12583012, "blocks": ["9f2c…a1", "07be…44", "c3d0…9e"] },
+    { "journal_id": 918275, "op": "delete", "path": "/Reports/old.txt", "rev": 7 }
+  ],
+  "cursor": "ZXlKcWFXUWlPamt4T0RJM05YMD0", "has_more": false }
+```
+
+**4. Wait for changes.** Desktop clients hold one connection to a notification gateway (a <Term slug="websocket">WebSocket</Term>, or <Term slug="long-polling">long polling</Term> where proxies break WebSockets) and receive only a doorbell: `{"namespace_id":"ns_81f2","journal_id":918275}`. Mobile clients receive the same doorbell through APNs or FCM because the operating system suspends background sockets.
+
+**5. Download.** `GET /v1/files/blocks?file_id=f_55a0&rev=42` returns the block list with short-lived presigned GET URLs; the client fetches only the blocks it does not already have locally.
+
+Sharing is ordinary CRUD (`POST /v1/shares` with namespace, invitee and role), checked by the metadata plane on every call; presigned URLs expire in minutes so a revoked member cannot keep downloading.
+
+## Data model
+
+The model separates **what the tree looks like** (small, transactional, strictly ordered) from **the bytes** (huge, immutable, content-addressed).
+
+| Entity | Key | Fields | Store |
+|---|---|---|---|
+| Namespace | `namespace_id` | owner, type (user root or shared folder), latest `journal_id` | Metadata shards |
+| Journal entry | (`namespace_id`, `journal_id`) | op, path, `file_id`, rev, size, block list, author device, time | Metadata shards, append-only |
+| File (latest) | (`namespace_id`, path) | `file_id`, rev, block list, deleted flag | Metadata shards |
+| Block index | `block_hash` | size, storage location, reference count | Separate shards keyed by hash |
+| Mount | (`user_id`, `namespace_id`) | where the shared namespace appears in this user's tree, role | Metadata shards (by user) |
+| Block | SHA-256 of contents | the bytes (up to 4 MiB) | Object storage |
+
+A **namespace** is the unit of sync and sharing: each user's root is one, and each shared folder is its own namespace mounted into every member's tree. That gives the shard key: <Term slug="shard-key">shard by `namespace_id`</Term>. Everything a commit touches (the journal append, the latest-file row, the namespace's journal head) lives on one shard, so a commit is one local ACID transaction:
+
+```sql
+BEGIN;
+SELECT rev FROM files WHERE namespace_id = 'ns_81f2' AND path = '/Reports/q3.xlsx' FOR UPDATE;
+-- abort with 409 unless rev = 41 (the client's parent_rev)
+UPDATE namespaces SET journal_head = journal_head + 1 WHERE namespace_id = 'ns_81f2' RETURNING journal_head;
+INSERT INTO journal (namespace_id, journal_id, op, path, file_id, rev, blocks, device_id)
+  VALUES ('ns_81f2', 918274, 'upsert', '/Reports/q3.xlsx', 'f_55a0', 42, '{…}', 'dev_7c1e');
+UPDATE files SET rev = 42, blocks = '{…}' WHERE namespace_id = 'ns_81f2' AND path = '/Reports/q3.xlsx';
+COMMIT;
+```
+
+**Placement.** Each shard is a primary plus two replicas, one copy per availability zone, so every zone holds a full copy of all 128 shards and leads about 43 of them. A commit is acknowledged only after one replica in another zone has it (semi-synchronous replication), which is what makes "acknowledged is never lost" survive a zone failure.
+
+Incrementing `journal_head` under the row lock serialises commits **within one namespace**, which gives every device the same order of changes to apply; commits in different namespaces never contend.
+
+**Why sharded SQL (MySQL or Postgres) for metadata.** The access pattern needs multi-row atomic commits, a conditional check (the parent revision), and a gap-free ordered log per namespace. A relational shard gives all three as one local transaction. A wide-column store such as Cassandra would need lightweight transactions for the conditional check and has no cheap per-partition counter that is both atomic and gap-free; DynamoDB transactions could work but limit the number of items per transaction and cost more per write. Dropbox's public engineering posts describe its metadata running on sharded MySQL (Edgestore), which is consistent with this choice, though nothing here depends on it.
+
+**Why the block index is separate.** Block hashes are uniformly random, so the index shards perfectly by hash and has no relation to namespaces. Reference counts are updated asynchronously from the journal; garbage collection deletes a block only after its count has been zero for longer than the 30-day history window, so a race between "commit references block X" and "GC deletes X" cannot lose data.
+
+**Blocks** go to object storage keyed by their hash: immutable, so caches never need invalidating, and dedup is a key lookup. Dropbox has written publicly about building its own block store (Magic Pocket) for this workload; at our 450 PB a managed object store is still the right first answer.
+
+## High-level design
+
+<Figure caption="FIG. 1 · FILE SYNC · METADATA PLANE, BLOCK PLANE AND NOTIFICATIONS">
+<Diagram label="Devices resolve DNS and reach a load balancer. Metadata API instances in three availability zones read a namespace-head cache and read and write 128 metadata shards. Devices upload and download blocks directly to content-addressed object storage with presigned URLs. Each commit is published to a change topic; notifier workers look up which devices follow the namespace and send a doorbell through notification gateways in each zone, or through mobile push." chart={`flowchart LR
+  D[Devices: desktop, mobile, web] --> DNS[DNS]
+  D --> LB[Load balancer]
+  LB --> API[Metadata API x90 in 3 AZs]
+  API --> C[(Namespace head cache)]
+  API --> M[(Metadata DB: 128 shards, primary + 2 replicas each)]
+  D -->|presigned PUT / GET| OS[(Block store: object storage, key = SHA-256)]
+  M -->|CDC / outbox| T[[Change topic, partitioned by namespace]]
+  T --> N[Notifier workers]
+  N --> R[(Subscription registry)]
+  N --> G[Notification gateways x450, WebSocket / long poll]
+  N --> P[APNs / FCM for mobile]
+  G -.doorbell.-> D
+  P -.doorbell.-> D`} />
+</Figure>
+
+**Uploading a change (write path).**
+
+1. The client notices a change through the OS file-watch API (FSEvents on macOS, inotify on Linux, ReadDirectoryChangesW on Windows), waits a moment for the write to settle, then rehashes only the blocks whose bytes changed.
+2. `POST /blocks/check` with the block hashes; the metadata API looks them up in the block index and returns presigned URLs for the missing ones.
+3. The client PUTs missing blocks straight to object storage, in parallel (4 to 8 at a time), each verified by its hash.
+4. `POST /files/commit` with the full block list and `parent_rev`. The API verifies every block exists, runs the transaction above, and returns the new revision. The device marks the file synced only on this `200`.
+5. Commit and event publication must not be a <Term slug="dual-write">dual write</Term>: the change topic is fed from the journal itself, by <Term slug="change-data-capture">change data capture</Term> or a <Term slug="transactional-outbox">transactional outbox</Term>, so every committed change is announced exactly as committed and nothing uncommitted is announced.
+
+**Propagating it (notification path).** A notifier worker consumes the event, looks up the namespace's followers in the subscription registry (namespace → devices and the gateway each is connected to), and sends each a doorbell. Each device calls `GET /changes` with its cursor, then downloads missing blocks. Doorbells are coalesced per device, so 50 rapid saves produce one listing, not 50.
+
+**Downloading (read path).** Change listings hit the metadata API; most are answered by comparing the cursor with the cached namespace head. Bytes come from object storage with presigned GETs, and only for blocks the device does not already hold, which also makes renames and moves free: a moved file's block list is unchanged.
+
+**Sharing.** Sharing a folder makes it its own namespace and writes a mount row per member, whose devices then list it from cursor zero: an ordinary initial sync.
+
+**Time budget for the 10 s target (p99):** commit transaction about 50 ms, CDC and topic lag about 1 s, notifier lookup and send about 200 ms, gateway to device about 200 ms, change listing about 100 ms, then the first block download starts. That leaves several seconds of margin for queueing during a burst, which is why the notifier pipeline is monitored by <Term slug="consumer-lag">consumer lag</Term> in seconds, not messages.
+
+## Deep dives
+
+### How do you split files into blocks and deduplicate, and how big should a block be?
+
+**Options.** (a) Whole-file upload: simple, but a one-byte edit to a 2 GB video re-uploads 2 GB. (b) Fixed-size blocks: split at every 4 MiB, hash each, upload only changed blocks. (c) Content-defined chunking (CDC): choose block boundaries where a rolling hash of the last few dozen bytes matches a pattern (Rabin fingerprints, as in the LBFS paper from 2001, or the faster Gear-based FastCDC), so boundaries move with the content.
+
+**What decides it.** Fixed blocks handle the common case, edits in place (a database file, a VM image, an Office document saved over itself), and they make a block's position computable, which keeps resumable transfers and parallel hashing trivial. Their weakness is **insertions**: add one byte at the start of a file and every boundary shifts, so every block hashes differently. CDC fixes that at the cost of variable block sizes and more CPU per byte. Dropbox's public API documents a content hash built from 4 MiB blocks, a sign that fixed blocks are good enough at scale. A sound answer: fixed 4 MiB blocks by default; optionally CDC for file types where insertions are common, or rsync-style rolling checksums inside a changed block to send only the changed bytes.
+
+**Block size** is a three-way trade. Smaller blocks dedup better and waste less on small edits, but the block index grows: 1 MiB blocks would quadruple our 16 TB index and the per-request overhead. Larger blocks shrink the index but re-upload more per edit. 4 MiB keeps a 10 GB file at about 2,400 entries and a typical document at one.
+
+**Dedup scope.** Per-user dedup (identical blocks within one user's files and versions) is safe and captures most of the version-history savings. **Cross-user** dedup saves more but leaks information: if uploading a block completes instantly because "the server already has it", a user can test whether anyone stores a given file. This side channel was described in the security literature around 2010 (Harnik, Pinkas and Shulman-Peleg). Mitigations: dedup cross-user only for blocks above a popularity threshold, or always accept the upload and dedup later on the server, giving up the bandwidth saving but keeping the storage saving.
+
+<TradeoffBox title="Block strategy" items={[
+  { gain: "Fixed 4 MiB blocks: trivial resume, parallel hashing, small index", cost: "An insertion near the start changes every later block" },
+  { gain: "Content-defined chunking survives insertions", cost: "Variable sizes, more CPU, harder to reason about resume offsets" },
+  { gain: "Cross-user dedup saves storage and upload bandwidth", cost: "Leaks whether a file already exists anywhere; needs mitigation" }
+]} />
+
+### How does a device learn what changed and reconcile its tree (journal, Merkle trees, delta sync)?
+
+**Server side: an ordered journal, not a scan.** Each namespace has a gap-free journal; a device's state is just "applied up to journal id N". Catching up after three days offline is one `GET /changes` from N, paginated. Comparing full listings instead costs time proportional to the tree, not the changes.
+
+**Client side: three trees.** The client needs to know, for every path, what the server has, what the disk has, and **what they last agreed on**. Without the third, it cannot tell "I deleted this locally" from "someone added this remotely": in both cases the file exists in one tree and not the other. Dropbox's 2020 posts on rewriting its sync engine (Nucleus) describe exactly this model, with a remote tree, a local tree and a synced tree. The planner diffs remote vs synced (remote changes to apply) and local vs synced (local changes to upload); a path changed on both sides is a conflict.
+
+**Merkle trees** make comparing two big trees cheap. Give every directory a hash computed from its children's names and hashes, recursively, as Git does. If two root hashes match, the trees are identical; if not, descend only into the subdirectories whose hashes differ. A <Term slug="merkle-tree">Merkle tree</Term> is not needed on the hot path (the journal already says what changed), but it earns its place in two places: **verifying** that a device has converged (compare one root hash instead of 2,000 rows) and **recovering** when the cursor is unusable, for example a device restored from a backup or a journal that has been compacted past the device's cursor. Then the client and server compare directory hashes top-down and transfer only the differing subtrees.
+
+**Delta sync of content** is then block-level: the new block list is compared with the old one, and only new hashes are uploaded or downloaded.
+
+<Misconception wrong="The client can decide what to upload by comparing its folder with the server's folder." right="Two trees cannot distinguish a local delete from a remote add. Sync needs a third tree, the last state both sides agreed on, plus an ordered change journal to update it." />
+
+### How do you handle conflicting edits without silently losing data?
+
+A conflict is two commits that both start from the same parent revision. The server detects it **at commit time**: the conditional `parent_rev` check is <Term slug="optimistic-locking">optimistic concurrency control</Term> on each file, and the second committer gets `409`.
+
+**Alternatives for what happens next.**
+
+- <Term slug="last-write-wins">Last write wins</Term> by timestamp: the simplest, and wrong for this product. Device clocks drift, and the losing edit disappears, which violates the invariant.
+- Locking files while open: pessimistic, and impossible offline; a laptop that leaves with a lock held blocks everyone for days.
+- Automatic merging: only possible for formats with known structure (plain text with a three-way merge, or CRDT-based documents). For an arbitrary binary such as a spreadsheet or Photoshop file there is no safe merge.
+- **Keep both** (the standard answer): the first commit wins the path; the losing device renames its version to something like `q3 (Alice's conflicted copy 2026-11-04).xlsx`, commits that as a new file, and downloads the winner. Dropbox has used this "conflicted copy" convention for years. No bytes are lost and the user decides.
+
+Deletes need care too. A delete is a journal entry with a <Term slug="tombstone">tombstone</Term> rather than a removed row, so a device offline for days learns of it. If a device edited a file that another device deleted, the edit wins and the file is restored, because restoring is recoverable and losing an edit is not. Moves are the subtle case: a move of a folder concurrent with an edit inside it must not resurrect the old path. Assigning stable `file_id`s and treating paths as attributes avoids it.
+
+**Why not version vectors?** With a central server serialising commits per namespace, one revision number per file detects concurrency. <Term slug="vector-clock">Vector clocks</Term> are needed only when replicas accept writes without a central authority (peer-to-peer sync, multi-region active-active metadata).
+
+### How do change notifications reach 15M connected devices within 10 s?
+
+**Options.** (a) Polling every N seconds: 15M devices polling every 10 s is 1.5M requests/s, about 36 times our peak metadata load, almost all answering "nothing new". (b) Long polling: one held request per device, answered when something changes. (c) WebSocket: one persistent bidirectional connection. (d) Mobile push through APNs/FCM.
+
+**What decides it.** Desktop clients use (c), falling back to (b) behind proxies that break WebSockets; both cost one idle connection per device instead of a request every 10 s. Mobile uses (d) because iOS and Android suspend background sockets. Crucially, the notification carries **no data**, only "namespace X is at journal id N", so a lost or duplicate doorbell is harmless: the device's next listing from its cursor is the source of truth. That makes the notification path <Term slug="at-most-once">at-most-once</Term> by design, with correctness carried by the journal.
+
+**Fan-out.** The subscription registry (a sharded in-memory store: namespace → device → gateway) is written when a device connects. A shared folder with 10,000 members produces 10,000 doorbells per change; per-namespace coalescing (at most one doorbell per device per second) bounds it. A very large company folder changing constantly is the main scaling risk: it is one namespace on one shard and one partition of the topic.
+
+**Reconnect storms.** Losing a zone drops 5M connections at once; 5M immediate listings would swamp the 60,000/s the surviving API instances serve. The defences: clients reconnect with <Term slug="exponential-backoff">exponential backoff</Term> and full <Term slug="jitter">jitter</Term> spread over about 60 s; on reconnect they send their cursor and the gateway answers "nothing new" from the namespace-head cache without calling the metadata API; and the API sheds listing requests before commits when overloaded.
+
+## Failure modes & mitigations
+
+| Failure | Detection | Impact without mitigation | Mitigation |
+|---|---|---|---|
+| Connection drops mid-upload of a 10 GB file | Client timeout | Restart from zero; never finishes on bad Wi-Fi | Block-level resume: `/blocks/check` returns only missing blocks; at most one 4 MiB block is lost |
+| Commit times out; client retries | Client timeout | Duplicate revision or spurious conflict | Idempotency key per operation returns the stored result |
+| Two devices edit the same file offline | `parent_rev` mismatch at commit | Silent overwrite of one edit | `409`, conflicted copy committed, user notified |
+| Commit succeeds but the event is lost | Consumer lag and journal-vs-topic audits | Other devices never hear of the change | Events derived from the journal by CDC or outbox; devices also re-list on reconnect and every few minutes as a backstop |
+| An AZ fails | Health checks, about 10 s | A third of API and gateway capacity gone; 5M sockets drop | 30 API instances per AZ sized for two AZs; jittered reconnect; shard replicas in other AZs promoted |
+| A metadata shard primary fails | Replication health, missed heartbeats | Commits to its namespaces fail | Semi-synchronous replica in another AZ promoted in under a minute; clients retry commits idempotently |
+| A corrupted block in storage | Hash check on read, background scrubbing | Wrong bytes on users' disks | Content-addressed keys mean any reader verifies; erasure-coded repair from parity |
+| GC deletes a block a new commit references | Reference audit | Data loss | Delete only after refcount is zero for longer than history retention; commit re-verifies blocks exist |
+| Client bug starts deleting files everywhere | Spike in delete rate per user | Deletes sync to every device | Tombstones plus 30-day history; per-account anomaly alerts and one-click restore |
+
+**Failure timeline: AZ b is lost at the peak hour.**
+
+| Time | Users see | System does |
+|---|---|---|
+| T+0 | 5M devices connected through AZ b lose their socket; in-flight commits on AZ b's API instances time out | About 43 shard primaries in AZ b stop answering |
+| T+5–10 s | Desktop icons show "connecting"; saves queue locally, nothing is lost | LB health checks fail AZ b's targets and stop routing to them; replication monitors mark the 43 primaries dead |
+| T+10–40 s | Commits to namespaces on those shards return `503`; clients retry with the same idempotency key | Each orphaned shard promotes its semi-synchronous replica in AZ a or c; commits already acknowledged are on that replica |
+| T+10–70 s | Devices reconnect, spread by jittered backoff over about 60 s | 5M reconnects ÷ 60 s ≈ 83,000/s at the gateways; most present a cursor that matches the cached namespace head and get "nothing new" without touching the API |
+| T+70 s | Everything synced; queued saves upload | Surviving 60 API instances run at ρ ≈ 0.7, as sized |
+
+Detection: the zone-health alarm and the commit `503` rate per shard. Afterwards, watch doorbell-to-listing latency: a slow notifier backlog, not an error, is how this failure would breach the 10 s target.
+
+## Scaling to 10×
+
+At 1B users and 4B commits a day, the parts break in this order:
+
+1. **Notification gateways first.** 150M concurrent connections means 4,500 gateways, and the subscription registry becomes a large sharded store with heavy churn on every reconnect. Change: shard gateways by device id with consistent hashing so reconnects return to the same place, and push more presence state to the edge.
+2. **Hot namespaces.** One huge enterprise shared folder serialises through one journal on one shard. Change: split very large namespaces into sub-namespaces per top-level folder, with a cross-namespace move implemented as a two-step operation (copy blocks by reference, then tombstone), and move hot namespaces to dedicated shards. Sharding by namespace makes moving a namespace a well-defined unit.
+3. **Metadata storage.** 1.7 PB of metadata is about 1,100 shards at today's size per shard. Change: <Term slug="resharding">resharding</Term> with a directory (namespace → shard) rather than hash-mod-N, so namespaces move individually without a global rehash.
+4. **Block storage cost and egress.** 4.5 EB raw makes storage the dominant cost. Change: tier cold blocks (untouched for months) to cheaper erasure-coded storage; at this point a custom block store, as Dropbox chose, pays for its engineering cost.
+5. **Single-region metadata.** At 1B users, latency for distant users and regional outages matter. Change: assign each namespace a home region and replicate across regions; cross-region shared folders route commits to the namespace's home region, which keeps per-namespace ordering without multi-leader conflicts.
+
+The block plane scales almost linearly because it is immutable and content-addressed; the hard work is in metadata and notifications.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this choice |
+|---|---|---|
+| Split metadata plane from block plane | Upload whole files through the API servers | Bytes never touch our compute; API sizing depends on commits, not gigabytes |
+| Fixed 4 MiB content-addressed blocks | Content-defined chunking everywhere | Simple resume and indexing; CDC added only where insertions are common |
+| Presigned direct-to-storage transfers | Proxy blocks through a block service | Removes 56 Gbps of upload from our fleet; costs per-block URL issuance and less control over transfers |
+| Shard metadata by namespace | Shard by user or by file | A commit is one local transaction and the journal is ordered per namespace; costs hot shards for huge shared folders |
+| Ordered journal and cursor | Periodic full-tree comparison | Catch-up costs O(changes), not O(tree); Merkle hashes kept for verification and recovery |
+| Optimistic commit with conflicted copies | Last write wins, or file locks | Never loses an edit and works offline; the user sometimes has to merge |
+| Doorbell notifications, data via listing | Push full change data to devices | Lost or duplicate notifications are harmless; one extra round trip |
+| WebSocket or long poll, push on mobile | Periodic polling | 15M idle connections instead of 1.5M requests/s |
+
+## What interviewers look for
+
+- **Separating metadata from blocks early**, and explaining why: different sizes, access patterns, consistency needs and scaling curves.
+- **Real numbers that change the design**: 200 PB of data but only about 170 TB of metadata, 15M concurrent connections, and the observation that shard count is driven by storage while API count is driven by commit rate.
+- **A sync protocol, not just an upload API**: cursors over an ordered per-namespace journal, and the three-tree insight for telling local deletes from remote adds.
+- **Conflict handling that never loses data**, with the reason last-write-wins is wrong here and the reason locks fail offline.
+- **Idempotency everywhere a retry can happen**: hash-keyed blocks, idempotency keys on commits, events derived from the journal instead of dual writes.
+- **Failure thinking**: the reconnect storm after a zone loss, GC racing with commits, a client bug mass-deleting files.
+- **Staff-level judgement**: cross-user dedup is a privacy decision, and the notification path can be lossy because correctness lives in the journal.
+
+<InterviewAngle title="File sync" questions={[
+  "A user edits a file on a plane while a colleague edits the same file at the office. Walk me through exactly what happens when the plane lands.",
+  "Why do you need a third 'synced' tree on the client? Give a case that fails without it.",
+  "How does a 10 GB upload resume, and what makes a retried block upload safe?",
+  "A shared folder has 20,000 members and changes every second. What breaks, and how do you fix it?",
+  "Your garbage collector and a commit race on the same block. How do you guarantee no data loss?"
+]} />

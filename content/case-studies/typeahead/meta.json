@@ -1,0 +1,118 @@
+{
+  "id": "typeahead",
+  "title": "Search typeahead",
+  "summary": "Ten completions on every keystroke in under 100 ms: precomputed top-k per prefix, a log pipeline that rebuilds it, an edge cache that absorbs half the load, and a blocklist that must never leak.",
+  "difficulty": 2,
+  "weekRecommended": 14,
+  "relatedSectionIds": [
+    "p1-estimation",
+    "p2-search",
+    "p3-cdn",
+    "p3-cache-layers",
+    "p3-cache-strategies",
+    "p3-invalidation",
+    "p6-batch-processing",
+    "p6-stream-processing"
+  ],
+  "interviewerPrompt": "Design the autocomplete for a search box. As someone types, we show them suggestions for what they might be searching for. How would you build it?",
+  "clarifyingQuestions": [
+    {
+      "question": "How many users and searches?",
+      "answer": "100M daily users, each making about 5 searches a day. A typical search is about 20 characters long."
+    },
+    {
+      "question": "Do we request suggestions on every keystroke?",
+      "answer": "On most of them. Assume the client debounces fast typing so that about 12 of the 20 keystrokes in a search send a request."
+    },
+    {
+      "question": "How many suggestions, and ranked how?",
+      "answer": "Up to 10 completions of the current prefix, ranked mainly by how often people searched them recently. Exact relevance tuning is not the focus."
+    },
+    {
+      "question": "How fast must they appear?",
+      "answer": "Within 100 ms of the keystroke, end to end, at p99. Slower suggestions are useless because the user has typed the next character."
+    },
+    {
+      "question": "How fresh must suggestions be?",
+      "answer": "A query that suddenly becomes popular, for example breaking news, should be suggested within an hour. Everything else can lag by a day."
+    },
+    {
+      "question": "Are there queries we must never suggest?",
+      "answer": "Yes. Offensive or legally blocked terms must never be suggested, and a term added to the blocklist must disappear quickly, within minutes. Suggestions must also never leak one person's private query to others."
+    },
+    {
+      "question": "Prefix match only, or also typo tolerance and mid-word matches?",
+      "answer": "Prefix match on the normalised query (lower-cased, extra spaces removed). Typo tolerance is a nice extension, not a requirement."
+    },
+    {
+      "question": "Personalised suggestions?",
+      "answer": "Be aware of it: the user's own recent searches could be mixed in. The core service should serve the same suggestions to everyone for the same prefix and language."
+    },
+    {
+      "question": "Multiple languages and regions?",
+      "answer": "Suggestions are per language and country. Start with one market; say how you would extend it."
+    },
+    {
+      "question": "How spiky is traffic?",
+      "answer": "The daily peak is about 3 times the average, including evening peaks and news events."
+    }
+  ],
+  "deepDiveQuestions": [
+    "Trie or precomputed top-k per prefix: what data structure serves suggestions, and how big is it?",
+    "How do query logs become suggestions: the batch pipeline, and how trending queries get in within an hour?",
+    "How do you cache at the edge and in the browser without serving blocked or stale suggestions?",
+    "How would you add personalization without breaking caching or privacy?"
+  ],
+  "trafficProfile": {
+    "qps": 75200,
+    "readWriteRatio": 12,
+    "peakMultiplier": 3,
+    "requestTypes": [
+      {
+        "id": "suggest",
+        "name": "Suggestions for a prefix",
+        "op": "read",
+        "weight": 1,
+        "target": {
+          "kinds": [
+            "search-index"
+          ]
+        }
+      },
+      {
+        "id": "log-event",
+        "name": "Log a completed search / selection",
+        "op": "write",
+        "weight": 1,
+        "target": {
+          "kinds": [
+            "service"
+          ]
+        }
+      }
+    ]
+  },
+  "runChallenge": {
+    "id": "typeahead-peak-zone-loss",
+    "title": "Peak typing with a zone down",
+    "description": "Run at the 3× peak (about 208,000 suggestion requests and 17,000 log events per second) and lose the availability zone holding the most components after 10 s. Suggestions must stay under 60 ms at p99 at our edge and servers (the rest of the 100 ms budget is the user's network), with under 0.1% errors and no single point of failure.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": {
+      "minOkQps": 225000,
+      "maxP99Ms": 60,
+      "maxErrorRatePct": 0.1,
+      "maxSpofs": 0
+    }
+  },
+  "commonMistakes": [
+    "Building a trie in a database and walking it per request, or scanning the subtree under a prefix at query time, instead of precomputing the top 10 for each prefix.",
+    "Updating the serving trie in place on every search, which puts writes and locking on the hottest read path; suggestions only need to change every few minutes to hours.",
+    "Never estimating keystroke traffic: about 70,000 requests per second on average is 12 times the search rate, and the design must be sized for that.",
+    "Suggesting any query that has been typed, including rare ones that leak someone's name, address or medical question, instead of requiring a minimum number of distinct users.",
+    "Applying the blocklist only when the index is built, so an urgent block waits hours for the next build and for edge caches to expire.",
+    "Putting personalization into the shared response, which makes every response unique and destroys the edge and browser cache hit rates.",
+    "Sharding by first letter, which creates badly skewed shards ('s' and 'c' are far larger than 'x' and 'q'), when the whole index fits in one machine's memory and can simply be replicated."
+  ]
+}

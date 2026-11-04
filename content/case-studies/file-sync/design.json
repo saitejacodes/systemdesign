@@ -1,0 +1,545 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "devices",
+      "kind": "client",
+      "x": 0,
+      "y": 448,
+      "label": "Desktop & mobile clients",
+      "props": {
+        "platform": "both",
+        "users": 100000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 208,
+      "label": "DNS",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 432,
+      "y": 0,
+      "w": 1504,
+      "h": 1008,
+      "label": "Region (primary)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 48,
+      "w": 480,
+      "h": 288,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "meta-api-a",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Metadata API (a)",
+      "props": {
+        "name": "metadata-api",
+        "instances": 30,
+        "capacityQps": 1000,
+        "latencyMs": 15,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "gateway-a",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Notification gateways (a)",
+      "props": {
+        "name": "notify-gw",
+        "instances": 150,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "meta-db-a",
+      "kind": "shard-group",
+      "x": 224,
+      "y": 104,
+      "label": "Metadata DB copy in AZ a (128 shards, leads ~43)",
+      "props": {
+        "shards": 128,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 368,
+      "w": 480,
+      "h": 288,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "meta-api-b",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Metadata API (b)",
+      "props": {
+        "name": "metadata-api",
+        "instances": 30,
+        "capacityQps": 1000,
+        "latencyMs": 15,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "gateway-b",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Notification gateways (b)",
+      "props": {
+        "name": "notify-gw",
+        "instances": 150,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "meta-db-b",
+      "kind": "shard-group",
+      "x": 224,
+      "y": 104,
+      "label": "Metadata DB copy in AZ b (128 shards, leads ~43)",
+      "props": {
+        "shards": 128,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 688,
+      "w": 480,
+      "h": 288,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "meta-api-c",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Metadata API (c)",
+      "props": {
+        "name": "metadata-api",
+        "instances": 30,
+        "capacityQps": 1000,
+        "latencyMs": 15,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "gateway-c",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Notification gateways (c)",
+      "props": {
+        "name": "notify-gw",
+        "instances": 150,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "meta-db-c",
+      "kind": "shard-group",
+      "x": 224,
+      "y": 104,
+      "label": "Metadata DB copy in AZ c (128 shards, leads ~43)",
+      "props": {
+        "shards": 128,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 464,
+      "label": "Load balancer (L7, multi-AZ)",
+      "props": {
+        "layer": "L7",
+        "algorithm": "round-robin",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "head-cache",
+      "kind": "cache",
+      "x": 848,
+      "y": 128,
+      "label": "Namespace head cache (Redis)",
+      "props": {
+        "sizeGb": 64,
+        "hitRate": 60,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "blocks",
+      "kind": "object-storage",
+      "x": 1232,
+      "y": 128,
+      "label": "Block store (key = SHA-256, erasure-coded)",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "topic",
+      "kind": "queue",
+      "x": 848,
+      "y": 688,
+      "label": "Change topic (by namespace, from CDC)",
+      "props": {
+        "partitions": 256,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "notifier",
+      "kind": "worker",
+      "x": 1232,
+      "y": 688,
+      "label": "Notifier fan-out workers (x48)",
+      "props": {
+        "instances": 48,
+        "processingMs": 2,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "monitoring",
+      "kind": "monitoring",
+      "x": 1232,
+      "y": 400,
+      "label": "Monitoring (consumer lag, sync latency)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 0,
+      "y": 768,
+      "w": 352,
+      "h": 192,
+      "label": "Notes",
+      "props": {
+        "text": "Blocks go device to object storage with presigned URLs; only metadata goes through the API. The metadata DB is 128 namespace shards, each a primary plus 2 replicas, one copy per AZ: each AZ box holds a full copy of all 128 shards and leads about a third of them, so losing a zone promotes replicas elsewhere instead of losing shards. Change events come from the journal by CDC, so the notifier path carries a doorbell only; correctness lives in the journal and cursors. Sized for the 3x peak with one AZ lost (30 API instances per AZ)."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-devices-dns",
+      "source": "devices",
+      "target": "dns",
+      "kind": "sync",
+      "label": "resolve",
+      "direction": "forward"
+    },
+    {
+      "id": "e-devices-lb",
+      "source": "devices",
+      "target": "lb",
+      "kind": "sync",
+      "label": "metadata API",
+      "direction": "forward"
+    },
+    {
+      "id": "e-devices-blocks",
+      "source": "devices",
+      "target": "blocks",
+      "kind": "sync",
+      "label": "presigned block PUT / GET",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-meta-api-a",
+      "source": "lb",
+      "target": "meta-api-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-api-a-head-cache",
+      "source": "meta-api-a",
+      "target": "head-cache",
+      "kind": "sync",
+      "label": "cursor check",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-api-a-meta-db-a",
+      "source": "meta-api-a",
+      "target": "meta-db-a",
+      "kind": "sync",
+      "label": "commit / list",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-api-a-meta-db-b",
+      "source": "meta-api-a",
+      "target": "meta-db-b",
+      "kind": "sync",
+      "label": "commit / list",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-api-a-meta-db-c",
+      "source": "meta-api-a",
+      "target": "meta-db-c",
+      "kind": "sync",
+      "label": "commit / list",
+      "direction": "forward"
+    },
+    {
+      "id": "e-notifier-gateway-a",
+      "source": "notifier",
+      "target": "gateway-a",
+      "kind": "sync",
+      "label": "doorbell",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-gateway-a",
+      "source": "lb",
+      "target": "gateway-a",
+      "kind": "sync",
+      "label": "WebSocket",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-meta-api-b",
+      "source": "lb",
+      "target": "meta-api-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-api-b-head-cache",
+      "source": "meta-api-b",
+      "target": "head-cache",
+      "kind": "sync",
+      "label": "cursor check",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-api-b-meta-db-a",
+      "source": "meta-api-b",
+      "target": "meta-db-a",
+      "kind": "sync",
+      "label": "commit / list",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-api-b-meta-db-b",
+      "source": "meta-api-b",
+      "target": "meta-db-b",
+      "kind": "sync",
+      "label": "commit / list",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-api-b-meta-db-c",
+      "source": "meta-api-b",
+      "target": "meta-db-c",
+      "kind": "sync",
+      "label": "commit / list",
+      "direction": "forward"
+    },
+    {
+      "id": "e-notifier-gateway-b",
+      "source": "notifier",
+      "target": "gateway-b",
+      "kind": "sync",
+      "label": "doorbell",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-gateway-b",
+      "source": "lb",
+      "target": "gateway-b",
+      "kind": "sync",
+      "label": "WebSocket",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-meta-api-c",
+      "source": "lb",
+      "target": "meta-api-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-api-c-head-cache",
+      "source": "meta-api-c",
+      "target": "head-cache",
+      "kind": "sync",
+      "label": "cursor check",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-api-c-meta-db-a",
+      "source": "meta-api-c",
+      "target": "meta-db-a",
+      "kind": "sync",
+      "label": "commit / list",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-api-c-meta-db-b",
+      "source": "meta-api-c",
+      "target": "meta-db-b",
+      "kind": "sync",
+      "label": "commit / list",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-api-c-meta-db-c",
+      "source": "meta-api-c",
+      "target": "meta-db-c",
+      "kind": "sync",
+      "label": "commit / list",
+      "direction": "forward"
+    },
+    {
+      "id": "e-notifier-gateway-c",
+      "source": "notifier",
+      "target": "gateway-c",
+      "kind": "sync",
+      "label": "doorbell",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-gateway-c",
+      "source": "lb",
+      "target": "gateway-c",
+      "kind": "sync",
+      "label": "WebSocket",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-db-a-topic",
+      "source": "meta-db-a",
+      "target": "topic",
+      "kind": "async",
+      "label": "CDC",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-db-b-topic",
+      "source": "meta-db-b",
+      "target": "topic",
+      "kind": "async",
+      "label": "CDC",
+      "direction": "forward"
+    },
+    {
+      "id": "e-meta-db-c-topic",
+      "source": "meta-db-c",
+      "target": "topic",
+      "kind": "async",
+      "label": "CDC",
+      "direction": "forward"
+    },
+    {
+      "id": "e-topic-notifier",
+      "source": "topic",
+      "target": "notifier",
+      "kind": "async",
+      "label": "consume",
+      "direction": "forward"
+    }
+  ]
+}

@@ -1,0 +1,535 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "searchers",
+      "kind": "client",
+      "x": 0,
+      "y": 384,
+      "label": "Searchers",
+      "props": {
+        "platform": "both",
+        "users": 1000000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 128,
+      "label": "GeoDNS",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "w": 1440,
+      "h": 1024,
+      "label": "Serving region (one of several; 3 AZs)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 416,
+      "label": "Load balancer (TLS)",
+      "props": {
+        "layer": "L7",
+        "algorithm": "least-connections",
+        "instances": 4,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "w": 448,
+      "h": 288,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "query-a",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Query service AZ-a (36: parse, cache, scatter-gather)",
+      "props": {
+        "name": "query",
+        "instances": 36,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "index-a",
+      "kind": "search-index",
+      "x": 224,
+      "y": 160,
+      "label": "Index rows AZ-a (36 rows x 200 shards)",
+      "props": {
+        "nodes": 36,
+        "capacityQps": 1000,
+        "latencyMs": 15,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 352,
+      "w": 448,
+      "h": 288,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "query-b",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Query service AZ-b (36: parse, cache, scatter-gather)",
+      "props": {
+        "name": "query",
+        "instances": 36,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "index-b",
+      "kind": "search-index",
+      "x": 224,
+      "y": 160,
+      "label": "Index rows AZ-b (36 rows x 200 shards)",
+      "props": {
+        "nodes": 36,
+        "capacityQps": 1000,
+        "latencyMs": 15,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 672,
+      "w": 448,
+      "h": 288,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "query-c",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Query service AZ-c (36: parse, cache, scatter-gather)",
+      "props": {
+        "name": "query",
+        "instances": 36,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "index-c",
+      "kind": "search-index",
+      "x": 224,
+      "y": 160,
+      "label": "Index rows AZ-c (36 rows x 200 shards)",
+      "props": {
+        "nodes": 36,
+        "capacityQps": 1000,
+        "latencyMs": 15,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "rcache",
+      "kind": "cache",
+      "x": 800,
+      "y": 64,
+      "label": "Result cache (600 GB, TTL 1 h)",
+      "props": {
+        "sizeGb": 600,
+        "hitRate": 50,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "docs",
+      "kind": "nosql-db",
+      "x": 800,
+      "y": 288,
+      "label": "Doc servers: text for snippets (100 nodes)",
+      "props": {
+        "nodes": 100,
+        "consistency": "one",
+        "capacityQps": 10000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "spell",
+      "kind": "service",
+      "x": 800,
+      "y": 480,
+      "label": "Spell correction (in-memory model)",
+      "props": {
+        "name": "spell",
+        "instances": 6,
+        "capacityQps": 20000,
+        "latencyMs": 2,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "events",
+      "kind": "queue",
+      "x": 800,
+      "y": 704,
+      "label": "Kafka: page-fetched events",
+      "props": {
+        "partitions": 128,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "indexer",
+      "kind": "worker",
+      "x": 1056,
+      "y": 704,
+      "label": "Indexers (40 x 8 cores: parse, tokenize, features)",
+      "props": {
+        "instances": 40,
+        "processingMs": 2.5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "segments",
+      "kind": "object-storage",
+      "x": 1056,
+      "y": 480,
+      "label": "Index segments + delta segments",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "builder",
+      "kind": "worker",
+      "x": 1312,
+      "y": 704,
+      "label": "Base index builder (250 x 8 cores, weekly)",
+      "props": {
+        "instances": 250,
+        "processingMs": 2.5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 1056,
+      "y": 64,
+      "label": "Monitoring (p99, shard coverage, index age)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "crawled",
+      "kind": "object-storage",
+      "x": 2048,
+      "y": 704,
+      "label": "Crawled pages (input from the crawler)",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 2048,
+      "y": 128,
+      "label": "Note: what Run mode models",
+      "props": {
+        "text": "Run mode models one search as one visit to an index row. In reality each row is 200 shard servers and every query fans out to all of them (scatter-gather). The doc-server, spell-correction and indexing paths are drawn but not loaded by Run mode; their sizing is in the solution."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-searchers-dns",
+      "source": "searchers",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-searchers-lb",
+      "source": "searchers",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GET /search"
+    },
+    {
+      "id": "e-lb-query-a",
+      "source": "lb",
+      "target": "query-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-query-a-rcache",
+      "source": "query-a",
+      "target": "rcache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "cached page?"
+    },
+    {
+      "id": "e-query-a-index-a",
+      "source": "query-a",
+      "target": "index-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "scatter to 200 shards"
+    },
+    {
+      "id": "e-query-a-docs",
+      "source": "query-a",
+      "target": "docs",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "snippets for top 10"
+    },
+    {
+      "id": "e-query-a-spell",
+      "source": "query-a",
+      "target": "spell",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "did-you-mean (10 ms budget)"
+    },
+    {
+      "id": "e-index-a-segments",
+      "source": "index-a",
+      "target": "segments",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "pull new segments"
+    },
+    {
+      "id": "e-lb-query-b",
+      "source": "lb",
+      "target": "query-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-query-b-rcache",
+      "source": "query-b",
+      "target": "rcache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "cached page?"
+    },
+    {
+      "id": "e-query-b-index-b",
+      "source": "query-b",
+      "target": "index-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "scatter to 200 shards"
+    },
+    {
+      "id": "e-query-b-docs",
+      "source": "query-b",
+      "target": "docs",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "snippets for top 10"
+    },
+    {
+      "id": "e-query-b-spell",
+      "source": "query-b",
+      "target": "spell",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "did-you-mean (10 ms budget)"
+    },
+    {
+      "id": "e-index-b-segments",
+      "source": "index-b",
+      "target": "segments",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "pull new segments"
+    },
+    {
+      "id": "e-lb-query-c",
+      "source": "lb",
+      "target": "query-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-query-c-rcache",
+      "source": "query-c",
+      "target": "rcache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "cached page?"
+    },
+    {
+      "id": "e-query-c-index-c",
+      "source": "query-c",
+      "target": "index-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "scatter to 200 shards"
+    },
+    {
+      "id": "e-query-c-docs",
+      "source": "query-c",
+      "target": "docs",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "snippets for top 10"
+    },
+    {
+      "id": "e-query-c-spell",
+      "source": "query-c",
+      "target": "spell",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "did-you-mean (10 ms budget)"
+    },
+    {
+      "id": "e-index-c-segments",
+      "source": "index-c",
+      "target": "segments",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "pull new segments"
+    },
+    {
+      "id": "e-crawled-events",
+      "source": "crawled",
+      "target": "events",
+      "kind": "async",
+      "direction": "forward",
+      "label": "page-fetched events"
+    },
+    {
+      "id": "e-events-indexer",
+      "source": "events",
+      "target": "indexer",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-indexer-crawled",
+      "source": "indexer",
+      "target": "crawled",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "read WARC record"
+    },
+    {
+      "id": "e-indexer-segments",
+      "source": "indexer",
+      "target": "segments",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hourly delta segments"
+    },
+    {
+      "id": "e-indexer-docs",
+      "source": "indexer",
+      "target": "docs",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "doc text + metadata"
+    },
+    {
+      "id": "e-builder-segments",
+      "source": "builder",
+      "target": "segments",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "weekly base rebuild"
+    }
+  ]
+}

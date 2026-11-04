@@ -1,0 +1,607 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "fans",
+      "kind": "client",
+      "x": 0,
+      "y": 416,
+      "label": "Fans",
+      "props": {
+        "platform": "both",
+        "users": 20000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 0,
+      "label": "DNS",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "cdn",
+      "kind": "cdn",
+      "x": 224,
+      "y": 160,
+      "label": "CDN (queue status, static seat maps)",
+      "props": {
+        "hitRate": 99.9,
+        "latencyMs": 20,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "status",
+      "kind": "object-storage",
+      "x": 224,
+      "y": -176,
+      "label": "now-serving.json + static assets",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "w": 1520,
+      "h": 944,
+      "label": "Region (primary)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 432,
+      "label": "Load balancer (TLS)",
+      "props": {
+        "layer": "L7",
+        "algorithm": "round-robin",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "w": 352,
+      "h": 256,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "wr-a",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Waiting-room service AZ-a (x14)",
+      "props": {
+        "name": "waiting-room",
+        "instances": 14,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "api-a",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Booking API AZ-a (x7)",
+      "props": {
+        "name": "booking-api",
+        "instances": 7,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 336,
+      "w": 352,
+      "h": 256,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "wr-b",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Waiting-room service AZ-b (x14)",
+      "props": {
+        "name": "waiting-room",
+        "instances": 14,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "api-b",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Booking API AZ-b (x7)",
+      "props": {
+        "name": "booking-api",
+        "instances": 7,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 640,
+      "w": 352,
+      "h": 256,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "wr-c",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Waiting-room service AZ-c (x14)",
+      "props": {
+        "name": "waiting-room",
+        "instances": 14,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "api-c",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Booking API AZ-c (x7)",
+      "props": {
+        "name": "booking-api",
+        "instances": 7,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "qstore",
+      "kind": "nosql-db",
+      "x": 704,
+      "y": 48,
+      "label": "Queue store: tokens (6 nodes, RF=3)",
+      "props": {
+        "nodes": 6,
+        "consistency": "quorum",
+        "capacityQps": 10000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "seatcache",
+      "kind": "cache",
+      "x": 704,
+      "y": 288,
+      "label": "Redis: seat availability per section",
+      "props": {
+        "sizeGb": 16,
+        "hitRate": 90,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "db",
+      "kind": "sql-db",
+      "x": 704,
+      "y": 512,
+      "label": "Inventory + orders DB (Postgres, sync replica + 1 async)",
+      "props": {
+        "replicas": 2,
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "admit",
+      "kind": "worker",
+      "x": 992,
+      "y": 48,
+      "label": "Admission controller (x2, leader lease)",
+      "props": {
+        "instances": 2,
+        "processingMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "sweeper",
+      "kind": "worker",
+      "x": 992,
+      "y": 288,
+      "label": "Hold-expiry sweeper (x2)",
+      "props": {
+        "instances": 2,
+        "processingMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "relay",
+      "kind": "worker",
+      "x": 992,
+      "y": 512,
+      "label": "Outbox relay (x2)",
+      "props": {
+        "instances": 2,
+        "processingMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "events",
+      "kind": "queue",
+      "x": 1232,
+      "y": 512,
+      "label": "Kafka: order events",
+      "props": {
+        "partitions": 16,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "fulfil",
+      "kind": "worker",
+      "x": 1232,
+      "y": 736,
+      "label": "Payment follow-up & ticket issue workers (x4)",
+      "props": {
+        "instances": 4,
+        "processingMs": 20,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 704,
+      "y": 768,
+      "label": "Monitoring (admit rate, hold failures, unknown payments)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "psp",
+      "kind": "external-api",
+      "x": 2048,
+      "y": 512,
+      "label": "Payment service provider",
+      "props": {
+        "latencyMs": 800,
+        "rateLimitQps": 2000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-fans-dns",
+      "source": "fans",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-fans-cdn",
+      "source": "fans",
+      "target": "cdn",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "poll now-serving"
+    },
+    {
+      "id": "e-cdn-status",
+      "source": "cdn",
+      "target": "status",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "origin (every 2 s per PoP)"
+    },
+    {
+      "id": "e-fans-lb",
+      "source": "fans",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "join, seat map, hold, pay"
+    },
+    {
+      "id": "e-lb-wr-a",
+      "source": "lb",
+      "target": "wr-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-wr-a-qstore",
+      "source": "wr-a",
+      "target": "qstore",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "one token per account"
+    },
+    {
+      "id": "e-lb-api-a",
+      "source": "lb",
+      "target": "api-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-a-seatcache",
+      "source": "api-a",
+      "target": "seatcache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "seat map"
+    },
+    {
+      "id": "e-api-a-db",
+      "source": "api-a",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conditional hold / confirm"
+    },
+    {
+      "id": "e-api-a-psp",
+      "source": "api-a",
+      "target": "psp",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "authorize"
+    },
+    {
+      "id": "e-lb-wr-b",
+      "source": "lb",
+      "target": "wr-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-wr-b-qstore",
+      "source": "wr-b",
+      "target": "qstore",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "one token per account"
+    },
+    {
+      "id": "e-lb-api-b",
+      "source": "lb",
+      "target": "api-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-b-seatcache",
+      "source": "api-b",
+      "target": "seatcache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "seat map"
+    },
+    {
+      "id": "e-api-b-db",
+      "source": "api-b",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conditional hold / confirm"
+    },
+    {
+      "id": "e-api-b-psp",
+      "source": "api-b",
+      "target": "psp",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "authorize"
+    },
+    {
+      "id": "e-lb-wr-c",
+      "source": "lb",
+      "target": "wr-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-wr-c-qstore",
+      "source": "wr-c",
+      "target": "qstore",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "one token per account"
+    },
+    {
+      "id": "e-lb-api-c",
+      "source": "lb",
+      "target": "api-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-c-seatcache",
+      "source": "api-c",
+      "target": "seatcache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "seat map"
+    },
+    {
+      "id": "e-api-c-db",
+      "source": "api-c",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conditional hold / confirm"
+    },
+    {
+      "id": "e-api-c-psp",
+      "source": "api-c",
+      "target": "psp",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "authorize"
+    },
+    {
+      "id": "e-admit-qstore",
+      "source": "admit",
+      "target": "qstore",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "queue histogram"
+    },
+    {
+      "id": "e-admit-db",
+      "source": "admit",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "unsold + held counts"
+    },
+    {
+      "id": "e-admit-status",
+      "source": "admit",
+      "target": "status",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "publish admit threshold"
+    },
+    {
+      "id": "e-sweeper-db",
+      "source": "sweeper",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "release expired holds"
+    },
+    {
+      "id": "e-relay-db",
+      "source": "relay",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "poll outbox"
+    },
+    {
+      "id": "e-relay-events",
+      "source": "relay",
+      "target": "events",
+      "kind": "async",
+      "direction": "forward",
+      "label": "publish"
+    },
+    {
+      "id": "e-events-fulfil",
+      "source": "events",
+      "target": "fulfil",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-fulfil-psp",
+      "source": "fulfil",
+      "target": "psp",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "capture / void / status"
+    },
+    {
+      "id": "e-fulfil-db",
+      "source": "fulfil",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "issue tickets"
+    }
+  ]
+}

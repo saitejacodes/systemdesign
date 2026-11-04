@@ -1,0 +1,447 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "searchers",
+      "kind": "client",
+      "x": 0,
+      "y": 320,
+      "label": "Searchers",
+      "props": {
+        "platform": "both",
+        "users": 100000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 96,
+      "label": "DNS",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "cdn",
+      "kind": "cdn",
+      "x": 224,
+      "y": 384,
+      "label": "CDN (prefix responses, TTL 5 min)",
+      "props": {
+        "hitRate": 50,
+        "latencyMs": 10,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "w": 1424,
+      "h": 896,
+      "label": "Region (3 AZs)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 384,
+      "label": "Load balancer",
+      "props": {
+        "layer": "L7",
+        "algorithm": "round-robin",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "w": 384,
+      "h": 256,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "suggest-a",
+      "kind": "search-index",
+      "x": 32,
+      "y": 48,
+      "label": "Suggest servers AZ-a (4, in-memory top-k index)",
+      "props": {
+        "nodes": 4,
+        "capacityQps": 20000,
+        "latencyMs": 3,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "collect-a",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Event collector AZ-a (2)",
+      "props": {
+        "name": "collector",
+        "instances": 2,
+        "capacityQps": 10000,
+        "latencyMs": 3,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 320,
+      "w": 384,
+      "h": 256,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "suggest-b",
+      "kind": "search-index",
+      "x": 32,
+      "y": 48,
+      "label": "Suggest servers AZ-b (4, in-memory top-k index)",
+      "props": {
+        "nodes": 4,
+        "capacityQps": 20000,
+        "latencyMs": 3,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "collect-b",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Event collector AZ-b (2)",
+      "props": {
+        "name": "collector",
+        "instances": 2,
+        "capacityQps": 10000,
+        "latencyMs": 3,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 608,
+      "w": 384,
+      "h": 256,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "suggest-c",
+      "kind": "search-index",
+      "x": 32,
+      "y": 48,
+      "label": "Suggest servers AZ-c (4, in-memory top-k index)",
+      "props": {
+        "nodes": 4,
+        "capacityQps": 20000,
+        "latencyMs": 3,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "collect-c",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Event collector AZ-c (2)",
+      "props": {
+        "name": "collector",
+        "instances": 2,
+        "capacityQps": 10000,
+        "latencyMs": 3,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "kafka",
+      "kind": "queue",
+      "x": 736,
+      "y": 224,
+      "label": "Kafka: query + selection events",
+      "props": {
+        "partitions": 64,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "trend",
+      "kind": "worker",
+      "x": 992,
+      "y": 96,
+      "label": "Trending aggregator (6, 5-min windows)",
+      "props": {
+        "instances": 6,
+        "processingMs": 0.2,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "archiver",
+      "kind": "worker",
+      "x": 992,
+      "y": 352,
+      "label": "Log archiver (2)",
+      "props": {
+        "instances": 2,
+        "processingMs": 0.05,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "lake",
+      "kind": "object-storage",
+      "x": 992,
+      "y": 608,
+      "label": "Query-log lake + index snapshots",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "builder",
+      "kind": "worker",
+      "x": 736,
+      "y": 608,
+      "label": "Snapshot builder (batch, every 6 h)",
+      "props": {
+        "instances": 2,
+        "processingMs": 1000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 1216,
+      "y": 96,
+      "label": "Monitoring (p99, CDN hit, snapshot age)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-searchers-dns",
+      "source": "searchers",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-searchers-cdn",
+      "source": "searchers",
+      "target": "cdn",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GET /suggest, events"
+    },
+    {
+      "id": "e-cdn-lb",
+      "source": "cdn",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "misses + events"
+    },
+    {
+      "id": "e-lb-suggest-a",
+      "source": "lb",
+      "target": "suggest-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GET /suggest"
+    },
+    {
+      "id": "e-lb-collect-a",
+      "source": "lb",
+      "target": "collect-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "POST events"
+    },
+    {
+      "id": "e-collect-a-kafka",
+      "source": "collect-a",
+      "target": "kafka",
+      "kind": "async",
+      "direction": "forward",
+      "label": "produce"
+    },
+    {
+      "id": "e-suggest-a-lake",
+      "source": "suggest-a",
+      "target": "lake",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "load snapshot, poll overlay"
+    },
+    {
+      "id": "e-lb-suggest-b",
+      "source": "lb",
+      "target": "suggest-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GET /suggest"
+    },
+    {
+      "id": "e-lb-collect-b",
+      "source": "lb",
+      "target": "collect-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "POST events"
+    },
+    {
+      "id": "e-collect-b-kafka",
+      "source": "collect-b",
+      "target": "kafka",
+      "kind": "async",
+      "direction": "forward",
+      "label": "produce"
+    },
+    {
+      "id": "e-suggest-b-lake",
+      "source": "suggest-b",
+      "target": "lake",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "load snapshot, poll overlay"
+    },
+    {
+      "id": "e-lb-suggest-c",
+      "source": "lb",
+      "target": "suggest-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GET /suggest"
+    },
+    {
+      "id": "e-lb-collect-c",
+      "source": "lb",
+      "target": "collect-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "POST events"
+    },
+    {
+      "id": "e-collect-c-kafka",
+      "source": "collect-c",
+      "target": "kafka",
+      "kind": "async",
+      "direction": "forward",
+      "label": "produce"
+    },
+    {
+      "id": "e-suggest-c-lake",
+      "source": "suggest-c",
+      "target": "lake",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "load snapshot, poll overlay"
+    },
+    {
+      "id": "e-kafka-trend",
+      "source": "kafka",
+      "target": "trend",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-kafka-archiver",
+      "source": "kafka",
+      "target": "archiver",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-archiver-lake",
+      "source": "archiver",
+      "target": "lake",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hourly files"
+    },
+    {
+      "id": "e-trend-lake",
+      "source": "trend",
+      "target": "lake",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "trending overlay / min"
+    },
+    {
+      "id": "e-builder-lake",
+      "source": "builder",
+      "target": "lake",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "read logs, write snapshot"
+    }
+  ]
+}

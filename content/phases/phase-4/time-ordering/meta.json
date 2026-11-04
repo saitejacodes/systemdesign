@@ -15,6 +15,6 @@
     { "id": "hlc-truetime", "title": "Hybrid logical clocks and TrueTime", "depth": "awareness" }
   ],
   "simulatorIds": ["clocks"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["chat-app", "job-scheduler"],
   "prerequisites": ["p4-consistency-models", "p2-replication"]
 }

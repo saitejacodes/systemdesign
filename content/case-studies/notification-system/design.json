@@ -1,0 +1,744 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "product",
+      "kind": "client",
+      "x": 0,
+      "y": 128,
+      "label": "Product services (callers)",
+      "props": {
+        "platform": "web",
+        "users": 2000
+      }
+    },
+    {
+      "id": "recipients",
+      "kind": "client",
+      "x": 0,
+      "y": 448,
+      "label": "Recipients",
+      "props": {
+        "platform": "both",
+        "users": 200000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 0,
+      "y": 704,
+      "label": "DNS",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "gateway",
+      "kind": "api-gateway",
+      "x": 224,
+      "y": 288,
+      "label": "API gateway (auth, caller quotas)",
+      "props": {
+        "rateLimitQps": 120000,
+        "instances": 3,
+        "latencyMs": 5,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "w": 1616,
+      "h": 960,
+      "label": "Region (3 AZs)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 32,
+      "y": 48,
+      "w": 224,
+      "h": 160,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 32,
+      "y": 240,
+      "w": 224,
+      "h": 160,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 32,
+      "y": 432,
+      "w": 224,
+      "h": 160,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "api-a",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Accept API a (25 × 2k QPS)",
+      "props": {
+        "name": "accept-api",
+        "instances": 25,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "api-b",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Accept API b (25 × 2k QPS)",
+      "props": {
+        "name": "accept-api",
+        "instances": 25,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "api-c",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Accept API c (25 × 2k QPS)",
+      "props": {
+        "name": "accept-api",
+        "instances": 25,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "cache",
+      "kind": "cache",
+      "x": 320,
+      "y": 672,
+      "label": "Redis: dedup, caps, prefs cache",
+      "props": {
+        "sizeGb": 256,
+        "hitRate": 95,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "prefs",
+      "kind": "nosql-db",
+      "x": 320,
+      "y": 832,
+      "label": "Preferences & devices",
+      "props": {
+        "nodes": 6,
+        "consistency": "quorum",
+        "capacityQps": 10000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "topic-tx",
+      "kind": "queue",
+      "x": 400,
+      "y": 128,
+      "label": "Transactional topic",
+      "props": {
+        "partitions": 64,
+        "retentionH": 72,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "topic-bulk",
+      "kind": "queue",
+      "x": 400,
+      "y": 432,
+      "label": "Bulk / campaign topic",
+      "props": {
+        "partitions": 256,
+        "retentionH": 72,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "router-tx",
+      "kind": "worker",
+      "x": 640,
+      "y": 128,
+      "label": "Routers: transactional",
+      "props": {
+        "instances": 80,
+        "processingMs": 2,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "router-bulk",
+      "kind": "worker",
+      "x": 640,
+      "y": 432,
+      "label": "Routers: bulk",
+      "props": {
+        "instances": 150,
+        "processingMs": 2,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "push-q",
+      "kind": "queue",
+      "x": 912,
+      "y": 80,
+      "label": "Push queue (high + low lanes)",
+      "props": {
+        "partitions": 128,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "email-q",
+      "kind": "queue",
+      "x": 912,
+      "y": 288,
+      "label": "Email queue (high + low lanes)",
+      "props": {
+        "partitions": 64,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "sms-q",
+      "kind": "queue",
+      "x": 912,
+      "y": 496,
+      "label": "SMS queue (high + low lanes)",
+      "props": {
+        "partitions": 16,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "push-w",
+      "kind": "worker",
+      "x": 1168,
+      "y": 80,
+      "label": "Push senders",
+      "props": {
+        "instances": 40,
+        "processingMs": 0.5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "email-w",
+      "kind": "worker",
+      "x": 1168,
+      "y": 288,
+      "label": "Email senders",
+      "props": {
+        "instances": 24,
+        "processingMs": 2.5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "sms-w",
+      "kind": "worker",
+      "x": 1168,
+      "y": 496,
+      "label": "SMS senders",
+      "props": {
+        "instances": 20,
+        "processingMs": 20,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "log",
+      "kind": "nosql-db",
+      "x": 912,
+      "y": 704,
+      "label": "Notification log (wide-column, TTL 30 d)",
+      "props": {
+        "nodes": 24,
+        "consistency": "quorum",
+        "capacityQps": 10000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "dlq",
+      "kind": "queue",
+      "x": 1168,
+      "y": 704,
+      "label": "Retry queues + DLQ",
+      "props": {
+        "partitions": 16,
+        "retentionH": 336,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "monitoring",
+      "kind": "monitoring",
+      "x": 1392,
+      "y": 832,
+      "label": "Monitoring (oldest-message age per lane)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "push",
+      "kind": "external-api",
+      "x": 2192,
+      "y": 64,
+      "label": "Push providers (APNs / FCM)",
+      "props": {
+        "latencyMs": 200,
+        "rateLimitQps": 100000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "email",
+      "kind": "external-api",
+      "x": 2192,
+      "y": 352,
+      "label": "Email provider",
+      "props": {
+        "latencyMs": 500,
+        "rateLimitQps": 10000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "sms",
+      "kind": "external-api",
+      "x": 2192,
+      "y": 640,
+      "label": "SMS provider",
+      "props": {
+        "latencyMs": 1000,
+        "rateLimitQps": 1000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-product-gateway",
+      "source": "product",
+      "target": "gateway",
+      "kind": "sync",
+      "label": "send / campaign",
+      "direction": "forward"
+    },
+    {
+      "id": "e-recipients-gateway",
+      "source": "recipients",
+      "target": "gateway",
+      "kind": "sync",
+      "label": "prefs, devices",
+      "direction": "forward"
+    },
+    {
+      "id": "e-recipients-dns",
+      "source": "recipients",
+      "target": "dns",
+      "kind": "sync",
+      "label": "resolve",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gateway-api-a",
+      "source": "gateway",
+      "target": "api-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-a-cache",
+      "source": "api-a",
+      "target": "cache",
+      "kind": "sync",
+      "label": "SET NX / prefs",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-a-prefs",
+      "source": "api-a",
+      "target": "prefs",
+      "kind": "sync",
+      "label": "miss / write",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-a-topic-tx",
+      "source": "api-a",
+      "target": "topic-tx",
+      "kind": "async",
+      "label": "high",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-a-topic-bulk",
+      "source": "api-a",
+      "target": "topic-bulk",
+      "kind": "async",
+      "label": "low",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gateway-api-b",
+      "source": "gateway",
+      "target": "api-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-b-cache",
+      "source": "api-b",
+      "target": "cache",
+      "kind": "sync",
+      "label": "SET NX / prefs",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-b-prefs",
+      "source": "api-b",
+      "target": "prefs",
+      "kind": "sync",
+      "label": "miss / write",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-b-topic-tx",
+      "source": "api-b",
+      "target": "topic-tx",
+      "kind": "async",
+      "label": "high",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-b-topic-bulk",
+      "source": "api-b",
+      "target": "topic-bulk",
+      "kind": "async",
+      "label": "low",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gateway-api-c",
+      "source": "gateway",
+      "target": "api-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-c-cache",
+      "source": "api-c",
+      "target": "cache",
+      "kind": "sync",
+      "label": "SET NX / prefs",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-c-prefs",
+      "source": "api-c",
+      "target": "prefs",
+      "kind": "sync",
+      "label": "miss / write",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-c-topic-tx",
+      "source": "api-c",
+      "target": "topic-tx",
+      "kind": "async",
+      "label": "high",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-c-topic-bulk",
+      "source": "api-c",
+      "target": "topic-bulk",
+      "kind": "async",
+      "label": "low",
+      "direction": "forward"
+    },
+    {
+      "id": "e-topic-tx-router-tx",
+      "source": "topic-tx",
+      "target": "router-tx",
+      "kind": "async",
+      "label": "consume",
+      "direction": "forward"
+    },
+    {
+      "id": "e-topic-bulk-router-bulk",
+      "source": "topic-bulk",
+      "target": "router-bulk",
+      "kind": "async",
+      "label": "consume",
+      "direction": "forward"
+    },
+    {
+      "id": "e-router-tx-cache",
+      "source": "router-tx",
+      "target": "cache",
+      "kind": "sync",
+      "label": "prefs, dedup, caps",
+      "direction": "forward"
+    },
+    {
+      "id": "e-router-tx-push-q",
+      "source": "router-tx",
+      "target": "push-q",
+      "kind": "async",
+      "direction": "forward"
+    },
+    {
+      "id": "e-router-tx-email-q",
+      "source": "router-tx",
+      "target": "email-q",
+      "kind": "async",
+      "direction": "forward"
+    },
+    {
+      "id": "e-router-tx-sms-q",
+      "source": "router-tx",
+      "target": "sms-q",
+      "kind": "async",
+      "direction": "forward"
+    },
+    {
+      "id": "e-router-bulk-cache",
+      "source": "router-bulk",
+      "target": "cache",
+      "kind": "sync",
+      "label": "prefs, dedup, caps",
+      "direction": "forward"
+    },
+    {
+      "id": "e-router-bulk-push-q",
+      "source": "router-bulk",
+      "target": "push-q",
+      "kind": "async",
+      "direction": "forward"
+    },
+    {
+      "id": "e-router-bulk-email-q",
+      "source": "router-bulk",
+      "target": "email-q",
+      "kind": "async",
+      "direction": "forward"
+    },
+    {
+      "id": "e-router-bulk-sms-q",
+      "source": "router-bulk",
+      "target": "sms-q",
+      "kind": "async",
+      "direction": "forward"
+    },
+    {
+      "id": "e-push-q-push-w",
+      "source": "push-q",
+      "target": "push-w",
+      "kind": "async",
+      "label": "consume",
+      "direction": "forward"
+    },
+    {
+      "id": "e-email-q-email-w",
+      "source": "email-q",
+      "target": "email-w",
+      "kind": "async",
+      "label": "consume",
+      "direction": "forward"
+    },
+    {
+      "id": "e-sms-q-sms-w",
+      "source": "sms-q",
+      "target": "sms-w",
+      "kind": "async",
+      "label": "consume",
+      "direction": "forward"
+    },
+    {
+      "id": "e-push-w-push",
+      "source": "push-w",
+      "target": "push",
+      "kind": "sync",
+      "label": "HTTP/2",
+      "direction": "forward"
+    },
+    {
+      "id": "e-email-w-email",
+      "source": "email-w",
+      "target": "email",
+      "kind": "sync",
+      "label": "API",
+      "direction": "forward"
+    },
+    {
+      "id": "e-sms-w-sms",
+      "source": "sms-w",
+      "target": "sms",
+      "kind": "sync",
+      "label": "API",
+      "direction": "forward"
+    },
+    {
+      "id": "e-push-w-log",
+      "source": "push-w",
+      "target": "log",
+      "kind": "sync",
+      "label": "status",
+      "direction": "forward"
+    },
+    {
+      "id": "e-push-w-dlq",
+      "source": "push-w",
+      "target": "dlq",
+      "kind": "async",
+      "label": "retry / dead-letter",
+      "direction": "forward"
+    },
+    {
+      "id": "e-email-w-log",
+      "source": "email-w",
+      "target": "log",
+      "kind": "sync",
+      "label": "status",
+      "direction": "forward"
+    },
+    {
+      "id": "e-email-w-dlq",
+      "source": "email-w",
+      "target": "dlq",
+      "kind": "async",
+      "label": "retry / dead-letter",
+      "direction": "forward"
+    },
+    {
+      "id": "e-sms-w-log",
+      "source": "sms-w",
+      "target": "log",
+      "kind": "sync",
+      "label": "status",
+      "direction": "forward"
+    },
+    {
+      "id": "e-sms-w-dlq",
+      "source": "sms-w",
+      "target": "dlq",
+      "kind": "async",
+      "label": "retry / dead-letter",
+      "direction": "forward"
+    },
+    {
+      "id": "e-push-recipients",
+      "source": "push",
+      "target": "recipients",
+      "kind": "async",
+      "label": "push",
+      "direction": "forward"
+    },
+    {
+      "id": "e-email-recipients",
+      "source": "email",
+      "target": "recipients",
+      "kind": "async",
+      "label": "email",
+      "direction": "forward"
+    },
+    {
+      "id": "e-sms-recipients",
+      "source": "sms",
+      "target": "recipients",
+      "kind": "async",
+      "label": "SMS",
+      "direction": "forward"
+    }
+  ]
+}

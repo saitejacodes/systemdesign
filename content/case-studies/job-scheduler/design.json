@@ -1,0 +1,686 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "owners",
+      "kind": "client",
+      "x": 0,
+      "y": 352,
+      "label": "Job owners (internal teams)",
+      "props": {
+        "platform": "web",
+        "users": 5000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 128,
+      "label": "DNS",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "w": 1472,
+      "h": 1024,
+      "label": "Region (primary)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 32,
+      "y": 432,
+      "label": "Load balancer",
+      "props": {
+        "layer": "L7",
+        "algorithm": "round-robin",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "w": 528,
+      "h": 304,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "sched-a",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Scheduler AZ-a (x8, owns partitions)",
+      "props": {
+        "name": "scheduler",
+        "instances": 8,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "run-a",
+      "kind": "service",
+      "x": 288,
+      "y": 48,
+      "label": "Run API AZ-a (x11, worker-facing)",
+      "props": {
+        "name": "run-api",
+        "instances": 11,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "own-a",
+      "kind": "service",
+      "x": 160,
+      "y": 176,
+      "label": "Owner API AZ-a (x2)",
+      "props": {
+        "name": "owner-api",
+        "instances": 2,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 368,
+      "w": 528,
+      "h": 304,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "sched-b",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Scheduler AZ-b (x8, owns partitions)",
+      "props": {
+        "name": "scheduler",
+        "instances": 8,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "run-b",
+      "kind": "service",
+      "x": 288,
+      "y": 48,
+      "label": "Run API AZ-b (x11, worker-facing)",
+      "props": {
+        "name": "run-api",
+        "instances": 11,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "own-b",
+      "kind": "service",
+      "x": 160,
+      "y": 176,
+      "label": "Owner API AZ-b (x2)",
+      "props": {
+        "name": "owner-api",
+        "instances": 2,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 704,
+      "w": 528,
+      "h": 304,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "sched-c",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Scheduler AZ-c (x8, owns partitions)",
+      "props": {
+        "name": "scheduler",
+        "instances": 8,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "run-c",
+      "kind": "service",
+      "x": 288,
+      "y": 48,
+      "label": "Run API AZ-c (x11, worker-facing)",
+      "props": {
+        "name": "run-api",
+        "instances": 11,
+        "capacityQps": 2000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "own-c",
+      "kind": "service",
+      "x": 160,
+      "y": 176,
+      "label": "Owner API AZ-c (x2)",
+      "props": {
+        "name": "owner-api",
+        "instances": 2,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "jobs-db",
+      "kind": "sql-db",
+      "x": 864,
+      "y": 48,
+      "label": "Jobs DB: definitions, next_fire_at (Postgres + 2 replicas)",
+      "props": {
+        "replicas": 2,
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "etcd",
+      "kind": "nosql-db",
+      "x": 864,
+      "y": 208,
+      "label": "etcd (3-node Raft): partition leases",
+      "props": {
+        "nodes": 3,
+        "consistency": "quorum",
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "q-a",
+      "kind": "queue",
+      "x": 864,
+      "y": 368,
+      "label": "Dispatch queue cell A (partitions 0-47)",
+      "props": {
+        "partitions": 48,
+        "retentionH": 72,
+        "replication": 3,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "q-b",
+      "kind": "queue",
+      "x": 864,
+      "y": 528,
+      "label": "Dispatch queue cell B (partitions 48-95)",
+      "props": {
+        "partitions": 48,
+        "retentionH": 72,
+        "replication": 3,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "workers",
+      "kind": "worker",
+      "x": 1120,
+      "y": 448,
+      "label": "Job workers (600 hosts, pre-warmed to 3,600 before hour marks; 32 slots each)",
+      "props": {
+        "instances": 3600,
+        "processingMs": 1875,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "runs-kv",
+      "kind": "nosql-db",
+      "x": 864,
+      "y": 688,
+      "label": "Runs store (KV, 6 nodes, RF=3, 30-day TTL)",
+      "props": {
+        "nodes": 6,
+        "consistency": "quorum",
+        "capacityQps": 10000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "run-index",
+      "kind": "search-index",
+      "x": 864,
+      "y": 848,
+      "label": "Run history index (3 nodes)",
+      "props": {
+        "nodes": 3,
+        "capacityQps": 1000,
+        "latencyMs": 20,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "logs",
+      "kind": "object-storage",
+      "x": 1120,
+      "y": 688,
+      "label": "Object storage: run logs",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 1120,
+      "y": 848,
+      "label": "Monitoring: schedule lag, dead man's switch",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 1152,
+      "y": 48,
+      "label": "",
+      "props": {
+        "text": "Workers talk to the Run API (claim, heartbeat, complete) and the runs store feeds the history index by change stream; those edges are not drawn so Run mode does not route the scheduler's traffic through them. Run mode enters all traffic at the owners client and holds the hour-mark rate for the whole run, so the dispatch queues fill: real bursts last about 5 s and are absorbed by pre-warmed worker slots."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-owners-dns",
+      "source": "owners",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-owners-lb",
+      "source": "owners",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "API, UI (and the clock's load in Run mode)"
+    },
+    {
+      "id": "e-lb-sched-a",
+      "source": "lb",
+      "target": "sched-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-run-a",
+      "source": "lb",
+      "target": "run-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-own-a",
+      "source": "lb",
+      "target": "own-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-sched-a-jobs-db",
+      "source": "sched-a",
+      "target": "jobs-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "look-ahead scan, advance next_fire_at"
+    },
+    {
+      "id": "e-sched-a-etcd",
+      "source": "sched-a",
+      "target": "etcd",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "partition leases"
+    },
+    {
+      "id": "e-sched-a-q-a",
+      "source": "sched-a",
+      "target": "q-a",
+      "kind": "async",
+      "direction": "forward",
+      "label": "fire run"
+    },
+    {
+      "id": "e-sched-a-q-b",
+      "source": "sched-a",
+      "target": "q-b",
+      "kind": "async",
+      "direction": "forward",
+      "label": "fire run"
+    },
+    {
+      "id": "e-run-a-runs-kv",
+      "source": "run-a",
+      "target": "runs-kv",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conditional claim / heartbeat / complete"
+    },
+    {
+      "id": "e-own-a-jobs-db",
+      "source": "own-a",
+      "target": "jobs-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "job CRUD"
+    },
+    {
+      "id": "e-own-a-run-index",
+      "source": "own-a",
+      "target": "run-index",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "run history"
+    },
+    {
+      "id": "e-own-a-logs",
+      "source": "own-a",
+      "target": "logs",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "presigned log URLs"
+    },
+    {
+      "id": "e-lb-sched-b",
+      "source": "lb",
+      "target": "sched-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-run-b",
+      "source": "lb",
+      "target": "run-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-own-b",
+      "source": "lb",
+      "target": "own-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-sched-b-jobs-db",
+      "source": "sched-b",
+      "target": "jobs-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "look-ahead scan, advance next_fire_at"
+    },
+    {
+      "id": "e-sched-b-etcd",
+      "source": "sched-b",
+      "target": "etcd",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "partition leases"
+    },
+    {
+      "id": "e-sched-b-q-a",
+      "source": "sched-b",
+      "target": "q-a",
+      "kind": "async",
+      "direction": "forward",
+      "label": "fire run"
+    },
+    {
+      "id": "e-sched-b-q-b",
+      "source": "sched-b",
+      "target": "q-b",
+      "kind": "async",
+      "direction": "forward",
+      "label": "fire run"
+    },
+    {
+      "id": "e-run-b-runs-kv",
+      "source": "run-b",
+      "target": "runs-kv",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conditional claim / heartbeat / complete"
+    },
+    {
+      "id": "e-own-b-jobs-db",
+      "source": "own-b",
+      "target": "jobs-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "job CRUD"
+    },
+    {
+      "id": "e-own-b-run-index",
+      "source": "own-b",
+      "target": "run-index",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "run history"
+    },
+    {
+      "id": "e-own-b-logs",
+      "source": "own-b",
+      "target": "logs",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "presigned log URLs"
+    },
+    {
+      "id": "e-lb-sched-c",
+      "source": "lb",
+      "target": "sched-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-run-c",
+      "source": "lb",
+      "target": "run-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-lb-own-c",
+      "source": "lb",
+      "target": "own-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-sched-c-jobs-db",
+      "source": "sched-c",
+      "target": "jobs-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "look-ahead scan, advance next_fire_at"
+    },
+    {
+      "id": "e-sched-c-etcd",
+      "source": "sched-c",
+      "target": "etcd",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "partition leases"
+    },
+    {
+      "id": "e-sched-c-q-a",
+      "source": "sched-c",
+      "target": "q-a",
+      "kind": "async",
+      "direction": "forward",
+      "label": "fire run"
+    },
+    {
+      "id": "e-sched-c-q-b",
+      "source": "sched-c",
+      "target": "q-b",
+      "kind": "async",
+      "direction": "forward",
+      "label": "fire run"
+    },
+    {
+      "id": "e-run-c-runs-kv",
+      "source": "run-c",
+      "target": "runs-kv",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conditional claim / heartbeat / complete"
+    },
+    {
+      "id": "e-own-c-jobs-db",
+      "source": "own-c",
+      "target": "jobs-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "job CRUD"
+    },
+    {
+      "id": "e-own-c-run-index",
+      "source": "own-c",
+      "target": "run-index",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "run history"
+    },
+    {
+      "id": "e-own-c-logs",
+      "source": "own-c",
+      "target": "logs",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "presigned log URLs"
+    },
+    {
+      "id": "e-q-a-workers",
+      "source": "q-a",
+      "target": "workers",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-q-b-workers",
+      "source": "q-b",
+      "target": "workers",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-workers-logs",
+      "source": "workers",
+      "target": "logs",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "log chunks"
+    }
+  ]
+}

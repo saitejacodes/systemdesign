@@ -1,0 +1,55 @@
+{
+  "id": "news-feed",
+  "title": "News feed",
+  "summary": "The Twitter problem: a ranked feed of posts from everyone you follow, assembled in under 300 ms, when some of the people you follow have 50 million followers.",
+  "difficulty": 2,
+  "weekRecommended": 15,
+  "relatedSectionIds": ["p1-estimation", "p3-redis", "p3-cache-strategies", "p3-event-driven", "p3-kafka-vs-queues", "p2-sharding", "p2-data-modeling", "p4-id-generation"],
+  "interviewerPrompt": "Let's design a news feed, like the home timeline on Twitter. Users follow other users and see their posts. How would you build it?",
+  "clarifyingQuestions": [
+    { "question": "How many users, and how active are they?", "answer": "500M registered users, 300M daily active. A daily user opens the feed about 10 times a day." },
+    { "question": "How much do people post?", "answer": "About one post per daily user per day on average, so roughly 300M posts a day. Posts are short text, optionally with images." },
+    { "question": "How many accounts does a user follow, and how many followers do accounts have?", "answer": "The median user follows 200 accounts. Most accounts have a few hundred followers, but a few accounts have 50M." },
+    { "question": "Is the feed chronological or ranked?", "answer": "Ranked: the most relevant recent posts first. You do not need to design the machine-learning model, but the feed must be ranked within the latency budget." },
+    { "question": "How fast must the feed load?", "answer": "The first page must be returned in under 300 ms at p99, measured at our servers." },
+    { "question": "How fresh must it be?", "answer": "A new post should appear in followers' feeds within a minute. Authors must see their own post immediately." },
+    { "question": "Does the feed include posts from accounts the user does not follow?", "answer": "Not for this interview. Only followed accounts; recommendations are out of scope." },
+    { "question": "How far back can a user scroll?", "answer": "Most sessions read the first page or two. Users can keep scrolling into older posts, and that may be slower." },
+    { "question": "What about deleted posts, blocks and mutes?", "answer": "A deleted post must disappear from feeds quickly, and a user must never see posts from accounts they blocked or muted." },
+    { "question": "How spiky is traffic?", "answer": "Assume the busiest hour runs at about 3 times the daily average, and live events can push posting much higher for a few minutes." }
+  ],
+  "deepDiveQuestions": [
+    "Fan-out on write, fan-out on read, or a hybrid: what do you do about accounts with 50M followers?",
+    "What exactly is in the feed cache, how big is it, and what happens to users whose feed is not cached?",
+    "How do you rank the feed inside the latency budget, and what happens when ranking is slow?",
+    "How does pagination work with cursors when new posts keep arriving and the order is ranked?"
+  ],
+  "trafficProfile": {
+    "qps": 55555,
+    "readWriteRatio": 15,
+    "peakMultiplier": 3,
+    "requestTypes": [
+      { "id": "feed-page", "name": "Load a feed page (GET /v1/feed)", "op": "read", "weight": 1, "target": { "nodeId": "timelines" } },
+      { "id": "create-post", "name": "Create a post (POST /v1/posts)", "op": "write", "weight": 1, "target": { "nodeId": "posts" } }
+    ]
+  },
+  "runChallenge": {
+    "id": "news-feed-evening-peak-lose-az",
+    "title": "Evening peak with a zone down",
+    "description": "Run at the 3× evening peak (about 156k feed pages and 10k posts a second) and lose the busiest availability zone after 10 s. Feed pages and post creates must stay under 300 ms at p99 with under 0.1% errors and no single point of failure.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "minOkQps": 165000, "maxErrorRatePct": 0.1, "maxP99Ms": 300, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Choosing pure fan-out on write and not noticing that one post from a 50M-follower account means 50M cache writes, minutes of lag and a backlog for everyone else.",
+    "Choosing pure fan-out on read, which turns every feed load into 200 queries and a merge, and cannot meet 300 ms at 156k feed loads a second.",
+    "Storing full post bodies in every follower's feed, multiplying storage by the follower count and making edits and deletes impossible to apply.",
+    "Paginating with page numbers or offsets, so new posts arriving at the top push items down and the user sees duplicates or skips posts.",
+    "Fanning out to every follower, including the many who have not opened the app in months.",
+    "Putting the ranking model on the critical path with no timeout or fallback, so a slow ranker makes the whole feed fail.",
+    "Forgetting the author: with asynchronous fan-out, the author refreshes and does not see their own post.",
+    "Sizing the timeline cache by reads, when fan-out writes are about nine times the peak read rate."
+  ]
+}

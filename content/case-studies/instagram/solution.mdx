@@ -1,0 +1,326 @@
+## Requirements
+
+A photo-sharing app is three problems wearing one interface: a **media pipeline** (get a photo from a phone into durable storage and resized variants), a **delivery** problem (serve hundreds of gigabits of images a second from a CDN), and a **social read path** (the home feed and its counters, skewed by accounts with 100M followers). The feed part overlaps the [news feed case study](/case-studies/news-feed); this answer references it rather than repeating it and spends its time on what photos add.
+
+### Functional
+
+1. **Post a photo** with a caption. The upload must survive flaky mobile networks.
+2. **Follow and unfollow** other accounts.
+3. **Home feed**: ranked posts from followed accounts, paginated as the user scrolls.
+4. **Like and comment** on posts; see like and comment counts and whether you have liked a post.
+5. **Profile grid**: an account's posts, newest first.
+
+### Non-functional
+
+| Property | Target | Why it matters here |
+|---|---|---|
+| Feed latency | under 500 ms p99 on the device; we budget 250 ms server-side | The feed is the app |
+| Durability | an acknowledged post never loses its photo | Users delete originals from their phones |
+| Post visibility | followers see a new post within seconds; up to a minute for huge accounts | Freshness is part of the product |
+| Availability | 99.99% for feed and images, 99.9% for posting | Reading matters more than writing; posting can retry |
+| Counter accuracy | counts may lag seconds, never drift permanently | Creators check their numbers |
+| Image delivery | variants sized to the screen, served from a CDN | Mobile data and egress cost |
+
+### Out of scope
+
+Video, stories, direct messages, search, notifications, and the ranking model itself (we assume a ranking service orders the candidates we give it).
+
+## Estimation
+
+All numbers come from the stated assumptions, not from any real company.
+
+**Uploads.** 100M photos ÷ 86,400 s = **1,157 per second**, **2,315 at the 2× peak**. At 2 MB each: 100M × 2 MB = **200 TB a day of originals**, an ingress of 200 TB ÷ 86,400 = 2.3 GB/s ≈ 18.5 Gbps on average and **37 Gbps at peak**.
+
+**Variants.** We make four WebP variants (deep dive 2): 150 px square thumbnail (8 KB), 320 px (25 KB), 640 px (70 KB) and 1080 px (180 KB), **283 KB in total**. 100M × 283 KB = **28.3 TB a day**. With originals: 228 TB a day, **83 PB a year**. Originals are 88% of storage but almost never read, which is why storage tiering matters.
+
+**Image reads.** 500M users × 50 images = **25B image views a day** = **289,352 per second, 578,704 at peak**. Assume an average served variant of 100 KB (a mix of 1080 px in the feed and thumbnails on grids): 289,352 × 100 KB = 28.9 GB/s = **231 Gbps on average, 463 Gbps at peak**, about 2.5 PB a day. Only a CDN can serve that.
+
+**Feed loads.** 50 images ÷ 10 posts per page = 5 pages per user per day: 2.5B ÷ 86,400 = **28,935 per second, 57,870 at peak**.
+
+**Likes and comments.** 5 per user per day (assume 4.5 likes, 0.5 comments): 2.5B a day = **28,935 per second, 57,870 at peak**.
+
+**Fan-out.** With 1B accounts and 500M daily users, about half of anyone's followers are active. We push a post only to followers active in the last 30 days, so an average post (150 followers) makes about 75 timeline inserts: 100M × 75 = 7.5B a day = **86,806 inserts/s, 173,611 at peak**.
+
+**Timeline cache.** Keep the newest 300 post IDs for each active user as a packed array of 8-byte IDs: 500M × 300 × 8 B = **1.2 TB**. Add hot post objects (the last 2 days: 200M × 1 KB = 200 GB) and counts, then double for replicas: about 3 TB. We provision **4 TB of Redis** (64 nodes of 64 GB) with a **95% hit rate** assumed for feed loads.
+
+**Stores** (budgeting about 4 TB per node with replication factor 3):
+- Posts: 100M × 1 KB = 100 GB a day, 36.5 TB a year, 110 TB replicated → **30 nodes** for the first year.
+- Likes and comments: 2.25B × 50 B + 250M × 200 B = 162.5 GB a day, 59 TB a year, 178 TB replicated → **48 nodes**.
+- Follow graph: 1B accounts × 150 follows = 150B edges, stored twice (followers and following) at 40 B: 12 TB, 36 TB replicated → **12 nodes**.
+
+At an assumed 5,000 operations/s per node, the posts store has 150,000 ops/s: enough to take all 57,870 feed loads a second if the cache is cold (39% busy). The engagement store's 240,000 ops/s takes the 57,870 writes at peak at 24%.
+
+**API instances.** Assume one API instance serves **1,000 requests/s** of feed loads and likes. Peak 57,870 + 57,870 = 115,740/s. With **225 instances (75 per zone)**: 115,740 ÷ 225,000 = **51%** normally, and 115,740 ÷ 150,000 = **77%** with a zone lost.
+
+**Resizing.** Assume 0.4 CPU-seconds to decode a 2 MB photo and encode four variants: 2,315 × 0.4 = 926 vCPUs at peak. **48 machines of 32 vCPUs** (1,536 vCPUs) run at 60%, and at 90% with a zone lost.
+
+<Callout type="tip" title="What the numbers say">
+The API handles about 116,000 requests a second at peak; the CDN handles 579,000 and 463 Gbps. Storage grows by 83 PB a year, mostly originals nobody reads. The interesting work is the upload pipeline, image delivery, fan-out under skew and hot counters.
+</Callout>
+
+## API design
+
+Posting is three steps, so the bytes never go through our servers.
+
+```http
+POST /v1/uploads HTTP/1.1
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "contentType": "image/jpeg", "sizeBytes": 2093112, "sha256": "4f1c…e9" }
+```
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{ "mediaId": "m_2Hk9QwX", "uploadUrl": "https://media-upload.example.net/orig/m_2Hk9QwX?X-Amz-Expires=900&X-Amz-Signature=…",
+  "headers": { "Content-Type": "image/jpeg", "x-amz-checksum-sha256": "TxzI…" } }
+```
+
+The app `PUT`s the bytes to `uploadUrl` (retrying on failure; the URL is valid for 15 minutes), then creates the post:
+
+```http
+POST /v1/posts HTTP/1.1
+Idempotency-Key: 5d0e8c71-2b6a-4f4e-8f1d-0a9c6b3e7d21
+Content-Type: application/json
+
+{ "mediaIds": ["m_2Hk9QwX"], "caption": "Monsoon in Kochi" }
+```
+
+```http
+HTTP/1.1 201 Created
+
+{ "postId": "p_1849230017745412096", "createdAt": "2026-11-04T18:22:05Z",
+  "media": [ { "mediaId": "m_2Hk9QwX", "width": 1080, "height": 1350, "blurhash": "LKO2?U%2Tw=w]~RBVZRi};RPxuwH",
+    "variants": { "150": "https://img.example-cdn.net/m_2Hk9QwX/150.webp", "1080": "https://img.example-cdn.net/m_2Hk9QwX/1080.webp" } } ] }
+```
+
+`202 Accepted` instead, with `"status": "processing"`, if the variants are not ready within 2 s; the app polls `GET /v1/posts/{id}`. `409` if the idempotency key was used with a different body.
+
+```http
+GET /v1/feed?cursor=eyJzIjoxNzYyMjgwMTI1fQ&limit=10
+```
+
+```json
+{ "posts": [ { "postId": "p_1849230017745412096", "author": { "id": "u_88", "name": "asha.k" },
+    "media": [ { "variants": { "640": "https://img.example-cdn.net/m_2Hk9QwX/640.webp" } } ],
+    "caption": "Monsoon in Kochi", "likeCount": 1284, "commentCount": 37, "viewerHasLiked": false } ],
+  "nextCursor": "eyJzIjoxNzYyMjc5ODQwfQ" }
+```
+
+The cursor encodes the score and ID of the last post returned, so new posts arriving at the top never shift the next page (offsets would duplicate and skip posts).
+
+```http
+PUT    /v1/posts/{postId}/likes/me      → 204, idempotent; a second PUT changes nothing
+DELETE /v1/posts/{postId}/likes/me      → 204, idempotent
+POST   /v1/posts/{postId}/comments      → 201 { "commentId": "c_…" }  (Idempotency-Key header)
+GET    /v1/posts/{postId}/comments?cursor=…
+PUT    /v1/users/{userId}/followers/me  → 204 follow;  DELETE → unfollow
+GET    /v1/users/{userId}/posts?cursor=… → profile grid
+```
+
+Modelling a like as `PUT …/likes/me` makes it naturally idempotent: a double tap or a client retry cannot like twice.
+
+## Data model
+
+| Entity | Key | Fields | Store |
+|---|---|---|---|
+| `post` | `post_id` (partition key) | `author_id`, `caption`, `media` (IDs, sizes, blurhash, variant keys), `created_at`, `status` | Posts store |
+| `author_posts` | `author_id` (partition), `post_id` desc | none | Posts store |
+| `like` | (`post_id`, `bucket`) partition, `user_id` clustering | `created_at` | Engagement store |
+| `comment` | `post_id` (partition), `comment_id` desc | `author_id`, `text` | Engagement store |
+| `following` / `followers` | `user_id` (partition), other user's ID | `created_at` | Graph store |
+| `post_counts` | `post_id` | `likes`, `comments` | Counters store |
+| timeline | `tl:{user_id}` in Redis | packed array of up to 300 post IDs | Redis only |
+| objects | `orig/{media_id}`, `{media_id}/{size}.webp`, `{media_id}/manifest.json` | bytes | Object storage |
+
+**Post IDs are time-sortable 64-bit IDs** (timestamp, shard and sequence bits, Snowflake-style), so sorting by ID sorts by time and the profile grid needs no extra index.
+
+**Stores: partitioned wide-column stores** (Cassandra-style) for posts, engagement and the graph. Every hot access is by a known partition key: a post by ID, an author's recent posts, a post's likes, a user's followers. Data is append-mostly and grows by about 300 GB a day, and the stores need to grow by adding nodes. Sharded Postgres is a solid alternative, and a team that already runs it well should use it; what decides it is operations, not capability. We keep likes, posts and the graph in **separate clusters** because their sizes, write rates and hot-spot patterns differ: a celebrity post's likes must not slow profile reads.
+
+**Likes as rows, counts as a separate table.** The `like` row is the source of truth (it answers "did I like this?" and makes likes idempotent); `post_counts` is a derived, batched counter (deep dive 4). The `bucket` in the like key exists for hot posts (deep dive 5).
+
+**Timelines live only in Redis.** They are derived data: if a timeline is lost, it is rebuilt from the follow graph and `author_posts`. Making them durable would cost far more than the occasional rebuild.
+
+## High-level design
+
+<Figure caption="FIG. 1 · PHOTO-SHARING APP · REFERENCE ARCHITECTURE">
+  <Diagram label="Phones upload originals straight to object storage with presigned URLs; an object-created event queues a resize job, and resize workers write four variants and a manifest back to storage. Phones fetch variants from an image CDN backed by object storage. All API calls go through a load balancer to 225 API instances in three zones, which read timelines and post objects from Redis and fall back to the posts store. Posts, likes and comments, and follows live in separate wide-column stores. Change data capture from the posts store feeds fan-out workers that push post IDs into followers' Redis timelines, and change data capture from the engagement store feeds counter aggregators that write a counters store." chart={`flowchart LR
+    U[Phones] -->|PUT original, presigned| OS[(Object storage)]
+    U -->|GET variant| CDN[Image CDN]
+    CDN -->|miss| OS
+    OS -.->|object created| RQ[[Resize queue]]
+    RQ -.-> RW[Resize workers x48]
+    RW -->|variants + manifest| OS
+    U -->|feed, post, like| LB[Load balancer]
+    subgraph Region
+      LB --> API[API x225 in 3 AZs]
+      API --> R[(Redis: timelines, posts, counts)]
+      API -->|miss, create| P[(Posts store 30 nodes)]
+      API --> E[(Likes and comments 48 nodes)]
+      API --> G[(Follow graph 12 nodes)]
+      P -.->|CDC: post created| FQ[[Fan-out topic]]
+      FQ -.-> FW[Fan-out workers x50]
+      FW --> G
+      FW --> R
+      E -.->|CDC: like, unlike| LQ[[Engagement topic]]
+      LQ -.-> CW[Counter aggregators]
+      CW --> C[(Counters store)]
+      CW --> R
+    end`} />
+</Figure>
+
+**Post a photo.** (1) `POST /v1/uploads` returns a <Term slug="presigned-url">presigned URL</Term>. (2) The phone `PUT`s the original to object storage. (3) Storage emits an object-created event; a resize worker makes the variants and writes `manifest.json` last. (4) `POST /v1/posts` checks for the manifest (object storage reads are strongly consistent after a write on S3 since December 2020, so "not found" really means "not yet"), writes the `post` row and an `author_posts` entry, caches the post object in Redis and returns `201`. (5) <Term slug="change-data-capture">Change data capture</Term> (CDC) from the posts store emits "post created" to the fan-out topic, and fan-out workers push the post ID into followers' timelines.
+
+**Load the feed.** The API reads `tl:{user}` from Redis, merges in recent posts from followed accounts that are never fanned out (deep dive 3), sends a few hundred candidates to ranking, then hydrates the top 10: post objects from Redis (misses go to the posts store), counts from Redis, and `viewerHasLiked` from the engagement store. Images are separate requests from the phone to the CDN, so the feed response stays small (about 10 KB).
+
+**Like.** `PUT …/likes/me` performs an insert-if-absent of the `like` row and returns `204`. CDC turns the new row into a +1 event; aggregators batch the counts (deep dive 4).
+
+Run mode puts the feed's server-side p99 at about 65 ms at peak, and about 83 ms ten seconds after a full cache flush, when only about 16% of reads hit and the posts store absorbs about 49,000 reads a second.
+
+## Deep dives
+
+### How does a photo get from the phone to followers' screens: presigned upload, resizing into variants, and never losing an acknowledged photo?
+
+**Upload direct to storage.** Sending 2 MB through the API means 37 Gbps of slow mobile uploads holding API threads. A presigned URL lets the phone write exactly one object key for 15 minutes without credentials; the checksum header makes storage reject corrupted bytes. Photos are small enough for a single `PUT` (multipart pays off above about 100 MB); on failure the app retries the same URL.
+
+**Resizing: triggered by the upload, not the post.** The object-created event starts resizing while the user is still typing a caption, so by the time they tap Share (typically seconds later) the variants usually exist and the post appears at once. Each worker decodes the original, strips location metadata unless the user opted in, corrects orientation, and writes four WebP variants, then `manifest.json` (dimensions, blurhash placeholder, variant keys) **last**. The manifest is the commit marker: if it exists, every variant exists.
+
+| Option | Pros | Cons | Verdict |
+|---|---|---|---|
+| Resize synchronously inside `POST /v1/posts` | Simple; no polling | 400 ms of CPU on the request path; API fleet must hold the resize load | No |
+| Async after the post is created | Post call is fast | Post exists before its images; needs a "processing" state everywhere | Acceptable |
+| Async on object-created, post waits for manifest | Work overlaps caption typing; a post never exists without images | One extra event path | **Chosen** |
+| Resize on the fly at the CDN | No stored variants | Compute on every cache miss; long-tail misses are expensive | Good for rare sizes only |
+
+The resize task is idempotent: same input key, same output keys, so a redelivered event rewrites identical files. A photo that fails 3 times (corrupt file) goes to a <Term slug="dead-letter-queue">dead-letter queue</Term>, and the post call returns `422` so the app can ask for another photo.
+
+**Never losing an acknowledged photo** is a chain of rules:
+1. The phone keeps its local copy until it receives `201` for the post.
+2. Object storage returns success on `PUT` only once the object is durably stored across multiple devices and zones (S3 is designed for 99.999999999% durability).
+3. The `201` is sent only after the original exists, the manifest exists and the `post` row is written at quorum.
+4. Originals are replicated asynchronously to a second region (minutes behind) for disaster recovery, and versioning plus a delete delay protect against bugs that delete objects.
+
+What can go wrong in between is harmless: an uploaded original with no post (the user gave up) is deleted by a lifecycle rule after 7 days.
+
+### How do you store and serve billions of images cheaply: variants, formats, CDN cache keys and storage tiers?
+
+**Variants.** A phone showing a 400-pixel-wide grid tile must not download a 2 MB original. Four fixed sizes cover screens from grid to full width; the app picks the smallest variant at least as wide as its slot in device pixels. Fixed sizes matter for caching: if clients could ask for any width, every width would be a separate cache entry and a separate miss.
+
+**Formats.** WebP is typically much smaller than JPEG at similar quality and is supported by current Android and iOS. AVIF is smaller still but several times slower to encode; adding an AVIF 1080 px variant only for posts that pass a view threshold spends CPU where it is repaid in bandwidth.
+
+**URLs and caching.** Variant URLs are content-addressed by `media_id` and never change, so they carry `Cache-Control: public, max-age=31536000, immutable`. Deleting a post makes the API stop returning its URLs; for takedowns we also issue a <Term slug="cache-purge">CDN purge</Term>. The <Term slug="cache-key">cache key</Term> is the path alone, so query strings from analytics cannot fragment the cache. Most images are viewed in the first days after posting, so a 95% edge hit rate is plausible; misses go to a regional <Term slug="origin-shield">origin shield</Term> (assume 80% hits), so object storage sees about 1% of image requests: about 5,800 reads a second at peak.
+
+**Storage tiers.** Originals are 88% of bytes and are read only for re-processing. A lifecycle rule moves originals older than 30 days to an infrequent-access tier, cutting their storage price substantially. Facebook's "f4: Facebook's Warm BLOB Storage System" (OSDI 2014) describes the same split: hot recent blobs stay in a replicated store, and older, rarely read blobs move to an erasure-coded tier that keeps them durable with less raw storage. Variants stay in the hot tier because the CDN's misses go to them.
+
+<Misconception wrong="Images should be stored in the database as blobs so the post and its photo are written atomically." right="Blobs in the database make every backup, replica and compaction carry 200 TB a day. Keep bytes in object storage and make the manifest the commit marker the post row points to." />
+
+### How do you build the home feed when the average account has 150 followers but some have 100M?
+
+The full trade-off between fan-out on write, fan-out on read and the hybrid is covered in the [news feed case study](/case-studies/news-feed). The short version and what is specific here:
+
+- **Fan-out on write** (push each new post ID into every follower's timeline) makes reads cheap but costs one write per follower: 100M writes for one celebrity post.
+- **Fan-out on read** (pull recent posts from every followee at read time) makes writes free but costs about 150 reads per feed load, 8.7M reads a second at peak.
+- **Hybrid** (chosen): push for accounts under **1M followers**, pull for accounts above. A user follows few such accounts, so the read-time merge is a handful of Redis reads of those accounts' `author_posts` lists, which are always hot.
+
+Photo-specific refinements:
+1. **Push only to active followers.** Only followers active in the last 30 days get the push, which halves fan-out writes (75 instead of 150 per average post). A returning inactive user triggers a rebuild: read their followees, take recent posts from the 50 most active followees' `author_posts` (mostly from Redis), and write a fresh timeline. Assuming 1% of feed loads need it, that is about 580 rebuilds a second at peak.
+2. **Split large fan-outs.** An account with 800,000 followers creates 400,000 inserts. The worker splits it into tasks of 5,000 followers each so 50 workers share it and finish in seconds.
+3. **Fan-out workers write IDs only.** Post content lives once in Redis and the posts store; timelines hold 8-byte IDs, so an edited caption needs no timeline update.
+4. **Deletes are lazy.** Deleting a post marks it deleted; hydration skips deleted IDs instead of removing them from millions of timelines.
+
+**Pagination** uses the cursor described in the API section, and ranking returns at most 300 candidates per session, so deep scrolling falls back to older chronological pages from `author_posts`.
+
+### How do you count likes and comments at 58,000 writes per second so counts are fast to read and never drift?
+
+A counter column incremented on every like fails twice: retries and double taps double count, and a popular post becomes a single hot row. We separate the **fact** from the **number**.
+
+**The fact: one `like` row per (post, user).** `PUT …/likes/me` does an insert-if-absent; a second like is a no-op, so the endpoint is idempotent by design. Unlike deletes the row if present.
+
+**The number: derived asynchronously.** CDC on the engagement store emits an event only when a row is actually inserted or deleted, so retries never produce extra events. Reading the change stream rather than having the API publish events after the write avoids the dual-write problem: a crash between "write row" and "publish event" cannot lose a count. Aggregators, partitioned by `post_id`, sum deltas in memory and every 10 s write `likes = likes + delta` to `post_counts`, and refresh the count in Redis. Assuming about 100,000 distinct posts receive a like in any 10 s window, that is about 10,000 counter writes a second instead of 57,870. Each flush records its (partition, offset range), so a replay after a crash is skipped: the aggregator is an <Term slug="idempotent-consumer">idempotent consumer</Term>.
+
+**Never drifting.** Even with idempotent flushes, bugs and restores happen. A nightly job recounts `like` rows for posts whose count changed that day and repairs `post_counts`. The like rows are the source of truth; the counter is a cache of a `COUNT(*)`.
+
+**Reads.** Feed hydration reads counts from Redis; on a miss, from `post_counts`. The phone shows its own like immediately (optimistic UI), so a 10 s counter lag is invisible to the person who liked.
+
+<TradeoffBox title="Synchronous vs batched counters" items={[
+  { gain: "Synchronous increment: the count is exact the moment the like returns", cost: "A hot row per popular post, retries double count unless guarded, and the like path depends on the counter store" },
+  { gain: "Batched from the change stream: one write per post per 10 s, no double counting", cost: "Counts lag about 10 s and need a recount job as a safety net" }
+]} />
+
+### What happens in the minutes after an account with 100M followers posts, and how do you keep hot keys from melting the cache and database?
+
+Every layer gets a <Term slug="hot-key">hot key</Term> at once: the post object, its like partition, its counter and its image variants. Walk through it.
+
+- **t = 0.** The post is created like any other. CDC emits it; the fan-out worker sees the author is above 1M followers and does nothing.
+- **t ≈ 1–60 s.** Followers who open the app merge the account's `author_posts` list at read time. Suppose 2M of them load a feed in the first minute: about 33,000 reads a second of one post object. One Redis shard serves on the order of 100,000 simple reads a second, so this alone is survivable, but it shares the shard with other keys. Each API instance keeps an **in-process cache** of the hottest post objects for 5 s: 225 instances × one Redis read per 5 s = 45 reads a second for that key, no matter how many followers.
+- **t ≈ 10 s onward: images.** The first request for each variant at each CDN edge misses; edges and the shield coalesce concurrent misses (<Term slug="request-coalescing">request coalescing</Term>), so object storage sees roughly one read per variant per shield.
+- **t ≈ 30 s: likes.** Say 3,000 likes a second on one post. The `like` partition key includes `bucket = hash(user_id) mod 64` for accounts over 1M followers, so writes spread over 64 partitions on different nodes; "did I like this?" still reads exactly one bucket. Without buckets, one partition would take every write and grow to tens of millions of rows. The aggregator folds 3,000 events a second into one counter write every 10 s.
+- **Comments.** Comments are listed newest-first by cursor and capped per user per minute; for very large threads, a ranked "top comments" list is computed every minute instead of on each read.
+
+**Failure timeline: the Redis shard holding the hot post object fails.**
+- t = 0: the primary dies. API calls to that shard time out after 20 ms; the API treats the cache as optional and falls back to the posts store. In-process caches keep serving the celebrity post, so feeds still render; p99 rises by tens of milliseconds for keys on that shard.
+- t ≈ 15 s: Redis Cluster marks the node failed (its default node timeout is 15 s) and promotes a replica, which already holds the data.
+- t ≈ 20 s: clients refresh the cluster map and traffic returns. The posts store took about 1/64 of the cache's misses during the gap.
+- Detection: per-shard error rate and the cache hit-rate metric. The lesson is that the in-process tier, not Redis replication, protects the hottest keys.
+
+<NotWhenBox title="Bucketed like partitions" items={[
+  "Posts below about 1M followers: a single partition handles their like rate, and buckets make every 'did I like this' check slightly more complex for nothing.",
+  "Stores with automatic hot-partition splitting may handle it for you; measure before adding buckets."
+]} />
+
+## Failure modes & mitigations
+
+| Failure | Detection | Effect | Mitigation |
+|---|---|---|---|
+| Availability zone lost | Zone alarms, LB health checks | A third of API capacity | 150 instances left at 77%; stores replicated across zones |
+| Redis flushed or cold | Hit rate drops toward 0 | Feed reads fall through to the posts store | Posts store sized for the full 57,870/s; in-process hot cache; warm timelines for active users first |
+| Redis shard fails | Per-shard errors | Slower feeds for keys on it | 20 ms cache timeout, fallback to store, replica promotion in about 15 s |
+| Resize backlog | Queue age | Posts wait in "processing" | Autoscale workers; post returns 202 and completes when ready |
+| Corrupt or hostile image | Decode failure | One upload fails | Size limits, decode in a sandbox, 3 attempts, dead-letter queue |
+| Fan-out lag | Consumer lag on fan-out topic | New posts reach followers late | Split large fan-outs; skip inactive followers; read-time merge as fallback |
+| Counter aggregator crash | Consumer lag | Counts stale | Idempotent flushes and replay; nightly recount |
+| Object storage regional outage | Error rate on PUT/GET | New uploads fail; CDN serves cached images | Uploads retry from the phone; reads from the second region's replica |
+| Celebrity post | Per-key request rate | Hot shard, hot partition | Pull not push, in-process cache, bucketed likes, CDN coalescing |
+
+## Scaling to 10×
+
+At 5B daily users' worth of activity: 5.8M image requests a second and 4.6 Tbps at peak, 580,000 feed loads and 580,000 likes a second, 1B photos a day.
+
+1. **Image egress breaks first.** 4.6 Tbps needs multiple CDNs, caches inside internet providers' networks, and more aggressive formats (AVIF for all popular posts) to cut bytes per view.
+2. **Storage** grows by about 830 PB a year. Move originals to an erasure-coded cold tier after days rather than a month, and reconsider keeping full-resolution originals at all beyond the 1080 px variant plus a compressed archival copy.
+3. **Fan-out** reaches 1.7M timeline inserts a second at peak and 12 TB of timeline cache. Lower the push threshold (pull for accounts above 100,000 followers) to trade writes for reads, and shrink timelines to 200 entries.
+4. **API and stores** scale out by adding instances and nodes; the counters and like buckets already handle hot keys.
+5. **Multi-region.** Serve reads from the nearest region; each user's writes go to their home region. Fan-out writes to the timelines in the follower's region.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| Presigned upload direct to storage | Upload through the API | Keeps 37 Gbps of slow uploads off the API fleet |
+| Resize on object-created; post waits for the manifest | Resize after posting | Work overlaps caption typing; a post never exists without images |
+| Four fixed WebP variants | Original only, or any size on demand | Small downloads and a cacheable, bounded set of URLs |
+| Originals to infrequent access after 30 days | Keep everything hot | 88% of bytes are rarely read |
+| Hybrid fan-out, push only to active followers | Pure push or pure pull | Bounded write cost per post and cheap reads |
+| Timelines only in Redis | Durable timeline store | Derived data; rebuild is cheaper than durability |
+| Like rows + batched counters from CDC | Increment a counter per like | Idempotent likes, no hot row, no dual write |
+| Bucketed like partitions for huge accounts | One partition per post | Spreads hot writes; avoids giant partitions |
+| Separate clusters for posts, engagement, graph | One shared store | Hot spots in one cannot slow the others |
+
+## What interviewers look for
+
+- **Numbers that pick the battles**: 463 Gbps of images and 83 PB a year of storage vs 116,000 API requests a second.
+- **A clean upload path**: presigned URL, resizing triggered by the upload, a manifest as commit marker, and an exact point at which a photo is safe.
+- **Image delivery with judgement**: fixed variants, immutable URLs, cache keys, origin shield, storage tiers.
+- **Fan-out under skew**: the hybrid model with a threshold, pushing only to active followers, splitting large fan-outs, and knowing when to reference the standard feed design rather than re-deriving it.
+- **Counters that cannot double count or drift**: like rows as truth, change-stream aggregation, recount job.
+- **Hot-key thinking across layers**: in-process cache, bucketed partitions, CDN coalescing, and a failure timeline for the shard that holds the hottest key.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "The app says 'shared' but a follower sees a grey box instead of the photo. Where would you look?",
+  "A user with 2M followers switches their account to private. What has to change in feeds and caches?",
+  "Like counts on a celebrity post went backwards for a moment. Is that acceptable, and what caused it?",
+  "Your Redis cluster restarts empty at the evening peak. Walk me through the next five minutes.",
+  "How would you let users edit a photo's crop after posting?"
+]} />

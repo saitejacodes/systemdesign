@@ -12,6 +12,6 @@
     { "id": "fallbacks", "title": "Fallbacks", "depth": "tradeoffs" }
   ],
   "simulatorIds": ["circuit-breaker"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["api-gateway", "rate-limiter-service", "payment-system"],
   "prerequisites": ["p4-timeouts-retries", "p4-fault-tolerance"]
 }

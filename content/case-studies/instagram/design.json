@@ -1,0 +1,657 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "users",
+      "kind": "client",
+      "x": 0,
+      "y": 448,
+      "label": "Users",
+      "props": {
+        "platform": "mobile",
+        "users": 500000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 0,
+      "label": "DNS",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "cdn",
+      "kind": "cdn",
+      "x": 224,
+      "y": 960,
+      "label": "Image CDN (variants)",
+      "props": {
+        "hitRate": 95,
+        "latencyMs": 20,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "w": 1712,
+      "h": 1184,
+      "label": "Region (primary)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 448,
+      "label": "API load balancer",
+      "props": {
+        "layer": "L7",
+        "algorithm": "round-robin",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 272,
+      "y": 64,
+      "w": 320,
+      "h": 224,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "api-a",
+      "kind": "service",
+      "x": 48,
+      "y": 80,
+      "label": "API AZ-a (x75)",
+      "props": {
+        "name": "api",
+        "instances": 75,
+        "capacityQps": 1000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 272,
+      "y": 352,
+      "w": 320,
+      "h": 224,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "api-b",
+      "kind": "service",
+      "x": 48,
+      "y": 80,
+      "label": "API AZ-b (x75)",
+      "props": {
+        "name": "api",
+        "instances": 75,
+        "capacityQps": 1000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 272,
+      "y": 640,
+      "w": 320,
+      "h": 224,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "api-c",
+      "kind": "service",
+      "x": 48,
+      "y": 80,
+      "label": "API AZ-c (x75)",
+      "props": {
+        "name": "api",
+        "instances": 75,
+        "capacityQps": 1000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "cache",
+      "kind": "cache",
+      "x": 720,
+      "y": 64,
+      "label": "Redis: timelines, post objects, counts",
+      "props": {
+        "sizeGb": 4096,
+        "hitRate": 95,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "posts",
+      "kind": "nosql-db",
+      "x": 720,
+      "y": 256,
+      "label": "Posts + media metadata (30 nodes)",
+      "props": {
+        "nodes": 30,
+        "consistency": "quorum",
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "engage",
+      "kind": "nosql-db",
+      "x": 720,
+      "y": 448,
+      "label": "Likes + comments (48 nodes)",
+      "props": {
+        "nodes": 48,
+        "consistency": "quorum",
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "graph",
+      "kind": "nosql-db",
+      "x": 720,
+      "y": 640,
+      "label": "Follow graph (12 nodes)",
+      "props": {
+        "nodes": 12,
+        "consistency": "quorum",
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "counters",
+      "kind": "nosql-db",
+      "x": 720,
+      "y": 832,
+      "label": "Counters store (6 nodes)",
+      "props": {
+        "nodes": 6,
+        "consistency": "quorum",
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "fanq",
+      "kind": "queue",
+      "x": 1008,
+      "y": 640,
+      "label": "Kafka: new posts (fan-out)",
+      "props": {
+        "partitions": 128,
+        "retentionH": 72,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0,
+        "replication": 3
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "fanw",
+      "kind": "worker",
+      "x": 1264,
+      "y": 640,
+      "label": "Fan-out workers (x50)",
+      "props": {
+        "instances": 50,
+        "processingMs": 15,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "likeq",
+      "kind": "queue",
+      "x": 1008,
+      "y": 832,
+      "label": "Kafka: like/comment events",
+      "props": {
+        "partitions": 64,
+        "retentionH": 72,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0,
+        "replication": 3
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "countw",
+      "kind": "worker",
+      "x": 1264,
+      "y": 832,
+      "label": "Counter aggregators (x12)",
+      "props": {
+        "instances": 12,
+        "processingMs": 0.2,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "os",
+      "kind": "object-storage",
+      "x": 1008,
+      "y": 1024,
+      "label": "Object storage: originals + variants",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "rq",
+      "kind": "queue",
+      "x": 1264,
+      "y": 1024,
+      "label": "Resize jobs (object-created events)",
+      "props": {
+        "partitions": 32,
+        "retentionH": 72,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0,
+        "replication": 3
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "rw",
+      "kind": "worker",
+      "x": 1504,
+      "y": 1024,
+      "label": "Resize workers (x48, 32 vCPU)",
+      "props": {
+        "instances": 48,
+        "processingMs": 12.5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 1264,
+      "y": 256,
+      "label": "Monitoring",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 0,
+      "y": 1248,
+      "w": 448,
+      "h": 224,
+      "label": "Notes",
+      "props": {
+        "text": "Run mode models feed loads (Redis first, misses read the posts store), image fetches (ending at the CDN) and likes/comments (written to the engagement store, counted asynchronously). Photo bytes go phone to object storage with a presigned URL; the object-created event drives resizing, and the post is created only once its variants exist. Fan-out writes timelines into Redis only for followers active in the last 30 days and never for accounts above 1M followers, whose posts are merged at read time. Sized for the 2x peak with one zone lost: 225 API instances."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-users-dns",
+      "source": "users",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-users-cdn",
+      "source": "users",
+      "target": "cdn",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GET image variant"
+    },
+    {
+      "id": "e-users-lb",
+      "source": "users",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "feed, post, like"
+    },
+    {
+      "id": "e-users-os",
+      "source": "users",
+      "target": "os",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "PUT original (presigned)"
+    },
+    {
+      "id": "e-cdn-os",
+      "source": "cdn",
+      "target": "os",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "origin fetch on miss"
+    },
+    {
+      "id": "e-lb-api-a",
+      "source": "lb",
+      "target": "api-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-a-cache",
+      "source": "api-a",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "timeline, posts"
+    },
+    {
+      "id": "e-api-a-posts",
+      "source": "api-a",
+      "target": "posts",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "miss / create post"
+    },
+    {
+      "id": "e-api-a-engage",
+      "source": "api-a",
+      "target": "engage",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "like, comment"
+    },
+    {
+      "id": "e-api-a-graph",
+      "source": "api-a",
+      "target": "graph",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "follow"
+    },
+    {
+      "id": "e-api-a-counters",
+      "source": "api-a",
+      "target": "counters",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "count miss"
+    },
+    {
+      "id": "e-api-a-os",
+      "source": "api-a",
+      "target": "os",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "read variant manifest"
+    },
+    {
+      "id": "e-lb-api-b",
+      "source": "lb",
+      "target": "api-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-b-cache",
+      "source": "api-b",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "timeline, posts"
+    },
+    {
+      "id": "e-api-b-posts",
+      "source": "api-b",
+      "target": "posts",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "miss / create post"
+    },
+    {
+      "id": "e-api-b-engage",
+      "source": "api-b",
+      "target": "engage",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "like, comment"
+    },
+    {
+      "id": "e-api-b-graph",
+      "source": "api-b",
+      "target": "graph",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "follow"
+    },
+    {
+      "id": "e-api-b-counters",
+      "source": "api-b",
+      "target": "counters",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "count miss"
+    },
+    {
+      "id": "e-api-b-os",
+      "source": "api-b",
+      "target": "os",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "read variant manifest"
+    },
+    {
+      "id": "e-lb-api-c",
+      "source": "lb",
+      "target": "api-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-c-cache",
+      "source": "api-c",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "timeline, posts"
+    },
+    {
+      "id": "e-api-c-posts",
+      "source": "api-c",
+      "target": "posts",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "miss / create post"
+    },
+    {
+      "id": "e-api-c-engage",
+      "source": "api-c",
+      "target": "engage",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "like, comment"
+    },
+    {
+      "id": "e-api-c-graph",
+      "source": "api-c",
+      "target": "graph",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "follow"
+    },
+    {
+      "id": "e-api-c-counters",
+      "source": "api-c",
+      "target": "counters",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "count miss"
+    },
+    {
+      "id": "e-api-c-os",
+      "source": "api-c",
+      "target": "os",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "read variant manifest"
+    },
+    {
+      "id": "e-posts-fanq",
+      "source": "posts",
+      "target": "fanq",
+      "kind": "async",
+      "direction": "forward",
+      "label": "post created (CDC)"
+    },
+    {
+      "id": "e-engage-likeq",
+      "source": "engage",
+      "target": "likeq",
+      "kind": "async",
+      "direction": "forward",
+      "label": "like/unlike (CDC)"
+    },
+    {
+      "id": "e-fanq-fanw",
+      "source": "fanq",
+      "target": "fanw",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-fanw-graph",
+      "source": "fanw",
+      "target": "graph",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "follower pages"
+    },
+    {
+      "id": "e-fanw-cache",
+      "source": "fanw",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "push to timelines"
+    },
+    {
+      "id": "e-likeq-countw",
+      "source": "likeq",
+      "target": "countw",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-countw-counters",
+      "source": "countw",
+      "target": "counters",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "batched increments"
+    },
+    {
+      "id": "e-countw-cache",
+      "source": "countw",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "refresh counts"
+    },
+    {
+      "id": "e-os-rq",
+      "source": "os",
+      "target": "rq",
+      "kind": "async",
+      "direction": "forward",
+      "label": "object created"
+    },
+    {
+      "id": "e-rq-rw",
+      "source": "rq",
+      "target": "rw",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-rw-os",
+      "source": "rw",
+      "target": "os",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "write variants + manifest"
+    }
+  ]
+}

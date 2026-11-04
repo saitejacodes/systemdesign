@@ -99,3 +99,45 @@
 .sdl-menu .sep { height: 1px; margin: 4px 0; background: var(--line); }
 
 .sdl-kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 5px; border: 1px solid var(--ink); border-radius: 2px; background: var(--surface); white-space: nowrap; }
+
+/* ---------- Run mode (Prompt 18) ---------- */
+/* Status always shows glyph + word on the card; colour only reinforces it. */
+.sdl-node.is-run { --st: var(--status-ok); --st-fill: transparent; background: color-mix(in srgb, var(--st-fill) 45%, var(--surface)); border-color: var(--st); }
+.sdl-node.is-run.is-ok { --st: var(--ink); }
+.sdl-node.is-run.is-hot { --st: var(--status-hot); --st-fill: var(--status-hot-fill); }
+.sdl-node.is-run.is-overloaded { --st: var(--status-over); --st-fill: var(--status-over-fill); border-width: 2px; padding: 7.5px 9.5px 7.5px 7.5px; }
+.sdl-node.is-run.is-down { --st: var(--ink-muted); border-style: dashed; background: var(--surface-sunk); }
+.sdl-node.is-run.is-down .sdl-node__icon, .sdl-node.is-run.is-down .sdl-node__metric { opacity: .55; }
+.sdl-node.is-run.is-selected { border-color: var(--cobalt); box-shadow: 3px 3px 0 0 var(--cobalt); }
+.sdl-node__metric { color: var(--ink); }
+.sdl-node__status { color: var(--ink); }
+.sdl-node.is-ok .sdl-node__status > span { color: var(--status-ok); }
+.sdl-node.is-hot .sdl-node__status { color: var(--status-hot); }
+.sdl-node.is-overloaded .sdl-node__status { color: var(--status-over); }
+.sdl-node.is-down .sdl-node__status { color: var(--ink-muted); }
+.sdl-flow.is-run .react-flow__node { cursor: pointer; }
+.sdl-flow.is-run .react-flow__node-frame { cursor: default; }
+
+/* Edge traffic: dashes moving toward the target; width and speed come from QPS (log scale) as inline styles. */
+.sdl-edge-flow { fill: none; stroke: var(--cobalt); stroke-opacity: .8; stroke-linecap: butt; stroke-dasharray: 6 10; pointer-events: none; animation-name: sdl-dash; animation-timing-function: linear; animation-iteration-count: infinite; }
+.sdl-flow.is-paused .sdl-edge-flow { animation-play-state: paused; }
+@keyframes sdl-dash { to { stroke-dashoffset: -16; } }
+@media (prefers-reduced-motion: reduce) { .sdl-edge-flow { animation: none; } }
+.sdl-flow.is-reduced .sdl-edge-flow { animation: none; }
+.sdl-edge-label.is-run { color: var(--cobalt); border-color: var(--cobalt); font-variant-numeric: tabular-nums; }
+
+/* Run strip under the header */
+.sdl-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 6px 12px; border-bottom: 1px solid var(--ink); background: var(--surface); }
+.sdl-metric { display: inline-flex; align-items: baseline; gap: 6px; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sdl-metric .k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-muted); }
+.sdl-metric.is-bad .v { color: var(--status-over); }
+.sdl-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.sdl-runtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sdl-runtable th, .sdl-runtable td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.sdl-runtable th { font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-muted); font-weight: 600; }
+.sdl-runtable td.n { font-family: var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sdl-log { max-height: 220px; overflow-y: auto; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; }
+.sdl-log li { display: grid; grid-template-columns: 4.5rem 1fr; gap: 8px; }
+.sdl-row-btn { display: flex; width: 100%; align-items: center; gap: 8px; padding: 4px 6px; border: 1px solid transparent; border-radius: 2px; background: none; color: var(--ink); text-align: left; font-size: 14px; cursor: pointer; }
+.sdl-row-btn:hover { border-color: var(--ink); background: var(--surface); }
+.sdl-row-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }

@@ -14,6 +14,6 @@
     { "id": "pii-handling", "title": "Handling PII", "depth": "tradeoffs" }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["payment-system"],
   "prerequisites": ["p1-tls", "p5-authn-authz", "p5-access-control"]
 }

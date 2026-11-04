@@ -1,0 +1,57 @@
+{
+  "id": "job-scheduler",
+  "title": "Distributed job scheduler",
+  "summary": "Run one-off and cron jobs on time on a shared worker fleet: 10M runs a day, 50,000 of them due in the same second at the top of each hour, each run at least once and never silently lost.",
+  "difficulty": 2,
+  "weekRecommended": 15,
+  "relatedSectionIds": ["p4-distributed-locks", "p4-consensus", "p3-delivery-semantics", "p2-idempotency", "p3-failure-handling", "p4-timeouts-retries", "p4-time-ordering", "p3-partitioning-ordering", "p5-alerting", "p6-batch-processing"],
+  "interviewerPrompt": "Our teams run thousands of cron jobs on their own servers and keep missing runs when a box dies. Design a shared job scheduler they can all use instead. Jobs should run on time and must not get lost.",
+  "clarifyingQuestions": [
+    { "question": "What kinds of schedules?", "answer": "One-off jobs at a given time ('run this at 18:00 tomorrow') and recurring jobs with cron expressions, each with a time zone. One-off jobs can also be submitted to run as soon as possible." },
+    { "question": "How many runs?", "answer": "About 10M executions a day from 5,000 internal owners. Roughly 70% come from recurring schedules and 30% are one-off submissions." },
+    { "question": "Is the load spread evenly?", "answer": "No. Many cron schedules fire at minute 0 of every hour, so the top of each hour is a sharp peak; midnight UTC is the worst, when daily jobs fire on top of the hourly ones." },
+    { "question": "How punctual must a run be?", "answer": "A run should start executing on a worker within 5 s of its scheduled time." },
+    { "question": "What does a job actually do, and how long does it take?", "answer": "It is a container image and command run on our shared worker fleet. Runs take from a few seconds to an hour; most are short." },
+    { "question": "Exactly once or at least once?", "answer": "At least once: a scheduled run must never be silently skipped, and failed runs are retried. Owners accept that a run may occasionally execute twice, but want to know how to make that harmless." },
+    { "question": "What should happen if a run is still going when the next one is due?", "answer": "The owner chooses per job: allow overlap, skip the new run, or cancel the old one and start the new one." },
+    { "question": "What do owners need to see?", "answer": "Every run's status, timings, attempt history, exit code and logs, through a UI and an API. They also want an alert when their job fails or does not run." },
+    { "question": "Do jobs depend on each other?", "answer": "Not in this version. Workflows and DAGs between jobs are out of scope; a job can submit another one-off job through the API." },
+    { "question": "Do we manage the worker machines?", "answer": "Yes, the shared fleet is ours, and it can be scaled up and down; new worker hosts take a minute or two to become ready." }
+  ],
+  "deepDiveQuestions": [
+    "How do you store job definitions and turn cron schedules into on-time triggers without scanning every job every second?",
+    "Who fires a due job: a single leader or partitioned schedulers, and how do you stop two schedulers firing the same run?",
+    "How do you guarantee at-least-once execution, and what must job owners do to make a second run harmless?",
+    "How do retries, timeouts and overlapping runs work, and how do you absorb 50,000 jobs due in the same second?",
+    "How do owners see what happened to every run, and how do you know the scheduler itself is running late?"
+  ],
+  "trafficProfile": {
+    "qps": 24600,
+    "readWriteRatio": 0.0082,
+    "peakMultiplier": 2,
+    "requestTypes": [
+      { "id": "fire", "name": "Fire a due run onto the dispatch queue", "op": "write", "weight": 10, "target": { "kinds": ["queue"] } },
+      { "id": "report", "name": "Worker claim / heartbeat / complete", "op": "write", "weight": 14.4, "target": { "nodeId": "runs-kv" } },
+      { "id": "status", "name": "Owner reads run status and history", "op": "read", "weight": 1, "target": { "kinds": ["search-index"] } }
+    ]
+  },
+  "runChallenge": {
+    "id": "midnight-burst-lose-az",
+    "title": "Midnight burst with a zone down",
+    "description": "Run the midnight burst (2× an ordinary hour mark: 20,000 runs fired per second, 28,800 worker reports per second) and lose the busiest availability zone after 10 s. Firing and worker reports must keep up with under 0.5% errors and a p99 under 200 ms, with no single point of failure.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "minOkQps": 48900, "maxErrorRatePct": 0.5, "maxP99Ms": 200, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Polling the whole jobs table every second for due jobs, which works with a thousand jobs and melts the database at a million.",
+    "Sizing from the daily average of about 116 runs a second when 50,000 runs are due in the same second at the top of every hour.",
+    "Promising exactly-once execution. A worker can finish the job and die before reporting success; the honest guarantee is at-least-once plus idempotent jobs.",
+    "Using a distributed lock or leader lease as the only guard against double firing, with no fencing token or unique run key, so a paused scheduler fires again when it wakes up.",
+    "Running jobs with no lease or heartbeat, so a run on a dead worker stays 'running' forever and is never retried.",
+    "Retrying immediately and indefinitely, turning one failing downstream dependency into a retry storm, with no dead-letter state for runs that will never succeed.",
+    "Storing next-run times in local time without a daylight-saving policy, so a 02:30 job runs twice or never on clock-change nights.",
+    "Having no way to detect that the scheduler itself is late or down: a scheduler that silently stops looks exactly like a quiet night."
+  ]
+}

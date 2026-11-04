@@ -1,0 +1,276 @@
+## Requirements
+
+The news feed is the classic "Twitter problem". Writing a post is easy and reading a list is easy; the difficulty is the join between them. Every feed load needs the newest posts from about 200 accounts, ranked, in under 300 ms, and the follower graph is wildly skewed: most accounts have a few hundred followers, a few have 50 million. Any single strategy that works for the typical account breaks on the extreme one, and the interview is mostly about that.
+
+### Functional
+
+1. **Create a post**: short text, optionally images. The author sees it in their own feed immediately.
+2. **Read the feed**: a ranked list of recent posts from the accounts the user follows, newest-relevant first, with infinite scroll.
+3. **Follow and unfollow** accounts. A new follow should affect the feed within a minute; it does not have to backfill history instantly.
+4. **Delete posts, block and mute**: a deleted post disappears from feeds quickly, and blocked or muted accounts never appear.
+
+### Non-functional
+
+| Property | Target | Why |
+|---|---|---|
+| Feed latency | First page under 300 ms at p99, at our servers | Given; the feed is the app's home screen |
+| Freshness | A post reaches followers' feeds within 1 minute | Given; seconds are nice, a minute is the contract |
+| Availability | Feed reads 99.99%; posting 99.9% | A stale feed is acceptable, an empty one is not |
+| Consistency | Eventual for followers; read-your-own-writes for the author | The author must see their post; others can wait |
+| Correctness | Never show blocked, muted or deleted content | Safety and trust |
+
+### Out of scope
+
+Recommendations from accounts the user does not follow, the ranking model's training, ads, search, notifications, and the image pipeline beyond storing images in object storage and serving them through a CDN.
+
+## Estimation
+
+All numbers come from the problem's assumptions, labelled where we add our own.
+
+**Feed reads.** 300M daily users × 10 opens = 3B opens a day. Assume each open loads 1.5 pages on average (most people read one page, some scroll): 4.5B page loads ÷ 86,400 s = **52,083 page loads/s on average**. With the busiest hour at 3× average: **156,250/s at peak**.
+
+**Posts.** 300M a day ÷ 86,400 = **3,472/s on average**, **10,417/s at peak**. Reads are 52,083 ÷ 3,472 = **15× writes** by request count.
+
+**Fan-out.** Assume the average account has 200 followers (equal to the average number followed, since each follow edge has one follower and one followee), excluding the very large accounts we will treat separately. Assume 70% of followers have opened the app in the last 30 days; we only write to their feeds. So one post costs 200 × 0.7 = **140 feed inserts**: 3,472 × 140 = **486,000 inserts/s on average** and **1.46M/s at peak**. By operation count, the system is dominated by fan-out writes, about 9× the peak feed reads. That number sizes the feed cache.
+
+**What a 50M-follower account costs.** One post = 50M × 0.7 = **35M inserts**. At the 1.5M inserts/s of spare capacity we will have at peak, that is **23 seconds of the whole cluster's spare capacity for one post**. Three such posts in a minute and everyone's posts miss the 1-minute freshness target.
+
+**Feed cache size.** Keep the newest 300 post IDs per user. Stored as a Redis sorted set in its compact listpack encoding, about 20 B per entry (an assumption to measure), so about 6 KB per user. For 400M users active in the last 30 days (assumption): 400M × 6 KB = **2.4 TB**, or 4.8 TB of memory with one replica.
+
+**Feed cache primaries.** Assume one Redis primary handles **50,000 inserts/s** at saturation (each insert is a pipelined `ZADD` plus a trim). At 50% utilisation at peak: 1.46M ÷ 25,000 = 58.3, so **60 primaries + 60 replicas**. Memory per primary: 2.4 TB ÷ 60 = 40 GB, which fits. Fan-out writes, not memory and not reads (156,250 ÷ 60 = 2,600 reads/s per primary), decide the cluster size.
+
+**Posts.** Assume 500 B per post including metadata and media references: 300M × 500 B = **150 GB a day**, 55 TB a year, 164 TB with three replicas. At 4 TB usable per node: 41 nodes for year one; we provision **48**.
+
+**Post cache.** Most reads hit posts from the last two days: 600M × 500 B = 300 GB, so a **400 GB Memcached** tier. Each page hydrates 20 posts: 156,250 × 20 = **3.1M post lookups/s at peak**, batched into one multi-get per page. Assuming one node serves 500,000 batched lookups/s: 3.1M ÷ (500,000 × 0.5) ≈ 12.5, so **12 nodes** at about 52%. With a 95% hit rate (assumption), the post store sees 156,000 misses/s plus 10,400 writes/s: 167,000 ÷ (48 × 10,000 assumed per node) = ρ 0.35.
+
+**Social graph.** 500M users × 200 follows = **100B edges**, stored in both directions (who I follow, who follows me) at about 40 B per row: 100B × 2 × 40 B = **8 TB**, in 64 shards of about 125 GB, each a primary plus a replica.
+
+**Feed API fleet.** Assume one instance serves 2,000 page loads/s (mostly waiting on parallel calls). Total peak 156,250 + 10,417 = 166,667 requests/s. Latency, not throughput, sets the size: the service's time grows as 1 ÷ (1 − ρ), and with a 40 ms median service time, ρ = 0.75 would make it 160 ms before the tail. So we keep **ρ ≤ 0.55 even with one of three zones lost**: 166,667 ÷ (0.55 × 2,000 × 2 zones) = 75.8 → **76 per zone, 228 instances**. Normal ρ = 166,667 ÷ 456,000 = 0.37; zone lost, 0.55.
+
+**Ranking.** Assume one ranking instance scores 2,000 feed requests/s (about 500 candidates each, light model, precomputed features). 156,250 ÷ 2,000 = 78 at saturation; we run **150 (50 per zone)**: ρ 0.52 normally, 0.78 with a zone lost, which the ranking timeout and fallback cover.
+
+**Fan-out workers.** Assume one worker sustains 25,000 inserts/s by pipelining to Redis: 1.46M ÷ 25,000 = 58 at saturation; **90 workers** for ρ 0.65.
+
+**Images.** Assume 20% of posts carry an image stored at 300 KB across sizes: 60M × 300 KB = **18 TB a day** into object storage, served through a CDN. Large, but a solved problem.
+
+<Callout type="tip" title="What the numbers say">
+The read path must answer 156k pages a second in 300 ms, which rules out computing feeds at read time from 200 followees. The write path's real load is fan-out: 1.46M inserts a second, and one celebrity post would add 35M. So: precompute feeds for normal accounts, never fan out the huge ones, and size the cache for writes.
+</Callout>
+
+## API design
+
+```http
+GET /v1/feed?limit=20 HTTP/1.1
+Authorization: Bearer <token>
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{ "items": [
+    { "post": { "id": "1853904021337788416", "text": "Ship it.", "createdAt": "2026-11-04T18:02:11Z",
+                "media": [ { "url": "https://img.example-cdn.com/p/8f2c/1080.jpg", "width": 1080, "height": 720 } ] },
+      "author": { "id": "u_812", "handle": "maya", "displayName": "Maya R." },
+      "stats": { "likes": 42, "replies": 3 } } ],
+  "nextCursor": "eyJzIjoiZnM6dV80Mjo3YTEiLCJvIjoyMH0",
+  "newestPostId": "1853904021337788416" }
+```
+
+- `nextCursor` is opaque (deep dive 4). The client sends it back as `GET /v1/feed?cursor=…` for the next page.
+- `GET /v1/feed/new-count?since=1853904021337788416` returns how many newer posts exist, for a "12 new posts" button; the client polls it about once a minute while the app is open.
+
+```http
+POST /v1/posts HTTP/1.1
+Authorization: Bearer <token>
+Idempotency-Key: 0d9b6c1e-4a57-4f43-9a8c-2b1e5f3c7d90
+Content-Type: application/json
+
+{ "text": "Ship it.", "mediaIds": ["m_77a1"] }
+```
+
+```http
+HTTP/1.1 201 Created
+
+{ "id": "1853904021337788416", "createdAt": "2026-11-04T18:02:11Z" }
+```
+
+- The <Term slug="idempotency-key">idempotency key</Term> stops a retried request from creating a duplicate post.
+- Images are uploaded first: `POST /v1/media` returns a <Term slug="presigned-url">presigned URL</Term>, the app uploads directly to object storage, and the post references the media ID. Image bytes never pass through the API fleet.
+- `PUT /v1/users/me/following/u_812` and `DELETE …` follow and unfollow; `DELETE /v1/posts/{id}` deletes.
+
+## Data model
+
+| Entity | Store | Key | Fields | Access |
+|---|---|---|---|---|
+| `post` | Wide-column store (Cassandra-style), RF = 3 | `post_id` | `author_id`, `text`, `media`, `created_at`, `deleted` | Batch get by ID for hydration |
+| `author_posts` | Same store | `author_id` (partition), `post_id` desc (clustering) | none | "Recent posts by author": celebrity merge, feed rebuilds |
+| `following` / `followers` | Sharded MySQL, 64 shards by user ID | `(user_id, other_id)` | `created_at` | Fan-out pages through `followers`; rebuilds read `following` |
+| Feed (timeline) | Redis Cluster | `tl:{user_id}` | Sorted set of up to 300 post IDs, score = post ID | One read per page; ~140 inserts per post |
+| Post cache | Memcached | `p:{post_id}`, `ap:{author_id}` | Serialised post; author's 20 newest post IDs | Multi-get per page |
+| Feed session | Redis Cluster | `fs:{user_id}:{session}` | Remaining ranked post IDs, 10-minute TTL | Pages 2 and later |
+| Blocks and mutes | MySQL, cached per user | `user_id` | Blocked/muted account IDs | Filter on every read |
+
+**Post IDs are <Term slug="snowflake-id">Snowflake</Term>-style**: 64-bit, starting with a millisecond timestamp. Sorting by ID is sorting by time, so the timeline needs no separate timestamp, and "older than this post" is a range query on the ID.
+
+**The feed stores IDs, not posts.** A feed entry is 20 bytes. Storing the full post in 140 feeds would multiply storage by 140, and an edit or delete would need 140 (or 35M) writes. With IDs, a delete marks one row; hydration drops it on the next read.
+
+**Why these stores.** Posts are written once, read by key, partitioned by ID, and grow by 55 TB a year: a wide-column store gives that with cheap horizontal growth and per-author time-ordered partitions for `author_posts`. The social graph needs both directions and transactional follow/unfollow pairs within a shard; sharded MySQL is the well-trodden choice, and Facebook's TAO paper (USENIX ATC 2013) describes serving a social graph from a graph-aware cache over sharded MySQL. The feed itself is a rebuildable cache, not a source of truth, so Redis with replication and no strong durability is acceptable: if a feed is lost, it is rebuilt from the graph and `author_posts`.
+
+## High-level design
+
+<Figure caption="FIG. 1 · NEWS FEED · HYBRID FAN-OUT">
+  <Diagram label="Users reach a load balancer in front of 228 stateless feed API instances in three zones. Creating a post writes it to the post store and publishes an event to Kafka; fan-out workers pull events, read follower lists from the sharded social graph, and insert the post ID into each active follower's timeline in a Redis cluster, skipping accounts with over a million followers. Reading the feed takes the user's timeline from Redis, merges recent posts from followed celebrities held in memory, sends about 500 candidates to a ranking service, and hydrates the top 20 from a Memcached post cache backed by the post store. Images go to object storage and are served by a CDN." chart={`flowchart LR
+    U[Users] --> LB[Load balancer]
+    U -->|images| CDN[CDN] --> OBJ[(Object storage)]
+    subgraph Region
+      LB --> API[Feed API x228, 3 AZs]
+      API -->|create post| P[(Post store 48 nodes)]
+      API -.->|post created| K[[Kafka]]
+      FW[Fan-out workers x90] -->|poll| K
+      FW -->|followers| G[(Social graph 64 shards)]
+      FW -->|insert post ID| TL[(Timeline Redis 60+60)]
+      API -->|read IDs| TL
+      API -->|rank ~500| RK[Ranking x150]
+      API -->|hydrate 20| PC[(Post cache 12 nodes)]
+      PC -.->|miss| P
+    end`} />
+</Figure>
+
+**Create a post.**
+1. The API validates the post, assigns a Snowflake ID, and writes `post` and `author_posts` at quorum. The post is now durable; the API returns `201`.
+2. The API publishes `post_created(post_id, author_id)` to Kafka, partitioned by author so one author's posts are processed in order. (To make the write and the publish atomic, the write can go through a <Term slug="transactional-outbox">transactional outbox</Term> or change data capture instead.)
+3. The API also puts the post in the post cache and prepends its ID to the author's `ap:` list. The author's next feed load merges their own newest posts, so they see it at once (read-your-own-writes), regardless of fan-out.
+
+**Fan-out.**
+1. A worker pulls the event. If the author has more than 1M followers, it stops: celebrities are merged at read time (deep dive 1).
+2. Otherwise it pages through `followers` 1,000 at a time, drops followers inactive for 30 days, and for each remaining follower runs `ZADD tl:{follower} <id> <id>` and trims the set to 300, pipelined per Redis shard.
+3. Lag is the time from `created_at` to the last insert; the alert fires at 30 s, well inside the 1-minute target.
+
+**Read the feed (first page).**
+1. Read `tl:{user}`: up to 300 post IDs, about 1 ms.
+2. In parallel: take the recent posts of the celebrities the user follows from an in-memory table on the API instance, and load the user's block and mute lists.
+3. Merge into about 500 candidates, remove blocked and muted authors, and call the ranking service with an 80 ms timeout (deep dive 3).
+4. Keep the top 20, store the rest of the ranked list as a feed session, and hydrate the 20 posts and their authors with one multi-get to the post cache (misses go to the post store). Deleted posts are dropped here.
+5. Return the page with a cursor. Latency: about 5 ms of network and TLS, 2 ms timeline, 30 ms ranking (80 ms at p99), 5 ms hydration (20 ms at p99): around 50 ms typical and under 150 ms at p99, inside 300 ms.
+
+## Deep dives
+
+### Fan-out on write, fan-out on read, or a hybrid: what do you do about accounts with 50M followers?
+
+**Fan-out on write (push).** When someone posts, write the post ID into every follower's precomputed feed. Reads become one cache lookup. Cost: 140 inserts per post on average, and 35M for a 50M-follower account, which takes 23 s of the cluster's entire spare capacity and delays everyone else's posts.
+
+**Fan-out on read (pull).** Store nothing per reader. On each feed load, fetch the recent posts of all 200 followees and merge. Posting is one write. Cost: every page load becomes 200 lookups and a merge. At 156,250 pages a second that is 31M lookups a second, and the slowest of 200 parallel lookups sets the latency, so the p99 of a single lookup becomes roughly the median of the feed.
+
+**Hybrid. Chosen.** Push for normal accounts, pull for very large ones. Twitter's engineers described the same structure in the 2012 QCon talk "Timelines at Scale" (Raffi Krikorian): home timelines precomputed in Redis by fan-out on write, with tweets from very large accounts merged in at read time.
+
+**Where to put the threshold.** The spare fan-out capacity at peak is about 1.5M inserts/s (3M capacity minus 1.46M load). For freshness, no single post should take more than about a second of it: 0.7 × F ≤ 1.5M, so F ≤ 2.1M followers. We pick **1M**, half that bound, with hysteresis (switch to pull above 1M, back to push only below 800k) so an account hovering near the line does not flip back and forth. The threshold is a configuration value, which matters during incidents (failure timeline below).
+
+**Why the pull side is nearly free.** Assume about 50,000 accounts exceed 1M followers. Their newest 20 post IDs each are 50,000 × 20 × 8 B = 8 MB: small enough to hold **in memory on every API instance**, kept current by subscribing to the `post_created` stream filtered to those authors (a handful of events a second). The merge at read time then costs no network call at all. The trade-off is a few seconds of extra staleness for celebrity posts, inside the one-minute target.
+
+<TradeoffBox title="Push vs pull" items={[
+  { gain: "Push: a feed read is one cache lookup", cost: "Write amplification of ~140 per post, unbounded for huge accounts" },
+  { gain: "Pull: posting is one write and feeds are always current", cost: "200 lookups per page; the slowest one sets the latency" },
+  { gain: "Hybrid: bounded fan-out and a cheap read", cost: "Two code paths, and a threshold to tune and to change during incidents" }
+]} />
+
+Two more rules cut fan-out cost. **Skip inactive followers**: 30% of edges point at users who have not opened the app in 30 days, and writing to their feeds is pure waste. **Do not fan out deletes**: the feed holds IDs, so a deleted post is filtered at hydration.
+
+### What exactly is in the feed cache, how big is it, and what happens to users whose feed is not cached?
+
+Each feed is a Redis sorted set `tl:{user}` of up to 300 post IDs, scored by the ID itself. Insert is `ZADD` plus `ZREMRANGEBYRANK tl:{user} 0 -301` to keep the newest 300; read is `ZREVRANGE tl:{user} 0 299`. Three hundred is enough for the first page's candidates and several pages of scrolling; deeper scrolling falls back to the slower pull path, which the requirements allow.
+
+**Encoding matters for memory.** Redis stores small sorted sets in a compact listpack, but only up to a configured size (`zset-max-listpack-entries`, 128 by default). Raising it to 300 keeps every feed compact at about 6 KB instead of several times that as a skiplist. The cost is that inserts into a listpack are linear in its length; at 300 entries that is a few microseconds and acceptable. This is the kind of detail to measure, not assume.
+
+**Size**: 400M active users × 6 KB = 2.4 TB over 60 primaries, about 40 GB each, plus about 250 GB for feed sessions (deep dive 4). Each primary has a replica in another zone.
+
+**Users without a cached feed.** Three cases: a user returning after more than 30 days (never fanned out to), a feed evicted for memory, or a feed lost with its shard. All take the same **rebuild path**: read the user's `following` list (200 IDs), multi-get each followee's `ap:` list of 20 newest post IDs from the post cache (falling back to `author_posts` in the store), merge to the newest 300, and write the sorted set. That is 200 keys in one batched call, roughly 20 to 50 ms, paid once; fan-out keeps the feed current from then on. If 2M users a day return after a long absence (assumption), that is 23 rebuilds a second: negligible. The dangerous case is losing a primary *and* its replica: 400M ÷ 60 = 6.7M feeds rebuild lazily as those users show up, so the rebuild path must be rate-limited and show a chronological "recent posts" page while it queues.
+
+<Misconception wrong="The feed cache is the feed, so it must be durable and replicated across regions." right="The feed cache is derived data. The source of truth is the post store and the social graph, and any feed can be rebuilt from them in tens of milliseconds. Replicate it for availability within a region, but do not pay for durability." />
+
+### How do you rank the feed inside the latency budget, and what happens when ranking is slow?
+
+Ranking is a two-stage funnel, which is how large feeds generally work. Twitter's 2023 engineering post on its open-sourced recommendation algorithm describes the same shape at a larger scale: gather about 1,500 candidates, score them with a learned model, then apply filters and heuristics.
+
+1. **Candidates (about 500)**: the 300 timeline IDs plus celebrity posts, minus blocked, muted and already-seen posts.
+2. **Features, precomputed**: how often the user interacts with each author in the last 30 days (affinity, updated by a stream job), the post's recent engagement (likes and replies in the last hour, from counters), its age, and whether it has media. Nothing is computed per candidate from raw data at request time.
+3. **Scoring**: a light model (logistic regression or gradient-boosted trees) scores all 500 in a few milliseconds of CPU. A heavier model, if any, scores only the top 50 or so.
+4. **Rules after the model**: no more than two posts in a row from one author, and a little recency boost so the feed does not feel stale.
+
+**The budget.** The ranking call gets **80 ms**. If it times out or errors, the API returns the candidates in reverse-chronological order with the same filters. That feed is worse, but it is a feed, which is the right trade for a home screen. A per-instance circuit breaker stops calling a failing ranker for a few seconds so the fallback costs nothing extra. The fallback rate is a key metric: if it climbs above a few percent, ranking capacity, not the feed, is the problem.
+
+<NotWhenBox title="Ranking on every request" items={[
+  "Small products with few posts per user: reverse-chronological is simpler, predictable, and users often prefer it.",
+  "When features cannot be precomputed: computing affinity from raw interactions at request time will not fit in 80 ms."
+]} />
+
+### How does pagination work with cursors when new posts keep arriving and the order is ranked?
+
+**Offsets break.** With `?page=2`, items 21 to 40 are computed against the feed *now*. If 5 new posts arrived since page 1, the user sees 5 posts again. With a ranked feed it is worse: re-ranking can reorder everything, so items can be duplicated or skipped arbitrarily.
+
+**Timestamp cursors work for chronological feeds**: `?before=<post_id>` returns the 20 posts older than the last one seen, and Snowflake IDs make that a range query. But a ranked feed is not ordered by time, so "older than X" is not "after X in the ranking".
+
+**Chosen: a feed session.** Page 1 ranks about 500 candidates once and stores the remaining ranked IDs under `fs:{user}:{session}` with a 10-minute TTL (about 4 KB). The cursor encodes `{session, offset}`. Page 2 reads IDs 21 to 40 from the session and hydrates them: no re-ranking, no duplicates, no skips, and cheaper than page 1. Sizing: 34,722 opens a second on average (52,083 pages ÷ 1.5) × 600 s ≈ 21M live sessions × 4 KB ≈ 83 GB on average, about 250 GB at the 3× peak, added to the timeline cluster (about 4 GB per primary).
+
+When the session has expired or is exhausted, the cursor also carries the oldest post ID shown, and the API continues **chronologically** with `before=<id>` from the timeline and then the pull path. New posts never disturb the session: they are announced by the "new posts" count and loaded by starting a new session at the top, which is what users expect from pull-to-refresh.
+
+## Failure modes & mitigations
+
+| Failure | Detection | User impact | Mitigation |
+|---|---|---|---|
+| Fan-out falls behind (live event) | Kafka consumer lag > 30 s | Followers see new posts late; authors see their own | Lower celebrity threshold, skip less-active followers, scale workers (timeline below) |
+| Timeline primary fails | Redis Cluster failover | About 1/60 of users get slower reads for ~15–20 s | Replica in another zone promoted; reads fall back to the rebuild path meanwhile |
+| Primary and replica both lost | Shard down alarm | 6.7M feeds empty until rebuilt | Lazy, rate-limited rebuild; chronological pull page while queued |
+| Ranking slow or down | Timeout rate, fallback ratio | Chronological instead of ranked feed | 80 ms timeout, circuit breaker, fallback |
+| Post cache node lost | Hit rate drop | Hydration misses hit the post store | Store sized at ρ 0.35 with headroom; consistent hashing limits the miss to 1/12 of keys |
+| A zone is lost | LB health checks | A third of capacity gone | 76 API instances per zone sized for ρ 0.55 on two zones; replicas in other zones |
+| Hot post (viral) | Per-key request rate on cache | One cache node hot | In-process cache of the hottest posts for a few seconds |
+| Kafka unavailable | Producer errors | Posts saved but not fanned out | Outbox keeps events; fan-out catches up; author still sees own post |
+| Deleted post still visible | Report / audit | Content shown after delete | Hydration checks `deleted`; post cache entry deleted on delete |
+
+<Callout type="warning" title="Failure timeline · fan-out falls behind during a live event">
+t = 0: a final whistle; posting jumps 5× to 52,000 posts/s for about 10 minutes. Fan-out demand is 52,000 × 140 = 7.3M inserts/s against 90 workers × 25,000 = 2.25M/s, so the backlog grows by about 5M inserts every second. Feed loads stay fast: the read path does not wait on fan-out. Users see feeds that are missing their friends' newest posts; authors still see their own. t + 30 s: the consumer-lag alert fires. t + 2 min: the runbook (or automation) lowers the celebrity threshold from 1M to 100k followers, which we assume removes about half the insert volume (to measure on real data), and scales workers to 100 (2.5M/s, keeping Redis below about 85% busy so reads stay fast). Backlog at t + 2 min: 5.05M × 120 s ≈ 606M inserts; it keeps growing at 3.65M − 2.5M = 1.15M/s until the spike ends: ≈ 1.16B at t + 10 min. t + 10 min: posting returns to 10,400/s, which needs about 0.73M inserts/s at the lowered threshold, leaving 1.77M/s to drain the backlog: 1.16B ÷ 1.77M ≈ 11 minutes. t + 21 min: lag is back under 30 s and the threshold is restored. Lesson: freshness degrades, availability does not, and the threshold is the lever.
+</Callout>
+
+## Scaling to 10×
+
+At 3B daily users: 1.56M page loads/s and 104,000 posts/s at peak, 14.6M fan-out inserts/s.
+
+1. **Fan-out writes break first.** 14.6M inserts/s needs about 600 Redis primaries at the same density. Levers, cheapest first: lower the celebrity threshold permanently (the in-memory celebrity table grows, but it is small), shorten "active" from 30 to 7 days, and cap per-user feeds at 200 IDs. Then split the timeline cluster into several independent clusters by user ID range so no single Redis Cluster grows past the size it is designed for.
+2. **Memory**: 24 TB of feeds. Keep feeds only for users active in the last week and rebuild the rest on demand.
+3. **Ranking**: 1,500 instances by today's density. Batch scoring, cache per-user features for a session, and score fewer candidates with a cheaper first-stage model.
+4. **Multi-region**: users live in their nearest region. Posts and the graph replicate between regions asynchronously, and each region fans out only to its own users' feeds, so cross-region traffic is one copy of each post rather than one per follower.
+5. **The social graph**: celebrity follower lists (50M rows) concentrate on one shard; they are rarely read (no fan-out) but follower counts and pages need a separate counter and pagination by follower ID.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| Hybrid fan-out, threshold 1M followers | Pure push; pure pull | Push makes reads cheap; pull bounds the cost of 50M-follower accounts |
+| Feeds hold post IDs, 300 per user | Full posts in feeds | 20 B per entry; edits and deletes touch one row |
+| Fan out only to 30-day-active followers | Fan out to everyone | Removes ~30% of writes; returning users are rebuilt on demand |
+| Redis timeline cluster sized by writes (60 primaries) | Sized by memory or reads | 1.46M inserts/s dominate; memory and reads fit easily |
+| Celebrity posts held in memory on every API instance | Fetched per request | 8 MB per instance makes the pull side free |
+| Ranking with an 80 ms timeout and chronological fallback | Ranking required | A worse feed beats no feed on the home screen |
+| Feed session cursor for ranked pages | Offsets; timestamp cursors | No duplicates or skips when new posts arrive or ranking changes |
+| One stateless API fleet for reads and posts | Separate read and write services | Writes are 6% of requests; the parts that scale differently (fan-out, timelines, ranking) are already separate |
+| Wide-column post store, sharded MySQL graph | One relational database | 55 TB a year of key-value posts vs a two-directional graph with transactional edges |
+
+## What interviewers look for
+
+- **Numbers that pick the architecture**: 156k pages/s rules out pure pull; 35M inserts for one celebrity post rules out pure push. The hybrid follows from arithmetic, not from memory.
+- **A justified threshold**, derived from spare fan-out capacity and the freshness target, and the idea that it is an operational lever.
+- **IDs in the feed, not posts**, and what that does for deletes, edits, blocks and storage.
+- **Cache sizing by writes**: noticing that fan-out inserts are about 9× feed reads.
+- **The rebuild path** for inactive or evicted users, and why the feed cache does not need durability.
+- **Ranking under a budget** with precomputed features, a timeout and a fallback.
+- **Cursor pagination that survives a ranked, changing feed.**
+- **Staff extras**: read-your-own-writes for the author, the live-event backlog timeline with real drain times, and per-region fan-out at 10×.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "An account crosses 1M followers while it is posting. What happens to its existing followers' feeds?",
+  "A user follows someone new. When do that account's older posts appear, and how?",
+  "Your ranking service is down. What does a user see, and how do you know?",
+  "A post is deleted for legal reasons. How fast does it disappear everywhere?",
+  "Fan-out lag is 5 minutes during the World Cup final. Walk me through the next 20 minutes."
+]} />

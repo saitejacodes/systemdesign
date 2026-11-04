@@ -39,7 +39,7 @@
     }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["food-delivery", "payment-system", "file-sync"],
   "prerequisites": [
     "p2-rest"
   ]

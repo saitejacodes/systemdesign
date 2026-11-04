@@ -1,0 +1,981 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "customers",
+      "kind": "client",
+      "x": 0,
+      "y": 96,
+      "label": "Customers",
+      "props": {
+        "platform": "mobile",
+        "users": 30000000
+      }
+    },
+    {
+      "id": "restaurants",
+      "kind": "client",
+      "x": 0,
+      "y": 448,
+      "label": "Restaurants (tablet app)",
+      "props": {
+        "platform": "both",
+        "users": 500000
+      }
+    },
+    {
+      "id": "couriers",
+      "kind": "client",
+      "x": 0,
+      "y": 800,
+      "label": "Couriers",
+      "props": {
+        "platform": "mobile",
+        "users": 1000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 0,
+      "label": "DNS",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "cdn",
+      "kind": "cdn",
+      "x": 224,
+      "y": 128,
+      "label": "CDN (menu photos)",
+      "props": {
+        "hitRate": 95,
+        "latencyMs": 20,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "images",
+      "kind": "object-storage",
+      "x": 224,
+      "y": 256,
+      "label": "Object storage: photos, location archive",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "gateway",
+      "kind": "api-gateway",
+      "x": 224,
+      "y": 480,
+      "label": "API gateway (auth, per-client limits)",
+      "props": {
+        "rateLimitQps": 150000,
+        "instances": 3,
+        "latencyMs": 5,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 480,
+      "y": 0,
+      "w": 1600,
+      "h": 1072,
+      "label": "Region (primary)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 32,
+      "y": 32,
+      "w": 528,
+      "h": 304,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "loc-a",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Location service AZ-a (x12)",
+      "props": {
+        "name": "location",
+        "instances": 12,
+        "capacityQps": 5000,
+        "latencyMs": 3,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "cat-a",
+      "kind": "service",
+      "x": 288,
+      "y": 48,
+      "label": "Catalog / browse AZ-a (x7)",
+      "props": {
+        "name": "catalog",
+        "instances": 7,
+        "capacityQps": 1000,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "ord-a",
+      "kind": "service",
+      "x": 32,
+      "y": 176,
+      "label": "Order service AZ-a (x3)",
+      "props": {
+        "name": "order",
+        "instances": 3,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "rt-a",
+      "kind": "service",
+      "x": 288,
+      "y": 176,
+      "label": "Realtime gateway AZ-a (x13, WebSocket)",
+      "props": {
+        "name": "realtime-gw",
+        "instances": 13,
+        "capacityQps": 5000,
+        "latencyMs": 2,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 32,
+      "y": 368,
+      "w": 528,
+      "h": 304,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "loc-b",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Location service AZ-b (x12)",
+      "props": {
+        "name": "location",
+        "instances": 12,
+        "capacityQps": 5000,
+        "latencyMs": 3,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "cat-b",
+      "kind": "service",
+      "x": 288,
+      "y": 48,
+      "label": "Catalog / browse AZ-b (x7)",
+      "props": {
+        "name": "catalog",
+        "instances": 7,
+        "capacityQps": 1000,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "ord-b",
+      "kind": "service",
+      "x": 32,
+      "y": 176,
+      "label": "Order service AZ-b (x3)",
+      "props": {
+        "name": "order",
+        "instances": 3,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "rt-b",
+      "kind": "service",
+      "x": 288,
+      "y": 176,
+      "label": "Realtime gateway AZ-b (x13, WebSocket)",
+      "props": {
+        "name": "realtime-gw",
+        "instances": 13,
+        "capacityQps": 5000,
+        "latencyMs": 2,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 32,
+      "y": 704,
+      "w": 528,
+      "h": 304,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "loc-c",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Location service AZ-c (x12)",
+      "props": {
+        "name": "location",
+        "instances": 12,
+        "capacityQps": 5000,
+        "latencyMs": 3,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "cat-c",
+      "kind": "service",
+      "x": 288,
+      "y": 48,
+      "label": "Catalog / browse AZ-c (x7)",
+      "props": {
+        "name": "catalog",
+        "instances": 7,
+        "capacityQps": 1000,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "ord-c",
+      "kind": "service",
+      "x": 32,
+      "y": 176,
+      "label": "Order service AZ-c (x3)",
+      "props": {
+        "name": "order",
+        "instances": 3,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "rt-c",
+      "kind": "service",
+      "x": 288,
+      "y": 176,
+      "label": "Realtime gateway AZ-c (x13, WebSocket)",
+      "props": {
+        "name": "realtime-gw",
+        "instances": 13,
+        "capacityQps": 5000,
+        "latencyMs": 2,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "geo",
+      "kind": "nosql-db",
+      "x": 640,
+      "y": 48,
+      "label": "Redis Cluster geo index (4 primaries + 4 replicas)",
+      "props": {
+        "nodes": 8,
+        "consistency": "one",
+        "capacityQps": 20000,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "loc-topic",
+      "kind": "queue",
+      "x": 640,
+      "y": 192,
+      "label": "Kafka: courier locations (RF 3)",
+      "props": {
+        "partitions": 48,
+        "retentionH": 72,
+        "replication": 3,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "tracker",
+      "kind": "worker",
+      "x": 896,
+      "y": 192,
+      "label": "Tracking fan-out (x24)",
+      "props": {
+        "instances": 24,
+        "processingMs": 0.2,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "menu-cache",
+      "kind": "cache",
+      "x": 640,
+      "y": 352,
+      "label": "Redis: cell lists + menus (64 GB)",
+      "props": {
+        "sizeGb": 64,
+        "hitRate": 70,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "search",
+      "kind": "search-index",
+      "x": 640,
+      "y": 480,
+      "label": "Search: restaurants + dishes (6 nodes)",
+      "props": {
+        "nodes": 6,
+        "capacityQps": 1000,
+        "latencyMs": 20,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "catalog-db",
+      "kind": "sql-db",
+      "x": 896,
+      "y": 480,
+      "label": "Catalog DB (Postgres + 2 replicas)",
+      "props": {
+        "replicas": 2,
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "orders-db",
+      "kind": "sql-db",
+      "x": 640,
+      "y": 704,
+      "label": "Orders DB (Postgres, sync standby + replica)",
+      "props": {
+        "replicas": 2,
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "order-events",
+      "kind": "queue",
+      "x": 896,
+      "y": 704,
+      "label": "Kafka: order events (outbox, RF 3)",
+      "props": {
+        "partitions": 32,
+        "retentionH": 168,
+        "replication": 3,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "notifier",
+      "kind": "worker",
+      "x": 1152,
+      "y": 704,
+      "label": "Notifier (x4)",
+      "props": {
+        "instances": 4,
+        "processingMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "dispatch",
+      "kind": "service",
+      "x": 1152,
+      "y": 352,
+      "label": "Dispatch: per-city matcher (x6)",
+      "props": {
+        "name": "dispatch",
+        "instances": 6,
+        "capacityQps": 200,
+        "latencyMs": 50,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 1152,
+      "y": 48,
+      "label": "Monitoring (assign latency, tablet acks)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "maps",
+      "kind": "external-api",
+      "x": 2176,
+      "y": 352,
+      "label": "Maps / routing & ETA provider",
+      "props": {
+        "latencyMs": 150,
+        "rateLimitQps": 20000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "psp",
+      "kind": "external-api",
+      "x": 2176,
+      "y": 704,
+      "label": "Payment service provider",
+      "props": {
+        "latencyMs": 800,
+        "rateLimitQps": 2000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 1152,
+      "y": 896,
+      "label": "",
+      "props": {
+        "text": "Dispatch is woken by order events (accepted, ready) from the order-events topic and by a per-city tick; that edge is not drawn so Run mode does not route client traffic through it. Location updates are modelled ending at the geo index; the same update is also appended to Kafka for tracking and history. Sized for the 4x dinner peak with one AZ lost (each service under 70%)."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-customers-dns",
+      "source": "customers",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-customers-gateway",
+      "source": "customers",
+      "target": "gateway",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "HTTPS / WebSocket"
+    },
+    {
+      "id": "e-restaurants-dns",
+      "source": "restaurants",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-restaurants-gateway",
+      "source": "restaurants",
+      "target": "gateway",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "HTTPS / WebSocket"
+    },
+    {
+      "id": "e-couriers-dns",
+      "source": "couriers",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-couriers-gateway",
+      "source": "couriers",
+      "target": "gateway",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "HTTPS / WebSocket"
+    },
+    {
+      "id": "e-customers-cdn",
+      "source": "customers",
+      "target": "cdn",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "photos"
+    },
+    {
+      "id": "e-cdn-images",
+      "source": "cdn",
+      "target": "images",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "miss"
+    },
+    {
+      "id": "e-gateway-loc-a",
+      "source": "gateway",
+      "target": "loc-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gateway-cat-a",
+      "source": "gateway",
+      "target": "cat-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gateway-ord-a",
+      "source": "gateway",
+      "target": "ord-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gateway-rt-a",
+      "source": "gateway",
+      "target": "rt-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-loc-a-geo",
+      "source": "loc-a",
+      "target": "geo",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GEOADD latest position"
+    },
+    {
+      "id": "e-loc-a-loc-topic",
+      "source": "loc-a",
+      "target": "loc-topic",
+      "kind": "async",
+      "direction": "forward",
+      "label": "append ping"
+    },
+    {
+      "id": "e-cat-a-menu-cache",
+      "source": "cat-a",
+      "target": "menu-cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "cell list / menu"
+    },
+    {
+      "id": "e-cat-a-search",
+      "source": "cat-a",
+      "target": "search",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "search / filters"
+    },
+    {
+      "id": "e-cat-a-catalog-db",
+      "source": "cat-a",
+      "target": "catalog-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "menu edits"
+    },
+    {
+      "id": "e-ord-a-orders-db",
+      "source": "ord-a",
+      "target": "orders-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "tx: order + outbox"
+    },
+    {
+      "id": "e-ord-a-menu-cache",
+      "source": "ord-a",
+      "target": "menu-cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "reprice cart"
+    },
+    {
+      "id": "e-ord-a-psp",
+      "source": "ord-a",
+      "target": "psp",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "payment intent / refund"
+    },
+    {
+      "id": "e-gateway-loc-b",
+      "source": "gateway",
+      "target": "loc-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gateway-cat-b",
+      "source": "gateway",
+      "target": "cat-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gateway-ord-b",
+      "source": "gateway",
+      "target": "ord-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gateway-rt-b",
+      "source": "gateway",
+      "target": "rt-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-loc-b-geo",
+      "source": "loc-b",
+      "target": "geo",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GEOADD latest position"
+    },
+    {
+      "id": "e-loc-b-loc-topic",
+      "source": "loc-b",
+      "target": "loc-topic",
+      "kind": "async",
+      "direction": "forward",
+      "label": "append ping"
+    },
+    {
+      "id": "e-cat-b-menu-cache",
+      "source": "cat-b",
+      "target": "menu-cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "cell list / menu"
+    },
+    {
+      "id": "e-cat-b-search",
+      "source": "cat-b",
+      "target": "search",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "search / filters"
+    },
+    {
+      "id": "e-cat-b-catalog-db",
+      "source": "cat-b",
+      "target": "catalog-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "menu edits"
+    },
+    {
+      "id": "e-ord-b-orders-db",
+      "source": "ord-b",
+      "target": "orders-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "tx: order + outbox"
+    },
+    {
+      "id": "e-ord-b-menu-cache",
+      "source": "ord-b",
+      "target": "menu-cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "reprice cart"
+    },
+    {
+      "id": "e-ord-b-psp",
+      "source": "ord-b",
+      "target": "psp",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "payment intent / refund"
+    },
+    {
+      "id": "e-gateway-loc-c",
+      "source": "gateway",
+      "target": "loc-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gateway-cat-c",
+      "source": "gateway",
+      "target": "cat-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gateway-ord-c",
+      "source": "gateway",
+      "target": "ord-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-gateway-rt-c",
+      "source": "gateway",
+      "target": "rt-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-loc-c-geo",
+      "source": "loc-c",
+      "target": "geo",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GEOADD latest position"
+    },
+    {
+      "id": "e-loc-c-loc-topic",
+      "source": "loc-c",
+      "target": "loc-topic",
+      "kind": "async",
+      "direction": "forward",
+      "label": "append ping"
+    },
+    {
+      "id": "e-cat-c-menu-cache",
+      "source": "cat-c",
+      "target": "menu-cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "cell list / menu"
+    },
+    {
+      "id": "e-cat-c-search",
+      "source": "cat-c",
+      "target": "search",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "search / filters"
+    },
+    {
+      "id": "e-cat-c-catalog-db",
+      "source": "cat-c",
+      "target": "catalog-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "menu edits"
+    },
+    {
+      "id": "e-ord-c-orders-db",
+      "source": "ord-c",
+      "target": "orders-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "tx: order + outbox"
+    },
+    {
+      "id": "e-ord-c-menu-cache",
+      "source": "ord-c",
+      "target": "menu-cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "reprice cart"
+    },
+    {
+      "id": "e-ord-c-psp",
+      "source": "ord-c",
+      "target": "psp",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "payment intent / refund"
+    },
+    {
+      "id": "e-orders-db-order-events",
+      "source": "orders-db",
+      "target": "order-events",
+      "kind": "async",
+      "direction": "forward",
+      "label": "outbox relay"
+    },
+    {
+      "id": "e-order-events-notifier",
+      "source": "order-events",
+      "target": "notifier",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-loc-topic-tracker",
+      "source": "loc-topic",
+      "target": "tracker",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-notifier-rt-a",
+      "source": "notifier",
+      "target": "rt-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "push status"
+    },
+    {
+      "id": "e-tracker-rt-a",
+      "source": "tracker",
+      "target": "rt-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "push position"
+    },
+    {
+      "id": "e-notifier-rt-b",
+      "source": "notifier",
+      "target": "rt-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "push status"
+    },
+    {
+      "id": "e-tracker-rt-b",
+      "source": "tracker",
+      "target": "rt-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "push position"
+    },
+    {
+      "id": "e-notifier-rt-c",
+      "source": "notifier",
+      "target": "rt-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "push status"
+    },
+    {
+      "id": "e-tracker-rt-c",
+      "source": "tracker",
+      "target": "rt-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "push position"
+    },
+    {
+      "id": "e-dispatch-geo",
+      "source": "dispatch",
+      "target": "geo",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "nearby couriers"
+    },
+    {
+      "id": "e-dispatch-maps",
+      "source": "dispatch",
+      "target": "maps",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "ETA matrix"
+    },
+    {
+      "id": "e-dispatch-orders-db",
+      "source": "dispatch",
+      "target": "orders-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conditional assign"
+    }
+  ]
+}

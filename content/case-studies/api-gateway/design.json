@@ -1,0 +1,1208 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "consumers",
+      "kind": "client",
+      "x": 0,
+      "y": 1040,
+      "label": "API consumers (partner apps)",
+      "props": {
+        "platform": "both",
+        "users": 10000000
+      }
+    },
+    {
+      "id": "geodns",
+      "kind": "dns",
+      "x": 224,
+      "y": 1040,
+      "label": "GeoDNS (api.example.com)",
+      "props": {
+        "ttlS": 30,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "r1",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "label": "Region 1 (36 gateways, sized for 1/3 of peak, 1/2 on region loss)",
+      "props": {
+        "scope": "region"
+      },
+      "w": 1424,
+      "h": 720
+    },
+    {
+      "id": "r1-nlb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 320,
+      "label": "L4 load balancer",
+      "props": {
+        "layer": "L4",
+        "algorithm": "least-connections",
+        "instances": 2,
+        "latencyMs": 0.5,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "r1"
+    },
+    {
+      "id": "r1-az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "w": 288,
+      "h": 192,
+      "parentId": "r1"
+    },
+    {
+      "id": "r1-gw-a",
+      "kind": "api-gateway",
+      "x": 48,
+      "y": 64,
+      "label": "Gateways AZ-a (x12)",
+      "props": {
+        "rateLimitQps": 120000,
+        "instances": 12,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r1-az-a"
+    },
+    {
+      "id": "r1-az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 256,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "w": 288,
+      "h": 192,
+      "parentId": "r1"
+    },
+    {
+      "id": "r1-gw-b",
+      "kind": "api-gateway",
+      "x": 48,
+      "y": 64,
+      "label": "Gateways AZ-b (x12)",
+      "props": {
+        "rateLimitQps": 120000,
+        "instances": 12,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r1-az-b"
+    },
+    {
+      "id": "r1-az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 480,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "w": 288,
+      "h": 192,
+      "parentId": "r1"
+    },
+    {
+      "id": "r1-gw-c",
+      "kind": "api-gateway",
+      "x": 48,
+      "y": 64,
+      "label": "Gateways AZ-c (x12)",
+      "props": {
+        "rateLimitQps": 120000,
+        "instances": 12,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r1-az-c"
+    },
+    {
+      "id": "r1-redis",
+      "kind": "cache",
+      "x": 640,
+      "y": 48,
+      "label": "Redis limiter (8 primaries + 8 replicas)",
+      "props": {
+        "sizeGb": 8,
+        "hitRate": 0,
+        "latencyMs": 0.5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r1"
+    },
+    {
+      "id": "r1-up",
+      "kind": "service",
+      "x": 640,
+      "y": 288,
+      "label": "200 upstream services (stand-in)",
+      "props": {
+        "name": "upstreams",
+        "instances": 400,
+        "capacityQps": 1000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r1"
+    },
+    {
+      "id": "r1-kafka",
+      "kind": "queue",
+      "x": 640,
+      "y": 528,
+      "label": "Kafka (RF=3): usage aggregates",
+      "props": {
+        "partitions": 32,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0,
+        "replication": 3
+      },
+      "parentId": "r1"
+    },
+    {
+      "id": "r1-uw",
+      "kind": "worker",
+      "x": 896,
+      "y": 528,
+      "label": "Usage workers (x4)",
+      "props": {
+        "instances": 4,
+        "processingMs": 0.2,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r1"
+    },
+    {
+      "id": "r2",
+      "kind": "frame",
+      "x": 448,
+      "y": 768,
+      "label": "Region 2 (36 gateways, sized for 1/3 of peak, 1/2 on region loss)",
+      "props": {
+        "scope": "region"
+      },
+      "w": 1424,
+      "h": 720
+    },
+    {
+      "id": "r2-nlb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 320,
+      "label": "L4 load balancer",
+      "props": {
+        "layer": "L4",
+        "algorithm": "least-connections",
+        "instances": 2,
+        "latencyMs": 0.5,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "r2"
+    },
+    {
+      "id": "r2-az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "w": 288,
+      "h": 192,
+      "parentId": "r2"
+    },
+    {
+      "id": "r2-gw-a",
+      "kind": "api-gateway",
+      "x": 48,
+      "y": 64,
+      "label": "Gateways AZ-a (x12)",
+      "props": {
+        "rateLimitQps": 120000,
+        "instances": 12,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r2-az-a"
+    },
+    {
+      "id": "r2-az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 256,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "w": 288,
+      "h": 192,
+      "parentId": "r2"
+    },
+    {
+      "id": "r2-gw-b",
+      "kind": "api-gateway",
+      "x": 48,
+      "y": 64,
+      "label": "Gateways AZ-b (x12)",
+      "props": {
+        "rateLimitQps": 120000,
+        "instances": 12,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r2-az-b"
+    },
+    {
+      "id": "r2-az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 480,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "w": 288,
+      "h": 192,
+      "parentId": "r2"
+    },
+    {
+      "id": "r2-gw-c",
+      "kind": "api-gateway",
+      "x": 48,
+      "y": 64,
+      "label": "Gateways AZ-c (x12)",
+      "props": {
+        "rateLimitQps": 120000,
+        "instances": 12,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r2-az-c"
+    },
+    {
+      "id": "r2-redis",
+      "kind": "cache",
+      "x": 640,
+      "y": 48,
+      "label": "Redis limiter (8 primaries + 8 replicas)",
+      "props": {
+        "sizeGb": 8,
+        "hitRate": 0,
+        "latencyMs": 0.5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r2"
+    },
+    {
+      "id": "r2-up",
+      "kind": "service",
+      "x": 640,
+      "y": 288,
+      "label": "200 upstream services (stand-in)",
+      "props": {
+        "name": "upstreams",
+        "instances": 400,
+        "capacityQps": 1000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r2"
+    },
+    {
+      "id": "r2-kafka",
+      "kind": "queue",
+      "x": 640,
+      "y": 528,
+      "label": "Kafka (RF=3): usage aggregates",
+      "props": {
+        "partitions": 32,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0,
+        "replication": 3
+      },
+      "parentId": "r2"
+    },
+    {
+      "id": "r2-uw",
+      "kind": "worker",
+      "x": 896,
+      "y": 528,
+      "label": "Usage workers (x4)",
+      "props": {
+        "instances": 4,
+        "processingMs": 0.2,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r2"
+    },
+    {
+      "id": "r3",
+      "kind": "frame",
+      "x": 448,
+      "y": 1536,
+      "label": "Region 3 (36 gateways, sized for 1/3 of peak, 1/2 on region loss)",
+      "props": {
+        "scope": "region"
+      },
+      "w": 1424,
+      "h": 720
+    },
+    {
+      "id": "r3-nlb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 320,
+      "label": "L4 load balancer",
+      "props": {
+        "layer": "L4",
+        "algorithm": "least-connections",
+        "instances": 2,
+        "latencyMs": 0.5,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "r3"
+    },
+    {
+      "id": "r3-az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "w": 288,
+      "h": 192,
+      "parentId": "r3"
+    },
+    {
+      "id": "r3-gw-a",
+      "kind": "api-gateway",
+      "x": 48,
+      "y": 64,
+      "label": "Gateways AZ-a (x12)",
+      "props": {
+        "rateLimitQps": 120000,
+        "instances": 12,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r3-az-a"
+    },
+    {
+      "id": "r3-az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 256,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "w": 288,
+      "h": 192,
+      "parentId": "r3"
+    },
+    {
+      "id": "r3-gw-b",
+      "kind": "api-gateway",
+      "x": 48,
+      "y": 64,
+      "label": "Gateways AZ-b (x12)",
+      "props": {
+        "rateLimitQps": 120000,
+        "instances": 12,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r3-az-b"
+    },
+    {
+      "id": "r3-az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 480,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "w": 288,
+      "h": 192,
+      "parentId": "r3"
+    },
+    {
+      "id": "r3-gw-c",
+      "kind": "api-gateway",
+      "x": 48,
+      "y": 64,
+      "label": "Gateways AZ-c (x12)",
+      "props": {
+        "rateLimitQps": 120000,
+        "instances": 12,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r3-az-c"
+    },
+    {
+      "id": "r3-redis",
+      "kind": "cache",
+      "x": 640,
+      "y": 48,
+      "label": "Redis limiter (8 primaries + 8 replicas)",
+      "props": {
+        "sizeGb": 8,
+        "hitRate": 0,
+        "latencyMs": 0.5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r3"
+    },
+    {
+      "id": "r3-up",
+      "kind": "service",
+      "x": 640,
+      "y": 288,
+      "label": "200 upstream services (stand-in)",
+      "props": {
+        "name": "upstreams",
+        "instances": 400,
+        "capacityQps": 1000,
+        "latencyMs": 10,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r3"
+    },
+    {
+      "id": "r3-kafka",
+      "kind": "queue",
+      "x": 640,
+      "y": 528,
+      "label": "Kafka (RF=3): usage aggregates",
+      "props": {
+        "partitions": 32,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0,
+        "replication": 3
+      },
+      "parentId": "r3"
+    },
+    {
+      "id": "r3-uw",
+      "kind": "worker",
+      "x": 896,
+      "y": 528,
+      "label": "Usage workers (x4)",
+      "props": {
+        "instances": 4,
+        "processingMs": 0.2,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "r3"
+    },
+    {
+      "id": "global",
+      "kind": "frame",
+      "x": 448,
+      "y": 2304,
+      "label": "Global control plane and billing",
+      "props": {
+        "scope": "group"
+      },
+      "w": 1424,
+      "h": 288
+    },
+    {
+      "id": "cp",
+      "kind": "service",
+      "x": 48,
+      "y": 96,
+      "label": "Control plane + push service (x3)",
+      "props": {
+        "name": "control-plane",
+        "instances": 3,
+        "capacityQps": 200,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "global"
+    },
+    {
+      "id": "cfgdb",
+      "kind": "sql-db",
+      "x": 320,
+      "y": 96,
+      "label": "PostgreSQL: routes, keys, plans (1 sync replica)",
+      "props": {
+        "replicas": 1,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "global"
+    },
+    {
+      "id": "snap",
+      "kind": "object-storage",
+      "x": 592,
+      "y": 96,
+      "label": "Config snapshots (cold start)",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "global"
+    },
+    {
+      "id": "usage",
+      "kind": "nosql-db",
+      "x": 864,
+      "y": 96,
+      "label": "Usage store (columnar, 6 nodes)",
+      "props": {
+        "nodes": 6,
+        "consistency": "quorum",
+        "capacityQps": 10000,
+        "latencyMs": 10,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "global"
+    },
+    {
+      "id": "quota",
+      "kind": "worker",
+      "x": 1136,
+      "y": 96,
+      "label": "Quota + billing jobs (x2)",
+      "props": {
+        "instances": 2,
+        "processingMs": 50,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "global"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 1136,
+      "y": 192,
+      "label": "Monitoring (per-route p99, 401/429/503 by reason)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "global"
+    },
+    {
+      "id": "idp",
+      "kind": "external-api",
+      "x": 2000,
+      "y": 1040,
+      "label": "Identity provider (OAuth / JWKS)",
+      "props": {
+        "latencyMs": 50,
+        "rateLimitQps": 5000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 0,
+      "y": 2624,
+      "label": "",
+      "props": {
+        "text": "The 200 upstream services are one stand-in node per region (10 ms, 400k QPS of capacity): they are not ours to size. Run mode draws the limiter and usage paths but does not route request traffic through them; the gateway's own budget is about 1 ms plus one in-AZ Redis call."
+      },
+      "w": 400,
+      "h": 160
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-consumers-r1-nlb",
+      "source": "consumers",
+      "target": "r1-nlb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "HTTPS"
+    },
+    {
+      "id": "e-r1-nlb-r1-gw-a",
+      "source": "r1-nlb",
+      "target": "r1-gw-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-r1-gw-a-r1-redis",
+      "source": "r1-gw-a",
+      "target": "r1-redis",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "limit check (3 ms timeout)"
+    },
+    {
+      "id": "e-r1-gw-a-r1-up",
+      "source": "r1-gw-a",
+      "target": "r1-up",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "mTLS, pooled"
+    },
+    {
+      "id": "e-r1-gw-a-r1-kafka",
+      "source": "r1-gw-a",
+      "target": "r1-kafka",
+      "kind": "async",
+      "direction": "forward",
+      "label": "usage every 10 s"
+    },
+    {
+      "id": "e-idp-r1-gw-a",
+      "source": "idp",
+      "target": "r1-gw-a",
+      "kind": "async",
+      "direction": "forward",
+      "label": "JWKS refresh every 5 min"
+    },
+    {
+      "id": "e-cp-r1-gw-a",
+      "source": "cp",
+      "target": "r1-gw-a",
+      "kind": "async",
+      "direction": "forward",
+      "label": "versioned config + endpoints"
+    },
+    {
+      "id": "e-r1-nlb-r1-gw-b",
+      "source": "r1-nlb",
+      "target": "r1-gw-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-r1-gw-b-r1-redis",
+      "source": "r1-gw-b",
+      "target": "r1-redis",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "limit check (3 ms timeout)"
+    },
+    {
+      "id": "e-r1-gw-b-r1-up",
+      "source": "r1-gw-b",
+      "target": "r1-up",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "mTLS, pooled"
+    },
+    {
+      "id": "e-r1-gw-b-r1-kafka",
+      "source": "r1-gw-b",
+      "target": "r1-kafka",
+      "kind": "async",
+      "direction": "forward",
+      "label": "usage every 10 s"
+    },
+    {
+      "id": "e-idp-r1-gw-b",
+      "source": "idp",
+      "target": "r1-gw-b",
+      "kind": "async",
+      "direction": "forward",
+      "label": "JWKS refresh every 5 min"
+    },
+    {
+      "id": "e-cp-r1-gw-b",
+      "source": "cp",
+      "target": "r1-gw-b",
+      "kind": "async",
+      "direction": "forward",
+      "label": "versioned config + endpoints"
+    },
+    {
+      "id": "e-r1-nlb-r1-gw-c",
+      "source": "r1-nlb",
+      "target": "r1-gw-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-r1-gw-c-r1-redis",
+      "source": "r1-gw-c",
+      "target": "r1-redis",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "limit check (3 ms timeout)"
+    },
+    {
+      "id": "e-r1-gw-c-r1-up",
+      "source": "r1-gw-c",
+      "target": "r1-up",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "mTLS, pooled"
+    },
+    {
+      "id": "e-r1-gw-c-r1-kafka",
+      "source": "r1-gw-c",
+      "target": "r1-kafka",
+      "kind": "async",
+      "direction": "forward",
+      "label": "usage every 10 s"
+    },
+    {
+      "id": "e-idp-r1-gw-c",
+      "source": "idp",
+      "target": "r1-gw-c",
+      "kind": "async",
+      "direction": "forward",
+      "label": "JWKS refresh every 5 min"
+    },
+    {
+      "id": "e-cp-r1-gw-c",
+      "source": "cp",
+      "target": "r1-gw-c",
+      "kind": "async",
+      "direction": "forward",
+      "label": "versioned config + endpoints"
+    },
+    {
+      "id": "e-r1-kafka-r1-uw",
+      "source": "r1-kafka",
+      "target": "r1-uw",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-r1-uw-usage",
+      "source": "r1-uw",
+      "target": "usage",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hourly rows"
+    },
+    {
+      "id": "e-consumers-r2-nlb",
+      "source": "consumers",
+      "target": "r2-nlb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "HTTPS"
+    },
+    {
+      "id": "e-r2-nlb-r2-gw-a",
+      "source": "r2-nlb",
+      "target": "r2-gw-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-r2-gw-a-r2-redis",
+      "source": "r2-gw-a",
+      "target": "r2-redis",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "limit check (3 ms timeout)"
+    },
+    {
+      "id": "e-r2-gw-a-r2-up",
+      "source": "r2-gw-a",
+      "target": "r2-up",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "mTLS, pooled"
+    },
+    {
+      "id": "e-r2-gw-a-r2-kafka",
+      "source": "r2-gw-a",
+      "target": "r2-kafka",
+      "kind": "async",
+      "direction": "forward",
+      "label": "usage every 10 s"
+    },
+    {
+      "id": "e-idp-r2-gw-a",
+      "source": "idp",
+      "target": "r2-gw-a",
+      "kind": "async",
+      "direction": "forward",
+      "label": "JWKS refresh every 5 min"
+    },
+    {
+      "id": "e-cp-r2-gw-a",
+      "source": "cp",
+      "target": "r2-gw-a",
+      "kind": "async",
+      "direction": "forward",
+      "label": "versioned config + endpoints"
+    },
+    {
+      "id": "e-r2-nlb-r2-gw-b",
+      "source": "r2-nlb",
+      "target": "r2-gw-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-r2-gw-b-r2-redis",
+      "source": "r2-gw-b",
+      "target": "r2-redis",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "limit check (3 ms timeout)"
+    },
+    {
+      "id": "e-r2-gw-b-r2-up",
+      "source": "r2-gw-b",
+      "target": "r2-up",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "mTLS, pooled"
+    },
+    {
+      "id": "e-r2-gw-b-r2-kafka",
+      "source": "r2-gw-b",
+      "target": "r2-kafka",
+      "kind": "async",
+      "direction": "forward",
+      "label": "usage every 10 s"
+    },
+    {
+      "id": "e-idp-r2-gw-b",
+      "source": "idp",
+      "target": "r2-gw-b",
+      "kind": "async",
+      "direction": "forward",
+      "label": "JWKS refresh every 5 min"
+    },
+    {
+      "id": "e-cp-r2-gw-b",
+      "source": "cp",
+      "target": "r2-gw-b",
+      "kind": "async",
+      "direction": "forward",
+      "label": "versioned config + endpoints"
+    },
+    {
+      "id": "e-r2-nlb-r2-gw-c",
+      "source": "r2-nlb",
+      "target": "r2-gw-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-r2-gw-c-r2-redis",
+      "source": "r2-gw-c",
+      "target": "r2-redis",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "limit check (3 ms timeout)"
+    },
+    {
+      "id": "e-r2-gw-c-r2-up",
+      "source": "r2-gw-c",
+      "target": "r2-up",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "mTLS, pooled"
+    },
+    {
+      "id": "e-r2-gw-c-r2-kafka",
+      "source": "r2-gw-c",
+      "target": "r2-kafka",
+      "kind": "async",
+      "direction": "forward",
+      "label": "usage every 10 s"
+    },
+    {
+      "id": "e-idp-r2-gw-c",
+      "source": "idp",
+      "target": "r2-gw-c",
+      "kind": "async",
+      "direction": "forward",
+      "label": "JWKS refresh every 5 min"
+    },
+    {
+      "id": "e-cp-r2-gw-c",
+      "source": "cp",
+      "target": "r2-gw-c",
+      "kind": "async",
+      "direction": "forward",
+      "label": "versioned config + endpoints"
+    },
+    {
+      "id": "e-r2-kafka-r2-uw",
+      "source": "r2-kafka",
+      "target": "r2-uw",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-r2-uw-usage",
+      "source": "r2-uw",
+      "target": "usage",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hourly rows"
+    },
+    {
+      "id": "e-consumers-r3-nlb",
+      "source": "consumers",
+      "target": "r3-nlb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "HTTPS"
+    },
+    {
+      "id": "e-r3-nlb-r3-gw-a",
+      "source": "r3-nlb",
+      "target": "r3-gw-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-r3-gw-a-r3-redis",
+      "source": "r3-gw-a",
+      "target": "r3-redis",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "limit check (3 ms timeout)"
+    },
+    {
+      "id": "e-r3-gw-a-r3-up",
+      "source": "r3-gw-a",
+      "target": "r3-up",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "mTLS, pooled"
+    },
+    {
+      "id": "e-r3-gw-a-r3-kafka",
+      "source": "r3-gw-a",
+      "target": "r3-kafka",
+      "kind": "async",
+      "direction": "forward",
+      "label": "usage every 10 s"
+    },
+    {
+      "id": "e-idp-r3-gw-a",
+      "source": "idp",
+      "target": "r3-gw-a",
+      "kind": "async",
+      "direction": "forward",
+      "label": "JWKS refresh every 5 min"
+    },
+    {
+      "id": "e-cp-r3-gw-a",
+      "source": "cp",
+      "target": "r3-gw-a",
+      "kind": "async",
+      "direction": "forward",
+      "label": "versioned config + endpoints"
+    },
+    {
+      "id": "e-r3-nlb-r3-gw-b",
+      "source": "r3-nlb",
+      "target": "r3-gw-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-r3-gw-b-r3-redis",
+      "source": "r3-gw-b",
+      "target": "r3-redis",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "limit check (3 ms timeout)"
+    },
+    {
+      "id": "e-r3-gw-b-r3-up",
+      "source": "r3-gw-b",
+      "target": "r3-up",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "mTLS, pooled"
+    },
+    {
+      "id": "e-r3-gw-b-r3-kafka",
+      "source": "r3-gw-b",
+      "target": "r3-kafka",
+      "kind": "async",
+      "direction": "forward",
+      "label": "usage every 10 s"
+    },
+    {
+      "id": "e-idp-r3-gw-b",
+      "source": "idp",
+      "target": "r3-gw-b",
+      "kind": "async",
+      "direction": "forward",
+      "label": "JWKS refresh every 5 min"
+    },
+    {
+      "id": "e-cp-r3-gw-b",
+      "source": "cp",
+      "target": "r3-gw-b",
+      "kind": "async",
+      "direction": "forward",
+      "label": "versioned config + endpoints"
+    },
+    {
+      "id": "e-r3-nlb-r3-gw-c",
+      "source": "r3-nlb",
+      "target": "r3-gw-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-r3-gw-c-r3-redis",
+      "source": "r3-gw-c",
+      "target": "r3-redis",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "limit check (3 ms timeout)"
+    },
+    {
+      "id": "e-r3-gw-c-r3-up",
+      "source": "r3-gw-c",
+      "target": "r3-up",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "mTLS, pooled"
+    },
+    {
+      "id": "e-r3-gw-c-r3-kafka",
+      "source": "r3-gw-c",
+      "target": "r3-kafka",
+      "kind": "async",
+      "direction": "forward",
+      "label": "usage every 10 s"
+    },
+    {
+      "id": "e-idp-r3-gw-c",
+      "source": "idp",
+      "target": "r3-gw-c",
+      "kind": "async",
+      "direction": "forward",
+      "label": "JWKS refresh every 5 min"
+    },
+    {
+      "id": "e-cp-r3-gw-c",
+      "source": "cp",
+      "target": "r3-gw-c",
+      "kind": "async",
+      "direction": "forward",
+      "label": "versioned config + endpoints"
+    },
+    {
+      "id": "e-r3-kafka-r3-uw",
+      "source": "r3-kafka",
+      "target": "r3-uw",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-r3-uw-usage",
+      "source": "r3-uw",
+      "target": "usage",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hourly rows"
+    },
+    {
+      "id": "e-consumers-geodns",
+      "source": "consumers",
+      "target": "geodns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-cp-cfgdb",
+      "source": "cp",
+      "target": "cfgdb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "read / write config"
+    },
+    {
+      "id": "e-cp-snap",
+      "source": "cp",
+      "target": "snap",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "last good snapshot"
+    },
+    {
+      "id": "e-usage-quota",
+      "source": "usage",
+      "target": "quota",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "month-to-date sums"
+    },
+    {
+      "id": "e-quota-cfgdb",
+      "source": "quota",
+      "target": "cfgdb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "quota_exceeded flags (pushed by control plane)"
+    }
+  ]
+}

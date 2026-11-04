@@ -14,6 +14,6 @@
     { "id": "avoiding-distributed-transactions", "title": "When to avoid distributed transactions", "depth": "tradeoffs" }
   ],
   "simulatorIds": ["saga"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["payment-system", "food-delivery"],
   "prerequisites": ["p2-transactions", "p2-idempotency", "p3-event-driven", "p4-consensus"]
 }

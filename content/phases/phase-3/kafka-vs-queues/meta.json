@@ -13,6 +13,6 @@
     { "id": "choosing-broker", "title": "Choosing: a decision table", "depth": "tradeoffs" }
   ],
   "simulatorIds": ["message-queue"],
-  "practiceCaseStudyIds": ["notification-system"],
+  "practiceCaseStudyIds": ["notification-system", "news-feed", "video-streaming"],
   "prerequisites": ["p3-queues-vs-pubsub", "p3-partitioning-ordering", "p3-delivery-semantics"]
 }

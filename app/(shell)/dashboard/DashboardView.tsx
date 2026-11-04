@@ -5,6 +5,7 @@ import { usePlan } from "@/components/plan/usePlan";
 import { WeakSpotList } from "@/components/plan/WeakSpotList";
 import { useCardReviews, useInterviewAttempts, useStudySessions } from "@/lib/db/hooks";
 import type { PlanWeek } from "@/lib/content/schemas";
+import type { InterviewAttempt } from "@/lib/db/types";
 import { dayKey, humanize, lastDays, type PlanSection } from "@/lib/learning/plan";
 import { overallProgress, phaseProgress } from "@/lib/learning/progress";
 import { streak } from "@/lib/learning/streaks";
@@ -13,6 +14,20 @@ import { SIM_CHALLENGES } from "@/lib/simulators/challenge-index";
 import { AccuracyLine, DailyBars, Figure } from "./Charts";
 
 const short = (k: string) => k.slice(5).replace("-", "/");
+
+/**
+ * Self-score % per attempt, oldest first, grouped by case and most recent case first. Every criterion must be scored before
+ * an attempt saves, so the max is 2 × the scores stored (the hint penalty is not stored and so not applied here).
+ */
+function interviewTrends(attempts: InterviewAttempt[]) {
+  const by = new Map<string, InterviewAttempt[]>();
+  for (const a of attempts) by.set(a.caseStudyId, [...(by.get(a.caseStudyId) ?? []), a]);
+  return [...by.entries()].map(([caseId, list]) => {
+    const sorted = list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const pcts = sorted.map((a) => { const v = Object.values(a.selfScores); return v.length ? Math.round((v.reduce((x, y) => x + y, 0) / (2 * v.length)) * 100) : 0; });
+    return { caseId, pcts, last: sorted[sorted.length - 1].createdAt };
+  }).sort((a, b) => b.last.localeCompare(a.last));
+}
 
 export function DashboardView({ weeks, sections }: { weeks: PlanWeek[]; sections: PlanSection[] }) {
   const { data, planStart, week } = usePlan(weeks, sections);
@@ -80,16 +95,17 @@ export function DashboardView({ weeks, sections }: { weeks: PlanWeek[]; sections
         <section aria-labelledby="int-h" className="grid content-start gap-3">
           <h2 id="int-h" className="fm-cap border-b border-ink pb-1">Interview attempts · {interviews.length}</h2>
           {interviews.length === 0 ? <p className="text-ink-muted">No mock interviews yet. They unlock with Interview Mode in week 14.</p> : (
-            <ul className="grid gap-1">
-              {[...interviews].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((i) => {
-                const scores = Object.values(i.selfScores);
-                return (
-                  <li key={i.id} className="flex flex-wrap gap-x-3">
-                    <span className="font-medium">{humanize(i.caseStudyId)}</span>
-                    <span className="fm-cap">{new Date(i.createdAt).toLocaleDateString()} · {Math.round(i.durationSec / 60)} min{scores.length ? ` · avg ${(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)}` : ""}</span>
-                  </li>
-                );
-              })}
+            <ul className="grid gap-2" aria-label="Score trend per case">
+              {interviewTrends(interviews).map((t) => (
+                <li key={t.caseId} className="grid gap-0.5">
+                  <Link href={`/interview/${t.caseId}`} className="font-medium">{humanize(t.caseId)}</Link>
+                  <span className="font-mono text-[13px] tabular-nums" aria-label={`Scores oldest to newest: ${t.pcts.join(", ")} percent`}>
+                    {t.pcts.map((p) => `${p}%`).join(" → ")}
+                    {t.pcts.length > 1 && <span className="fm-cap"> · {t.pcts[t.pcts.length - 1] >= t.pcts[0] ? "▲" : "▼"} {Math.abs(t.pcts[t.pcts.length - 1] - t.pcts[0])} pts</span>}
+                  </span>
+                  <span className="fm-cap">Last {new Date(t.last).toLocaleDateString()} · {t.pcts.length} attempt{t.pcts.length === 1 ? "" : "s"}</span>
+                </li>
+              ))}
             </ul>
           )}
         </section>

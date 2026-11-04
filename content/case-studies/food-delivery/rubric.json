@@ -1,0 +1,69 @@
+{
+  "criteria": [
+    { "id": "three-sided-scope", "step": "Requirements", "title": "Three-sided scope, not ride-sharing with food",
+      "levels": {
+        "0": "Lists browse and order only, or designs a two-party ride-sharing flow with no restaurant step.",
+        "1": "Covers browse, checkout, restaurant acceptance, dispatch and tracking, but never says how food preparation time or batching changes the problem.",
+        "2": "Covers all six flows, names the restaurant as an unreliable third party, and states early that prep time and batching (not nearest driver) shape dispatch." } },
+    { "id": "nfr-invariants", "step": "Requirements", "title": "Non-functional targets and invariants",
+      "levels": {
+        "0": "No targets, or only 'fast and scalable'.",
+        "1": "States latency and availability, but treats 'charge exactly once' and 'never double-book a courier' as afterthoughts.",
+        "2": "Assignment within 30 s at p99, no double-booking except deliberate batching, exactly-once charging with idempotent refunds, browse p99, tracking freshness vs reliable status delivery, and the predictable 4× meal peaks." } },
+    { "id": "load-math", "step": "Estimation", "title": "Orders, couriers and pings derived step by step",
+      "levels": {
+        "0": "No numbers, or numbers with no derivation.",
+        "1": "Gets about 58 orders/s and some location rate, but never derives online couriers or the peak.",
+        "2": "5M ÷ 86,400 = 57.9/s, 231.5/s at peak; about 1,852 order writes/s at peak; 208,333 orders/h ÷ 2 per courier-hour = 104,167 online, 416,667 at peak; ÷ 5 s = 83,333 pings/s; and concludes pings outnumber order writes about 45 to 1." } },
+    { "id": "third-party-budgets", "step": "Estimation", "title": "Maps and PSP budgets drive the design",
+      "levels": {
+        "0": "Calls the maps provider wherever an ETA is shown, with no arithmetic.",
+        "1": "Notices the maps rate limit but does not quantify browse ETAs or the refresh interval.",
+        "2": "Shows browse ETAs would need about 185,000 requests/s (9× the limit), 5 s refresh 111,000/s, 60 s refresh plus dispatch about 11,600/s (58%); uses Little's law for 555,600 active orders; checks the PSP at about 300/s." } },
+    { "id": "api", "step": "API", "title": "API contract for three apps",
+      "levels": {
+        "0": "Endpoints named with no bodies, status codes or idempotency.",
+        "1": "Checkout and status endpoints with bodies, but no idempotency key, no repricing conflict, or no webhook.",
+        "2": "Browse with cursor and ETA ranges; POST /v1/orders with Idempotency-Key, quoted total and 409 on reprice; signed PSP webhook; versioned restaurant and courier commands returning 409 when stale; batched location upload; one WebSocket stream with versioned events." } },
+    { "id": "data-model", "step": "Data Model", "title": "Stores split by access pattern",
+      "levels": {
+        "0": "One database for everything, including every GPS ping.",
+        "1": "Separates positions from orders, but puts couriers and orders where assignment needs a cross-store lock.",
+        "2": "Postgres for orders, couriers, payments and outbox (one local transaction for assignment); Redis for live positions keyed by cell; derived cell lists and a search index fed by CDC; a unique (customer, idempotency key)." } },
+    { "id": "hld-walkthrough", "step": "High-Level Design", "title": "Architecture and request walkthroughs",
+      "levels": {
+        "0": "A box diagram with no walkthrough.",
+        "1": "Walks checkout and dispatch, but location ingestion, browse or the event flow is missing.",
+        "2": "Walks browse (cell list, offline filter, internal ETA), checkout (one transaction with outbox, PSP intent, webhook), restaurant notification, dispatch and location/tracking separately, over a multi-AZ layout sized from the estimates." } },
+    { "id": "payments-idempotency", "step": "Deep Dives", "title": "Exactly-once charging",
+      "levels": {
+        "0": "Charges the card inside the order request with no idempotency, or claims a distributed transaction with the PSP.",
+        "1": "Uses an idempotency key at the API but not at the PSP, or has no plan for webhooks that are duplicated or never arrive.",
+        "2": "Order row first; PSP intent keyed by order ID; conditional webhook transitions; sweeper querying the PSP and cancelling at a deadline; keyed refunds, including for late success on a cancelled order; daily reconciliation." } },
+    { "id": "state-machine", "step": "Deep Dives", "title": "Order state machine across three parties",
+      "levels": {
+        "0": "A single linear status updated by whoever calls last.",
+        "1": "Versioned transitions, but kitchen and courier progress are forced into one sequence, or timers and cancellation races are not covered.",
+        "2": "Lifecycle state plus independent kitchen and courier sub-states; forward-only conditional updates that make commands idempotent; cancel-vs-pickup race decided by commit order; outbox with per-order ordering; timers stored as data." } },
+    { "id": "dispatch", "step": "Deep Dives", "title": "Dispatch, batching and no double-booking",
+      "levels": {
+        "0": "Picks the nearest courier with no protection against two orders taking the same courier.",
+        "1": "Uses a geo index and a lock or lease to avoid double-booking, but scores by distance only and has no batching rule.",
+        "2": "Cell-keyed geo index avoiding a per-city hot key; ETA matrix for top candidates scored against predicted food-ready time; windowed matching per city; batching with a cap on added delay; assignment as one conditional transaction with leases only for efficiency." } },
+    { "id": "tracking-restaurant", "step": "Deep Dives", "title": "Location pipeline, tracking and restaurant reliability",
+      "levels": {
+        "0": "Writes every ping to the database and assumes restaurant tablets are always online.",
+        "1": "Keeps pings in memory and pushes tracking, but has no plan for an offline tablet or for the meal peaks.",
+        "2": "Stateless ingestion to Redis plus Kafka, push fan-out costed against polling; tablet heartbeats and ack timeouts, offline marking, phone escalation and auto-refund with a timeline; scheduled scale-out, shedding priorities and demand shaping." } },
+    { "id": "failures-scale", "step": "Wrap-up", "title": "Failure modes and scaling to 10×",
+      "levels": {
+        "0": "No failures discussed beyond 'add replicas'.",
+        "1": "Covers zone and database loss, but not third-party outages, or not what breaks first at 10×.",
+        "2": "Zone loss with sized headroom, Postgres failover with idempotent retries, maps and PSP outages with fallbacks, dispatcher lease takeover; at 10× names the orders DB first, sharding by city to keep assignment local, and the maps limit forcing an internal ETA model." } },
+    { "id": "tradeoffs", "step": "Wrap-up", "title": "Trade-offs stated as decisions",
+      "levels": {
+        "0": "No trade-offs named.",
+        "1": "Generic trade-offs (SQL vs NoSQL, consistency vs availability) not tied to this design.",
+        "2": "Each key decision (couriers with orders in Postgres, positions in Redis, sub-states, outbox, windowed matching, conditional writes over locks, internal browse ETA, PSP intent keyed by order) comes with its alternative and the reason it lost here." } }
+  ]
+}

@@ -31,9 +31,7 @@
   "simulatorIds": [
     "message-queue"
   ],
-  "practiceCaseStudyIds": [
-    "notification-system"
-  ],
+  "practiceCaseStudyIds": ["notification-system", "web-crawler"],
   "prerequisites": [
     "p1-monolith-vs-microservices",
     "p2-idempotency"

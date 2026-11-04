@@ -16,6 +16,6 @@
     { "id": "flink-kafka-streams", "title": "Flink and Kafka Streams", "depth": "awareness" }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["typeahead", "search-engine", "video-streaming"],
   "prerequisites": ["p3-kafka-vs-queues", "p3-delivery-semantics", "p3-partitioning-ordering"]
 }

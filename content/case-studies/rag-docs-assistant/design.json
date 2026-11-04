@@ -1,0 +1,717 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "employees",
+      "kind": "client",
+      "x": 0,
+      "y": 288,
+      "label": "Employees",
+      "props": {
+        "platform": "web",
+        "users": 200000
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 256,
+      "y": 0,
+      "w": 1536,
+      "h": 1072,
+      "label": "Region (primary)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 32,
+      "y": 288,
+      "label": "Load balancer (TLS, SSE)",
+      "props": {
+        "layer": "L7",
+        "algorithm": "least-connections",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "w": 288,
+      "h": 160,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "api-a",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Assistant API AZ-a (x2)",
+      "props": {
+        "name": "assistant-api",
+        "instances": 2,
+        "capacityQps": 200,
+        "latencyMs": 15,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 224,
+      "w": 288,
+      "h": 160,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "api-b",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Assistant API AZ-b (x2)",
+      "props": {
+        "name": "assistant-api",
+        "instances": 2,
+        "capacityQps": 200,
+        "latencyMs": 15,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 416,
+      "w": 288,
+      "h": 160,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "api-c",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Assistant API AZ-c (x2)",
+      "props": {
+        "name": "assistant-api",
+        "instances": 2,
+        "capacityQps": 200,
+        "latencyMs": 15,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "cache",
+      "kind": "cache",
+      "x": 640,
+      "y": 32,
+      "label": "Redis: answer cache + memberships",
+      "props": {
+        "sizeGb": 16,
+        "hitRate": 15,
+        "latencyMs": 2,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "index",
+      "kind": "search-index",
+      "x": 640,
+      "y": 192,
+      "label": "Hybrid index: BM25 + HNSW, ACL field (3 nodes, copy per AZ)",
+      "props": {
+        "nodes": 3,
+        "capacityQps": 200,
+        "latencyMs": 50,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "reranker",
+      "kind": "service",
+      "x": 640,
+      "y": 352,
+      "label": "Reranker, cross-encoder on GPU (x2)",
+      "props": {
+        "name": "reranker",
+        "instances": 2,
+        "capacityQps": 20,
+        "latencyMs": 60,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "gateway",
+      "kind": "service",
+      "x": 640,
+      "y": 512,
+      "label": "LLM gateway: budgets, token bucket, failover (x3)",
+      "props": {
+        "name": "llm-gateway",
+        "instances": 3,
+        "capacityQps": 200,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "appdb",
+      "kind": "sql-db",
+      "x": 400,
+      "y": 640,
+      "label": "Postgres: conversations",
+      "props": {
+        "replicas": 1,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "obj",
+      "kind": "object-storage",
+      "x": 896,
+      "y": 640,
+      "label": "Object storage: parsed text, answer logs",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "receiver",
+      "kind": "service",
+      "x": 1152,
+      "y": 352,
+      "label": "Change receiver (webhooks, x2)",
+      "props": {
+        "name": "change-receiver",
+        "instances": 2,
+        "capacityQps": 500,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "poller",
+      "kind": "worker",
+      "x": 1152,
+      "y": 512,
+      "label": "Poller + nightly reconciler",
+      "props": {
+        "instances": 2,
+        "processingMs": 300,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "lanes",
+      "kind": "queue",
+      "x": 896,
+      "y": 800,
+      "label": "Change queues: ACL/deletes, edits, bulk",
+      "props": {
+        "partitions": 12,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "workers",
+      "kind": "worker",
+      "x": 640,
+      "y": 800,
+      "label": "Ingestion workers (parse, chunk, hash, embed)",
+      "props": {
+        "instances": 4,
+        "processingMs": 500,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "registry",
+      "kind": "sql-db",
+      "x": 400,
+      "y": 800,
+      "label": "Postgres: document registry",
+      "props": {
+        "replicas": 1,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "dirsync",
+      "kind": "worker",
+      "x": 1152,
+      "y": 800,
+      "label": "Directory sync (groups)",
+      "props": {
+        "instances": 2,
+        "processingMs": 20,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 1152,
+      "y": 32,
+      "label": "Monitoring: lane age, quota headroom, evals",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "sources",
+      "kind": "external-api",
+      "x": 1920,
+      "y": 96,
+      "label": "Document sources (wiki, drive, tickets)",
+      "props": {
+        "latencyMs": 300,
+        "rateLimitQps": 200,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "embed-llm",
+      "kind": "llm-api",
+      "x": 1920,
+      "y": 384,
+      "label": "Embedding model API",
+      "props": {
+        "latencyMs": 100,
+        "tokensPerS": 60,
+        "rateLimitRpm": 3000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "chat-llm",
+      "kind": "llm-api",
+      "x": 1920,
+      "y": 640,
+      "label": "Chat model API, deployment A",
+      "props": {
+        "latencyMs": 800,
+        "tokensPerS": 60,
+        "rateLimitRpm": 1000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "chat-llm-b",
+      "kind": "llm-api",
+      "x": 1920,
+      "y": 832,
+      "label": "Chat model API, deployment B (same model)",
+      "props": {
+        "latencyMs": 800,
+        "tokensPerS": 60,
+        "rateLimitRpm": 1000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "directory",
+      "kind": "external-api",
+      "x": 1920,
+      "y": 1024,
+      "label": "Company directory (groups)",
+      "props": {
+        "latencyMs": 100,
+        "rateLimitQps": 100,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 0,
+      "y": 768,
+      "w": 224,
+      "h": 304,
+      "label": "",
+      "props": {
+        "text": "Each question is three calls: one hybrid search, one query embedding and one chat call, after the answer cache (15% hits). Ingestion is started by the source systems, which Run mode cannot send traffic from, so the change path is drawn but not exercised. Sized for 13.9 questions/s with a zone lost; the chat model runs at 71% of one deployment's quota, so the second deployment is failover and headroom."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-employees-lb",
+      "source": "employees",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "POST /v1/.../questions (SSE)"
+    },
+    {
+      "id": "e-lb-api-a",
+      "source": "lb",
+      "target": "api-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-a-cache",
+      "source": "api-a",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "cache, groups"
+    },
+    {
+      "id": "e-api-a-embed-llm",
+      "source": "api-a",
+      "target": "embed-llm",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "embed question"
+    },
+    {
+      "id": "e-api-a-index",
+      "source": "api-a",
+      "target": "index",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hybrid search + ACL filter"
+    },
+    {
+      "id": "e-api-a-reranker",
+      "source": "api-a",
+      "target": "reranker",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "rerank 50"
+    },
+    {
+      "id": "e-api-a-gateway",
+      "source": "api-a",
+      "target": "gateway",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "budgeted prompt"
+    },
+    {
+      "id": "e-api-a-appdb",
+      "source": "api-a",
+      "target": "appdb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conversation"
+    },
+    {
+      "id": "e-api-a-obj",
+      "source": "api-a",
+      "target": "obj",
+      "kind": "async",
+      "direction": "forward",
+      "label": "answer log"
+    },
+    {
+      "id": "e-lb-api-b",
+      "source": "lb",
+      "target": "api-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-b-cache",
+      "source": "api-b",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "cache, groups"
+    },
+    {
+      "id": "e-api-b-embed-llm",
+      "source": "api-b",
+      "target": "embed-llm",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "embed question"
+    },
+    {
+      "id": "e-api-b-index",
+      "source": "api-b",
+      "target": "index",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hybrid search + ACL filter"
+    },
+    {
+      "id": "e-api-b-reranker",
+      "source": "api-b",
+      "target": "reranker",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "rerank 50"
+    },
+    {
+      "id": "e-api-b-gateway",
+      "source": "api-b",
+      "target": "gateway",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "budgeted prompt"
+    },
+    {
+      "id": "e-api-b-appdb",
+      "source": "api-b",
+      "target": "appdb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conversation"
+    },
+    {
+      "id": "e-api-b-obj",
+      "source": "api-b",
+      "target": "obj",
+      "kind": "async",
+      "direction": "forward",
+      "label": "answer log"
+    },
+    {
+      "id": "e-lb-api-c",
+      "source": "lb",
+      "target": "api-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-c-cache",
+      "source": "api-c",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "cache, groups"
+    },
+    {
+      "id": "e-api-c-embed-llm",
+      "source": "api-c",
+      "target": "embed-llm",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "embed question"
+    },
+    {
+      "id": "e-api-c-index",
+      "source": "api-c",
+      "target": "index",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hybrid search + ACL filter"
+    },
+    {
+      "id": "e-api-c-reranker",
+      "source": "api-c",
+      "target": "reranker",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "rerank 50"
+    },
+    {
+      "id": "e-api-c-gateway",
+      "source": "api-c",
+      "target": "gateway",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "budgeted prompt"
+    },
+    {
+      "id": "e-api-c-appdb",
+      "source": "api-c",
+      "target": "appdb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "conversation"
+    },
+    {
+      "id": "e-api-c-obj",
+      "source": "api-c",
+      "target": "obj",
+      "kind": "async",
+      "direction": "forward",
+      "label": "answer log"
+    },
+    {
+      "id": "e-gateway-chat-llm",
+      "source": "gateway",
+      "target": "chat-llm",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "stream"
+    },
+    {
+      "id": "e-gateway-chat-llm-b",
+      "source": "gateway",
+      "target": "chat-llm-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "stream"
+    },
+    {
+      "id": "e-sources-receiver",
+      "source": "sources",
+      "target": "receiver",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "webhooks"
+    },
+    {
+      "id": "e-receiver-lanes",
+      "source": "receiver",
+      "target": "lanes",
+      "kind": "async",
+      "direction": "forward",
+      "label": "enqueue"
+    },
+    {
+      "id": "e-poller-sources",
+      "source": "poller",
+      "target": "sources",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "modified since / list ids"
+    },
+    {
+      "id": "e-poller-lanes",
+      "source": "poller",
+      "target": "lanes",
+      "kind": "async",
+      "direction": "forward",
+      "label": "missed changes"
+    },
+    {
+      "id": "e-lanes-workers",
+      "source": "lanes",
+      "target": "workers",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume by priority"
+    },
+    {
+      "id": "e-workers-sources",
+      "source": "workers",
+      "target": "sources",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "fetch doc / ACL"
+    },
+    {
+      "id": "e-workers-embed-llm",
+      "source": "workers",
+      "target": "embed-llm",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "changed chunks"
+    },
+    {
+      "id": "e-workers-index",
+      "source": "workers",
+      "target": "index",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "upsert / delete"
+    },
+    {
+      "id": "e-workers-registry",
+      "source": "workers",
+      "target": "registry",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "versions, ACL"
+    },
+    {
+      "id": "e-workers-obj",
+      "source": "workers",
+      "target": "obj",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "parsed text"
+    },
+    {
+      "id": "e-dirsync-directory",
+      "source": "dirsync",
+      "target": "directory",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "group changes"
+    },
+    {
+      "id": "e-dirsync-cache",
+      "source": "dirsync",
+      "target": "cache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "memberships"
+    }
+  ]
+}

@@ -15,6 +15,8 @@ export interface Design { id: string; title: string; caseStudyId?: string; graph
 /** A Design Studio snapshot for the History drawer; the last 20 per design are kept. */
 export interface DesignVersion { id: string; designId: string; createdAt: string; title: string; graph: unknown }
 export interface InterviewAttempt { id: string; caseStudyId: string; durationSec: number; panels: Record<string, string>; selfScores: Record<string, number>; aiFeedback?: string; createdAt: string }
+/** Interview Mode's in-progress attempt for one case (id = caseStudyId), so a reload resumes it. Deleted when the attempt is saved. */
+export interface InterviewDraft { id: string; caseStudyId: string; session: unknown; updatedAt: string }
 export interface StudySession { id: string; date: string; minutes: number; pageIds: string[] }
 export interface TutorConversation { id: string; pageId: string; messages: { role: "user" | "assistant"; content: string }[]; updatedAt: string }
 export interface AiUsage { month: string; requests: number; inputTokens: number; outputTokens: number; estimatedCost: number }
@@ -45,6 +47,7 @@ export interface Tables {
   designs: Design;
   designVersions: DesignVersion;
   interviewAttempts: InterviewAttempt;
+  interviewDrafts: InterviewDraft;
   studySessions: StudySession;
   tutorConversations: TutorConversation;
   aiUsage: AiUsage;

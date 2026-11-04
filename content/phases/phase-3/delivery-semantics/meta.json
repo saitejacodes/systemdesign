@@ -36,9 +36,7 @@
   "simulatorIds": [
     "message-queue"
   ],
-  "practiceCaseStudyIds": [
-    "notification-system"
-  ],
+  "practiceCaseStudyIds": ["notification-system", "job-scheduler", "payment-system"],
   "prerequisites": [
     "p3-queues-vs-pubsub",
     "p2-idempotency"

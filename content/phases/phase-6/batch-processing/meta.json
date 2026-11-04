@@ -15,6 +15,6 @@
     { "id": "lambda-kappa", "title": "Lambda vs kappa architecture", "depth": "tradeoffs" }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["typeahead", "search-engine", "video-streaming"],
   "prerequisites": ["p6-stream-processing", "p2-olap-vs-oltp", "p2-object-storage"]
 }

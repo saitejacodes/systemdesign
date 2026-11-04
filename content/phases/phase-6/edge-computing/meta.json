@@ -13,6 +13,6 @@
     { "id": "edge-placement", "title": "What belongs at the edge", "depth": "tradeoffs" }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["ticket-booking"],
   "prerequisites": ["p3-cdn", "p1-dns", "p6-serverless"]
 }

@@ -2,6 +2,8 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 import { ContentError, parseContent } from "./parse";
+import { z } from "zod";
+import { StudioGraph } from "@/lib/studio/types";
 import * as S from "./schemas";
 
 const ROOT = path.join(process.cwd(), "content");
@@ -74,16 +76,37 @@ export const getGlossary = () => topJson("glossary.json", S.Glossary, []).sort((
 export const getResources = () => topJson("resources.json", S.Resources, []);
 export const getPlan = () => topJson("plan.json", S.Plan, []);
 
-export interface CaseStudy { meta: S.CaseStudyMeta; solution: string }
+export interface CaseStudy {
+  meta: S.CaseStudyMeta;
+  solution: string;
+  /** rubric.json, or null while a case is still being written. */
+  rubric: S.Rubric | null;
+  /** design.json (a bare StudioGraph or a Design Studio JSON export), or null while a case is still being written. */
+  design: StudioGraph | null;
+}
+
+// design.json may be a bare graph or a Studio export ({ format, graph, ... }).
+const DesignFile = z.union([StudioGraph, z.looseObject({ graph: StudioGraph }).transform((d) => d.graph)]);
+
+/**
+ * Case-study folders. Set SDL_FIXTURE_CASES=1 to also load tests/fixtures/case-studies (the e2e web server and the
+ * unit tests do), so Interview Mode can be tested on a small fixture before or beside the real cases.
+ */
+function caseStudyDirs(): string[] {
+  const roots = [path.join(ROOT, "case-studies")];
+  if (process.env.SDL_FIXTURE_CASES === "1") roots.push(path.join(process.cwd(), "tests", "fixtures", "case-studies"));
+  return roots.filter((r) => fs.existsSync(r)).flatMap((r) => fs.readdirSync(r).map((d) => path.join(r, d)).filter((d) => fs.statSync(d).isDirectory()));
+}
+
+function loadCaseStudy(dir: string): CaseStudy {
+  const f = (name: string) => path.join(dir, name);
+  const optional = <T extends z.ZodType>(name: string, schema: T): z.infer<T> | null => (fs.existsSync(f(name)) ? parseContent(rel(f(name)), read(f(name)), schema) : null);
+  const meta = parseContent(rel(f("meta.json")), read(f("meta.json")), S.CaseStudyMeta);
+  return { meta, solution: read(f("solution.mdx")), rubric: optional("rubric.json", S.Rubric), design: optional("design.json", DesignFile) };
+}
+
 export function getCaseStudies(): CaseStudy[] {
-  const dir = path.join(ROOT, "case-studies");
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir)
-    .filter((d) => fs.statSync(path.join(dir, d)).isDirectory())
-    .map((d) => {
-      const m = path.join(dir, d, "meta.json");
-      return { meta: parseContent(rel(m), read(m), S.CaseStudyMeta), solution: read(path.join(dir, d, "solution.mdx")) };
-    });
+  return caseStudyDirs().map(loadCaseStudy);
 }
 export const getCaseStudy = (id: string) => getCaseStudies().find((c) => c.meta.id === id);
 

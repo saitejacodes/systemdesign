@@ -9,5 +9,6 @@ export default defineConfig({
     { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
     { name: "mobile", use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } } },
   ],
-  webServer: { command: "pnpm build && pnpm start -p 3100", url: "http://localhost:3100", reuseExistingServer: !process.env.CI, timeout: 300_000 },
+  // SDL_FIXTURE_CASES adds tests/fixtures/case-studies so Interview Mode has a small, stable case to drive.
+  webServer: { command: "pnpm build && pnpm start -p 3100", env: { SDL_FIXTURE_CASES: "1" }, url: "http://localhost:3100", reuseExistingServer: !process.env.CI, timeout: 300_000 },
 });

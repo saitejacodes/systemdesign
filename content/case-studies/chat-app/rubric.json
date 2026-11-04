@@ -1,0 +1,69 @@
+{
+  "criteria": [
+    { "id": "functional-scope", "step": "Requirements", "title": "Functional scope and what the ticks promise",
+      "levels": {
+        "0": "Lists 'send and receive messages' only, or spends time on stickers, calls and stories.",
+        "1": "Covers 1:1, groups, history, receipts and offline delivery, but never defines what one tick, two ticks and blue ticks guarantee.",
+        "2": "Covers 1:1, groups up to 500, multi-device history, presence and push, and defines the ticks precisely: one = durably stored, two = on a recipient device, blue = read, which later drives the persist-before-ack rule." } },
+    { "id": "nfr-ordering-durability", "step": "Requirements", "title": "Non-functional targets: ordering, durability, latency",
+      "levels": {
+        "0": "No latency, ordering or durability targets.",
+        "1": "States the 500 ms delivery target and 'messages in order', without saying order within what, or what happens to gaps.",
+        "2": "Per-conversation total order identical on every device with detectable gaps, no loss after the first tick, under 500 ms p99 to online recipients, presence explicitly best-effort." } },
+    { "id": "traffic-math", "step": "Estimation", "title": "Message and request rates derived",
+      "levels": {
+        "0": "No numbers, or numbers with no derivation.",
+        "1": "Gets about 230k messages/s but no peak, receipts or reconnect syncs.",
+        "2": "500M × 40 ÷ 86,400 = 231k/s, 2× peak 463k/s; 1.9 recipients per message gives 880k deliveries/s at peak; receipts and syncs add up to about 1.16M requests/s at peak." } },
+    { "id": "connection-storage-math", "step": "Estimation", "title": "Connections, gateways and storage",
+      "levels": {
+        "0": "Never estimates concurrent connections or storage.",
+        "1": "Estimates connections or storage, but sizes gateways by messages per second.",
+        "2": "240M peak connections ÷ 500k per gateway = 480, 720 with a zone of headroom; 6 TB of messages a day, a 30-day hot tier of 540 TB replicated, and a cold tier for the rest." } },
+    { "id": "api", "step": "API", "title": "Connection protocol and API",
+      "levels": {
+        "0": "Only REST endpoints, with no persistent connection for delivery.",
+        "1": "A WebSocket with send and receive frames, but no client message ID, no acks, or no sync-on-reconnect call.",
+        "2": "WebSocket frames for send (with a client message ID), ack with sequence number, deliver, receipt cursors and presence; an HTTP sync endpoint with per-conversation cursors; media via presigned upload URLs." } },
+    { "id": "data-model", "step": "Data Model", "title": "Schema, keys and store",
+      "levels": {
+        "0": "A single messages table with no partition key reasoning.",
+        "1": "Partitions messages by conversation, but uses a timestamp as the clustering key or ignores unbounded partitions.",
+        "2": "Messages keyed (conversation_id, bucket) with seq as the clustering key, per-user conversation rows holding last/delivered/read seq, a wide-column store chosen for write rate and per-partition range reads, plus hot/cold tiering." } },
+    { "id": "hld-walkthrough", "step": "High-Level Design", "title": "Architecture and the send, deliver and sync paths",
+      "levels": {
+        "0": "Boxes with no walkthrough of a message.",
+        "1": "Walks a message from sender to an online recipient, but not offline delivery or reconnect sync.",
+        "2": "Walks send (gateway → conversation owner → persist → ack → fan-out log), delivery via the connection registry, offline push and reconnect sync, with a latency budget against 500 ms." } },
+    { "id": "connections-routing", "step": "Deep Dives", "title": "Holding connections and finding recipients",
+      "levels": {
+        "0": "Assumes the sender's server can send directly to any user.",
+        "1": "Mentions a user-to-gateway map, but not how it stays correct when connections move or gateways die.",
+        "2": "Connection registry with per-connection IDs and TTLs, gateways sized by memory and file descriptors, L4 balancing, and jittered reconnects so a gateway or zone loss does not become a reconnect storm." } },
+    { "id": "ordering", "step": "Deep Dives", "title": "Per-conversation ordering",
+      "levels": {
+        "0": "Orders by client or server timestamps.",
+        "1": "Uses a sequence number but does not say who assigns it or what happens when that owner fails.",
+        "2": "A single owner per conversation assigns gap-free seq numbers, persists before acking, re-derives the counter from the store on takeover, and breaks the rare double-owner tie deterministically by epoch." } },
+    { "id": "receipts-offline", "step": "Deep Dives", "title": "Receipts, offline delivery and duplicates",
+      "levels": {
+        "0": "Delivers once and hopes; no offline plan.",
+        "1": "Stores messages for offline users and sends pushes, but per message, and duplicates are not handled.",
+        "2": "At-least-once delivery deduplicated by client message ID, receipts as monotonic cursors (max wins), sync by cursor on reconnect, and pushes collapsed per conversation to stay under the provider quota." } },
+    { "id": "fanout-presence-e2ee", "step": "Deep Dives", "title": "Group fan-out, presence and end-to-end encryption",
+      "levels": {
+        "0": "Broadcasts presence to all contacts and ignores encryption.",
+        "1": "Fans out group messages per member and notes E2EE exists, but without costs or consequences.",
+        "2": "Store once, fan out pointers (bounded by the 500-member cap), presence only to subscribed viewers with heartbeats at the gateway, and E2EE consequences: per-device keys, sender keys for groups, no server-side search or previews." } },
+    { "id": "failures-scale", "step": "Wrap-up", "title": "Failure modes and scaling to 10×",
+      "levels": {
+        "0": "Says 'add more servers'.",
+        "1": "Covers server and zone loss but not a reconnect storm, owner failover or push quota limits.",
+        "2": "Gives a zone-loss timeline with reconnect jitter and owner takeover, sizes the push quota, and at 10× names the fan-out log, inbox upserts and push quota first, plus multi-region home regions per conversation." } },
+    { "id": "tradeoffs", "step": "Wrap-up", "title": "Trade-offs stated as decisions",
+      "levels": {
+        "0": "No trade-offs.",
+        "1": "Generic trade-offs (consistency vs availability) not tied to this design.",
+        "2": "Each decision (WebSocket vs polling, owner-assigned seq vs timestamps, persist-then-ack, store-once vs per-recipient copies, wide-column vs SQL, best-effort presence) comes with the alternative and why it lost here." } }
+  ]
+}

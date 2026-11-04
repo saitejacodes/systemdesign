@@ -1,0 +1,119 @@
+{
+  "id": "web-crawler",
+  "title": "Web crawler",
+  "summary": "Crawl a billion pages a month politely: a host-partitioned frontier, layered dedup, robots.txt and a recrawl budget.",
+  "difficulty": 2,
+  "weekRecommended": 15,
+  "relatedSectionIds": [
+    "p2-consistent-hashing",
+    "p2-object-storage",
+    "p2-search",
+    "p3-queues-vs-pubsub",
+    "p3-delivery-semantics",
+    "p4-timeouts-retries",
+    "p4-fault-tolerance",
+    "p1-estimation"
+  ],
+  "interviewerPrompt": "Design a web crawler for a search engine. It starts from some seed URLs and keeps discovering and downloading pages so the index stays complete and fresh. Walk me through how you would build it.",
+  "clarifyingQuestions": [
+    {
+      "question": "How many pages do we need to fetch?",
+      "answer": "About 1 billion pages a month, sustained, starting from a seed list operators provide."
+    },
+    {
+      "question": "How big is a typical page, and do we store it?",
+      "answer": "Assume 100 KB on average. Store the fetched content for the indexer, which consumes it separately."
+    },
+    {
+      "question": "Are there limits on how hard we can hit a single site?",
+      "answer": "Yes: obey robots.txt and make at most one request per second to any single host, less if the site is slow or asks for less."
+    },
+    {
+      "question": "Should we fetch the same URL more than once?",
+      "answer": "Skip URLs we already have, and do not store pages that are near-duplicates of pages we already stored. Recrawls are planned, not accidental."
+    },
+    {
+      "question": "How fresh does the content need to be?",
+      "answer": "Frequently changing pages should be recrawled more often than static ones, within a fixed fetch budget."
+    },
+    {
+      "question": "What happens when machines fail?",
+      "answer": "The crawl must keep making progress when machines fail; losing a few minutes of in-flight work is fine, losing the frontier is not."
+    },
+    {
+      "question": "Do we need to render JavaScript?",
+      "answer": "No, fetch and parse HTML only. JavaScript rendering is out of scope."
+    },
+    {
+      "question": "Who uses the system directly?",
+      "answer": "About 50 crawl operators who add seeds, watch progress and block or slow down hosts when site owners complain."
+    },
+    {
+      "question": "Is latency of a single fetch important?",
+      "answer": "No. Throughput, politeness and freshness matter; nobody waits on an individual fetch."
+    },
+    {
+      "question": "Do we need to crawl from multiple regions?",
+      "answer": "Not at first: one region with several availability zones. Discuss geographic fetching as a scaling step."
+    }
+  ],
+  "deepDiveQuestions": [
+    "How do you design the URL frontier to enforce one request per second per host while keeping 400 fetches/s flowing?",
+    "How do you avoid fetching the same URL twice and storing near-duplicate pages?",
+    "How do you handle robots.txt and other politeness signals correctly?",
+    "How do you schedule recrawls so frequently changing pages stay fresh within a fixed fetch budget?",
+    "What happens when a fetcher or frontier machine dies mid-crawl?"
+  ],
+  "trafficProfile": {
+    "qps": 20400,
+    "readWriteRatio": 50,
+    "peakMultiplier": 2,
+    "requestTypes": [
+      {
+        "id": "url-seen-check",
+        "name": "URL-seen check for a discovered link",
+        "op": "read",
+        "weight": 1,
+        "target": {
+          "kinds": [
+            "nosql-db"
+          ]
+        }
+      },
+      {
+        "id": "fetch-page",
+        "name": "Fetch a page and store it",
+        "op": "write",
+        "weight": 1,
+        "target": {
+          "kinds": [
+            "object-storage"
+          ]
+        }
+      }
+    ]
+  },
+  "runChallenge": {
+    "id": "crawl-through-zone-loss",
+    "title": "Keep crawling through a zone loss",
+    "description": "At the 2× catch-up rate (800 fetches/s and 40,000 URL-seen checks/s), lose the availability zone holding the most components. The crawl must keep serving at least 40,000 operations/s with under 1% errors and no single point of failure.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": {
+      "minOkQps": 40000,
+      "maxErrorRatePct": 1,
+      "maxSpofs": 0
+    }
+  },
+  "commonMistakes": [
+    "One global FIFO queue of URLs: consecutive links from the same site hammer one host or stall workers waiting for its politeness slot.",
+    "Partitioning the frontier by URL hash, which scatters a host across shards and turns per-host politeness into a distributed locking problem.",
+    "Never computing that discovery outruns fetching (about 5 new URLs found per page fetched), and so designing an unbounded, unprioritised frontier.",
+    "Using a Bloom filter without sizing it or stating what a false positive costs, or using one where a false positive is unacceptable (seeds, operator URLs).",
+    "Dedup by exact content hash only, which misses pages that differ just in timestamps, ads or session tokens.",
+    "Treating a robots.txt 5xx as permission to crawl, and ignoring 429 and 503 responses with Retry-After.",
+    "Assuming exactly-once fetching is achievable, instead of leases plus idempotent completion with harmless duplicate fetches.",
+    "Recrawling every page on the same schedule, or strictly in proportion to change rate, instead of spending a fixed budget where freshness gain per fetch is highest."
+  ]
+}

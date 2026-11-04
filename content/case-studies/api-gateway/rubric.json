@@ -1,0 +1,64 @@
+{
+  "criteria": [
+    { "id": "scope-policy-not-logic", "step": "Requirements", "title": "Scope: cross-cutting policy, never business logic",
+      "levels": {
+        "0": "Lists 'routing and auth' only, or happily puts response aggregation and product rules into the gateway.",
+        "1": "Covers auth, routing, rate limits and quotas, but never says what the gateway must not do, or misses metering and live config changes.",
+        "2": "Covers authN/authZ offload, routing by path and version, limits and quotas, transformation, upstream protection, metering and live config, and explicitly rejects aggregation as a BFF's job." } },
+    { "id": "nfrs", "step": "Requirements", "title": "Non-functional targets that follow from being in series with everything",
+      "levels": {
+        "0": "No latency, availability or isolation targets.",
+        "1": "States 10 ms and high availability but not why the gateway must beat its upstreams, or omits isolation between routes.",
+        "2": "10 ms p99 gateway-only budget, 99.99% because availability multiplies in series, per-route isolation, config propagation in seconds, and billing accuracy separated from quota-enforcement lag." } },
+    { "id": "fleet-sizing", "step": "Estimation", "title": "Fleet sizing with failure headroom",
+      "levels": {
+        "0": "No instance count, or 500k ÷ per-instance capacity with no headroom.",
+        "1": "Computes average and per-region load and an instance count, but does not check utilisation with a zone or a region lost.",
+        "2": "200k average, 167k per region at peak, 10k per instance as a labelled assumption, 36 per region in 3 AZs, ρ 0.46 / 0.70 (AZ lost) / 0.69 (region lost), and names the double failure it does not provision for." } },
+    { "id": "decisive-numbers", "step": "Estimation", "title": "Numbers that decide the design",
+      "levels": {
+        "0": "Estimates only traffic.",
+        "1": "Does a latency budget or limiter sizing, but does not connect a number to a decision.",
+        "2": "Itemised ~1 ms latency budget, IdP at 500k vs 5,000/s (100×) forcing local validation, Redis shards sized by ops/s not memory, and usage aggregation cutting 150 MB/s of events to ~32k rows/s." } },
+    { "id": "api-contracts", "step": "API", "title": "Data-plane and control-plane contracts",
+      "levels": {
+        "0": "Describes only the client request.",
+        "1": "Shows the forwarded request or a 429, but not identity headers, spoofing protection or the config API.",
+        "2": "Forwarded request with request ID, tenant, scopes, deadline and trace headers; stripping of client-supplied identity headers; 429 with Retry-After distinguishing rate limit from quota; config API with If-Match and an honest 202 rollout status." } },
+    { "id": "data-stores", "step": "Data Model", "title": "Three lifetimes, three stores",
+      "levels": {
+        "0": "One database for everything, or none.",
+        "1": "Picks stores for config and counters, but stores plaintext keys or puts the config database on the request path.",
+        "2": "Postgres for versioned, audited config (hashed keys only); per-region, unpersisted Redis counters with hash tags; aggregated usage via Kafka to a columnar store with (instance, flush_seq) dedup; endpoints pushed, never queried per request." } },
+    { "id": "hld-walkthrough", "step": "High-Level Design", "title": "Request walkthrough and topology",
+      "levels": {
+        "0": "A box labelled 'gateway' between clients and services.",
+        "1": "Shows LB, gateways and upstreams, but the per-request steps or the config and usage paths are missing.",
+        "2": "GeoDNS to three regions, L4 LB over gateways in three AZs, the ordered per-request steps (route, auth, quota flag, limit, transform, forward, meter), plus the write, over-limit, config-change and usage paths." } },
+    { "id": "auth-at-scale", "step": "Deep Dives", "title": "Token validation and key rotation",
+      "levels": {
+        "0": "Calls the IdP per request, or validates only the signature.",
+        "1": "Validates JWTs locally but ignores rotation, unknown kid handling or revocation.",
+        "2": "Local validation with pinned algorithms and full claim checks; short TTL plus pushed jti denylist; JWKS refreshed in background, last-good kept, single-flight and rate-limited refresh on unknown kid; fails closed on signatures." } },
+    { "id": "edge-rate-limiting", "step": "Deep Dives", "title": "Distributed rate limits and quotas",
+      "levels": {
+        "0": "Per-instance limits only, or a database counter per request.",
+        "1": "Central Redis counter with Lua, but no plan for hot tenants, regions or Redis failure.",
+        "2": "Token bucket per tenant in Redis via Lua; token leases for hot tenants; per-region counters with the slack stated; fail open or closed chosen per limit class with a 3 ms timeout; quotas enforced asynchronously with the overshoot bounded (about 0.12%)." } },
+    { "id": "upstream-isolation", "step": "Deep Dives", "title": "Timeouts, retries, circuit breaking and isolation",
+      "levels": {
+        "0": "Only 'add timeouts'.",
+        "1": "Timeouts, retries and a breaker, but retries are unbounded or applied to non-idempotent writes, and there is no concurrency cap.",
+        "2": "Uses Little's law to show how one slow upstream exhausts shared capacity; per-upstream concurrency caps, deadline propagation, idempotent-only retries within a budget, outlier ejection and breakers; a second-by-second failure timeline." } },
+    { "id": "config-rollout", "step": "Deep Dives", "title": "Safe config and service-discovery propagation",
+      "levels": {
+        "0": "Gateways read routes from the database on each request or are restarted to pick up changes.",
+        "1": "Pushes config but rolls it out to everyone at once, or has no last-known-good behaviour.",
+        "2": "Control/data plane split, versioned snapshots with ACK/NACK, validation including linear-time regex, staged rollout with auto-rollback, atomic swap, and a guard against discovery deltas that remove most endpoints." } },
+    { "id": "spof-bff-scale", "step": "Wrap-up", "title": "SPOF, latency tax, BFFs and 10×",
+      "levels": {
+        "0": "Does not consider the gateway itself failing or adding latency.",
+        "1": "Makes the gateway redundant but never discusses when not to use one or what breaks at 10×.",
+        "2": "Stateless N+1 per AZ and region, no hot-path dependency weaker than the gateway, priority shedding; explains the latency tax and hairpinning, BFF vs single gateway vs none; at 10× names the limiter store, key table, config fan-out and cells/shuffle sharding." } }
+  ]
+}

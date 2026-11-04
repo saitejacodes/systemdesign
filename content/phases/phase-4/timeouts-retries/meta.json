@@ -14,6 +14,6 @@
     { "id": "retry-idempotency", "title": "Idempotency as a prerequisite", "depth": "tradeoffs" }
   ],
   "simulatorIds": ["retry-storm"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["api-gateway", "rate-limiter-service", "payment-system"],
   "prerequisites": ["p4-fault-tolerance", "p3-failure-handling", "p2-idempotency"]
 }

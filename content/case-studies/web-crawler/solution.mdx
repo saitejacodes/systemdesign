@@ -1,0 +1,342 @@
+## Requirements
+
+A web crawler for a search engine looks like a loop a student can write in an afternoon: pop a URL, download it, extract links, push them. The interview is about everything that loop ignores: a frontier that grows five times faster than you can crawl it, millions of web servers that must never feel attacked, a URL space that contains infinite traps, and machines that die while holding thousands of half-finished fetches.
+
+**Functional requirements**
+
+1. Start from a seed list supplied by crawl operators and crawl outward by following links.
+2. Fetch about **1 billion pages a month**, store each fetched page for the indexer, and publish a "page fetched" event the indexer consumes.
+3. Extract outlinks from HTML, normalise them and add the ones not yet known to the frontier.
+4. Obey robots.txt for every host, and make **at most one request per second to any single host** (less when the host is slow or asks for less).
+5. Skip URLs already crawled (URL deduplication) and do not store pages that are near-duplicates of pages already stored (content deduplication).
+6. Recrawl pages that change often more frequently than static ones.
+7. Operators can see crawl progress, pause a crawl, and block or slow down a host on request.
+
+**Non-functional requirements**
+
+| Property | Target | Why |
+|---|---|---|
+| Throughput | 1B pages/month sustained, 2× burst to catch up after an outage | The index's coverage depends on it |
+| Politeness | Never more than 1 req/s per host, robots.txt honoured within 24 h of a change | A crawler that hurts sites gets blocked and becomes a legal problem |
+| Durability of progress | A machine failure loses at most a few minutes of in-flight work, never the frontier | A crawl runs forever; restarting from seeds is not an option |
+| Freshness | Frequently changing important pages re-fetched within hours, static pages within weeks | Stale results are the visible failure of a search engine |
+| Fault tolerance | Losing a whole availability zone slows the crawl but does not stop it | "Keeps making progress when machines fail" |
+| Latency | Not a goal for a single fetch | Nobody waits on one fetch; throughput and politeness dominate |
+
+**Out of scope:** rendering JavaScript-heavy pages in a headless browser (mention it as a separate, much more expensive fetch class), the indexer and ranking themselves, crawling content behind logins, and image or video crawling.
+
+<Callout type="tip" title="Say the inversion out loud">
+For most systems the hard part is serving users quickly. Here the "users" are the origin web servers, and the hard constraint is to be **slow enough** per host while being fast in aggregate. Saying this in the first two minutes frames every later decision.
+</Callout>
+
+## Estimation
+
+Every number below is an assumption of this problem, chosen to show the method.
+
+**Fetch rate.** A 30-day month has 30 × 86,400 = 2,592,000 s. 1B pages ÷ 2.592M s ≈ **386 pages/s**; call it 400. Real HTTP requests are higher: robots.txt fetches, redirects and failed attempts add an assumed 15%, so about **450 requests/s**. Peak is self-imposed: after an outage the crawl should catch up at **2×**, so size for **800 pages/s**.
+
+**Bandwidth.** 400 pages/s × 100 KB = 40 MB/s = **320 Mbit/s** average, 640 Mbit/s at the 2× burst. A single 10 Gbit/s link has headroom; bandwidth is not the bottleneck.
+
+**Storage.** 1B × 100 KB = **100 TB/month** raw. HTML compresses well; assume 4:1 with gzip, so **25 TB/month** compressed. Keeping 12 monthly generations is 300 TB before the object store's own redundancy. Pages are written into large WARC files (the ISO 28500 web archive format) of about 1 GB, so the store sees 25,000 new objects a month, not a billion tiny ones.
+
+**Links and the frontier.** Assume 50 outlinks per page after normalisation: 400 × 50 = **20,000 URL lookups/s** against the "seen" set, 40,000/s at the burst. Assume 10% of those are new: 2,000 new URLs/s = **5.2B new URLs a month, against 1B fetches**. The frontier grows five times faster than the crawl can drain it, so the frontier must be capped and prioritised; most discovered URLs will never be fetched. This is the single most important number in the problem.
+
+**URL-seen set.** Cap the known-URL set at 20B URLs. A <Term slug="bloom-filter">Bloom filter</Term> needs about 1.44 × log2(1/p) bits per element for false-positive rate p: 9.6 bits at 1%, 14.4 bits at 0.1%. 20B × 14.4 bits = 288 Gbit = **36 GB**, split across the frontier shards (about 3 GB each across 12 shards). The exact URL store is 20B × about 200 B (URL plus crawl metadata) = **4 TB**, 12 TB at replication factor 3.
+
+**Content fingerprints.** One 64-bit SimHash plus an 8-byte document id per stored page: 1B × 16 B = **16 GB** per lookup table.
+
+**Concurrency.** <Term slug="littles-law">Little's law</Term>: 450 requests/s × 0.5 s mean fetch time ≈ **225 requests in flight**. The tail is long (30 s timeouts on slow hosts), so provision for about 2,000 open sockets at the burst. Asynchronous I/O makes that trivial for a handful of machines.
+
+**CPU.** Parsing, link extraction and hashing take an assumed 20 ms of CPU per 100 KB page: 400 × 0.02 = **8 cores** average, 16 at the burst.
+
+**Hosts.** At 1 req/s per host, 800 pages/s needs at least 800 hosts ready at every moment. A politer default (below) of one request per 5 s means **at least 4,000 ready hosts**. And no single host can contribute more than 86,400 pages a day (2.6M a month) at the hard cap, so a 50M-page site takes 19 months to crawl once. Coverage of large sites is bounded by politeness, not hardware.
+
+| Quantity | Average | Burst (2×) |
+|---|---|---|
+| Pages fetched | 400/s | 800/s |
+| URL-seen lookups | 20,000/s | 40,000/s |
+| Inbound bandwidth | 320 Mbit/s | 640 Mbit/s |
+| New compressed storage | 25 TB/month | — |
+| Bloom filter (20B URLs, 0.1%) | 36 GB RAM | — |
+
+For Run mode the workload is 400 fetch writes/s plus 20,000 URL-seen reads/s (20,400 QPS, read:write 50:1), at a 2× peak.
+
+## API design
+
+The crawler has two interfaces: a small operator API and the internal RPCs between frontier and fetchers.
+
+**Operator API (REST, authenticated, low volume)**
+
+```http
+POST /v1/crawls
+Content-Type: application/json
+Idempotency-Key: 5c1e7f0a-seed-batch-17
+
+{ "name": "general-web", "seeds": ["https://example.org/", "https://example.com/news"],
+  "scope": { "maxDepth": 12, "excludePatterns": ["*/calendar/*"] },
+  "defaultHostDelayS": 5 }
+
+201 Created
+{ "crawlId": "cr_8f2a", "state": "RUNNING", "seedsAccepted": 2 }
+```
+
+```http
+GET /v1/crawls/cr_8f2a
+
+200 OK
+{ "crawlId": "cr_8f2a", "state": "RUNNING", "pagesFetched24h": 33120000,
+  "frontierSize": 4210000000, "errorsPct24h": 6.2, "hostsActive": 812000 }
+```
+
+```http
+PUT /v1/hosts/example.org/policy
+{ "minDelayS": 30, "blocked": false, "reason": "site owner request #4471" }
+
+200 OK
+{ "host": "example.org", "minDelayS": 30, "effectiveFrom": "2026-11-04T10:00:00Z" }
+```
+
+**Internal RPCs (gRPC, high volume)**
+
+```http
+POST /internal/frontier/lease
+{ "fetcherId": "fw-b-07", "max": 200 }
+
+200 OK
+{ "leaseId": "ls_77e1", "expiresInS": 300,
+  "items": [ { "urlFp": "9c3e01d2a4b5f607", "url": "https://example.org/a",
+               "etag": "\"6f1c\"", "lastModified": "Mon, 02 Nov 2026 08:00:00 GMT" } ] }
+```
+
+```http
+POST /internal/frontier/complete
+{ "leaseId": "ls_77e1", "urlFp": "9c3e01d2a4b5f607", "status": 200,
+  "contentFp": "a1b2c3d4e5f60718", "warc": { "object": "warc/2026/11/04/fw-b-07-0042.warc.gz", "offset": 18234112, "length": 23110 },
+  "outlinks": ["https://example.org/b", "https://example.net/"], "fetchMs": 412 }
+
+200 OK
+{ "accepted": true, "newUrls": 1 }
+```
+
+Three details matter. `lease` hands out a batch with an expiry, so a dead fetcher's work comes back automatically. `complete` is idempotent on `(leaseId, urlFp)`: a retried completion after a network blip does not double-count or re-insert links. And the fetcher sends conditional headers (`If-None-Match`, `If-Modified-Since`) from the lease, so an unchanged page costs a 304 with no body.
+
+## Data model
+
+| Entity | Key | Main fields | Store |
+|---|---|---|---|
+| URL record | partition: hash(host); row: url fingerprint (64-bit hash of the normalised URL) | url, priority, state, lastFetchAt, nextFetchAt, etag, lastModified, contentFp, changeCount, fetchCount, httpStatus | Wide-column store |
+| Host record | hash(host) | robots rules + fetchedAt, crawlDelay, nextAllowedAt, ip, recentLatencyMs, errorStreak, pageBudget | Same store, same partitioning |
+| Page content | object key of a WARC file + offset | raw response headers + body, compressed | Object storage |
+| Content fingerprint | SimHash, in permuted-prefix tables | docId, urlFp | Wide-column store (or the frontier's local disk) |
+| Crawl config, host policy overrides, operator audit | crawlId / host | scope rules, delays, who changed what | SQL (small, relational, needs transactions and history) |
+
+**Why a wide-column store for URLs.** The access pattern is write-heavy (2,000 inserts/s plus 400 updates/s, 4,000 and 800 at the burst), keyed, and almost always scoped to one host: "give me this host's due URLs". A <Term slug="wide-column-store">wide-column store</Term> built on an <Term slug="lsm-tree">LSM tree</Term> (Cassandra, Bigtable, HBase) gives cheap sequential writes and range scans inside a partition. Partitioning by host hash means the same key range belongs to exactly one frontier shard, so the frontier is the only writer of its hosts' rows and never needs cross-shard transactions.
+
+A relational database could hold 4 TB, but the write rate, the need to shard it anyway, and the lack of any cross-host transaction make SQL the wrong default. SQL stays for the few hundred kilobytes of configuration where history and constraints matter.
+
+**URL normalisation** happens before hashing: lower-case the scheme and host, drop the default port and the `#fragment`, resolve `.` and `..` segments, sort query parameters and strip known session-id parameters. Without it the same page appears under dozens of URLs and every dedup layer below is defeated.
+
+## High-level design
+
+The system is a set of identical **cells**, one per availability zone. Each cell owns a share of hosts (by host hash) and contains a frontier shard, its Bloom filter, a fetch-task queue and a pool of fetch-and-parse workers. State that must survive a zone, the URL store and the page store, is regional and replicated across zones.
+
+<Figure caption="FIG. 1 · WEB CRAWLER · ONE CELL PER ZONE, REGIONAL STATE">
+<Diagram label="Operators reach a crawl control API backed by SQL. A load balancer feeds three zone cells. In each cell the frontier shard checks discovered URLs against a Bloom filter backed by a regional URL store, and leases due URLs into a fetch queue consumed by fetch and parse workers that download pages from the public web, write WARC files to object storage and send outlinks back to the frontier that owns each host." chart={`flowchart LR
+  OP["Crawl operators"] --> LB["Load balancer"]
+  LB --> CTL["Crawl control API"]
+  CTL --> SQL[("Config + host policy SQL")]
+  LB --> FA
+  subgraph AZA["Cell A (zone a)"]
+    FA["Frontier shard"] --> BA["Bloom filter"]
+    FA -- "lease due URLs" --> QA[["Fetch queue"]]
+    QA --> WA["Fetch + parse workers"]
+  end
+  subgraph AZB["Cell B (zone b), same shape"]
+    FB["Frontier shard"]
+  end
+  subgraph AZC["Cell C (zone c), same shape"]
+    FC["Frontier shard"]
+  end
+  LB --> FB
+  LB --> FC
+  BA -- "misses: new URLs" --> URLS[("URL + host store, RF 3")]
+  WA -- "GET, 1 per host per 5 s" --> WEB(("Public web"))
+  WA -- "WARC" --> OBJ[("Object storage")]
+  WA -. "outlinks to owning shard" .-> FA
+  OBJ -. "page-fetched events" .-> IDX["Indexer"]`} />
+</Figure>
+
+**Walkthrough: a fetch.**
+
+1. The frontier shard keeps, for each of its hosts, a queue of due URLs and a `nextAllowedAt` time. A min-heap ordered by `nextAllowedAt` tells it which host may be contacted next.
+2. A fetcher calls `lease`; the frontier pops ready hosts from the heap, takes one URL from each (never two from the same host in a lease), sets each host's `nextAllowedAt` to now plus its delay, and returns the batch with a 300 s lease.
+3. The fetcher checks its cached robots rules for the host (fetching robots.txt first if the cache is older than 24 h), resolves DNS through a local caching resolver, and issues a conditional GET with a 30 s timeout and a 10 MB body cap.
+4. It appends the response to the current WARC file in object storage, computes the content's SimHash, parses outlinks, and calls `complete`.
+
+**Walkthrough: a discovered link.**
+
+1. Each outlink is normalised and fingerprinted, and routed to the frontier shard that owns its host.
+2. The shard probes its Bloom filter. "Definitely not present" means the URL is new: insert it into the Bloom filter and the URL store, then into a priority queue for that host. "Probably present" means skip; with a 0.1% false-positive rate we lose one new URL in a thousand, which is acceptable for a frontier that already discards most URLs.
+3. Content dedup happens at completion: if the page's SimHash is within 3 bits of a stored page's, the frontier records the URL as a near-duplicate of that page and does not publish it to the indexer.
+
+**Walkthrough: an operator request.** Status reads and policy changes go to the control API and its SQL database; policy changes are pushed to the owning frontier shard, which applies a new delay to the host on its next lease.
+
+**Sizing the cells.** Size for the 2× burst with one zone gone. The frontier handles 40,000 URL checks plus 800 leases a second; at an assumed 8,000 batched operations/s per instance, two surviving cells need 40,800 ÷ (0.8 × 8,000) ≈ 6.4 instances, so each cell runs 4 (12 shards in total, matching the Bloom filter split above). Fetch-and-parse workers are 4-core machines handling about 200 pages/s of parsing each (5 ms per page per machine); 800 pages/s on two cells at ρ ≤ 0.8 needs 5, so each cell runs 3. Normal utilisation is about 0.42; after losing a zone it is about 0.65.
+
+## Deep dives
+
+### How do you design the URL frontier to enforce one request per second per host while keeping 400 fetches/s flowing?
+
+**Naive option: one global FIFO queue.** Links are pushed in discovery order. A page lists 50 links to its own site, so the next 50 URLs in the queue are often the same host, and workers either hammer it (impolite) or block waiting for its slot (slow). Rejected.
+
+**Option two: per-host locks in a shared queue.** Workers pop a URL, try to take a lock on its host, and put it back if the host is busy. At 4,000+ ready hosts this works at low scale but wastes most pops on contention and puts a distributed lock on the hot path.
+
+**Chosen: the Mercator two-stage frontier.** Heydon and Najork's Mercator crawler (1999), described in detail in chapter 20 of Manning, Raghavan and Schütze's *Introduction to Information Retrieval*, separates the two concerns:
+
+- **Front queues handle priority.** A prioritiser assigns each new URL one of F priority levels (from page importance, link depth and expected change rate) and appends it to that level's queue.
+- **Back queues handle politeness.** Each back queue holds URLs of exactly one host. A heap keyed by the earliest time each host may be contacted again decides which back queue a fetcher takes from. When a back queue empties, it is refilled from the front queues with a bias toward high-priority levels.
+
+The politeness delay is adaptive: the textbook's heuristic is a gap about an order of magnitude larger than the host's most recent fetch time. With a 500 ms fetch that is 5 s per host, well below the 1 req/s ceiling. The ceiling is a hard upper bound; the adaptive gap, a robots.txt `Crawl-delay` if present, an operator override and any 429 or 503 response (back off exponentially and honour `Retry-After`) can only make it slower.
+
+**Distributing it.** Hosts are partitioned by hash(host) into frontier shards, and the shard is the single owner of its hosts' heap, queues and URL rows. Because politeness is per host and every host lives on exactly one shard, enforcing it needs no coordination at all. Politeness is also applied per IP address: shared hosting puts thousands of hosts on one server, so a shard also tracks a per-IP minimum gap, a weakness of host-only partitioning that interviewers like to probe.
+
+<TradeoffBox title="Partitioning the frontier by host" items={[
+  { gain: "Politeness, robots state and URL rows for a host live in one place, so no locks or cross-shard calls", cost: "A huge host is pinned to one shard; its backlog cannot be spread out" },
+  { gain: "Rebalancing is moving whole host ranges, which a lease service can do in seconds", cost: "Per-IP politeness across shards needs a small shared counter for shared-hosting IPs" }
+]} />
+
+### How do you avoid fetching the same URL twice and storing near-duplicate pages?
+
+There are three layers, each catching what the one before misses.
+
+**1. URL normalisation** (see the data model) collapses trivially different spellings before anything is hashed.
+
+**2. URL-seen check with a Bloom filter in front of the URL store.** 40,000 lookups/s at the burst against 20B known URLs. The alternatives:
+
+| Option | Memory | Lookup cost | Error |
+|---|---|---|---|
+| Exact set in RAM (8-byte fingerprints) | 160 GB | one hash probe | none (collisions at 2^64 are negligible) |
+| Exact set on disk (the URL store) | 4 TB disk | a disk read per lookup, 40,000 IOPS | none |
+| Bloom filter at 0.1% | 36 GB | k ≈ 10 hash probes in RAM | 0.1% of new URLs wrongly skipped |
+
+The Bloom filter wins because a false positive only costs one undiscovered URL, while the alternatives cost either 4× the RAM or a disk read on every link. Mercator itself batched URL-seen checks against a sorted on-disk set, which is the right answer when RAM is scarce; mention it as the alternative. Two caveats: a plain Bloom filter cannot delete, so URLs that expire from the crawl are handled by rebuilding the filter from the URL store periodically; and seeds and operator-submitted URLs bypass the filter and check the store directly, because losing them to a false positive is not acceptable.
+
+**3. Near-duplicate content with SimHash.** Exact content hashing (SHA-256 of the body) misses pages that differ only in a timestamp, an ad slot or a session token in a link. Charikar's SimHash produces a 64-bit fingerprint where similar documents differ in few bits. Manku, Jain and Das Sarma at Google ("Detecting Near-Duplicates for Web Crawling", WWW 2007) showed that 64-bit fingerprints with a Hamming-distance threshold of 3 work for a multi-billion-page repository, and gave a lookup scheme: store several copies of the fingerprint table, each sorted on a different permutation of the bits, so that any fingerprint within 3 bits shares an exact prefix with the query in at least one table. That turns "find all fingerprints within 3 bits" into a few prefix range scans. Exact hashes are still worth keeping alongside: they are cheaper and catch mirrors outright.
+
+<Misconception wrong="A Bloom filter tells you whether you have seen a URL." right="It tells you that you have definitely not seen it, or that you probably have. For a crawler the only cost of 'probably' being wrong is a skipped new URL, which is why the trade is acceptable here and would not be for, say, a payment dedup check." />
+
+### How do you handle robots.txt and other politeness signals correctly?
+
+robots.txt is standardised as the Robots Exclusion Protocol in RFC 9309 (2022). The rules that change the design:
+
+- **Caching.** The RFC says crawlers should not use a cached robots.txt for more than 24 hours, unless the file is unreachable. So robots.txt is cached per host in the host record with its fetch time, and refreshed lazily when a lease touches a host whose copy is older than 24 h. At an assumed 5M hosts touched per day that is about 58 robots fetches/s, which is small.
+- **Status codes.** A 4xx response (for example 404) means "no rules": the crawler may access everything. A 5xx or a network failure means the file is unreachable and the crawler must assume **complete disallow**. Getting this backwards is the classic bug: a site whose robots.txt endpoint is failing is usually a site under stress, and crawling it harder is the worst response.
+- **Size limit.** Crawlers must parse at least the first 500 KiB; cap the fetch there.
+- **Matching.** The most specific (longest) matching rule wins between `Allow` and `Disallow`.
+- **Crawl-delay** is not part of RFC 9309, but many sites set it; treat it as a minimum gap, still bounded by the 1 req/s ceiling.
+
+Other signals feed the same per-host delay: HTTP 429 and 503 with `Retry-After`, rising response latency (the adaptive gap grows by itself), an error streak (pause the host for an hour after, say, 10 consecutive failures), and operator overrides from site-owner complaints. A crawler identifies itself with a stable User-Agent and a contact URL so owners can complain to a person instead of a firewall.
+
+**Spider traps** are the impoliteness you inflict on yourself: calendars with a "next month" link forever, session ids minted per request, and paths that repeat (`/a/b/a/b/a/b`). Defences are per-host page budgets, a maximum URL length and path depth, and detecting repeated path segments. The page budget doubles as fairness: no host can take more than its share of the frontier.
+
+### How do you schedule recrawls so frequently changing pages stay fresh within a fixed fetch budget?
+
+The budget is fixed: 1B fetches a month, split by policy between recrawls and new discovery (say 60% recrawl, 40% new). The question is how to spend the recrawl share.
+
+Model each page as changing at random with a rate λ (a Poisson process). If a page is crawled every I time units, the fraction of time our copy is fresh is (1 − e^(−λI)) ÷ (λI). Worked example:
+
+| Page | Change rate λ | Crawl interval I | λI | Fraction of time fresh |
+|---|---|---|---|---|
+| News homepage | 24/day | 1 day | 24 | 0.04 |
+| News homepage | 24/day | 1 hour | 1 | 0.63 |
+| Blog index | 1/day | 1 day | 1 | 0.63 |
+| Blog index | 1/day | 12 hours | 0.5 | 0.79 |
+| Docs page | 1/30 days | 7 days | 0.23 | 0.89 |
+
+The counter-intuitive result, from Cho and Garcia-Molina's work on refresh policies (SIGMOD 2000), is that crawling in proportion to change rate is not optimal for average freshness: a page that changes far faster than you can afford to visit gives little freshness per fetch, so the optimal policy gives it less than its proportional share. A search engine then weights by importance, because a stale news homepage costs more than a stale forum thread, so the practical policy is: next crawl time chosen to maximise importance × freshness gained per fetch, within each host's politeness budget.
+
+Change rates are estimated per URL from history: how many fetches found new content (a changed SimHash, not just a changed byte) over how long. Cho and Garcia-Molina also showed the naive estimator is biased when you sample less often than the page changes, since you cannot see two changes between visits; the estimate needs that correction or it understates fast-changing pages. Cheap signals sharpen the schedule: sitemap `lastmod` values, RSS feeds, and conditional GETs, where a 304 costs a few hundred bytes instead of 100 KB.
+
+### What happens when a fetcher or frontier machine dies mid-crawl?
+
+**A fetcher dies.** It held leases on about 200 URLs.
+
+- t = 0: the process dies. Its open sockets close; partly written WARC records are not referenced by any `complete` call, so the indexer never sees them.
+- t = 0 to 300 s: the frontier still counts those hosts as busy until their lease expires. The hosts' `nextAllowedAt` times stay recorded in the frontier, not the fetcher, so nothing bursts when the work returns.
+- t = 300 s: the leases expire and the URLs go back to their back queues. Another fetcher leases them on the host's next allowed slot.
+
+Some of those URLs may have been fetched successfully before the crash, so they are fetched twice. That is acceptable: an extra fetch per host every few minutes is far below the politeness budget, and `complete` is an idempotent upsert, so a duplicate completion changes nothing. Exactly-once fetching would need a two-phase commit with an external web server, which is impossible.
+
+**A frontier shard dies**, for example with its whole zone:
+
+- t = 0: zone a fails. Its frontier, Bloom filter, queue and workers are gone. The load balancer stops sending to cell A within one health-check interval.
+- t ≈ 30 s: the shard's ownership lease in a coordination service (ZooKeeper or etcd) expires; the control plane assigns cell A's host ranges to cells B and C.
+- t ≈ 1 min: the new owners load the latest Bloom filter snapshot for those ranges (a third of 36 GB is 12 GB; at an assumed 500 MB/s from object storage, about 25 s), replay URL inserts since the snapshot from the URL store, and rebuild the per-host queues by scanning those partitions for rows with `nextFetchAt` due.
+- From then on the crawl runs at two-thirds of its burst capacity, which still exceeds the 400 pages/s average. Nothing durable was lost because the URL store and page store span all three zones.
+
+<NotWhenBox title="Cells per zone" items={[
+  "A small crawl (a few million pages) fits on one machine with an embedded queue; cells are overhead you do not need",
+  "When the crawl must run from many regions (fetch near the host), the cell becomes a region and host ownership is assigned by geography"
+]} />
+
+## Failure modes & mitigations
+
+| Failure | Detection | Impact | Mitigation |
+|---|---|---|---|
+| Fetcher crash | Missed heartbeat, lease expiry | About 200 URLs delayed 5 min | Leases return work; idempotent `complete` |
+| Zone loss (frontier cell) | Health checks, coordination lease expiry | A third of hosts paused for about a minute | Host ranges reassigned; Bloom snapshot + store replay; N+1 cells |
+| Bloom filter lost or corrupt | Shard start-up check, false-positive rate monitor | New URLs unknown until rebuilt | Periodic snapshots to object storage; full rebuild from URL store |
+| DNS resolver slow or failing | Resolution latency p99 | Fetch throughput collapses while sockets wait | Local caching resolvers per cell, asynchronous resolution, cached results kept past TTL when the resolver fails |
+| robots.txt returns 5xx | Status recorded per host | Host must not be crawled | Treat as complete disallow; retry robots with backoff |
+| Host overloaded (429, 503, rising latency) | Per-host response stats | Risk of harming the site and being blocked | Exponential backoff, honour `Retry-After`, adaptive gap |
+| Spider trap | Per-host URL count, path repetition | Frontier flooded with junk | Page budget per host, URL length and depth limits |
+| Hostile content (huge or endless body, gzip bomb) | Byte counters | Worker memory exhaustion | 10 MB body cap, decompressed-size cap, 30 s timeout |
+| Object storage write errors | Write error rate | Pages fetched but not stored | Retry with backoff; `complete` only after the WARC write is durable, else the lease expires and the URL is refetched |
+| Frontier explosion (5× discovery) | Frontier size per shard | Memory and disk growth without bound | Prioritised admission; drop lowest-priority URLs beyond a per-host cap |
+
+## Scaling to 10×
+
+At 10B pages a month the fetch rate is 3,860 pages/s, the burst about 7,700/s, and URL lookups 200,000/s average.
+
+**What breaks first: DNS and politeness, not bandwidth.** 7,700 pages/s at a 5 s per-host gap needs about 38,500 ready hosts at every moment, so the frontier must hold enough distinct hosts; a frontier dominated by a few big sites starves the fetchers while they wait on politeness. DNS lookups rise to thousands per second, which public resolvers will throttle: run your own recursive resolvers per cell and cache aggressively.
+
+**What changes:**
+
+- **Frontier shards ×10**, still partitioned by host. The Bloom filter grows with the known-URL cap: at 200B URLs it is 360 GB, spread across perhaps 100 shards.
+- **Geographic fetching.** Fetching an Australian site from Virginia adds about 200 ms of round trip to every request and pays transoceanic bandwidth; at this scale cells move into several regions and host ownership follows the host's location.
+- **Bandwidth** reaches 3.2 Gbit/s average and storage 250 TB of compressed pages a month. That is still ordinary, but the object store's request rate matters, so keep WARC files large.
+- **Content dedup** moves from a single SimHash table set to a sharded service; the permuted-table scheme shards naturally by prefix.
+- **Prioritisation becomes the product.** With 52B URLs discovered a month, the quality of the priority function decides index quality far more than any infrastructure choice.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| Partition frontier by host hash | Partition by URL hash | Politeness and robots state need one owner per host; URL hashing scatters a host across shards |
+| Two-stage frontier (priority front queues, per-host back queues + heap) | Single priority queue with host locks | Separates "what matters" from "who may be contacted now" without locks |
+| Bloom filter at 0.1% for URL-seen | Exact in-memory set; disk lookups | 36 GB vs 160 GB RAM, or vs a disk read per link; the cost of a false positive is one skipped URL |
+| SimHash with Hamming distance 3 | Exact content hash only | Catches pages differing only in ads, dates or session tokens |
+| Leases with expiry | Fetchers own work until they report back | A dead fetcher's work returns automatically; duplicates are harmless |
+| At-least-once fetching | Exactly-once | Impossible against third-party servers; duplicates cost one extra request |
+| Adaptive per-host delay under a hard 1 req/s cap | Fixed 1 req/s for every host | Slow or small sites get gentler treatment automatically |
+| WARC files of about 1 GB in object storage | One object per page | 25,000 objects a month instead of 1B; cheap sequential writes |
+| Cells per zone with regional replicated state | One big shared fleet | Zone loss is a capacity drop, not an outage |
+| Treat robots.txt 5xx as disallow | Treat as allow | RFC 9309 requires it, and failing servers are the ones to leave alone |
+
+## What interviewers look for
+
+- **They hear the inversion.** The candidate says early that per-host politeness, not aggregate speed, is the binding constraint, and derives what it implies: thousands of ready hosts, and big sites bounded at 2.6M pages a month.
+- **They size the frontier.** "50 links per page and 10% new means 5× more URLs discovered than fetched" leads naturally to prioritisation and caps. Candidates who never compute it design an unbounded queue.
+- **The frontier design is concrete.** Front queues for priority, back queues for politeness, a heap of next-allowed times, and hosts partitioned so one owner enforces politeness without locks.
+- **Dedup has layers and numbers.** Normalisation, then a Bloom filter sized from the formula with the cost of a false positive stated, then near-duplicate detection with SimHash, with the reason exact hashing is not enough.
+- **robots.txt details are right.** 24 h cache, 5xx means disallow, 4xx means allow, and back off on 429 and 503.
+- **Failure handling is about work, not servers.** Leases, idempotent completion, and an explicit acceptance of at-least-once fetching, plus how a lost frontier shard is rebuilt from durable state.
+- **Recrawl is a budget problem.** The strongest answers note that crawling in proportion to change rate is not optimal, and use conditional GETs and sitemaps to make recrawls cheap.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "A site with 50M pages wants to be fully indexed within a month. What do you tell them, and what could change?",
+  "Your Bloom filter's false-positive rate creeps from 0.1% to 2% over six months. Why, and what do you do?",
+  "How would you add JavaScript rendering for 5% of pages without slowing the main crawl?",
+  "Half the hosts in a shard share one IP address. What breaks in your politeness logic?",
+  "How do you prove to a site owner that you honoured their robots.txt change last Tuesday?"
+]} />

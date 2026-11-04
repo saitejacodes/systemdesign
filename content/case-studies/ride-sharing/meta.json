@@ -1,0 +1,56 @@
+{
+  "id": "ride-sharing",
+  "title": "Ride sharing",
+  "summary": "Match riders with nearby drivers in seconds: 250,000 GPS updates a second into an in-memory geo index, a dispatch flow that can never assign a driver twice, a trip state machine, and a charge that happens exactly once.",
+  "difficulty": 3,
+  "weekRecommended": 15,
+  "relatedSectionIds": ["p1-estimation", "p2-indexing", "p1-realtime", "p2-locking", "p2-transactions", "p4-consistency-models", "p2-idempotency", "p3-event-driven", "p4-timeouts-retries", "p2-sharding"],
+  "interviewerPrompt": "Design a ride-hailing app like Uber, Ola or Rapido. A rider asks for a ride, we find a nearby driver, and they both see each other on the map until the trip ends and the rider pays. How would you build it?",
+  "clarifyingQuestions": [
+    { "question": "What scale are we designing for?", "answer": "About 20M trips a day across hundreds of cities. The evening peak is roughly twice the daily average." },
+    { "question": "How many drivers are online, and how often do they report location?", "answer": "Up to 1M drivers online at the peak, about half that on average, each sending a GPS update every 4 seconds while the app is open." },
+    { "question": "How quickly must a rider be matched?", "answer": "Within 10 seconds of requesting for the large majority of requests, assuming drivers are available nearby." },
+    { "question": "Can a driver ever be given two trips?", "answer": "Never at the same time. A driver must be assigned to at most one active trip, even under retries and failures." },
+    { "question": "How is the rider charged?", "answer": "By card through an external payment provider, which allows about 2,000 calls a second. Each trip must be charged exactly once." },
+    { "question": "Where do routes, distances and ETAs come from?", "answer": "From an external maps provider that answers in about 150 ms and allows about 20,000 requests a second. Assume we cannot raise that limit quickly." },
+    { "question": "How fresh must the driver's position on the rider's map be?", "answer": "A few seconds behind is fine; smooth movement matters more than precision." },
+    { "question": "Do we need surge pricing?", "answer": "At an awareness level: prices rise in areas where requests outstrip available drivers. You do not need to design the pricing model." },
+    { "question": "Shared rides, scheduled rides, food delivery?", "answer": "Out of scope. One rider, one driver, ride now." },
+    { "question": "How long is a typical trip?", "answer": "Assume about 20 minutes from assignment to drop-off, including roughly 5 minutes for the driver to reach the pickup." }
+  ],
+  "deepDiveQuestions": [
+    "How do you ingest 250,000 location updates a second and keep a queryable index of where every available driver is?",
+    "Geohash, quadtree or H3: how do you find the nearest available drivers quickly, and where does surge pricing fit?",
+    "How does matching work within 10 seconds, and how do you guarantee a driver is never assigned two trips?",
+    "What does the trip state machine look like, and how do you charge each trip exactly once?"
+  ],
+  "trafficProfile": {
+    "qps": 138890,
+    "readWriteRatio": 0.0969,
+    "peakMultiplier": 2,
+    "requestTypes": [
+      { "id": "location-update", "name": "Driver location update", "op": "write", "weight": 77.2, "target": { "nodeId": "geo-w" } },
+      { "id": "nearby", "name": "Nearby drivers / dispatch search", "op": "read", "weight": 1, "target": { "nodeId": "geo-r" } },
+      { "id": "trip-write", "name": "Trip request or state change", "op": "write", "weight": 1, "target": { "nodeId": "trips" } }
+    ]
+  },
+  "runChallenge": {
+    "id": "evening-peak-lose-zone",
+    "title": "Evening peak with a zone down",
+    "description": "Run the 2× evening peak (1M drivers online sending 250,000 updates a second, about 24,500 nearby searches and 3,200 trip writes a second) and lose the busiest availability zone after 10 s. Every request type must stay under 300 ms at p99 with almost no errors, and no single component may be able to stop matching.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "maxP99Ms": 300, "maxErrorRatePct": 0.1, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Writing every GPS update to a relational database row and querying 'nearby' with a distance calculation over all drivers, which collapses at 250,000 writes a second.",
+    "Searching only the rider's own geohash cell, so drivers a few metres away across a cell boundary are never found.",
+    "Ranking candidates by straight-line distance instead of road ETA, so a driver across a river or a highway looks closest.",
+    "Assigning a driver with a read-then-write ('is the driver free? then assign'), so two concurrent requests can both win the same driver.",
+    "Keeping driver assignment state in an asynchronously replicated store, so a failover can forget an acknowledged assignment and hand the driver a second trip.",
+    "Calling the payment provider without an idempotency key, so a timeout followed by a retry charges the rider twice.",
+    "Ignoring the maps provider's rate limit: fare estimates, dispatch ETAs and live ETA refreshes add up to about two-thirds of the quota at peak.",
+    "Treating trip status as free-form updates instead of a state machine with guarded transitions, so a late 'driver arrived' message can overwrite 'completed'."
+  ]
+}

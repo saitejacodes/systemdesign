@@ -1,0 +1,324 @@
+## Requirements
+
+A job scheduler sounds like "cron, but on more machines". The hard parts are a load that is idle on average and violent at the top of every hour, a guarantee ("never silently skip a run") that collides with the impossibility of exactly-once execution, and the fact that a failed scheduler produces silence, which looks exactly like a quiet night.
+
+### Functional
+
+1. **Define jobs.** An owner registers a job: a container image and command, a schedule (a cron expression with a time zone, or a one-off time, or "as soon as possible"), a timeout, a retry policy and an overlap policy.
+2. **Run on time.** Each scheduled occurrence becomes a **run** that executes on the shared worker fleet.
+3. **At least once, with retries.** Failed or lost runs are retried with backoff up to a limit, then marked dead and reported.
+4. **Control.** Owners can pause, resume, edit or delete a job, trigger a run manually, and cancel a running one.
+5. **Visibility.** Every run's status, attempts, timings, exit code and logs, through a UI and an API, plus alerts on failure and on missed runs.
+
+### Non-functional
+
+| Property | Target | Why it matters here |
+|---|---|---|
+| Punctuality | a run starts on a worker within 5 s of its scheduled time, at p99 | Jobs feed reports, billing cut-offs and cache refreshes |
+| No silent loss | every due run is executed or visibly marked as skipped or dead | A missed run nobody notices is the worst outcome |
+| Duplicates | rare, bounded, and visible to the owner | At-least-once is the honest contract |
+| Scheduler availability | 99.99% for firing; owner API 99.9% | Owners can retry an API call; the clock does not wait |
+| Peaks | 50,000 runs due in one second at each hour mark, 100,000 at midnight UTC | Averages are irrelevant here |
+| Observability | run status visible within a few seconds | Owners debug from it |
+
+### Out of scope
+
+Dependencies between jobs (DAGs and workflows), building container images, secrets management, and cost charge-back. A job can submit another one-off job through the API, which covers simple chains.
+
+## Estimation
+
+Every number follows from the stated assumptions, not from any real company.
+
+**Daily average.** 10M runs a day ÷ 86,400 s = **115.7 runs/s**. 30% are one-off submissions: 3M ÷ 86,400 = **34.7 job creations/s**.
+
+**Hour marks.** Assume 12% of all runs (1.2M a day) come from schedules aligned to minute 0 of every hour: 1.2M ÷ 24 = **50,000 runs due at hh:00:00**. Assume a further 50,000 daily jobs at 00:00 UTC, so **100,000 due at midnight**.
+
+**Firing rate.** To start within 5 s, an hour mark needs 50,000 ÷ 5 = **10,000 fires/s**; midnight **20,000/s**. That is 86× and 173× the daily average: sizing from the average would be wrong by two orders of magnitude.
+
+**Concurrent runs** by <Term slug="littles-law">Little's law</Term> (running = start rate × duration). Assume runs last 120 s on average: 115.7 × 120 = **13,889 running** in the background. Assume hour-mark runs last 60 s on average; for that minute they all overlap, giving about 50,000 + 13,889 ≈ **63,900 running** after an ordinary hour mark and **113,900** after midnight.
+
+**Worker reports.** Each run claims once, sends a heartbeat every 15 s, and completes once.
+- Daily average: 115.7 claims + 115.7 completions + 13,889 ÷ 15 = 926 heartbeats ≈ **1,157/s**.
+- Hour mark: 10,000 claims/s during the burst + 63,900 ÷ 15 = 4,260 heartbeats + 116 completions ≈ **14,400/s**.
+- Midnight: 20,000 + 113,900 ÷ 15 = 7,593 + 116 ≈ 27,700/s; the Run mode profile doubles the hour mark to 28,800/s, about 4% conservative.
+
+**Owner reads.** Assume 2,000 dashboards or CI pipelines polling run status every 10 s: **200 reads/s**.
+
+**Design point.** The daily average of all requests is 115.7 + 1,157 + 200 ≈ 1,470/s and sizes nothing. Run mode for this case therefore starts from an ordinary hour mark: 10,000 + 14,400 + 200 = **24,600 requests/s**, with "peak" = midnight at 2×, **49,200/s**.
+
+**Instances.** Rule: under 70% at midnight with one of three zones lost, so two zones carry the peak. Per-instance capacities are assumptions to benchmark.
+
+| Tier | Midnight load | Per instance | Per zone | Total | Busy normal / zone lost |
+|---|---|---|---|---|---|
+| Scheduler (fire = in-memory timer pop + batched enqueue) | 20,000/s | 2,000/s | 20,000 ÷ 2 ÷ 1,400 = 7.1 → 8 | 24 | 42% / 63% |
+| Run API (one conditional KV write per call) | 28,800/s | 2,000/s | 28,800 ÷ 2 ÷ 1,400 = 10.3 → 11 | 33 | 44% / 65% |
+| Owner API | 400/s | 500/s | 2 (redundancy floor) | 6 | 13% / 20% |
+
+**Runs store.** 28,800 writes/s at midnight. At an assumed 10,000/s per node and a 50% target: **6 nodes** (48%), replication factor 3 across zones. Size: 10M runs × 1 KB = 10 GB a day; 30 days kept = 300 GB, 900 GB replicated.
+
+**Jobs database.** Definitions: assume 400,000 recurring jobs (7M recurring runs a day ÷ an average of 17.5 runs per job per day) plus one-off jobs kept 7 days (21M rows) at about 1 KB: roughly 21 GB. Writes: 34.7 creates/s, plus advancing each recurring job's next fire time once per run, which the look-ahead (deep dive 1) spreads over the minute before each hour mark: 50,000 ÷ 60 = **833 updates/s**, 1,667/s before midnight. One Postgres primary with replicas.
+
+**Worker fleet.** Assume 32 run slots per host. Background: 13,889 ÷ 32 = 434 hosts, so about **600** with headroom. Hour mark: 63,900 ÷ 32 ≈ **2,000 hosts**; midnight 113,900 ÷ 32 ≈ **3,560**, so **3,600** for a few minutes.
+
+**Logs.** Assume 100 KB per run: 10M × 100 KB = 1 TB a day, 30 TB for 30 days, in object storage.
+
+<Callout type="tip" title="What the numbers say">
+The control plane is small: a few dozen instances and one Postgres. The two expensive things are the worker slots needed for a burst that lasts a minute, and the write rate on the run store during that minute. Both are known in advance, because the schedule is the forecast.
+</Callout>
+
+## API design
+
+Owners use a REST API (the UI is built on it). Workers use a separate internal Run API.
+
+```http
+POST /v1/jobs HTTP/1.1
+Authorization: Bearer <owner token>
+Idempotency-Key: 5d0f8c2a-7b1e-4c9a-a3f4-91e2b6d7c810
+Content-Type: application/json
+
+{ "name": "billing-daily-rollup",
+  "schedule": { "cron": "0 2 * * *", "timeZone": "Asia/Kolkata" },
+  "task": { "image": "registry.internal/billing/rollup@sha256:9f1c…", "command": ["rollup", "--date", "{{scheduledDate}}"] },
+  "timeoutSeconds": 1800,
+  "retry": { "maxAttempts": 3, "initialBackoffSeconds": 30 },
+  "overlapPolicy": "FORBID",
+  "startingDeadlineSeconds": 600 }
+```
+
+```http
+HTTP/1.1 201 Created
+
+{ "jobId": "job_01JC8Q2W5V", "nextRunAt": "2026-11-04T20:30:00Z", "version": 1 }
+```
+
+- `400` for an invalid cron expression or time zone; `409` on a stale `version` when editing; `429` per owner.
+- `{{scheduledDate}}` is filled from the run's **scheduled** time, not the wall clock, so a retry or a late run processes the same day.
+- `startingDeadlineSeconds`: if a run cannot start within this many seconds of its time (say the system was down), it is marked `MISSED` instead of starting late.
+
+```http
+POST /v1/jobs/job_01JC8Q2W5V/runs                  → manual run, 202 with runId
+POST /v1/jobs/job_01JC8Q2W5V:pause                 → 200
+GET  /v1/jobs/job_01JC8Q2W5V/runs?status=FAILED&cursor=…
+GET  /v1/runs/run_job_01JC8Q2W5V_20261104T2030Z     → status, attempts, timings, exit code, log URL
+DELETE /v1/runs/run_job_01JC8Q2W5V_20261104T2030Z  → cancel a running run
+```
+
+```json
+{ "runId": "run_job_01JC8Q2W5V_20261104T2030Z", "scheduledAt": "2026-11-04T20:30:00Z",
+  "state": "SUCCEEDED",
+  "attempts": [ { "attempt": 1, "startedAt": "2026-11-04T20:30:01.8Z", "endedAt": "2026-11-04T20:42:10Z", "exitCode": 0 } ],
+  "logsUrl": "https://logs.internal/…?X-Amz-Signature=…" }
+```
+
+The run ID is derived from the job ID and the scheduled time, so the same occurrence always has the same ID. The internal Run API carries the attempt number as a fencing token:
+
+```http
+POST /internal/runs:claim       { "jobId": "job_01JC8Q2W5V", "scheduledAt": "2026-11-04T20:30:00Z", "workerId": "w-ap1-0412" }
+  → 200 { "runId": "…", "attempt": 1, "leaseExpiresAt": "…" } | 409 already running or done
+POST /internal/runs/{runId}:heartbeat   { "attempt": 1 }               → 200 { "cancel": false } | 409 lease lost
+POST /internal/runs/{runId}:complete    { "attempt": 1, "exitCode": 0 } → 200 | 409 lease lost
+```
+
+## Data model
+
+| Entity | Store | Key | Fields | Access pattern |
+|---|---|---|---|---|
+| `job` | Jobs DB (Postgres) | `job_id` | owner, schedule, time zone, task, timeout, retry and overlap policy, `paused`, `partition` (0–95), `last_scheduled_at`, `next_fire_at`, version | Index `(partition, next_fire_at)` for the look-ahead; owner CRUD |
+| `partition_state` | Jobs DB | `partition` | `epoch`, `fired_through` | Updated by the partition's owner every second |
+| `run` | Runs store (KV) | `run_id` = job + scheduled time | state, attempt, worker, `lease_expires_at`, `retry_at`, exit code, timings, log prefix | Conditional claim, heartbeat, complete; 30-day TTL |
+| `job_active` | Runs store | `job_id` | current `run_id` | Conditional write for `FORBID` and `REPLACE` overlap |
+| partition lease | etcd | `/sched/partitions/{p}` | holder, lease ID | Lease with a 6 s TTL |
+| run history | Search index | `run_id` | denormalised run fields | Owner queries by job, state, time |
+| logs | Object storage | `logs/{job}/{run}/{attempt}/{chunk}` | log text | Written in chunks; read by presigned URL |
+
+**Postgres for job definitions.** Definitions are small (about 21 GB) and the scheduler needs one range query, "jobs in my partition due before T", which a B-tree on `(partition, next_fire_at)` answers. Transactions let the look-ahead check the partition's epoch and advance many jobs atomically.
+
+**A key-value store for runs.** Runs are 10M rows a day, accessed by key, written up to 28,800 times a second at midnight, and kept 30 days. A partitioned store with cheap conditional writes ("put if absent", "update if attempt = n") and per-row TTL fits exactly; Postgres with daily partitions would need sharding for the midnight rate. Owner queries go to a search index fed from the run store's change stream.
+
+**etcd for leases**, because ownership needs consensus: etcd replicates with Raft, and its leases expire unless renewed, which is exactly the primitive for "this scheduler owns partition 17 until it stops renewing".
+
+## High-level design
+
+<Figure caption="FIG. 1 · JOB SCHEDULER · REFERENCE ARCHITECTURE">
+  <Diagram label="Owners use the owner API, which stores job definitions in Postgres and reads run history from a search index and logs from object storage. Scheduler instances in three zones each hold leases on some of 96 partitions in etcd, scan Postgres a minute ahead for due jobs, hold them in in-memory timers, and at the due second put a run message on one of two dispatch queues. Workers pull messages, claim the run through the Run API with a conditional write to the runs store, heartbeat while running, upload logs to object storage and report completion." chart={`flowchart LR
+    O[Owners] --> LB[Load balancer]
+    LB --> OA[Owner API x6]
+    OA --> JDB[(Jobs DB Postgres)]
+    OA --> IDX[(Run history index)]
+    subgraph Schedulers
+      S[Scheduler x24, 96 partitions]
+    end
+    S -->|leases| E[(etcd)]
+    S -->|look-ahead scan| JDB
+    S -.->|fire run| QA[[Dispatch queue A]]
+    S -.->|fire run| QB[[Dispatch queue B]]
+    QA -.-> W[Worker fleet 600 to 3,600 hosts]
+    QB -.-> W
+    W -->|claim, heartbeat, complete| RA[Run API x33]
+    RA -->|conditional writes| RKV[(Runs store KV)]
+    RKV -.->|change stream| IDX
+    W --> LOGS[(Object storage: logs)]`} />
+</Figure>
+
+**Create a job.** The owner API validates the cron expression and time zone, computes the first `next_fire_at` in UTC, assigns `partition = hash(job_id) mod 96`, and inserts the row (the idempotency key makes a retried create return the same job).
+
+**Look ahead.** Each scheduler instance holds leases on about four partitions. Every 10 s, for each partition it owns, it reads jobs with `next_fire_at` within the next 60 s, puts each occurrence into an in-memory timer, and in one transaction (checking its epoch) sets `last_scheduled_at` to that occurrence and `next_fire_at` to the following one.
+
+**Fire.** When a timer pops, the scheduler sends `{job_id, scheduled_at}` to a dispatch queue (partitions 0–47 to cell A, 48–95 to cell B), batching sends. Every second it records `fired_through` for the partition. Firing writes nothing else, which is why it can reach 2,000/s per instance.
+
+**Execute.** A worker with a free slot pulls a message and calls `claim`, a conditional write that creates the run as `RUNNING` with a 60 s lease if it does not exist (or moves it from `RETRY_WAIT` with attempt + 1). The worker then acknowledges the message and starts the container; from here the run row, not the queue, tracks liveness. It heartbeats every 15 s, streams logs to object storage and calls `complete` with its attempt number.
+
+**Retry and reap.** A reaper finds runs whose lease expired or that failed with attempts left, sets `RETRY_WAIT` and re-enqueues them with a delay. Out of attempts → `DEAD`, and the owner is alerted.
+
+**Owner reads.** The owner API queries the run history index and returns presigned URLs for log chunks.
+
+## Deep dives
+
+### How do you store job definitions and turn cron schedules into on-time triggers without scanning every job every second?
+
+Scanning 400,000 recurring jobs every second to fire about 116 runs is waste. Store the answer instead: each job carries `next_fire_at` in UTC, and an index on `(partition, next_fire_at)` turns "what is due" into a range read.
+
+Two refinements make it punctual:
+
+- **Look-ahead.** Reading at the due second is too late for 50,000 jobs. The owner of each partition reads 60 s ahead, every 10 s, and holds occurrences in memory. A **hierarchical timing wheel** (Varghese and Lauck, 1987; Kafka uses one for its delayed operations) gives constant-time insert and fire for that many timers; a min-heap also works at this size. By 23:59:00 the midnight runs are already in memory, and the Postgres writes that advanced them were spread across the previous minute.
+- **Time zones in the job, UTC in the index.** Cron is evaluated in the job's zone and converted to UTC for `next_fire_at`. Daylight-saving changes need an explicit policy: a 02:30 job on a night when 02:00–03:00 is skipped runs at 03:00 once; on a night when 01:00–02:00 repeats, a `30 1 * * *` job runs at the first 01:30 only. Without a policy, the same cron runs twice or never, depending on the library.
+
+<TradeoffBox title="Polling the index vs pushing timers" items={[
+  { gain: "Range-scan a look-ahead window from Postgres: the database stays the source of truth, recovery is just 'scan again'", cost: "Up to one scan interval of extra latency for jobs created inside the window, so creates that are due very soon are also pushed straight to the owner's timers" },
+  { gain: "Keep every timer in memory forever (cron-style daemon)", cost: "A restart must rebuild 400,000 timers, and memory and the store can disagree" }
+]} />
+
+### Who fires a due job: a single leader or partitioned schedulers, and how do you stop two schedulers firing the same run?
+
+**One leader** is simple, and the Google SRE book's chapter on distributed cron describes such a design: one leader replica launches jobs, with state in a Paxos-replicated store. Here it has two limits: failover waits for the leader's lease to expire, so at an hour mark every job misses its 5 s target, and one process must fire 20,000 runs a second at midnight.
+
+**Partitioned scheduling** splits jobs into 96 partitions by hash of job ID; each partition has one owner at a time, holding a <Term slug="lease">lease</Term> in etcd with a 6 s TTL renewed every 2 s. Losing an instance delays only its four partitions, and capacity grows by adding instances. Partitions are more numerous than instances so they can be rebalanced finely. This is <Term slug="leader-follower">leader election</Term> per partition rather than for the whole system.
+
+**Leases are not enough on their own.** A scheduler can pause (a long garbage-collection stop, a frozen VM) past its lease, wake up, and fire timers it no longer owns, while the new owner fires the same occurrences: <Term slug="split-brain">split brain</Term>. Two layers stop that from mattering:
+
+1. **Fencing on writes.** Each lease acquisition increments the partition's `epoch` in Postgres. Every look-ahead transaction includes `WHERE partition_state.epoch = $my_epoch`, so a stale owner cannot advance jobs. This is the <Term slug="fencing-token">fencing token</Term> pattern that Martin Kleppmann's 2016 essay on distributed locking argues every lease needs.
+2. **Idempotent run identity.** A stale owner can still send a queue message it had in memory. The run ID is `job_id + scheduled_at`, and claim is a put-if-absent, so a second message for the same occurrence finds the run already exists and is dropped. Duplicate **fires** are harmless; only duplicate **executions** matter, and those are handled in the next deep dive.
+
+**Takeover without losing runs.** The new owner reads `fired_through`, the time up to which the previous owner confirmed it had sent messages, and re-fires every occurrence with `last_scheduled_at` after it. Anything the old owner did fire in that last second is re-sent and deduplicated by the run ID. Re-firing is the safe direction: the alternative, trusting that the old owner probably fired them, is how runs silently go missing.
+
+### How do you guarantee at-least-once execution, and what must job owners do to make a second run harmless?
+
+Exactly-once execution is not achievable: a worker can finish the job's side effects and die a millisecond before reporting success. The system cannot tell that apart from dying before starting, so it must either retry (possibly running twice) or not retry (possibly never running). We promise **at-least-once**, because the requirement says a run must never be silently lost.
+
+The mechanics:
+
+- **The queue delivers at least once** with a <Term slug="visibility-timeout">visibility timeout</Term> (a message pulled but not acknowledged reappears after, say, 30 s, the model Amazon SQS popularised). That covers a worker dying between pull and claim.
+- **After claim, the run row owns liveness.** The worker heartbeats every 15 s; each heartbeat extends `lease_expires_at` by 60 s **only if the attempt number still matches**. If the worker dies, the reaper sees the expired lease and schedules the next attempt. The message was already acknowledged, so a one-hour job does not need a one-hour visibility timeout.
+- **The attempt number is a fencing token.** A worker that lost its network for 90 s and comes back will have its `heartbeat` and `complete` rejected with 409 (attempt 2 now owns the run), and it kills its container. Its side effects may still have happened, which is the double run the owner must tolerate.
+
+Owners make a second run harmless by making jobs **idempotent**, and the platform gives them the tools:
+
+- The run ID and **scheduled time** are passed into the job, so "process the day of `scheduledAt`" produces the same result however many times it runs, unlike "process yesterday", which shifts after midnight.
+- Writes keyed by run ID (`INSERT … ON CONFLICT DO NOTHING`, or an <Term slug="idempotency-key">idempotency key</Term> such as the run ID on calls to payment or email APIs) turn repeats into no-ops.
+- Jobs that cannot be made idempotent set `maxAttempts: 1` and accept the opposite risk: a lost run is reported as `LOST` and alerts, rather than retried. The SRE book's cron chapter makes the same point: the system cannot know whether skipping or doubling is worse for a given job, so the owner must choose.
+
+<Misconception wrong="Use a distributed lock so only one worker runs the job, and you have exactly-once." right="A lock prevents two concurrent holders only while the lock is honoured. A paused holder whose lock expired keeps running. Locks plus fencing give at-most-one-accepted result; exactly-once effects still need an idempotent job." />
+
+### How do retries, timeouts and overlapping runs work, and how do you absorb 50,000 jobs due in the same second?
+
+**Retries.** On a non-zero exit or a lost lease, the next attempt waits `min(cap, base × 2^attempt)` with full jitter (a random delay between zero and that value), the scheme the AWS Builders' Library article on timeouts and retries recommends to stop synchronised retries. Without jitter, 5,000 jobs that failed together at 00:00 because a shared database was down all retry at 00:00:30 and knock it over again: a <Term slug="retry-storm">retry storm</Term>. Owners can mark exit codes as permanent (bad configuration) to skip retries. After the last attempt the run is `DEAD`: visible, alerted, and re-runnable by hand. Retries go through a lower-priority path than on-time runs, so a storm of retries never delays the next hour mark.
+
+**Timeouts.** The worker kills the container at `timeoutSeconds`; the reaper also fails any run older than its timeout plus a grace period, in case the worker is wedged.
+
+**Overlap policy**, the same three choices Kubernetes CronJobs offer through `concurrencyPolicy`:
+- `ALLOW`: runs may overlap.
+- `FORBID`: the claim does a conditional write on `job_active`; if a previous run still holds it, the new run is recorded as `SKIPPED` (visible, not silent).
+- `REPLACE`: the claim marks the old run for cancellation; its next heartbeat returns `cancel: true` and the worker stops it.
+
+**The hour-mark herd.** Four measures, in order of leverage:
+
+1. **Pre-materialise.** The look-ahead means the expensive work (reading and advancing 50,000 jobs) happens in the 60 s before the hour at 833 writes/s. At the hour, firing is only queue sends: 10,000/s over 24 schedulers.
+2. **Pre-warm from the schedule.** A scheduler is unusual in that its future load is exactly known. At :55 a capacity planner counts runs due at :00 (one query on `next_fire_at`) and scales the fleet so slots are ready: about 2,000 hosts each hour and 3,600 before midnight, back to about 600 by :10. Reactive autoscaling would be minutes too late, because new hosts take a minute or two to start.
+3. **Spread what does not need to be exact.** Most hourly jobs do not care about the exact second. Jenkins lets a cron field be `H` (a stable hash of the job name picks the minute), and the SRE book's cron chapter describes letting the system choose when a job may run within a range. Offer `"cron": "H * * * *"` and make it the default in templates; every 10% of jobs that opt in removes 5,000 runs from the hour mark.
+4. **Priority.** Runs that are on time beat retries and manual backfills for worker slots, so the punctuality target is met for the runs that have one.
+
+Failure timeline: **availability zone a is lost at 23:59:58**.
+
+| Time | What happens | What owners see |
+|---|---|---|
+| 23:59:58 | Zone a's 8 schedulers, 11 Run API instances and about a third of worker hosts vanish | Nothing yet |
+| 00:00:00 | Partitions owned in zones b and c fire their two thirds of the 100,000 midnight runs on time | Most runs start within 2 s |
+| 00:00:04 | Zone a's partition leases (32 partitions) expire in etcd | About 33,000 midnight runs not yet fired |
+| 00:00:05 | Surviving schedulers acquire those leases at epoch + 1, read `fired_through`, reload and re-fire | Those runs start 6–9 s late; schedule-lag p99 alert fires |
+| 00:00:06 | Run API traffic shifts to zones b and c (65% busy, as sized); claims continue | |
+| 00:01:00 | Runs that were executing on zone a's workers miss their lease; the reaper starts attempt 2 elsewhere | Those runs show attempt 1 `LOST`, attempt 2 `RUNNING` |
+| 00:05 | Fleet replaces lost worker capacity in zones b and c | Back to normal |
+
+The 5 s target is missed for a third of one burst; nothing is lost. A **warm standby** per partition that already holds the look-ahead window makes takeover cost only the lease TTL; a shorter TTL cuts it further at the price of false takeovers when etcd is briefly slow.
+
+### How do owners see what happened to every run, and how do you know the scheduler itself is running late?
+
+**Per-run visibility.** Every state change (claimed, lease lost, retry scheduled, succeeded, dead, skipped, missed) is a timestamped write to the run row, indexed for owners within a couple of seconds. Logs upload in 5 s chunks, so owners can tail a running job and read logs after the worker is gone. Showing scheduled, claim and start times for each attempt lets owners tell "my job was slow" from "the platform was late".
+
+**Owner alerts.** On `DEAD`, on `MISSED` or `SKIPPED`, and on **absence**: "no successful run of this job in 26 hours" catches a job that was paused by mistake or whose schedule was edited wrongly, which no failure alert can.
+
+**Is the platform itself late?** A scheduler that stops firing produces no errors; it produces silence. Three signals:
+
+1. **Schedule lag**: `claim time − scheduled time` as a histogram per partition. The 5 s target is an <Term slug="slo">SLO</Term> on this metric.
+2. **Expected vs fired**: an independent auditor reads the job definitions, computes how many runs each partition should have fired in each minute, and compares with runs created. A partition whose owner is alive but stuck shows up here even though its heartbeats look healthy.
+3. **A <Term slug="dead-mans-switch">dead man's switch</Term>**: a canary job in every partition, scheduled every minute, which pings an external monitor when it runs. If the pings stop, the external monitor pages, even when our own monitoring is down too.
+
+<NotWhenBox title="Building this platform" items={[
+  "A few hundred jobs with no punctuality target: Kubernetes CronJobs or a managed scheduler (cloud-provider cron triggers) are enough.",
+  "Jobs that are really steps of a pipeline with dependencies: use a workflow engine, which models DAGs, data passing and backfills that this design deliberately leaves out."
+]} />
+
+## Failure modes & mitigations
+
+| Failure | Detection | Effect | Mitigation |
+|---|---|---|---|
+| Scheduler instance dies | Lease not renewed in etcd | Its ~4 partitions stop firing for up to 6 s | Takeover at epoch + 1; re-fire from `fired_through`; run-ID dedup |
+| Scheduler paused past its lease | Its epoch-checked writes fail | It may send stale queue messages | Epoch fencing on Postgres; put-if-absent claim drops duplicates |
+| etcd loses quorum | Lease renewals fail everywhere | Owners keep partitions while their leases last, then firing stops | 3 nodes across zones; a scheduler that cannot renew stops firing rather than risk split brain; schedule-lag alert |
+| Jobs DB primary fails | Look-ahead transactions fail | No new occurrences loaded; timers already in memory still fire | Up to 60 s of loaded timers bridge a typical failover; standby promotion |
+| Dispatch queue cell unavailable | Send errors | Half the partitions cannot fire | Schedulers fail over to the other cell; dedup makes double sends safe |
+| Worker dies mid-run | Lease expires (60 s) | Run delayed | Reaper retries with the next attempt; attempt fencing rejects the zombie |
+| Downstream dependency down for many jobs | Spike in failures by exit code | Thousands of failures at once | Backoff with full jitter, retry priority below on-time runs, `DEAD` after max attempts |
+| Fleet too small at an hour mark | Queue depth, schedule lag | Runs start late | Pre-warm from the known schedule; priority for on-time runs; spread (`H`) jobs |
+| Whole platform silently stops | Expected-vs-fired gap, dead man's switch | No runs, no errors | External monitor pages on missing canary pings |
+| Bad cron edit by an owner | Absence alert | Job never runs | "No success in N hours" alert per job |
+
+## Scaling to 10×
+
+At 100M runs a day: 1,157 runs/s on average, 500,000 due at each hour mark (100,000 fires/s) and 1M at midnight (200,000/s).
+
+1. **Worker capacity breaks first, and it is a cost problem.** Midnight would need about 1.1M slots, around 35,000 hosts for a few minutes. Spreading becomes mandatory rather than optional: hourly jobs default to `H`, and the 5 s target is offered only to jobs that declare they need it.
+2. **The run store** at about 280,000 writes/s at midnight needs around 60 nodes; heartbeats become the largest share, so lengthen the interval to 30 s with a 2-minute lease for long jobs.
+3. **Schedulers** scale by adding instances, but 96 partitions limit how many can share the work; resharding partitions is easier with many more (say 1,024) from the start.
+4. **etcd** holds 1,024 leases renewed every 2 s: still small, but keep it dedicated to leases, never data.
+5. **Multi-region.** Run each region's jobs in that region with its own scheduler, queues and fleet, and keep a job's partition owned in one region at a time; cross-region failover of partitions uses the same epoch fencing.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| Partitioned schedulers with leases | One leader | Failover delays a few partitions, not every job; capacity grows by adding instances |
+| `next_fire_at` index + 60 s look-ahead | Scan all jobs every second | One range read per partition; Postgres writes spread before the hour |
+| Epoch fencing + run ID = job + scheduled time | Trust the lease | Pauses and split brain become harmless duplicates instead of double runs |
+| At-least-once + idempotent jobs | Promise exactly-once | Exactly-once execution is impossible; owners get the tools and the choice |
+| Run row owns liveness after claim | Long queue visibility timeouts | Hour-long jobs without hour-long redelivery delays; clean fencing |
+| KV store for runs, Postgres for jobs | One database for both | Runs need 28,800 conditional writes/s and TTL; jobs need range queries and transactions |
+| Pre-warm from the schedule | Reactive autoscaling | Load is known in advance; new hosts take minutes |
+| Re-fire after takeover, dedup downstream | Assume the old owner fired | Re-firing can only duplicate; assuming can lose runs |
+
+## What interviewers look for
+
+- **Sizing from the hour mark, not the average.** Strong candidates compute 116 runs/s, then immediately point out 50,000 due in one second and design for that.
+- **A real trigger mechanism.** An indexed next-fire time and a look-ahead, with time zones and daylight saving handled deliberately.
+- **Partition ownership with fencing.** Leases for efficiency, epochs and an idempotent run identity for correctness, and a takeover that re-fires rather than assumes.
+- **Honesty about exactly-once.** At-least-once with leases and heartbeats, attempt numbers as fencing tokens, and concrete advice for idempotent jobs.
+- **Operational completeness.** Jittered retries, a dead state, overlap policies, durable logs, and alerts for absence as well as failure.
+- **Staff-level extras.** Pre-warming from the schedule, `H`-style spreading, and a dead man's switch for the platform's own silence.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "A scheduler pauses for 20 seconds at 11:59:58 and then wakes up. Walk me through exactly what happens to its runs.",
+  "An owner says their job ran twice last night. How do you find out why, and what do you tell them?",
+  "How would you add dependencies, so job B runs only after job A succeeds for the same date?",
+  "The clocks go back an hour tonight. Which jobs run twice, and what does your system do about it?",
+  "How would you tell the difference between 'the platform is late' and 'the worker fleet is full'?"
+]} />

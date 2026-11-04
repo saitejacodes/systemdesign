@@ -31,9 +31,7 @@
   "simulatorIds": [
     "cache"
   ],
-  "practiceCaseStudyIds": [
-    "news-feed"
-  ],
+  "practiceCaseStudyIds": ["news-feed", "url-shortener", "instagram"],
   "prerequisites": [
     "p3-cache-strategies"
   ]

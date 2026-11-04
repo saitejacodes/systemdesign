@@ -1,0 +1,16 @@
+{
+  "criteria": [
+    { "id": "req-scope", "step": "Requirements", "title": "Scope and functional requirements", "levels": { "0": "Starts drawing without stating what the store must do.", "1": "Lists create, read and delete but misses expiry or logout semantics.", "2": "States create, read, delete and expiry, and what is out of scope." } },
+    { "id": "req-nfr", "step": "Requirements", "title": "Non-functional targets", "levels": { "0": "No latency, availability or consistency targets.", "1": "Mentions targets without numbers.", "2": "Names the 10 ms p99 lookup, the 5 s logout bound and the availability goal." } },
+    { "id": "est-qps", "step": "Estimation", "title": "Traffic estimate", "levels": { "0": "No QPS estimate.", "1": "Average QPS only.", "2": "Average and peak QPS with the read:write split, derived step by step." } },
+    { "id": "est-storage", "step": "Estimation", "title": "Storage estimate", "levels": { "0": "No storage estimate.", "1": "A number with no derivation.", "2": "Sessions × size × retention, showing that the data fits in memory." } },
+    { "id": "api-endpoints", "step": "API", "title": "Endpoints", "levels": { "0": "No API.", "1": "Endpoints without request and response shapes.", "2": "Create, read and delete with shapes, the token passed in a header, and errors." } },
+    { "id": "dm-key", "step": "Data Model", "title": "Key and record", "levels": { "0": "No data model.", "1": "A record without a key strategy.", "2": "Token as the partition key, the record's fields and a TTL attribute." } },
+    { "id": "dm-db", "step": "Data Model", "title": "Database choice", "levels": { "0": "No database named.", "1": "A database named without a reason.", "2": "A key-value store justified by the access pattern, with the alternative considered." } },
+    { "id": "hld-path", "step": "High-Level Design", "title": "Request path", "levels": { "0": "No diagram or walkthrough.", "1": "A diagram without walking each request type through it.", "2": "Walks read, create and delete through load balancer, service, cache and store." } },
+    { "id": "hld-redundancy", "step": "High-Level Design", "title": "No single points of failure", "levels": { "0": "Single instances on the request path.", "1": "Some components redundant, others not.", "2": "Every component on the path is replicated across zones." } },
+    { "id": "dd-cache", "step": "Deep Dives", "title": "Cache failure", "levels": { "0": "Does not consider a cache restart.", "1": "Notices the load spike but has no protection.", "2": "Protects the store with replicated cache, request coalescing or load shedding, and says what users see." } },
+    { "id": "dd-logout", "step": "Deep Dives", "title": "Logout consistency", "levels": { "0": "Ignores cached sessions after logout.", "1": "Short TTL only.", "2": "Deletes or invalidates the cached entry on logout and bounds staleness by the TTL." } },
+    { "id": "wrap-tradeoffs", "step": "Wrap-up", "title": "Trade-offs and next steps", "levels": { "0": "No summary.", "1": "Summarises without trade-offs.", "2": "Names what breaks first at 10× and the trade-offs made, with what to monitor." } }
+  ]
+}

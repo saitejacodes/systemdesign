@@ -1,0 +1,727 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "hosts",
+      "kind": "client",
+      "x": 0,
+      "y": 160,
+      "label": "Monitored hosts (agents)",
+      "props": {
+        "platform": "web",
+        "users": 100000
+      }
+    },
+    {
+      "id": "engineers",
+      "kind": "client",
+      "x": 0,
+      "y": 640,
+      "label": "Engineers (dashboards)",
+      "props": {
+        "platform": "web",
+        "users": 10000
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 256,
+      "y": 0,
+      "w": 1504,
+      "h": 912,
+      "label": "Region (primary)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "ingest-lb",
+      "kind": "load-balancer",
+      "x": 32,
+      "y": 160,
+      "label": "Ingest LB",
+      "props": {
+        "layer": "L7",
+        "algorithm": "round-robin",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "query-lb",
+      "kind": "load-balancer",
+      "x": 32,
+      "y": 640,
+      "label": "Query LB",
+      "props": {
+        "layer": "L7",
+        "algorithm": "round-robin",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "w": 576,
+      "h": 256,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "dist-a",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Distributors AZ-a (x8)",
+      "props": {
+        "name": "distributor",
+        "instances": 8,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "query-a",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Queriers AZ-a (x3)",
+      "props": {
+        "name": "querier",
+        "instances": 3,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "ing-a",
+      "kind": "nosql-db",
+      "x": 320,
+      "y": 96,
+      "label": "Ingesters AZ-a (x10, 2 h + WAL)",
+      "props": {
+        "nodes": 10,
+        "consistency": "quorum",
+        "capacityQps": 3000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 320,
+      "w": 576,
+      "h": 256,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "dist-b",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Distributors AZ-b (x8)",
+      "props": {
+        "name": "distributor",
+        "instances": 8,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "query-b",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Queriers AZ-b (x3)",
+      "props": {
+        "name": "querier",
+        "instances": 3,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "ing-b",
+      "kind": "nosql-db",
+      "x": 320,
+      "y": 96,
+      "label": "Ingesters AZ-b (x10, 2 h + WAL)",
+      "props": {
+        "nodes": 10,
+        "consistency": "quorum",
+        "capacityQps": 3000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 608,
+      "w": 576,
+      "h": 256,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "dist-c",
+      "kind": "service",
+      "x": 32,
+      "y": 48,
+      "label": "Distributors AZ-c (x8)",
+      "props": {
+        "name": "distributor",
+        "instances": 8,
+        "capacityQps": 2000,
+        "latencyMs": 5,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "query-c",
+      "kind": "service",
+      "x": 32,
+      "y": 160,
+      "label": "Queriers AZ-c (x3)",
+      "props": {
+        "name": "querier",
+        "instances": 3,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "ing-c",
+      "kind": "nosql-db",
+      "x": 320,
+      "y": 96,
+      "label": "Ingesters AZ-c (x10, 2 h + WAL)",
+      "props": {
+        "nodes": 10,
+        "consistency": "quorum",
+        "capacityQps": 3000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "rcache",
+      "kind": "cache",
+      "x": 896,
+      "y": 656,
+      "label": "Results cache",
+      "props": {
+        "sizeGb": 64,
+        "hitRate": 70,
+        "latencyMs": 2,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "obj",
+      "kind": "object-storage",
+      "x": 1136,
+      "y": 400,
+      "label": "Object storage: blocks + rollups",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "compactor",
+      "kind": "worker",
+      "x": 1136,
+      "y": 208,
+      "label": "Compactor (dedup, 5 m / 1 h rollups)",
+      "props": {
+        "instances": 3,
+        "processingMs": 50,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "ruler",
+      "kind": "service",
+      "x": 896,
+      "y": 48,
+      "label": "Rulers (x6, 2 per AZ)",
+      "props": {
+        "name": "ruler",
+        "instances": 6,
+        "capacityQps": 1000,
+        "latencyMs": 10,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "am",
+      "kind": "service",
+      "x": 1136,
+      "y": 48,
+      "label": "Alert manager cluster (x3, gossip)",
+      "props": {
+        "name": "alertmanager",
+        "instances": 3,
+        "capacityQps": 200,
+        "latencyMs": 5,
+        "stateless": false,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "rules-db",
+      "kind": "sql-db",
+      "x": 896,
+      "y": 816,
+      "label": "Rules, silences, routing (SQL)",
+      "props": {
+        "replicas": 1,
+        "capacityQps": 500,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "pager",
+      "kind": "external-api",
+      "x": 1856,
+      "y": 48,
+      "label": "Paging / on-call provider",
+      "props": {
+        "latencyMs": 300,
+        "rateLimitQps": 100,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "meta",
+      "kind": "monitoring",
+      "x": 1856,
+      "y": 400,
+      "label": "Meta-monitoring (other region)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 1856,
+      "y": 640,
+      "w": 352,
+      "h": 240,
+      "label": "",
+      "props": {
+        "text": "Sized for the 2x burst with one zone lost (see Estimation). Writes go to 3 ingesters, one per zone, and need 2 acknowledgements; Run mode sends each request to one zone, so the per-zone ingester load it shows is lower than the real one. Rulers query ingester memory directly and are not on any client path. Run mode sends both request types from both clients by user count, so some reads enter through the ingest LB."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-hosts-ingest-lb",
+      "source": "hosts",
+      "target": "ingest-lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "POST /api/v1/push"
+    },
+    {
+      "id": "e-engineers-query-lb",
+      "source": "engineers",
+      "target": "query-lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "query_range"
+    },
+    {
+      "id": "e-ingest-lb-dist-a",
+      "source": "ingest-lb",
+      "target": "dist-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-query-lb-query-a",
+      "source": "query-lb",
+      "target": "query-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-query-a-rcache",
+      "source": "query-a",
+      "target": "rcache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "split + cache"
+    },
+    {
+      "id": "e-dist-a-ing-a",
+      "source": "dist-a",
+      "target": "ing-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hash(series), RF 3"
+    },
+    {
+      "id": "e-query-a-ing-a",
+      "source": "query-a",
+      "target": "ing-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "recent range"
+    },
+    {
+      "id": "e-dist-a-ing-b",
+      "source": "dist-a",
+      "target": "ing-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hash(series), RF 3"
+    },
+    {
+      "id": "e-query-a-ing-b",
+      "source": "query-a",
+      "target": "ing-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "recent range"
+    },
+    {
+      "id": "e-dist-a-ing-c",
+      "source": "dist-a",
+      "target": "ing-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hash(series), RF 3"
+    },
+    {
+      "id": "e-query-a-ing-c",
+      "source": "query-a",
+      "target": "ing-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "recent range"
+    },
+    {
+      "id": "e-query-a-obj",
+      "source": "query-a",
+      "target": "obj",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "older range"
+    },
+    {
+      "id": "e-ruler-ing-a",
+      "source": "ruler",
+      "target": "ing-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "evaluate"
+    },
+    {
+      "id": "e-ing-a-obj",
+      "source": "ing-a",
+      "target": "obj",
+      "kind": "async",
+      "direction": "forward",
+      "label": "2 h blocks"
+    },
+    {
+      "id": "e-ingest-lb-dist-b",
+      "source": "ingest-lb",
+      "target": "dist-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-query-lb-query-b",
+      "source": "query-lb",
+      "target": "query-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-query-b-rcache",
+      "source": "query-b",
+      "target": "rcache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "split + cache"
+    },
+    {
+      "id": "e-dist-b-ing-a",
+      "source": "dist-b",
+      "target": "ing-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hash(series), RF 3"
+    },
+    {
+      "id": "e-query-b-ing-a",
+      "source": "query-b",
+      "target": "ing-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "recent range"
+    },
+    {
+      "id": "e-dist-b-ing-b",
+      "source": "dist-b",
+      "target": "ing-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hash(series), RF 3"
+    },
+    {
+      "id": "e-query-b-ing-b",
+      "source": "query-b",
+      "target": "ing-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "recent range"
+    },
+    {
+      "id": "e-dist-b-ing-c",
+      "source": "dist-b",
+      "target": "ing-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hash(series), RF 3"
+    },
+    {
+      "id": "e-query-b-ing-c",
+      "source": "query-b",
+      "target": "ing-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "recent range"
+    },
+    {
+      "id": "e-query-b-obj",
+      "source": "query-b",
+      "target": "obj",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "older range"
+    },
+    {
+      "id": "e-ruler-ing-b",
+      "source": "ruler",
+      "target": "ing-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "evaluate"
+    },
+    {
+      "id": "e-ing-b-obj",
+      "source": "ing-b",
+      "target": "obj",
+      "kind": "async",
+      "direction": "forward",
+      "label": "2 h blocks"
+    },
+    {
+      "id": "e-ingest-lb-dist-c",
+      "source": "ingest-lb",
+      "target": "dist-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-query-lb-query-c",
+      "source": "query-lb",
+      "target": "query-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-query-c-rcache",
+      "source": "query-c",
+      "target": "rcache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "split + cache"
+    },
+    {
+      "id": "e-dist-c-ing-a",
+      "source": "dist-c",
+      "target": "ing-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hash(series), RF 3"
+    },
+    {
+      "id": "e-query-c-ing-a",
+      "source": "query-c",
+      "target": "ing-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "recent range"
+    },
+    {
+      "id": "e-dist-c-ing-b",
+      "source": "dist-c",
+      "target": "ing-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hash(series), RF 3"
+    },
+    {
+      "id": "e-query-c-ing-b",
+      "source": "query-c",
+      "target": "ing-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "recent range"
+    },
+    {
+      "id": "e-dist-c-ing-c",
+      "source": "dist-c",
+      "target": "ing-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hash(series), RF 3"
+    },
+    {
+      "id": "e-query-c-ing-c",
+      "source": "query-c",
+      "target": "ing-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "recent range"
+    },
+    {
+      "id": "e-query-c-obj",
+      "source": "query-c",
+      "target": "obj",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "older range"
+    },
+    {
+      "id": "e-ruler-ing-c",
+      "source": "ruler",
+      "target": "ing-c",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "evaluate"
+    },
+    {
+      "id": "e-ing-c-obj",
+      "source": "ing-c",
+      "target": "obj",
+      "kind": "async",
+      "direction": "forward",
+      "label": "2 h blocks"
+    },
+    {
+      "id": "e-compactor-obj",
+      "source": "compactor",
+      "target": "obj",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "compact, downsample"
+    },
+    {
+      "id": "e-ruler-am",
+      "source": "ruler",
+      "target": "am",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "firing alerts"
+    },
+    {
+      "id": "e-ruler-rules-db",
+      "source": "ruler",
+      "target": "rules-db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "rule groups"
+    },
+    {
+      "id": "e-am-pager",
+      "source": "am",
+      "target": "pager",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "grouped pages"
+    },
+    {
+      "id": "e-meta-pager",
+      "source": "meta",
+      "target": "pager",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "dead man's switch"
+    }
+  ]
+}

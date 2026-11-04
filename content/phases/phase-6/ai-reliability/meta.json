@@ -14,6 +14,6 @@
     { "id": "structured-output", "title": "Structured output validation", "depth": "deep" }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["rag-docs-assistant"],
   "prerequisites": ["p6-llm-serving", "p4-timeouts-retries", "p4-circuit-breakers"]
 }

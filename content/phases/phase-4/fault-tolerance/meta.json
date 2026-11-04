@@ -12,6 +12,6 @@
     { "id": "static-stability", "title": "Static stability", "depth": "awareness" }
   ],
   "simulatorIds": ["availability-calculator"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["search-engine", "web-crawler"],
   "prerequisites": ["p4-high-availability"]
 }

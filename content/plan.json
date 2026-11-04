@@ -309,7 +309,12 @@
       "p7-final-review"
     ],
     "simulatorChallengeIds": [],
-    "caseStudyIds": [],
+    "caseStudyIds": [
+      "api-gateway",
+      "search-engine",
+      "instagram",
+      "food-delivery"
+    ],
     "deliverable": "Clear every weak spot on /today and finish two more timed mocks with self-scores of 3+ on every rubric row.",
     "estimatedHours": 10
   }

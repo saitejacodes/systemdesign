@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { caseRuns } from "@/components/studio/caseRuns";
 import { DesignEditor, NewDesign } from "@/components/studio/Editor";
 import { studioLessons } from "@/components/studio/lessons";
 
@@ -10,5 +11,5 @@ export default async function Page({ params, searchParams }: PageProps<"/studio/
   const { designId } = await params;
   const sp = await searchParams;
   if (designId === "new") return <NewDesign templateId={typeof sp.template === "string" ? sp.template : undefined} />;
-  return <DesignEditor designId={decodeURIComponent(designId)} lessons={studioLessons()} />;
+  return <DesignEditor designId={decodeURIComponent(designId)} lessons={studioLessons()} caseRuns={caseRuns()} />;
 }

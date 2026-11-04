@@ -1,0 +1,64 @@
+{
+  "criteria": [
+    { "id": "functional-scope", "step": "Requirements", "title": "Functional scope and the immutability decision",
+      "levels": {
+        "0": "Lists create and redirect only, or wanders into link-in-bio pages, QR codes and billing without being asked.",
+        "1": "Covers create, redirect, custom aliases, expiry and analytics, but never decides whether destinations can be edited.",
+        "2": "Covers create (alias, expiry), redirect, disable/delete and minutes-fresh analytics, and explicitly makes destinations immutable because it makes every cache correct by construction." } },
+    { "id": "nfr-correctness", "step": "Requirements", "title": "Non-functional targets, including correctness and unguessability",
+      "levels": {
+        "0": "No latency or availability targets; correctness of the mapping is never mentioned.",
+        "1": "States latency and availability, but treats 'never the wrong URL' and 'hard to enumerate' as afterthoughts.",
+        "2": "Under 50 ms p99 added, redirect availability higher than create availability (e.g. 99.99% vs 99.9%), no code ever resolves elsewhere, codes not enumerable, and analytics that must never affect redirects." } },
+    { "id": "traffic-math", "step": "Estimation", "title": "Traffic derived step by step",
+      "levels": {
+        "0": "No numbers, or numbers stated without derivation.",
+        "1": "Gets roughly 40 writes/s and 4,000 reads/s but no peak, or a peak with no stated assumption.",
+        "2": "100M ÷ 2.59M s = 38.6 writes/s; ×100 = 3,860 reads/s; ~3,900 total; 5× peak ≈ 19,500/s; and concludes the write path is trivial so the design effort belongs on reads." } },
+    { "id": "space-storage-math", "step": "Estimation", "title": "ID space, storage and cache sizing",
+      "levels": {
+        "0": "Picks a code length without arithmetic.",
+        "1": "Computes 6B links and some storage figure, but not the fraction of the ID space used or why 6 characters is not enough.",
+        "2": "62⁷ = 3.52T vs 6B links (0.17% used), shows why 6 chars fails unguessability (about 1 in 10 guesses hits), ~3 TB (9 TB replicated), and a day's working set of ~15 GB that fits in cache." } },
+    { "id": "api", "step": "API", "title": "API contract",
+      "levels": {
+        "0": "Endpoints named without request or response shapes or status codes.",
+        "1": "POST and GET with bodies, but no idempotency, no 409 for taken aliases, or no distinction between 404 and 410.",
+        "2": "POST /v1/links with Idempotency-Key, 201 body, 409 / 400 / 429; GET /{code} returning 302 with Location and Cache-Control; 404 vs 410; cursor-paged list and a stats endpoint." } },
+    { "id": "data-model", "step": "Data Model", "title": "Schema, keys and database choice",
+      "levels": {
+        "0": "Says 'a database' or picks one with no reasoning.",
+        "1": "Keys links by code and picks SQL or NoSQL with a generic reason ('NoSQL scales').",
+        "2": "Partition key = code, a separate owner index, conditional insert-if-absent for uniqueness, write ordering so a crash leaves a harmless state, and a choice decided by access pattern and operations (with sharded Postgres named as a valid alternative)." } },
+    { "id": "hld-walkthrough", "step": "High-Level Design", "title": "Architecture and request walkthroughs",
+      "levels": {
+        "0": "A box diagram with no walkthrough.",
+        "1": "Walks the redirect through LB, service, cache and store, but the create or analytics path is missing.",
+        "2": "Walks redirect (in-process cache → Redis → store, expiry check, async click event, latency budget), create (idempotency, validation, insert-if-absent, negative-cache delete) and analytics separately, over a multi-AZ layout." } },
+    { "id": "id-generation", "step": "Deep Dives", "title": "Short-code generation",
+      "levels": {
+        "0": "Uses an auto-increment counter or a truncated hash with no collision handling.",
+        "1": "Compares a couple of options but misses enumeration or the birthday-collision math.",
+        "2": "Compares hash, counter (+ ticket server or ranges), Snowflake (11 chars) and random; quantifies collisions; chooses by write rate and unguessability (e.g. random + conditional insert), and says when to switch to counter + keyed permutation." } },
+    { "id": "redirect-caching", "step": "Deep Dives", "title": "301 vs 302 and caching layers",
+      "levels": {
+        "0": "Picks 301 or 302 without knowing the difference.",
+        "1": "Knows 301 is cached by browsers and picks 302, but has no staleness bound per layer or no hot-key plan.",
+        "2": "Explains 301's default cacheability and what it does to analytics, expiry and deletion; picks 302 with a max-age; gives each layer a TTL/invalidation; covers negative caching with invalidation on create, hot keys and request coalescing." } },
+    { "id": "analytics-expiry", "step": "Deep Dives", "title": "Analytics off the hot path; aliases and expiry",
+      "levels": {
+        "0": "Increments a counter in the database on every redirect, or reuses expired codes.",
+        "1": "Sends click events asynchronously, but no plan for broker outage or duplicates; expiry relies on store TTL.",
+        "2": "Buffered async events that fail open with a dropped-events metric, idempotent aggregation, HLL for uniques; expiry checked on read, codes never reused (tombstones), aliases through the same conditional insert." } },
+    { "id": "failures-scale", "step": "Wrap-up", "title": "Failure modes and scaling to 10×",
+      "levels": {
+        "0": "No failures discussed beyond 'add replicas'.",
+        "1": "Covers instance and zone loss, but not a cold cache, broker outage, or what breaks first at 10×.",
+        "2": "Sizes the store for a cold cache, covers zone loss with headroom (N+1), broker outage, enumeration scans; at 10× names the cache/hot keys first, the move to 8-char codes, and the multi-region code-collision problem with last-writer-wins." } },
+    { "id": "tradeoffs", "step": "Wrap-up", "title": "Trade-offs stated as decisions",
+      "levels": {
+        "0": "No trade-offs named.",
+        "1": "Names trade-offs generically (consistency vs availability) without tying them to this design.",
+        "2": "Each key decision (ID scheme, code length, 302, immutability, KV store, async analytics, no reuse) comes with the alternative and the specific reason it lost here." } }
+  ]
+}

@@ -42,9 +42,7 @@
     "sharding",
     "consistent-hashing"
   ],
-  "practiceCaseStudyIds": [
-    "url-shortener"
-  ],
+  "practiceCaseStudyIds": ["url-shortener", "file-sync", "search-engine"],
   "prerequisites": [
     "p2-replication"
   ]

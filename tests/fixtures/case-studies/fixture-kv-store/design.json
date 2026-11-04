@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "nodes": [
+    { "id": "users", "kind": "client", "x": 0, "y": 192, "label": "API servers (callers)", "props": { "platform": "web", "users": 5000000 } },
+    { "id": "lb", "kind": "load-balancer", "x": 256, "y": 192, "label": "Load balancer", "props": { "layer": "L7", "algorithm": "round-robin", "instances": 2, "latencyMs": 1, "availabilityPct": 99.99, "costPerMonth": 20 } },
+    { "id": "svc", "kind": "service", "x": 512, "y": 192, "label": "Session service", "props": { "name": "sessions", "instances": 6, "capacityQps": 2000, "latencyMs": 2, "stateless": true, "availabilityPct": 99.9, "costPerMonth": 70 } },
+    { "id": "cache", "kind": "cache", "x": 784, "y": 64, "label": "Session cache", "props": { "sizeGb": 16, "hitRate": 90, "latencyMs": 1, "availabilityPct": 99.9, "costPerMonth": 120 } },
+    { "id": "kv", "kind": "nosql-db", "x": 784, "y": 320, "label": "Key-value store", "props": { "nodes": 3, "consistency": "quorum", "capacityQps": 10000, "latencyMs": 4, "availabilityPct": 99.9, "costPerMonth": 250 } }
+  ],
+  "edges": [
+    { "id": "e-users-lb", "source": "users", "target": "lb", "kind": "sync", "direction": "forward" },
+    { "id": "e-lb-svc", "source": "lb", "target": "svc", "kind": "sync", "direction": "forward" },
+    { "id": "e-svc-cache", "source": "svc", "target": "cache", "kind": "sync", "direction": "forward", "label": "read-through" },
+    { "id": "e-svc-kv", "source": "svc", "target": "kv", "kind": "sync", "direction": "forward" }
+  ]
+}

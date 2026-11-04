@@ -1,0 +1,323 @@
+## Requirements
+
+Ride sharing looks like a CRUD app with a map, but it has two very different hearts. One is a **firehose**: a million phones reporting their position every few seconds, which must become a live index of where available drivers are. The other is a **small, strict transaction**: assigning one driver to one trip, never two, and charging once. The firehose tolerates loss and staleness; the transaction tolerates neither. A strong answer keeps the two on separate paths with separate stores.
+
+### Functional
+
+1. **Drivers go online** and their app streams location.
+2. **Riders see nearby cars** and a fare estimate.
+3. **Request a ride.** The system finds a nearby available driver, offers the trip, and on acceptance assigns it.
+4. **Live trip.** Rider and driver see each other's position and an ETA through pickup and drop-off.
+5. **Trip lifecycle.** Arrived, started, completed, or cancelled by either side.
+6. **Payment.** The rider's card is charged at the end of the trip.
+
+### Non-functional
+
+| Property | Target | Why it matters here |
+|---|---|---|
+| Match time | under 10 s for the large majority of requests | Riders give up and switch apps |
+| Assignment correctness | a driver has at most one active trip, always | Two riders waiting for one car is the worst failure |
+| Charging | exactly once per trip | Double charges cost trust and money |
+| Location freshness | a few seconds | Positions older than about 15 s mislead dispatch |
+| Availability | 99.99% for matching and live trips | A city cannot pause |
+| Location durability | best effort; a lost update is replaced 4 s later | Loss is cheap, latency is not |
+
+### Out of scope
+
+Shared rides, scheduled rides, driver onboarding, ratings, fraud, and the surge pricing model itself (we cover where surge fits, at awareness level).
+
+## Estimation
+
+All numbers come from the stated assumptions, not from any real company.
+
+**Trips.** 20M ÷ 86,400 s = **231 trip requests a second, 463 at the 2× peak**.
+
+**Location updates.** 1M drivers at peak ÷ 4 s = **250,000 updates a second**; with about 500,000 drivers online on average, **125,000 a second on average**. An update (driver ID, latitude, longitude, heading, speed, accuracy, timestamp, sequence number, current trip ID) is about 100 B: 250,000 × 100 B = **25 MB/s at peak**, and 125,000 × 100 B × 86,400 = **1.08 TB a day**. The volume is not big data; the *rate* of small writes is the challenge.
+
+**Trip writes.** About 7 writes per trip (create, record offers, assign, arrived, started, completed, plus the occasional cancel): 231 × 7 = **1,620 a second, 3,240 at peak**.
+
+**Nearby searches.** Riders' maps poll nearby cars every 5 s while open. Assume 50 polls per completed trip (browsing, waiting, abandoned sessions): 20M × 50 = 1B a day = 11,574/s, plus dispatch searches (about 3 per request as the radius widens): 231 × 3 = 694/s. Total **12,270 a second, 24,540 at peak**.
+
+**Concurrent trips.** 231 trips/s × 1,200 s (20 minutes) = **277,800 on average, 555,600 at peak**. Riders on trips receive the driver's position every 4 s: 555,600 ÷ 4 = **139,000 pushes a second at peak**.
+
+**Connections.** 1M drivers + 555,600 riders on trips + assume 1M riders with the app open = about **2.6M WebSocket connections** at peak.
+
+**Maps provider (limit 20,000/s).** At peak: fare estimates, 2 per request = 926/s; dispatch ETA matrices, about 1.5 per request = 694/s; pickup ETA refresh every 30 s for riders waiting (463/s × 300 s = 138,900 waiting) = 4,630/s; in-trip ETA refresh every 60 s for the other 416,700 = 6,945/s. Total **about 13,200/s, 66% of the quota**. This is the first thing to break at 10×.
+
+**Payment provider (limit 2,000/s).** Authorise when the trip is requested, capture at the end: 2 × 463 = **926 calls/s at peak, 46%**.
+
+**Sizing** (we want about 50% utilisation normally and under 80% with one of three zones lost):
+- **Realtime gateways.** Assume one instance handles 10,000 location updates a second and up to 100,000 connections. 250,000 ÷ 10,000 = 25 at 100%. With **48 (16 per zone)**: 250,000 ÷ 480,000 = **52%**, and 250,000 ÷ 320,000 = **78%** with a zone lost. Connections: 2.6M ÷ 32 = 81,000 per surviving instance.
+- **Trip and dispatch service.** Assume 2,000 requests/s per instance. Peak 24,540 + 3,240 = 27,780/s. With **27 (9 per zone)**: **51%** normally, **77%** with a zone lost.
+- **Geo index primaries.** Assume a Redis node sustains 50,000 geo writes a second with headroom: **8 shards** carry 250,000 at **63%**. Memory is trivial: 1M drivers × about 200 B = 200 MB.
+- **Geo index replicas.** Radius searches are heavier; assume 10,000 a second per node: **8 replicas** carry 24,540 at **31%**.
+- **Trips database.** 3,240 writes/s on one Postgres primary, assumed good for 5,000: **65%**. Storage: 20M × 2 KB = 40 GB a day; keep 90 days hot (3.6 TB) and archive the rest.
+
+<Callout type="tip" title="What the numbers say">
+Writes outnumber reads ten to one, but 98% of writes are location updates that can be lost and replaced. The 3,240 trip writes a second are the ones that must be correct, and they fit on one strongly consistent primary. Two external quotas (maps and payments) are closer to their limits than any of our own machines.
+</Callout>
+
+## API design
+
+Drivers and riders keep one WebSocket (RFC 6455) to a realtime gateway for high-rate, low-value messages; everything that changes trip state is an ordinary HTTPS call with an idempotency key.
+
+Driver location, sent every 4 s over the socket:
+
+```json
+{ "type": "loc", "driverId": "d_4471", "seq": 918273, "ts": 1762280125123,
+  "lat": 12.97194, "lng": 77.59369, "heading": 84, "speedMps": 8.2, "accuracyM": 6, "tripId": null }
+```
+
+No acknowledgement: the next update supersedes a lost one. `seq` lets the server drop updates that arrive out of order.
+
+```http
+GET /v1/nearby?lat=12.9719&lng=77.5937&product=auto
+```
+
+```json
+{ "cars": [ { "id": "anon_8f2", "lat": 12.9731, "lng": 77.5912, "heading": 120 } ],
+  "etaToPickupS": 240, "surge": 1.3, "fareEstimate": { "min": 180, "max": 220, "currency": "INR", "quoteId": "q_77a" } }
+```
+
+Car IDs are anonymised per session so riders cannot track individual drivers.
+
+```http
+POST /v1/trips HTTP/1.1
+Idempotency-Key: 9f8e3a10-55c1-4c7a-8b0e-0d2f4a6b1c33
+Content-Type: application/json
+
+{ "quoteId": "q_77a", "pickup": { "lat": 12.9719, "lng": 77.5937 }, "dropoff": { "lat": 12.9352, "lng": 77.6245 },
+  "paymentMethodId": "pm_card_21" }
+```
+
+```http
+HTTP/1.1 202 Accepted
+
+{ "tripId": "t_5Hk2", "status": "matching" }
+```
+
+The rider then receives `trip_update` messages on the socket (`driver_assigned` with driver, car and ETA; later `arrived`, `started`, `completed`). A retried `POST` with the same key returns the same trip, never a second one.
+
+Driver actions (each idempotent, each guarded by the state machine):
+
+```http
+POST /v1/offers/{offerId}/accept   → 200 { "tripId": "t_5Hk2" }  or 409 { "error": "offer_expired" }
+POST /v1/offers/{offerId}/decline  → 204
+POST /v1/trips/{tripId}/arrived    → 200
+POST /v1/trips/{tripId}/start      → 200
+POST /v1/trips/{tripId}/complete   → 200 { "fare": 204, "currency": "INR" }
+POST /v1/trips/{tripId}/cancel     → 200 { "cancellationFee": 0 }
+```
+
+## Data model
+
+| Entity | Key | Fields | Store |
+|---|---|---|---|
+| Driver position | member `driver_id` in a per-city geo set | 52-bit geohash score; side hash: `status_hint`, `last_seen`, `seq`, `vehicle_type` | Redis geo index (in memory) |
+| `driver` | `driver_id` | `city_id`, `status` (offline, available, offered, on_trip), `offer_id`, `offer_expires_at`, `trip_id`, `version` | Postgres |
+| `trip` | `trip_id` | `rider_id`, `driver_id`, `city_id`, `status`, pickup, dropoff, `quote_id`, fare, timestamps, `version` | Postgres |
+| `offer` | `offer_id` | `trip_id`, `driver_id`, `expires_at`, `outcome` | Postgres |
+| `outbox` | `event_id` | `trip_id`, `type`, payload | Postgres (same transaction as `trip`) |
+| `payment` / `ledger_entry` | (`trip_id`, `kind`) unique | amount, PSP reference, state | Payments ledger (Postgres) |
+| Route points | `trip_id`, `ts` | lat, lng | Object storage (via Kafka) |
+
+**Two stores for two kinds of truth.** Positions live in **Redis**, in memory, rebuilt from the stream in seconds if lost; losing them costs 4 s of freshness. Assignment and trip state live in **Postgres** with a synchronous replica in another zone, because they need conditional updates in a transaction and must survive failover without forgetting an acknowledged write. The geo index keeps a `status_hint` so dispatch can skip busy drivers cheaply, but Postgres decides.
+
+**Why not one store?** Putting 250,000 position writes a second into Postgres would need dozens of shards to hold data we do not need to keep. Putting assignment in Redis gives fast compare-and-set via Lua scripts, but Redis replication is asynchronous, so a failover can lose an assignment that was already acknowledged, which then allows a second one.
+
+**Partitioning later.** Every trip and driver belongs to a city, and cities are independent markets, so `city_id` is the natural <Term slug="shard-key">shard key</Term> when one Postgres primary is no longer enough (see Scaling to 10×).
+
+## High-level design
+
+<Figure caption="FIG. 1 · RIDE SHARING · REFERENCE ARCHITECTURE">
+  <Diagram label="Riders and drivers connect through a load balancer to realtime WebSocket gateways and to trip-and-dispatch services in three zones. Gateways write each driver location to the geo index primaries and append it to a Kafka topic; route recorders and a surge job consume that topic. Dispatch searches the geo index replicas, gets surge from a pricing store and ETAs from the external maps provider, and assigns drivers with conditional updates in Postgres. Offers and trip updates reach phones through Redis pub/sub channels that the gateways subscribe to. Trip events leave Postgres through an outbox to Kafka, where payment workers charge through the external payment provider and record a double-entry ledger." chart={`flowchart LR
+    R[Riders] --> LB[Load balancer]
+    D[Drivers] --> LB
+    subgraph Region
+      LB --> GW[Realtime gateways x48 in 3 AZs]
+      LB --> TS[Trip and dispatch x27 in 3 AZs]
+      GW -->|GEOADD| GEOW[(Geo index primaries x8)]
+      GEOW -. replication .-> GEOR[(Geo index replicas x8)]
+      GW -.-> LOC[[Kafka: locations]]
+      GW <--> PS[[Redis pub/sub]]
+      TS -->|nearby search| GEOR
+      TS -->|conditional assign| PG[(Postgres: trips, drivers)]
+      TS -.->|offers, updates| PS
+      TS --> PR[(Pricing store)]
+      LOC -.-> RR[Route recorders]
+      LOC -.-> SJ[Surge job]
+      SJ --> PR
+      RR --> OS[(Route archive)]
+      PG -.->|outbox CDC| TE[[Kafka: trip events]]
+      TE -.-> PW[Payment workers]
+      PW --> LED[(Payments ledger)]
+    end
+    TS --> MAPS[Maps provider]
+    PW --> PSP[Payment provider]`} />
+</Figure>
+
+**Location update.** The driver's update reaches the gateway holding their socket. The gateway drops it if `seq` is older than the last seen, then (1) writes the position to the geo index primary for the driver's city with `GEOADD` and updates `last_seen`, (2) if the driver is on a trip, publishes the position to the channel `trip:{tripId}`, which the rider's gateway subscribes to, and (3) appends the update to Kafka for route recording and surge. Steps 2 and 3 are fire-and-forget; only step 1 is on the update's path.
+
+**Nearby cars.** Dispatch runs a radius search on a geo index replica, drops drivers whose `last_seen` is older than 15 s, adds surge for the rider's cell from the pricing store, and returns anonymised positions. Replicas lag primaries by milliseconds, far less than the 4 s between updates.
+
+**Request a ride.** Dispatch creates the trip (`matching`), authorises the card with the payment provider (idempotency key derived from `trip_id`), searches candidates, asks the maps provider for an ETA matrix from the top 10 candidates to the pickup, and offers the trip to the best driver (deep dive 3). On acceptance it assigns with a conditional update and pushes `driver_assigned` to both phones.
+
+**During the trip.** Positions flow driver → gateway → pub/sub → rider's gateway → rider, about 4 s apart; the app animates between them. Route recorders store the trip's points for the fare and receipt.
+
+**Completion and payment.** `complete` moves the trip to `completed` and writes a `trip_completed` row to the outbox in the same transaction. <Term slug="change-data-capture">Change data capture</Term> publishes it to Kafka; payment workers capture the charge and write ledger entries (deep dive 4).
+
+In Run mode, with one zone lost at the evening peak, p99 is about 49 ms for location updates, 180 ms for nearby searches and 223 ms for trip writes, inside the 300 ms the challenge allows.
+
+## Deep dives
+
+### How do you ingest 250,000 location updates a second and keep a queryable index of where every available driver is?
+
+**Transport.** HTTP requests every 4 s from a million phones would each pay for headers, and on a cold connection a TLS handshake. A long-lived <Term slug="websocket">WebSocket</Term> carries each update as a roughly 100-byte frame, and the same socket carries offers back to the driver. The cost is statefulness: each gateway holds about 54,000 connections, so losing one disconnects them all (see the timeline below). Gateways are <Term slug="stateless-server">stateless</Term> apart from the sockets themselves; any gateway can serve any driver.
+
+**Update semantics: latest wins.** A position is useful only until the next one arrives. So the write path has no acknowledgement and no retries, uses `seq` to drop reordered updates, and writes to an in-memory index. Durability for the *history* comes from Kafka, which feeds route recording and surge, not from the index.
+
+| Option for the live index | Write cost | Nearby query | Verdict |
+|---|---|---|---|
+| Postgres row per driver, B-tree on (lat, lng) | 250,000 updates/s of row versions and index churn | Range scan on latitude, then filter | Needs many shards for data we do not keep |
+| PostGIS with a spatial index | Same write problem | Excellent | Right for historical analysis, not for this firehose |
+| Redis geo set per city (geohash scores in a sorted set) | `GEOADD`, O(log N) in memory | `GEOSEARCH` by radius | **Chosen** |
+| Custom in-process grid in the dispatch service | Cheapest | Fastest | Strong at very large scale; needs its own sharding and failover |
+
+**Sharding.** One geo set per city, cities spread over 8 primaries. A big city with 100,000 online drivers sends 25,000 updates a second to one set: about half of one node. Writes go to primaries; dispatch reads replicas, so a burst of searches never slows ingestion.
+
+**Stale drivers.** A driver whose app crashes stops sending but stays in the set. Every query filters on `last_seen` older than 15 s, and a sweeper removes members not seen for 60 s. Going offline deliberately removes the member at once.
+
+**Failure timeline: a zone is lost at peak.**
+- t = 0: the zone fails. Its 16 gateways held about a third of the 2.6M sockets. Those drivers' updates stop; riders on those gateways stop receiving positions, and their apps keep animating the last known heading.
+- t ≈ 1–10 s: phones notice the closed sockets and reconnect with exponential backoff and jitter (first retry at a random 0–5 s), so about 870,000 reconnects spread over roughly 30 s, about 29,000 a second, instead of all at once. Each reconnect re-authenticates with a short-lived token, no database call.
+- t = 0–15 s: those drivers' positions age. Dispatch ignores drivers not seen for 15 s, so for up to about 30 s every city sees fewer available drivers and matching takes slightly longer; no trip is lost, because trip state is in Postgres, which runs across zones.
+- t ≈ 30–40 s: nearly all drivers are reconnected to the 32 surviving gateways (78% busy) and updating again.
+- Dispatch instances in the lost zone drop their in-flight requests; riders' apps retry `POST /v1/trips` with the same idempotency key and get the same trip.
+- Detection: gateway connection counts and "seconds since last update" per city, both alerting within a minute.
+
+### Geohash, quadtree or H3: how do you find the nearest available drivers quickly, and where does surge pricing fit?
+
+All three turn two-dimensional proximity into something an index can look up.
+
+**Geohash**, which you built in the [geohash code lab](/simulators/code-labs/geohash), interleaves the bits of longitude and latitude and encodes them in base32, so nearby points usually share a prefix. Six characters give cells of about 1.2 km × 0.6 km, five characters about 4.9 km × 4.9 km. Two traps you met in the lab apply directly: points a few metres apart across a cell edge can share no prefix, so a search always covers the cell **plus its 8 neighbours**; and cells are rectangles whose east-west width shrinks away from the equator. Redis stores each member's 52-bit interleaved geohash as its sorted-set score, and `GEOSEARCH` does the lab's algorithm for you: choose a precision from the radius, scan the cell and its neighbours as score ranges, then filter by true distance.
+
+**Quadtree.** Split a square into four whenever it holds more than, say, 100 drivers. Dense downtowns get small cells and empty suburbs big ones, so every leaf holds a similar number of drivers. It suits a custom in-memory index; the cost is rebalancing as drivers move, and a structure that is harder to shard across machines than a key prefix.
+
+**H3**, open-sourced by Uber in 2018, covers the globe with hexagons at 16 resolutions. A hexagon's six neighbours are all the same distance from its centre, unlike a square's diagonal neighbours, which makes hexagons better for **aggregating** supply and demand over areas and smoothing across neighbours. Google's S2 library (cells on a cube projected onto the sphere, ordered along a Hilbert curve) is the other widely used option.
+
+**Decision.** Geohash through Redis for the live nearest-driver query, because it is a built-in, well-understood primitive and our density fits it; H3 for surge and analytics, because area aggregation is what hexagons are good at.
+
+**Search procedure.** Start with a 1.5 km radius, take the 10 nearest drivers with a matching vehicle type and a fresh `last_seen`; if fewer than 3, widen to 3 km, then 5 km. Then **rank by road ETA, not straight-line distance**: the maps provider's matrix call returns ETAs from 10 drivers to the pickup in one request. A driver 300 m away on the far side of a divided highway may be 8 minutes out.
+
+**Surge pricing (awareness).** A stream job reads the location topic (supply: available drivers per H3 cell) and trip events (demand: requests per cell), computes a multiplier per cell every minute, smooths it with neighbouring cells so prices do not jump at an edge, and writes it to the pricing store. Dispatch reads it when quoting. The quote ID locks the price the rider saw, so a surge change between quote and request does not change their fare.
+
+### How does matching work within 10 seconds, and how do you guarantee a driver is never assigned two trips?
+
+Two dispatch instances handling two nearby riders can both pick the same best driver. "Read the driver's status, then write the assignment" lets both succeed. Correctness comes from **conditional updates** on the `driver` row in Postgres, a <Term slug="compare-and-set">compare-and-set</Term>:
+
+```sql
+-- 1. Reserve the driver before offering (one dispatcher wins).
+UPDATE driver
+   SET status = 'offered', offer_id = $offer, offer_expires_at = now() + interval '5 seconds', version = version + 1
+ WHERE driver_id = $driver AND status = 'available';
+-- 0 rows updated → someone else reserved this driver; try the next candidate.
+
+-- 2. On accept, in one transaction:
+UPDATE driver SET status = 'on_trip', trip_id = $trip, offer_id = NULL, version = version + 1
+ WHERE driver_id = $driver AND status = 'offered' AND offer_id = $offer AND offer_expires_at > now();
+UPDATE trip SET status = 'driver_assigned', driver_id = $driver, version = version + 1
+ WHERE trip_id = $trip AND status = 'matching';
+-- Either statement updating 0 rows → roll back and return 409 offer_expired.
+```
+
+The reservation means a driver receives at most one offer at a time; the accept transaction means a trip gets one driver and a driver one trip. A late accept after the offer expired fails cleanly, and a sweeper returns expired reservations to `available`. Because Postgres replicates **synchronously** to a replica in another zone, a committed assignment survives a failover.
+
+**Offer strategy.** One driver at a time with a **5-second** window. Two sequential offers fit within the 10 s target. Assuming 80% of offers are accepted, 1 − 0.2² = **96%** of requests match within two offers; most declines are explicit and fast. After two misses we offer to the next two drivers in parallel; the accept transaction guarantees only one wins, and the other sees "trip taken", which drivers dislike, so it is the fallback, not the default.
+
+| Option | Match speed | Driver experience | Global quality |
+|---|---|---|---|
+| Sequential offers, nearest ETA first | About 3 s typical, slow on declines | Good | Greedy |
+| Broadcast to several drivers, first accept wins | Fastest | Poor: many "trip taken" | Greedy |
+| Batch matching every 1–2 s per area | Adds up to 2 s | Good | Better: optimises all riders and drivers in the batch together |
+
+Batch matching wins in dense markets because it avoids giving the nearest driver to the first rider when a second rider is right next to that driver; it costs a small fixed delay and a more complex solver. It is a natural next step once the greedy dispatcher works.
+
+<Misconception wrong="A distributed lock per driver (for example a Redis lock) is how you prevent double assignment." right="A lock without fencing can be held by two processes after a pause or failover. The guarantee has to come from the store that holds the assignment: a conditional update that checks the current status and version in the same write." />
+
+### What does the trip state machine look like, and how do you charge each trip exactly once?
+
+```text
+requested → matching → driver_assigned → driver_arrived → in_progress → completed
+               ↓              ↓                ↓
+          no_driver       cancelled         cancelled
+```
+
+Every transition is a conditional update `WHERE trip_id = $t AND status = $expected`. A delayed `arrived` retry after `start` matches zero rows and is ignored, so messages arriving late or twice cannot move a trip backwards. Each transition also writes an outbox row in the same transaction: the <Term slug="transactional-outbox">transactional outbox</Term>, which guarantees that every state change produces exactly one event without a dual write.
+
+**Charging exactly once** is an end-to-end property built from at-least-once parts:
+1. **Authorise at request.** Dispatch places a hold for the quoted maximum, with idempotency key `auth:{trip_id}`.
+2. **Event delivery is at-least-once.** CDC publishes `trip_completed`; a payment worker may see it twice after a crash.
+3. **The ledger deduplicates.** The worker inserts a `payment(trip_id, kind = 'capture', state = 'pending')` row with a unique key; a duplicate event finds the row and resumes it instead of starting a new charge.
+4. **The provider deduplicates.** The capture call carries idempotency key `capture:{trip_id}`. Payment providers such as Stripe document that retrying with the same key returns the original result rather than charging again. On a timeout, the worker retries with the same key, with backoff, until it gets a definite answer.
+5. **The ledger records both sides.** On success it writes balanced double-entry rows (rider pays, driver earns, platform fee) in one transaction.
+6. **Reconciliation.** A daily job compares the ledger with the provider's settlement report and flags any difference.
+
+No single step is exactly-once; the combination of an idempotent consumer, idempotency keys at the provider and reconciliation makes the *effect* exactly once (<Term slug="effectively-once">effectively once</Term>).
+
+**Failed captures.** A declined card after the ride moves the payment to `failed`; the trip stays `completed`. The rider's next request is blocked until they update the card. Driver earnings do not depend on the capture succeeding.
+
+## Failure modes & mitigations
+
+| Failure | Detection | Effect | Mitigation |
+|---|---|---|---|
+| Zone lost | Zone alarms, connection counts | A third of sockets drop; fewer visible drivers for about 30 s | 32 gateways at 78%; jittered reconnects; trip state in Postgres across zones |
+| Geo index primary fails | Redis failover alarms | That shard's cities stop updating for seconds | Replica promotion; index rebuilt within one 4 s update cycle anyway |
+| Postgres primary fails | Health checks, replication monitor | Trip writes fail for about 30 s | Synchronous replica promoted; clients retry with idempotency keys |
+| Maps provider slow or rate-limited | Latency, 429 responses | Slower or missing ETAs | Cache ETAs per H3 cell pair for 60 s; fall back to straight-line distance × a city road factor for ranking |
+| Payment provider down | Error rate | Captures delayed | Queue retries with the same key; trips complete normally; capture later |
+| Offer lost (driver phone offline) | Offer expiry | That offer wastes 5 s | Reservation expires; next candidate |
+| GPS jumps or spoofing | Impossible speed between updates | Wrong positions, bad fares | Drop implausible points; fares from snapped route, not raw points |
+| Kafka unavailable | Producer errors | Route recording and surge lag | Gateways buffer briefly, then drop; live index unaffected |
+| Reconnect storm | Connection rate | Gateway CPU spikes | Jittered backoff, connection rate limits per gateway |
+
+## Scaling to 10×
+
+At 200M trips a day: 2.5M location updates a second, 4,630 trip requests a second and 32,400 trip writes a second at peak.
+
+1. **The maps quota breaks first**: about 132,000 calls a second against a 20,000 limit. Run our own routing engine on open map data (OSRM is an open-source example) for dispatch ETAs and refreshes, keep the provider for traffic-aware quotes, and cache ETAs by H3 cell pair and time bucket.
+2. **The payment provider** next: 9,260 calls a second against 2,000. Negotiate a higher limit, add a second provider, and stop authorising small fares up front where risk allows.
+3. **Postgres** at 32,400 writes a second: shard by `city_id`. Trips and drivers of one city stay on one shard, so the assignment transaction stays single-shard. A huge city can be split by zone of the city.
+4. **The geo index**: a big city's single set would take 250,000 writes a second, beyond one node. Split each city's set by geohash prefix (each sub-set covers a few cells) and search the sub-sets that intersect the query's neighbour cells.
+5. **Gateways** grow to about 480 instances and 26M connections; route by driver ID with consistent hashing so reconnects land predictably.
+6. **Multi-region.** Cities map to a home region, which makes the whole stack per-region with little cross-region traffic.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| WebSocket gateways for location and pushes | HTTP polling | One small frame per update; the same socket carries offers |
+| In-memory Redis geo index, latest-wins | Postgres row per update | Positions are disposable; 250,000 writes/s on 8 nodes |
+| Postgres with synchronous replica for assignment | Redis Lua compare-and-set | Async replication can forget an acknowledged assignment |
+| Read replicas for searches, primaries for writes | One pool | Search bursts cannot slow ingestion |
+| Geohash for nearest search, H3 for surge | One scheme for both | Built-in primitive for search; hexagons for area aggregation |
+| Rank by road ETA | Straight-line distance | Rivers, one-way streets and highways |
+| Sequential 5 s offers with reservation | Broadcast offers | Fewer "trip taken" messages; two offers fit in 10 s |
+| Outbox + idempotent ledger + provider keys | Charge directly from the API | Exactly-once effect without distributed transactions |
+| Shard by city later | Shard by trip ID | Keeps the assignment transaction on one shard |
+
+## What interviewers look for
+
+- **Separating the firehose from the transaction**: disposable positions in memory, assignments in a strongly consistent store, with the numbers (250,000 vs 3,240 writes a second) that justify it.
+- **Real geospatial understanding**: cell plus 8 neighbours, precision from radius, quadtree and H3 trade-offs, ranking by ETA. Candidates who built the geohash lab should be able to explain the edge problem from first principles.
+- **A provable no-double-assignment argument**: conditional updates, reservation with expiry, synchronous replication, and why a lock alone is not enough.
+- **Exactly-once charging as a chain**: outbox, idempotent consumer, provider idempotency keys, reconciliation.
+- **External limits**: noticing that the maps and payment quotas are the nearest walls.
+- **Failure thinking**: a zone-loss timeline with reconnect storms, stale drivers and idempotent retries.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "Two riders at the same corner request at the same moment and one driver is nearby. Walk me through exactly what happens.",
+  "A driver's phone loses signal for 40 seconds mid-trip. What do the rider, the fare and dispatch see?",
+  "The maps provider starts returning 429s at the evening peak. What degrades and how?",
+  "How would you add shared rides, where one driver carries two trips at once?",
+  "The payment provider timed out on a capture. How do you know whether the rider was charged?"
+]} />

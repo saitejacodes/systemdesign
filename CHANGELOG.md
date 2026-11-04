@@ -184,3 +184,53 @@
   - Open /studio, then New from template → URL shortener, add a Load Balancer and two Services from the palette and connect them.
   - Set instances to 0 to see the validation error, then use ⌘Z / ⇧⌘Z, reload, and export a PNG.
   - `pnpm test` (725 tests); `pnpm test:e2e` (studio.spec plus the /studio routes).
+
+## Prompt 18 · Design Studio: Run mode
+- **Run** in the editor turns the drawing into a traffic model (`lib/studio/sim`, pure and seeded):
+  - Traffic enters at the clients and splits across load balancers by algorithm and capacity.
+  - Caches and CDNs answer their hit rate and send misses downstream; reads can go to replicas.
+  - Async edges hand off to queues that workers drain, and queue depth grows when they can't keep up.
+  - Utilization sets latency, and load above ρ 0.95 is dropped as errors. p99 is approximated per request type.
+- **On the canvas:** edges thicken with QPS, and nodes show OK / HOT / OVERLOADED / DOWN as a glyph and a word.
+- **Traffic panel:** total QPS, read:write ratio, peak multiplier, and up to 3 request types.
+- **Analysis:** bottlenecks (ρ > 0.8), single points of failure (cut vertices of client → target reachability), an availability estimate and monthly cost.
+- **Faults:** kill or slow any node, Traffic ×10, Lose an AZ, Cache flush (cold, then recovering over 60 s).
+- **Challenges:** three generic ones for every design (10k QPS under 200 ms, survive an AZ, zero SPOFs), plus each case study's own run challenge.
+- **This session's fixes:**
+  - Availability no longer double-counts a component shared by several paths: it is conditioned exactly.
+  - Queues have a replication factor, so a replicated Kafka topic is not a SPOF.
+- **Verify:** /studio → New from template → Three-tier web app → Run → Play, kill "API 1", then Faults → Traffic ×10. Run `pnpm test` (model tests: utilization, cache split, SPOF on sample graphs, availability, queue replication) and `pnpm test:e2e` (studio-run.spec).
+
+## Prompt 19 · Interview Mode
+- **Start:** `/interview/<case>` opens with the interviewer's prompt, Mock or Practice, 30/45/60 min, and hints on or off.
+- **Session:**
+  - A large mono countdown. Pause is available in Practice only.
+  - The 7 framework step panels (Requirements, Estimation, API, Data Model, High-Level Design, Deep Dives, Wrap-up), each with its suggested time and an over-time nudge.
+  - The case's Design Studio canvas, with Run mode and the Notes tab.
+- **Step panels:**
+  - **Requirements:** click a clarifying question to reveal the interviewer's answer.
+  - **Estimation:** a mini calculator.
+  - **API:** an endpoint editor.
+  - **Data model:** an entity editor, plus the DB choice and its justification.
+  - **Deep dives:** questions revealed one at a time across the step's window. Practice can ask for the next one early.
+  - **Hints:** up to 2 per step, derived from the case. Each one costs a point in Mock.
+- **Self-review:**
+  - The case rubric (0/1/2 per criterion, grouped by step).
+  - Your design beside the reference.
+  - Both designs run at the case's peak, compared metric by metric, with the run challenge for each.
+  - The reference walkthrough, and the common-mistakes checklist.
+- **Saving:** the attempt is saved as an InterviewAttempt. The dashboard shows each case's score trend, and a reload mid-interview resumes the attempt.
+- **Verify:** /interview/url-shortener → Practice → Start, reveal a clarifying question, use a hint, then Submit, score every criterion and Save; /dashboard shows the trend. Run `pnpm test:e2e` (interview.spec on the fixture case).
+
+## Prompt 20abc · Case studies
+- **19 complete case studies**, about 92,000 words of worked solutions with 239 rubric criteria in all:
+  - **The prompt's 15:** url-shortener, rate-limiter-service, news-feed, chat-app, notification-system, typeahead, video-streaming, ride-sharing, file-sync, payment-system, ticket-booking, job-scheduler, web-crawler, metrics-monitoring, rag-docs-assistant.
+  - **The user's 4 additions:** api-gateway, search-engine, instagram (titled "Photo-sharing app"), food-delivery.
+- **Each case:**
+  - **Solution:** the 10 sections in order, with every number derived, an architecture diagram, one deep dive per question, failure timelines, and trade-off tables. It cites primary sources (papers, RFCs, engineering blogs).
+  - **Reference design:** sized from the estimation, and it passes the case's run challenge with zero SPOFs.
+  - **Rubric:** 10–14 criteria covering all 7 steps.
+  - **Clarifying Q&As, deep-dive questions and common mistakes** in meta.json.
+- **Pages:** `/case-studies` lists them. `/case-studies/<id>` shows the prompt behind a "try it first" fold, the solution, the reference design, traffic, run challenge, related lessons and common mistakes, with links to Interview Mode and the Studio template.
+- **Links:** 55 lessons now link to the cases that use them, the 4 added cases are in week 16 of the plan, and 13 new glossary terms were added (658 total).
+- **Verify:** open /case-studies and any case. Run `pnpm test` (`case-studies.test.ts`: files, section order, word count, rubric coverage, and every reference design passing its challenge) and `pnpm test:e2e` (every case page and interview page in both themes).

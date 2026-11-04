@@ -14,6 +14,6 @@
     { "id": "coordination-locks", "title": "ZooKeeper and etcd locks", "depth": "tradeoffs" }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["job-scheduler", "ticket-booking"],
   "prerequisites": ["p2-locking", "p3-redis", "p4-consensus", "p4-time-ordering"]
 }

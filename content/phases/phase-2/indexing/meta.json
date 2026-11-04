@@ -47,9 +47,7 @@
     "index-visualizer",
     "sql-sandbox"
   ],
-  "practiceCaseStudyIds": [
-    "url-shortener"
-  ],
+  "practiceCaseStudyIds": ["url-shortener", "ride-sharing", "search-engine"],
   "prerequisites": [
     "p2-data-modeling"
   ]

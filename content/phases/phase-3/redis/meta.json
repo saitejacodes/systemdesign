@@ -41,9 +41,7 @@
   "simulatorIds": [
     "redis-playground"
   ],
-  "practiceCaseStudyIds": [
-    "news-feed"
-  ],
+  "practiceCaseStudyIds": ["news-feed", "rate-limiter-service", "instagram"],
   "prerequisites": [
     "p3-cache-strategies",
     "p2-replication",

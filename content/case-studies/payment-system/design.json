@@ -1,0 +1,513 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "buyers",
+      "kind": "client",
+      "x": 0,
+      "y": 128,
+      "label": "Buyers at checkout",
+      "props": {
+        "platform": "both",
+        "users": 50000000
+      }
+    },
+    {
+      "id": "sellers",
+      "kind": "client",
+      "x": 0,
+      "y": 512,
+      "label": "Sellers",
+      "props": {
+        "platform": "web",
+        "users": 1000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 0,
+      "label": "DNS",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "w": 1456,
+      "h": 832,
+      "label": "Region (primary)",
+      "props": {
+        "scope": "region"
+      }
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 352,
+      "label": "Load balancer (TLS)",
+      "props": {
+        "layer": "L7",
+        "algorithm": "round-robin",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "w": 320,
+      "h": 224,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "api-a",
+      "kind": "service",
+      "x": 48,
+      "y": 72,
+      "label": "Payments API AZ-a (x16)",
+      "props": {
+        "name": "payments-api",
+        "instances": 16,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 304,
+      "w": 320,
+      "h": 224,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "api-b",
+      "kind": "service",
+      "x": 48,
+      "y": 72,
+      "label": "Payments API AZ-b (x16)",
+      "props": {
+        "name": "payments-api",
+        "instances": 16,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 576,
+      "w": 320,
+      "h": 224,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "api-c",
+      "kind": "service",
+      "x": 48,
+      "y": 72,
+      "label": "Payments API AZ-c (x16)",
+      "props": {
+        "name": "payments-api",
+        "instances": 16,
+        "capacityQps": 500,
+        "latencyMs": 20,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "db",
+      "kind": "sql-db",
+      "x": 688,
+      "y": 96,
+      "label": "Payments + ledger DB (Postgres, sync replica + 1 async)",
+      "props": {
+        "replicas": 2,
+        "capacityQps": 8000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "relay",
+      "kind": "worker",
+      "x": 688,
+      "y": 352,
+      "label": "Outbox relay (x2)",
+      "props": {
+        "instances": 2,
+        "processingMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "events",
+      "kind": "queue",
+      "x": 944,
+      "y": 352,
+      "label": "Kafka: payment events (key = payment id)",
+      "props": {
+        "partitions": 32,
+        "retentionH": 168,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "capture",
+      "kind": "worker",
+      "x": 1200,
+      "y": 352,
+      "label": "Capture, refund & status-check workers (x6)",
+      "props": {
+        "instances": 6,
+        "processingMs": 10,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "recon",
+      "kind": "worker",
+      "x": 1200,
+      "y": 96,
+      "label": "Reconciliation jobs (daily + hourly)",
+      "props": {
+        "instances": 2,
+        "processingMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "reports",
+      "kind": "object-storage",
+      "x": 944,
+      "y": 96,
+      "label": "Settlement reports + ledger archive",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "payout",
+      "kind": "worker",
+      "x": 1200,
+      "y": 608,
+      "label": "Payout workers (x2)",
+      "props": {
+        "instances": 2,
+        "processingMs": 20,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 688,
+      "y": 608,
+      "label": "Monitoring (unknown-outcome count, recon breaks)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "psp-a",
+      "kind": "external-api",
+      "x": 2000,
+      "y": 96,
+      "label": "PSP A (cards, ~half of traffic)",
+      "props": {
+        "latencyMs": 800,
+        "rateLimitQps": 2000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "psp-b",
+      "kind": "external-api",
+      "x": 2000,
+      "y": 352,
+      "label": "PSP B (cards, ~half of traffic)",
+      "props": {
+        "latencyMs": 800,
+        "rateLimitQps": 2000,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "bank",
+      "kind": "external-api",
+      "x": 2000,
+      "y": 608,
+      "label": "Bank payouts API",
+      "props": {
+        "latencyMs": 2000,
+        "rateLimitQps": 50,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-buyers-dns",
+      "source": "buyers",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-sellers-dns",
+      "source": "sellers",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-buyers-lb",
+      "source": "buyers",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "checkout, status"
+    },
+    {
+      "id": "e-sellers-lb",
+      "source": "sellers",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "balance, payouts"
+    },
+    {
+      "id": "e-lb-api-a",
+      "source": "lb",
+      "target": "api-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-a-db",
+      "source": "api-a",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "intent / outcome + ledger tx"
+    },
+    {
+      "id": "e-api-a-psp-a",
+      "source": "api-a",
+      "target": "psp-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "authorize"
+    },
+    {
+      "id": "e-api-a-psp-b",
+      "source": "api-a",
+      "target": "psp-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "authorize"
+    },
+    {
+      "id": "e-lb-api-b",
+      "source": "lb",
+      "target": "api-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-b-db",
+      "source": "api-b",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "intent / outcome + ledger tx"
+    },
+    {
+      "id": "e-api-b-psp-a",
+      "source": "api-b",
+      "target": "psp-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "authorize"
+    },
+    {
+      "id": "e-api-b-psp-b",
+      "source": "api-b",
+      "target": "psp-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "authorize"
+    },
+    {
+      "id": "e-lb-api-c",
+      "source": "lb",
+      "target": "api-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-c-db",
+      "source": "api-c",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "intent / outcome + ledger tx"
+    },
+    {
+      "id": "e-api-c-psp-a",
+      "source": "api-c",
+      "target": "psp-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "authorize"
+    },
+    {
+      "id": "e-api-c-psp-b",
+      "source": "api-c",
+      "target": "psp-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "authorize"
+    },
+    {
+      "id": "e-relay-db",
+      "source": "relay",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "poll outbox"
+    },
+    {
+      "id": "e-relay-events",
+      "source": "relay",
+      "target": "events",
+      "kind": "async",
+      "direction": "forward",
+      "label": "publish"
+    },
+    {
+      "id": "e-events-capture",
+      "source": "events",
+      "target": "capture",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consume"
+    },
+    {
+      "id": "e-capture-psp-a",
+      "source": "capture",
+      "target": "psp-a",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "capture / refund / status"
+    },
+    {
+      "id": "e-capture-psp-b",
+      "source": "capture",
+      "target": "psp-b",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "capture / refund / status"
+    },
+    {
+      "id": "e-capture-db",
+      "source": "capture",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "record result"
+    },
+    {
+      "id": "e-recon-reports",
+      "source": "recon",
+      "target": "reports",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "settlement files"
+    },
+    {
+      "id": "e-recon-db",
+      "source": "recon",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "match ledger"
+    },
+    {
+      "id": "e-payout-db",
+      "source": "payout",
+      "target": "db",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "payable balances"
+    },
+    {
+      "id": "e-payout-bank",
+      "source": "payout",
+      "target": "bank",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "transfers"
+    }
+  ]
+}

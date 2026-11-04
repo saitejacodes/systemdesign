@@ -1,0 +1,69 @@
+{
+  "criteria": [
+    { "id": "scope", "step": "Requirements", "title": "Scope: post, follow, feed, engage",
+      "levels": {
+        "0": "Lists 'upload photos and see a feed' only, or designs stories, video and messaging unasked.",
+        "1": "Covers posting, following, the feed and likes, but never pins down what 'never lose a photo' means or puts ranking in scope.",
+        "2": "Covers posting with captions, follow/unfollow, a ranked paginated feed, likes and comments with counts and 'did I like this', the profile grid; puts ranking, video, stories and DMs out of scope; defines the durability promise precisely." } },
+    { "id": "nfr", "step": "Requirements", "title": "Non-functional targets",
+      "levels": {
+        "0": "No latency, durability or freshness targets.",
+        "1": "States feed latency and availability, but not post visibility time, counter lag or the difference between read and write availability.",
+        "2": "Feed p99 under 500 ms on device with a server budget, durability of acknowledged posts, seconds of visibility (a minute for huge accounts), counts that lag but never drift, higher availability for reads than for posting." } },
+    { "id": "traffic-math", "step": "Estimation", "title": "Request rates derived step by step",
+      "levels": {
+        "0": "No numbers, or numbers without derivation.",
+        "1": "Derives uploads per second or feed loads, but not image requests and bandwidth, or no peak.",
+        "2": "1,157 uploads/s (2,315 peak); 25B image views/day = 289,352/s and 463 Gbps at peak; 28,935 feed loads/s; 28,935 likes/s; and concludes images dominate traffic while the API is about 116,000 requests/s at peak." } },
+    { "id": "storage-math", "step": "Estimation", "title": "Storage, cache and fan-out sizing",
+      "levels": {
+        "0": "No storage or cache estimate.",
+        "1": "Computes daily photo storage, but not variants, the timeline cache or fan-out writes.",
+        "2": "200 TB/day of originals plus 28 TB of variants (83 PB/year, 88% originals), a timeline cache of about 1.2 TB derived from IDs per active user, fan-out of about 87,000 inserts/s, and store node counts derived from bytes and a stated per-node throughput." } },
+    { "id": "api", "step": "API", "title": "API contract",
+      "levels": {
+        "0": "A single upload endpoint that takes the photo bytes and a 'get feed' endpoint.",
+        "1": "Presigned upload and create-post endpoints, but no idempotency, offset pagination, or likes as non-idempotent POSTs.",
+        "2": "Upload → presigned PUT → create post with idempotency key and 201/202; cursor-paginated feed with counts and viewerHasLiked; likes as idempotent PUT/DELETE on likes/me; comments and follows with cursors." } },
+    { "id": "data-model", "step": "Data Model", "title": "Entities, keys and store choice",
+      "levels": {
+        "0": "One 'posts' table with a likes counter column and images as blobs.",
+        "1": "Separates bytes from metadata and has like rows, but keys are not designed for access patterns or the store choice is generic.",
+        "2": "Posts by ID and author, like rows keyed (post, bucket, user), comments by post, followers/following both directions, a separate counters table, time-sortable IDs, timelines as Redis-only derived data, and separate clusters justified by different hot spots." } },
+    { "id": "hld", "step": "High-Level Design", "title": "Architecture and request walkthroughs",
+      "levels": {
+        "0": "Boxes with no walkthrough, or images served by the API.",
+        "1": "Walks the feed or the upload, but not both, or images do not go through a CDN.",
+        "2": "Walks post (presigned PUT, resize on object-created, manifest check, post row, CDC to fan-out), feed (timeline, read-time merge, ranking, hydration, images from the CDN) and like (insert-if-absent, CDC to counters), over zone-redundant API instances." } },
+    { "id": "upload-pipeline", "step": "Deep Dives", "title": "Upload, resizing and durability",
+      "levels": {
+        "0": "Resizes synchronously in the API or acknowledges before the photo is stored.",
+        "1": "Async resizing with variants, but no commit marker, no idempotent tasks, or no clear durability point.",
+        "2": "Presigned upload, resizing triggered by the upload so it overlaps caption entry, manifest written last as commit marker, idempotent tasks and a DLQ, and a chain of rules (phone keeps copy until 201, durable PUT, quorum post write, cross-region copy) for never losing a photo." } },
+    { "id": "delivery", "step": "Deep Dives", "title": "Variants, CDN and storage tiers",
+      "levels": {
+        "0": "Serves originals, or 'add a CDN' with no reasoning.",
+        "1": "Has variants and a CDN, but arbitrary sizes, no cache policy or no tiering.",
+        "2": "A small fixed set of sizes for cacheability, WebP (AVIF where popular), immutable URLs with long max-age, cache keys and origin shield with origin load derived, and moving originals to a cheaper tier." } },
+    { "id": "feed-fanout", "step": "Deep Dives", "title": "Feed fan-out under skew",
+      "levels": {
+        "0": "Pushes every post to every follower, or pulls from every followee on every load.",
+        "1": "Names the hybrid model with a celebrity threshold, but no handling of inactive followers, large fan-outs or rebuilds.",
+        "2": "Hybrid with a stated threshold, push only to active followers, timeline rebuild for returning users, splitting large fan-outs, IDs-only timelines, lazy deletes, cursor pagination; references the news-feed design rather than repeating it." } },
+    { "id": "counters-hot", "step": "Deep Dives", "title": "Counters and celebrity hot keys",
+      "levels": {
+        "0": "A counter column incremented per like, with no plan for a celebrity post.",
+        "1": "Batches counts or caches hot posts, but likes can double count or the like partition becomes a hot spot.",
+        "2": "Like rows as truth with insert-if-absent, counts from the change stream batched per post with idempotent flushes and a recount job; in-process caching of hot posts, bucketed like partitions, CDN coalescing, and a failure timeline for the shard holding the hottest key." } },
+    { "id": "failures-scale", "step": "Wrap-up", "title": "Failure modes and 10×",
+      "levels": {
+        "0": "No failure discussion beyond 'replicate everything'.",
+        "1": "Covers server and zone loss but not a cold cache, resize backlog or what breaks first at 10×.",
+        "2": "Zone loss with N+1 sizing, a cold cache with the store sized for full load, resize backlog, fan-out lag, aggregator replay; at 10× names image egress and storage growth first and adjusts the fan-out threshold." } },
+    { "id": "tradeoffs", "step": "Wrap-up", "title": "Trade-offs stated as decisions",
+      "levels": {
+        "0": "No trade-offs named.",
+        "1": "Generic trade-offs not tied to this design.",
+        "2": "Each key choice (direct upload, resize trigger, variant set, tiering, hybrid fan-out, Redis-only timelines, CDC counters, bucketed likes) comes with the alternative and why it lost here." } }
+  ]
+}

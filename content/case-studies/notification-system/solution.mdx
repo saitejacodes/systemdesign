@@ -1,0 +1,333 @@
+## Requirements
+
+A notification service is a shared platform: dozens of product teams call it, and it owns the hard parts they should not each rebuild (preferences, templates, provider integrations, retries, deduplication, throttling). The interviewer's real question is whether you can keep **urgent messages fast while a bulk campaign floods the pipe**, and whether you can say precisely what "never send twice" can and cannot mean when the last hop is a third party you do not control.
+
+### Functional
+
+1. **Send** a notification to one user (transactional: password reset, order shipped, one-time code) through one or more channels: mobile push, email, SMS.
+2. **Campaigns**: send one message to a segment of users (up to all 200M), optionally scheduled, with a throttle.
+3. **Templates**: product teams reference a versioned, localised template plus variables; the service renders per channel and locale.
+4. **Preferences**: per user and per category (security, orders, marketing, social), per channel opt-in; global unsubscribe; quiet hours in the user's time zone.
+5. **Device registry**: apps register and refresh push tokens; dead tokens are removed.
+6. **Status**: callers can ask what happened to a notification (accepted, suppressed, sent, delivered, failed), and delivery receipts and bounces from providers are recorded.
+
+### Non-functional
+
+| Property | Target | Why |
+|---|---|---|
+| Throughput | 1B notifications/day, 5× bursts | Given. Campaigns are bursty by nature. |
+| Transactional latency | Accepted in under 200 ms p99; handed to the provider within 5 s p99, even during a campaign | A reset email that arrives after 2 minutes is a support ticket. |
+| Duplicates | Never twice from our side; an in-doubt provider call is the only accepted gap, and it is bounded and measured | Duplicate OTPs confuse; duplicate marketing gets uninstalls. |
+| Loss | Zero loss after `202 Accepted` | The caller has moved on; we own it now. |
+| Availability | 99.95% for the accept API; degradation (slower bulk) before failure | Every product depends on it. |
+| Compliance | Opt-outs honoured immediately; marketing suppressed in quiet hours | Legal (anti-spam and telecom rules) and trust. |
+
+### Out of scope
+
+The in-app notification inbox (a feed problem), building our own push transport (we use <Term slug="api-gateway">gateways</Term> to APNs and FCM), segment computation (the analytics platform hands us a user-id list), and content moderation of what teams send.
+
+## Estimation
+
+Every number is an assumption of this problem, stated so you can change it.
+
+**Volume.**
+
+| Step | Arithmetic | Result |
+|---|---|---|
+| Average sends | 1,000,000,000 ÷ 86,400 s | ≈ 11.6k notifications/s |
+| Campaign peak | 11.6k × 5 (given <Term slug="peak-factor">peak factor</Term>) | ≈ 58k/s |
+| Transactional share | assume 30% → 300M/day ÷ 86,400 | ≈ 3.5k/s, fairly flat (peaks maybe 10k/s) |
+| Bulk share | 700M/day, arrives in bursts | the rest of the 58k/s |
+
+**Channel mix** (assumption: push is cheap and default; SMS is expensive and reserved for codes and critical alerts).
+
+| Channel | Share | Per day | Average | Peak (×5) | Provider limit | Peak utilisation |
+|---|---|---|---|---|---|---|
+| Push | 89% | 890M | 10.3k/s | 51.5k/s | 100k/s | 52% |
+| Email | 10% | 100M | 1.16k/s | 5.8k/s | 10k/s | 58% |
+| SMS | 1% | 10M | 116/s | 580/s | 1k/s | 58% |
+
+The last column is the first design constraint: **the providers are the bottleneck, not us.** At 5× we use more than half of every provider's limit, so a campaign that is not throttled will push transactional sends into 429s. That is why quota must be reserved per priority (deep dive 1).
+
+**Front-door API traffic** (what clients and product services call, used for Run Mode):
+
+| Request | Assumption | Average |
+|---|---|---|
+| Enqueue a notification (write) | every notification is one enqueue, either from the API or from campaign fan-out | 11.6k/s |
+| Device token register or refresh (write) | 200M app opens a day refresh a token | 2.3k/s |
+| Preference and status reads | 50M preference-screen loads + 30M status lookups a day | ≈ 0.9k/s |
+| **Total** | | **≈ 14.8k/s average, 74k/s at 5×**; read:write ≈ 0.9 : 13.9 ≈ 0.065 |
+
+This is a write-heavy system at the edge. The read-heavy part is internal: every notification reads the user's preferences, device list, template and rate counter, so the preference path sees about 58k lookups/s at peak, which is why it sits behind a cache with a ~99% hit rate.
+
+**Storage.**
+
+| Data | Arithmetic | Size |
+|---|---|---|
+| Preferences | 200M users × ~200 B | 40 GB |
+| Device tokens | 200M × 1.5 devices × ~200 B | 60 GB |
+| Dedup keys (24 h window) | 1B/day × ~100 B in Redis (key, value, overhead) | ≈ 100 GB in memory |
+| Notification log | 1B/day × ~500 B (ids, channel, status history) | 500 GB/day; 30 days hot = 15 TB; × 3 replicas = 45 TB |
+| Templates, campaigns | thousands of rows | negligible |
+
+**Log write rate.** Each notification writes about three status rows (accepted, sent, delivered or failed): 3B/day ≈ 35k writes/s average and up to ~175k/s in a burst. At an assumed 10k writes/s per wide-column node that is ~18 nodes at full peak; we run **24** so a burst lands at ρ ≈ 0.73 and disk space (45 TB ÷ 24 ≈ 1.9 TB per node) stays comfortable.
+
+**Workers.** Model a worker instance by its *effective* time per message = provider latency ÷ concurrent in-flight calls.
+
+| Pool | Assumption | Per instance | Peak load | Instances | ρ at peak |
+|---|---|---|---|---|---|
+| Push senders | HTTP/2, ~400 streams × 200 ms | ≈ 2,000/s (0.5 ms) | 51.5k/s | 40 | 0.64 |
+| Email senders | 200 in flight × 500 ms | 400/s (2.5 ms) | 5.8k/s | 24 | 0.60 |
+| SMS senders | 50 in flight × 1 s | 50/s (20 ms) | 580/s | 20 | 0.58 |
+| Routers (prefs, dedup, render) | ~10 ms of cache I/O, 5 in flight | 500/s (2 ms) | 58k/s split by lane | see design | ≤ 0.6 |
+
+**API fleet.** An accept-and-enqueue request is light (auth, validation, one Redis `SET NX`, one produce): assume 2,000 req/s per instance. Peak 74k/s across **3 AZs × 25 instances = 150k/s** gives ρ ≈ 0.49; lose an AZ and the other two carry 74k/s on 100k/s, ρ ≈ 0.74. That is the reason for three zones rather than two: N+1 across zones costs 50% headroom instead of 100%. Campaigns are scheduled, so the fleet can be pre-scaled before a big send rather than sized like this all day.
+
+**Bandwidth.** Email at ~50 KB × 100M = 5 TB/day ≈ 0.46 Gbit/s average, 2.3 Gbit/s at peak. Push payloads are capped by APNs and FCM at 4 KB; at ~1 KB average, 890 GB/day. Neither is a design driver.
+
+## API design
+
+All endpoints are internal (service-to-service, mTLS plus a caller identity), except preferences and devices, which the apps call through the public gateway.
+
+```http
+POST /v1/notifications
+Idempotency-Key: orders-svc:shipment:88123:shipped
+Content-Type: application/json
+
+{
+  "user_id": "u_42",
+  "category": "orders",
+  "priority": "transactional",
+  "template": { "id": "order_shipped", "version": 7 },
+  "data": { "order_id": "88123", "carrier": "DHL", "eta": "2026-11-06" },
+  "channels": ["push", "email"],
+  "expires_at": "2026-11-04T12:30:00Z"
+}
+
+HTTP/1.1 202 Accepted
+{ "notification_id": "ntf_01JBX3Q6M8", "status": "accepted" }
+```
+
+- The <Term slug="idempotency-key">idempotency key</Term> is required and scoped to the caller. A retry with the same key returns the same `notification_id` and does nothing else. A retry with the same key and a *different* body returns `409 Conflict`, which catches bugs where a caller reuses keys.
+- `expires_at` is how the caller says when the message becomes worthless. A one-time code that arrives after it expired is worse than none, so the pipeline drops expired messages instead of retrying them forever.
+- `channels` is a request; preferences decide. The response is `202`, not `200`: the only promise is durable acceptance.
+
+```http
+POST /v1/campaigns
+{ "segment_id": "seg_winter_sale", "template": { "id": "winter_sale", "version": 2 },
+  "channels": ["push"], "send_at": "2026-11-20T09:00:00", "send_at_tz": "recipient",
+  "max_rate_per_s": 40000 }
+
+HTTP/1.1 202 Accepted
+{ "campaign_id": "cmp_771", "status": "scheduled", "recipients_estimate": 61000000 }
+```
+
+`send_at_tz: "recipient"` means 09:00 in each user's own zone, which spreads the load across 24-plus waves instead of one spike. Campaigns also get `POST /v1/campaigns/{id}/cancel`, the most important button in the system (deep dive 4).
+
+```http
+GET /v1/notifications/ntf_01JBX3Q6M8
+{ "notification_id": "ntf_01JBX3Q6M8", "user_id": "u_42",
+  "channels": [
+    { "channel": "push",  "status": "delivered", "provider": "apns", "at": "2026-11-04T12:01:03Z" },
+    { "channel": "email", "status": "suppressed", "reason": "user_opted_out" } ] }
+
+PUT /v1/users/u_42/preferences
+{ "categories": { "marketing": { "push": false, "email": true, "sms": false } },
+  "quiet_hours": { "start": "22:00", "end": "07:00" }, "time_zone": "Europe/Berlin" }
+
+PUT /v1/users/u_42/devices/{device_id}
+{ "platform": "ios", "push_token": "a1b2…", "app_version": "9.4.0", "locale": "de-DE" }
+```
+
+Provider callbacks (delivery receipts, bounces, complaints, unsubscribes) arrive at `POST /v1/providers/{provider}/events`, are verified by the provider's signature and written to the log; hard bounces and complaints flip the matching preference to suppressed.
+
+## Data model
+
+| Entity | Key | Store | Access pattern |
+|---|---|---|---|
+| `preferences` | `user_id` | Wide-column / key-value (replicated), cached in Redis | point read per notification, rare writes |
+| `devices` | partition `user_id`, clustering `device_id` | same store | "all active tokens for user", delete on `410` |
+| `templates` | `(template_id, version)` | Postgres | small, edited by humans, needs transactions and review history; cached in every router |
+| `campaigns` | `campaign_id` | Postgres | state machine (scheduled, running, paused, cancelled, done) |
+| `notifications_by_id` | `notification_id` | <Term slug="wide-column-store">wide-column</Term> (Cassandra-style), TTL 30 days | status lookup |
+| `notifications_by_user` | partition `(user_id, month)`, clustering `created_at DESC` | same | "what did we send this user?" support and frequency caps |
+| `dedup` | `caller:idempotency_key` and `user:template:dedup_window` | Redis, TTL 24 h | `SET NX` on accept and before each provider call |
+| `rate_counters` | `user:category:channel:window` | Redis | per-user frequency caps |
+
+Why these choices:
+
+- The log is append-heavy (35k writes/s average), queried only by key, and expires: a wide-column store with per-row <Term slug="ttl">TTL</Term> and partition-key access fits exactly, and avoids running a 45 TB relational cluster for data nobody joins. The `(user_id, month)` partition keeps a heavy user's partition bounded.
+- Templates and campaigns are tiny, relational and edited by people, so Postgres with normal transactions is the boring right answer.
+- Dedup and counters are hot, small and short-lived. Redis gives atomic `SET NX EX` and `INCR` at memory speed; losing them is a degradation (deep dive 3 says exactly which), not data loss.
+
+```sql
+-- Postgres: templates are immutable once published; a change is a new version.
+CREATE TABLE templates (
+  template_id  text NOT NULL,
+  version      int  NOT NULL,
+  category     text NOT NULL,           -- security | orders | marketing | social
+  bodies       jsonb NOT NULL,          -- per channel, per locale
+  published_at timestamptz,
+  PRIMARY KEY (template_id, version)
+);
+```
+
+## High-level design
+
+<Figure caption="FIG. 1 · NOTIFICATION SYSTEM · TWO PRIORITY LANES, PER-CHANNEL SENDERS">
+<Diagram label="Product services and apps call an API gateway, which routes to an accept API in three availability zones. The API checks idempotency in Redis and appends to a transactional topic or a bulk topic. Router workers for each lane read preferences, quiet hours, dedup and rate counters, render the template and append to per-channel queues for push, email and SMS. Sender pools call APNs or FCM, the email provider and the SMS provider, and write status to the notification log. Failed messages go to retry queues and then a dead-letter queue. Provider webhooks flow back into the log and preferences." chart={`flowchart LR
+  PS[Product services] --> GW[API gateway]
+  APP[Apps: prefs and devices] --> GW
+  GW --> API[Accept API x3 AZs]
+  API -- SET NX --> R[(Redis: dedup, counters, prefs cache)]
+  API -- prefs and devices --> P[(Prefs and device store)]
+  API -- high --> TQ[[Transactional topic]]
+  API -- low --> BQ[[Bulk topic]]
+  CMP[Campaign fan-out] --> BQ
+  TQ --> RT[Routers: transactional]
+  BQ --> RB[Routers: bulk]
+  RT --> R
+  RB --> R
+  RT --> PQ[[Push queue]]
+  RT --> EQ[[Email queue]]
+  RT --> SQ[[SMS queue]]
+  RB --> PQ
+  RB --> EQ
+  RB --> SQ
+  PQ --> PW[Push senders] --> APNS[APNs / FCM]
+  EQ --> EW[Email senders] --> ESP[Email provider]
+  SQ --> SW[SMS senders] --> SMS[SMS provider]
+  PW --> LOG[(Notification log)]
+  EW --> LOG
+  SW --> LOG
+  PW -. retry .-> RQ[[Retry queues]] -.-> DLQ[[Dead-letter queue]]
+  ESP -. webhooks .-> API`} />
+</Figure>
+
+**Transactional send.** The order service calls `POST /v1/notifications`. The gateway authenticates the caller and applies its quota. The accept API validates the body against the template's variable schema, does `SET dedup:orders-svc:<key> <new id> NX EX 86400` in Redis (if the key exists, it returns the stored id: done), appends the message to the **transactional topic** keyed by `user_id`, and returns `202` once the broker acknowledges with replicas (`acks=all`). Only then is the request "ours". The transactional router consumes it, reads preferences (cache, then store), drops channels the user opted out of, checks `expires_at`, renders the template for the user's locale, and appends one message per channel to the channel queues with a `priority=high` flag. The push sender takes it, sets a *send-attempt* marker, calls APNs with a collapse id, records `sent` in the log and acknowledges the queue. The APNs response or a later receipt updates the status.
+
+**Campaign.** A campaign is not 61M API calls. At `send_at` the fan-out job streams the segment's user ids from object storage in pages and produces messages to the **bulk topic** at the campaign's `max_rate_per_s`. Bulk routers apply the same checks plus marketing-only ones (quiet hours, per-user frequency caps) and push to the same channel queues with `priority=low`. Senders always drain high before low and draw provider quota from separate budgets.
+
+**Preference change.** `PUT /preferences` writes the store, then deletes the cache entry. Routers read preferences at routing time, not at accept time, so an opt-out applies to anything not yet routed, including a campaign already in flight.
+
+**Provider feedback.** Webhooks and APNs `410 Unregistered` responses mark tokens dead (removing them from `devices`) and turn hard email bounces into suppressions. Ignoring these quietly ruins email sender reputation and wastes push quota on dead tokens.
+
+## Deep dives
+
+### 1. How do you keep transactional messages fast during a 5× campaign burst?
+
+The failure you are designing against is **head-of-line blocking**: one shared queue with 300M marketing messages in front of a password reset. Three layers fix it, and each one is needed because the next one can still clog.
+
+1. **Separate lanes from the first hop.** Transactional and bulk go to different topics with different consumer pools, so a backlog of bulk never sits in front of a reset. A shared topic with a "priority" field does not work: Kafka-style logs are FIFO per partition, and a consumer cannot skip ahead.
+2. **Separate provider quota.** The channel senders are where both lanes meet, because the provider limit is shared. Each provider gets two <Term slug="token-bucket">token buckets</Term>: transactional may use up to 100% of the limit, bulk at most 70% (assumption), and bulk only takes tokens when the high queue is empty. At peak, push bulk needs ~48k/s of the 70k/s it may use, leaving 30k/s that only transactional can touch.
+3. **Separate worker pools** (a <Term slug="bulkhead">bulkhead</Term>). If email sender threads are all stuck waiting on a slow email provider, push must not wait with them. Each channel, and each lane within it, has its own pool and in-flight limit.
+
+Alternatives considered: a priority queue product (RabbitMQ priorities, SQS has none) gives strict priority inside one broker but couples lanes in one cluster and still shares consumers; **rate-limiting campaigns at the fan-out** (the `max_rate_per_s` above) is necessary but not sufficient, because a wrong throttle setting or two overlapping campaigns still flood. The deciding trade-off is cost versus isolation: separate lanes double the number of queues and pools to operate, but they turn "a campaign slowed down password resets" from a probable incident into an impossible one.
+
+<Callout type="example" title="What the dashboard should show">
+Per lane and channel: queue age of the oldest message (not just depth), provider tokens used by lane, send latency from accept to provider ack. The alert for transactional is "oldest message older than 5 s"; for bulk it is "campaign will not finish within its window".
+</Callout>
+
+### 2. Retries, backoff and the dead-letter queue
+
+Provider errors fall into three classes, and treating them the same is the classic mistake:
+
+| Class | Examples | Action |
+|---|---|---|
+| Permanent | APNs `410 Unregistered`, invalid email address, SMS to a landline | never retry; record failure, clean up the token or address |
+| Throttled | `429` with `Retry-After` | wait at least `Retry-After`, and slow the whole pool (it is a signal about the provider, not this message) |
+| Transient | timeouts, `5xx`, connection resets | retry with <Term slug="exponential-backoff">exponential backoff</Term> and <Term slug="full-jitter">full jitter</Term>: 1 s, 2 s, 4 s … capped, until `expires_at` or 6 attempts |
+
+Retries must not block the queue they came from. A failed message is acknowledged on the main queue and written to a **retry queue** with a not-before time (one queue per delay tier such as 10 s, 1 min, 10 min), so healthy messages keep flowing. Uber's engineering blog described this tiered retry-topic pattern on Kafka in a 2018 post on reprocessing and dead-letter queues. After the last attempt, or when a message cannot even be parsed (a <Term slug="poison-message">poison message</Term>), it goes to the <Term slug="dead-letter-queue">dead-letter queue</Term> with the error, attempt count and original headers. The DLQ is not a graveyard: it has an owner, an alert on growth, and a <Term slug="redrive">redrive</Term> tool that replays selected messages after the bug is fixed (redriven messages still pass dedup and `expires_at`, so a redrive cannot spam or send a code from yesterday).
+
+**Failure timeline: email provider outage during a campaign.**
+
+| Time | What happens | What the system does |
+|---|---|---|
+| T+0 | Email provider starts returning 503 to 40% of calls | senders retry with backoff; retry tier queues grow |
+| T+30 s | Error rate crosses 50% over 20 s | the per-provider <Term slug="circuit-breaker">circuit breaker</Term> opens; senders stop calling it, so retries stop amplifying the outage |
+| T+30 s | Transactional email (resets) | routed to the secondary email provider, which has its own templates and warmed sending domain |
+| T+30 s | Bulk email | paused in its queue (cheap: it is just messages waiting), campaign status shows "delayed" |
+| T+5 min | Breaker half-opens, 5% probes succeed | breaker closes; bulk drains at a ramped rate so we do not hit the recovering provider with a 5-minute backlog at once |
+
+The deciding judgement: **fail over transactional, queue bulk.** A secondary email provider costs money and needs IP warm-up, so you route only what is urgent through it.
+
+### 3. Deduplication: what does "never twice" really mean?
+
+Duplicates enter at three places, and each has a different fix:
+
+1. **Caller retries** (the order service timed out and called again). Fixed by the required idempotency key at accept: `SET NX` in Redis, 24 h TTL. Exact.
+2. **Redelivery inside our pipeline.** Every queue is <Term slug="at-least-once">at-least-once</Term>; a router or sender can crash after doing the work but before acknowledging. Fixed by making each stage idempotent on `(notification_id, channel)`: before calling the provider, the sender does `SET sent:<id>:<channel> NX`. A redelivered message finds the key and is acknowledged without sending. This gives <Term slug="effectively-once">effectively-once</Term> inside our system.
+3. **The in-doubt provider call.** The sender calls APNs, the response is lost (timeout), and the sender cannot know whether the push was delivered. Retrying risks a duplicate; not retrying risks a loss. No protocol fixes this, because the provider is outside our transaction.
+
+What you do about case 3 is a product decision per category, and saying so is the staff-level answer:
+
+- **Push:** retry, and set `apns-collapse-id` (APNs) or `collapse_key` (FCM) to the notification id, so if both copies arrive the device shows one.
+- **Email:** retry only on errors that mean "not accepted" (connection refused, 5xx before the message was queued); on an ambiguous timeout, retry once after a delay. Where the provider supports a client-supplied message id, use it.
+- **SMS one-time codes:** retry (a missing code is worse than a duplicate one). **SMS marketing:** do not retry ambiguous timeouts (a duplicate costs money and annoys).
+
+Also bound the blast radius: count in-doubt sends as a metric. "We duplicate at most the in-doubt fraction, about 0.01% of sends on a normal day" is a better promise than "never", because it is true.
+
+If Redis loses the dedup keys (failover with an unreplicated write, or a flush), case 1 and 2 protection weakens for in-flight messages. Mitigation: replicate Redis across zones, and for the transactional lane double-check `notifications_by_id` in the log store before sending (one extra read on ~3.5k/s), accepting the cost only where duplicates hurt most.
+
+### 4. Preferences, quiet hours and per-user rate limits
+
+**Where to check preferences.** Check at routing time (just before channel fan-out), not at accept time. A campaign accepted at 08:00 and routed at 10:00 must respect an opt-out made at 09:00. The router reads the cached preference; preference writes delete the cache key, and the cache TTL (5 min) bounds staleness if a delete is lost. Unsubscribe from an email link writes the store synchronously before showing "you are unsubscribed": legal deadlines aside, a user who unsubscribes and gets another email a minute later reasonably believes you ignored them.
+
+**Quiet hours** apply to marketing and social, never to security or transactional. A message that lands in quiet hours is written to a **scheduled store** (rows keyed by delivery minute) and re-enqueued when the window ends. Watch the thundering herd: if 20M users in one time zone all end quiet hours at 07:00, a naive scheduler emits 20M messages at 07:00:00. Spread re-delivery uniformly over, say, 07:00–08:00 with per-user jitter.
+
+**Per-user frequency caps** protect users from the sum of all product teams: for example at most 3 marketing pushes a day and 1 an hour. A fixed-window counter in Redis keyed `cap:<user>:marketing:push:<day>` with `INCR` and TTL is enough here; precision at the boundary does not matter. Over the cap, the message is **suppressed and logged** (not delayed): yesterday's sale is not news tomorrow. Transactional is exempt.
+
+**The kill switch.** Campaigns must be cancellable mid-flight: cancel sets a flag the bulk routers check per message (cached for a few seconds), so a wrong segment ("sent the Germany sale to everyone") stops within seconds, not after 61M messages. This is the cheapest feature in the system and the one that saves the incident review.
+
+## Failure modes & mitigations
+
+| Failure | Detection | Impact | Mitigation |
+|---|---|---|---|
+| Push provider slow (p99 200 ms → 2 s) | sender latency, in-flight saturation | push throughput drops 10× | in-flight limit per pool, shed bulk first, transactional keeps reserved concurrency; queue absorbs the rest |
+| Email provider down | error rate, breaker state | email stops | breaker; transactional fails over to secondary provider; bulk waits |
+| Sender crash after provider call, before ack | redelivery count | possible duplicate | `sent:<id>:<channel>` marker, collapse ids; in-doubt metric |
+| Redis primary lost | health checks | dedup and caps briefly weaker; prefs cache cold | replicas across AZs, automatic failover; log-store check for transactional; prefs fall back to the store (sized for it) |
+| Broker node lost | under-replicated partitions | none if `acks=all`, replication factor 3, min in-sync replicas 2 | producers retry; accept returns 503 only if two replicas are gone |
+| One AZ lost | zone health | a third of API and workers gone | 3-zone N+1 sizing: remaining zones run at ρ ≈ 0.74 |
+| Poison message (template variable missing) | parse/render error | one message fails repeatedly | straight to DLQ on non-retryable errors, never block the partition |
+| Wrong campaign segment | human report, abnormal unsubscribe rate | mass mis-send | kill switch, staged rollout of large campaigns (1% then 100%), unsubscribe-rate alert auto-pauses |
+| Token storm after an app release | 410 rate | wasted quota | delete tokens on 410, refresh tokens on app open |
+| Quiet-hours herd at 07:00 | scheduled-store emission rate | burst | jittered re-delivery over an hour |
+
+## Scaling to 10×
+
+At 10B notifications/day the average is 116k/s and a 5× burst is 580k/s.
+
+1. **Providers break first.** Push at 10× peak needs ~515k/s against a 100k/s limit, SMS ~5.8k/s against 1k/s. These are contracts, not code: negotiate higher limits, add SMS providers (route by country and price), and make campaigns spread over hours by default. Your architecture has to make "this campaign will take 3 hours at our quota" visible before it starts.
+2. **Dedup memory.** 24 h of keys becomes ~1 TB of Redis. Shrink the window for bulk to the campaign's duration, store an 8-byte hash instead of the full key, and keep the 24 h window only for the transactional lane.
+3. **Notification log.** 1.75M writes/s in bursts and 450 TB with replicas. Stop writing three status rows per bulk message: write one row and keep per-attempt detail only for transactional and failures; sample delivered receipts for bulk analytics.
+4. **Fan-out.** Streaming 2B-user segments needs the segment exported as sorted, partitioned files so many fan-out workers read in parallel.
+5. **Cell architecture.** Split users into cells (each with its own topics, routers, Redis and log shard) so a bad deploy or a hot campaign hurts one cell, not the whole service.
+
+What does *not* need to change: the accept API (stateless, scales linearly) and the lane design.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| Separate transactional and bulk lanes end to end | one queue with a priority field | FIFO logs cannot skip ahead; isolation is the requirement |
+| Reserved provider quota per lane | first come, first served | the provider limit is the true bottleneck at peak |
+| Check preferences at routing time | at accept time | opt-outs must apply to in-flight campaigns |
+| Kafka-style log for lanes, per-channel queues | one queue per user | per-user queues do not scale to 200M; partition by user id keeps per-user order where it matters |
+| Effectively-once inside, measured in-doubt window outside | claim exactly-once | the provider call is outside any transaction we control |
+| Wide-column log with TTL | relational log | 35k writes/s, key-only access, data expires |
+| 3 AZs at N+1 | 2 AZs at 2× | 50% headroom instead of 100% for the same failure tolerance |
+| Drop expired messages | retry until delivered | an OTP or "your driver is here" is worthless late |
+| Suppress, do not delay, over-cap marketing | delay to tomorrow | stale marketing is noise |
+
+## What interviewers look for
+
+- **Asks the shaping questions first:** which channels, transactional versus marketing, what "never twice" means, what happens when a provider is down. The answers change the design.
+- **Finds the real bottleneck:** at peak the third-party providers, not your servers, are the scarce resource. Strong candidates reserve quota per priority; weak ones add more servers.
+- **Prevents head-of-line blocking** with separate lanes, quotas and pools, and can explain why a priority field on one queue is not enough.
+- **Is precise about delivery semantics:** idempotency key at accept, idempotent stages inside, and an honest, per-category policy for the in-doubt provider call.
+- **Classifies errors** (permanent, throttled, transient), uses backoff with jitter, retry queues that do not block, and a DLQ with an owner and redrive.
+- **Remembers the user:** preferences checked late, quiet hours with jitter, frequency caps, unsubscribe honoured immediately, and a kill switch for campaigns.
+
+<InterviewAngle questions={["A campaign to 60M users starts and password-reset emails slow to 2 minutes. Walk me through why, and fix it.", "The sender times out calling APNs. Do you retry? What about for an SMS one-time code?", "How does an opt-out made at 09:00 stop a campaign accepted at 08:00?", "The email provider is down for 20 minutes. What happens to each kind of message?", "How would you notice and stop a campaign sent to the wrong segment?"]} />

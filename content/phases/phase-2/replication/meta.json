@@ -41,9 +41,7 @@
   "simulatorIds": [
     "replication"
   ],
-  "practiceCaseStudyIds": [
-    "url-shortener"
-  ],
+  "practiceCaseStudyIds": ["url-shortener", "payment-system"],
   "prerequisites": [
     "p2-transactions"
   ]

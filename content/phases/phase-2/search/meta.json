@@ -34,9 +34,7 @@
     }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": [
-    "typeahead"
-  ],
+  "practiceCaseStudyIds": ["typeahead", "search-engine", "web-crawler"],
   "prerequisites": [
     "p2-indexing"
   ]

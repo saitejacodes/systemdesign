@@ -1,0 +1,56 @@
+{
+  "id": "api-gateway",
+  "title": "API gateway",
+  "summary": "One front door for 200 services: authentication, rate limits, routing and metering on every call, in a 10 ms budget, without becoming the thing that takes everything down.",
+  "difficulty": 2,
+  "weekRecommended": 15,
+  "relatedSectionIds": ["p2-api-gateway", "p2-rate-limiting", "p5-authn-authz", "p4-timeouts-retries", "p4-circuit-breakers", "p4-bulkheads-load-shedding", "p5-release-strategies", "p1-load-balancers"],
+  "interviewerPrompt": "We expose a public API backed by about 200 microservices, and every team currently does its own auth and rate limiting. Design the API gateway that sits in front of all of them. Where would you start?",
+  "clarifyingQuestions": [
+    { "question": "How much traffic, and where does it come from?", "answer": "About 500k requests per second at peak across three regions, from partner applications calling a public REST API. Assume peak is 2.5 times the daily average." },
+    { "question": "How do callers authenticate?", "answer": "Server-to-server partners use API keys. Everything else uses OAuth 2.0 access tokens issued by an external identity provider as signed JWTs. The identity provider can take about 5,000 requests per second." },
+    { "question": "How much latency may the gateway add?", "answer": "At most 10 ms at p99, measured as gateway time only. Upstream services own their own latency." },
+    { "question": "What limits do customers have?", "answer": "Each customer plan has a per-second rate limit with a burst allowance and a monthly call quota. Over-limit callers must get a 429 that says when to retry." },
+    { "question": "Is usage billed?", "answer": "Yes. Usage per customer, key and route feeds monthly invoices, so counts must be accurate. Quota enforcement may lag by about a minute." },
+    { "question": "How do routes change, and how often?", "answer": "Service teams change routes, timeouts and versions through an API several hundred times a day. Changes must roll out without restarting gateways, and a revoked key must stop working within seconds." },
+    { "question": "How do services find each other today?", "answer": "Services run on Kubernetes; endpoints change constantly as pods deploy and scale." },
+    { "question": "What happens when one backend misbehaves?", "answer": "That must not affect other routes. Today a slow service can make the whole API slow, which is one reason this project exists." },
+    { "question": "Should the gateway combine several backend calls into one response for our mobile app?", "answer": "That is a product request we have heard. Tell us whether it belongs in the gateway." },
+    { "question": "Is internal service-to-service traffic in scope?", "answer": "No. Only external traffic entering the platform." }
+  ],
+  "deepDiveQuestions": [
+    "How do you authenticate 500k requests per second against an identity provider that accepts 5,000, and what happens when it rotates its signing keys?",
+    "How do you enforce per-tenant rate limits and monthly quotas across 108 gateway instances?",
+    "How does the gateway stop one slow upstream from hurting the other 199: timeouts, retries and circuit breaking?",
+    "How do route, key and service-discovery changes reach every instance safely, without restarts?",
+    "The gateway is a single point of failure and a latency tax on every call: how do you contain both, and when should you use BFFs or no gateway at all?"
+  ],
+  "trafficProfile": {
+    "qps": 200000,
+    "readWriteRatio": 4,
+    "peakMultiplier": 2.5,
+    "requestTypes": [
+      { "id": "read-call", "name": "Read call through the gateway (GET)", "op": "read", "weight": 1, "target": { "kinds": ["service"] } },
+      { "id": "write-call", "name": "Write call through the gateway (POST/PUT)", "op": "write", "weight": 1, "target": { "kinds": ["service"] } }
+    ]
+  },
+  "runChallenge": {
+    "id": "api-gateway-peak-lose-az",
+    "title": "Global peak with a zone down",
+    "description": "Run at the 500k requests/s peak and lose the busiest availability zone after 10 s. The gateway must keep serving at least 495k requests/s with under 0.1% errors and no single point of failure. Upstreams are a 10 ms stand-in, so a p99 under 50 ms leaves the gateway well inside its budget.",
+    "atPeak": true,
+    "scenario": "lose-az",
+    "durationS": 60,
+    "targets": { "minOkQps": 495000, "maxErrorRatePct": 0.1, "maxP99Ms": 50, "maxSpofs": 0 }
+  },
+  "commonMistakes": [
+    "Calling the identity provider to introspect every token, which needs 500k calls per second against a provider that takes 5,000 and makes a third party a hard dependency of every request.",
+    "Putting business logic or response aggregation in the shared gateway, so one team's feature can break 200 services and every product change waits on the platform team.",
+    "Splitting each tenant's limit evenly across instances (limit ÷ 108) and calling it a distributed rate limiter, which throttles tenants far below their limit when traffic is uneven.",
+    "Configuring timeouts but no concurrency caps or circuit breakers, so one slow upstream holds thousands of connections and slows every other route on the same instances.",
+    "Retrying every failed request, including non-idempotent POSTs and without a retry budget, which duplicates orders and turns a slowdown into a retry storm.",
+    "Treating config as data rather than code: pushing a route or regex change to every instance at once with no validation, canary or last-known-good fallback.",
+    "Trusting identity headers such as X-Tenant-Id that arrive from the client instead of stripping them and setting them at the gateway.",
+    "Sizing the fleet for average load at high utilisation, with no headroom for losing a zone or a region."
+  ]
+}

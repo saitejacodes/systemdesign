@@ -14,6 +14,6 @@
     { "id": "availability-nines", "title": "Availability and the nines", "depth": "deep" }
   ],
   "simulatorIds": ["estimation-calculator"],
-  "practiceCaseStudyIds": ["url-shortener"],
+  "practiceCaseStudyIds": ["url-shortener", "instagram", "news-feed"],
   "prerequisites": ["p1-scaling"]
 }

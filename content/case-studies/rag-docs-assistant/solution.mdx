@@ -1,0 +1,331 @@
+## Requirements
+
+A docs assistant looks like a chatbot but is really a search engine over a changing corpus, an access-control system that must hold for every sentence the model writes, and a metered, rate-limited model API. <Term slug="rag">Retrieval-augmented generation (RAG)</Term> means: at question time, find the most relevant passages, put them in the prompt, and ask the model to answer only from them and cite them.
+
+**Functional requirements**
+
+1. An employee asks a question and gets an answer that **cites the passages it used**, each linking to the source document.
+2. The corpus is **5M documents** (wiki pages, PDFs, tickets) from source systems that change all day. Edits, deletions and permission changes must flow in.
+3. Follow-up questions in a conversation work ("and for contractors?").
+4. Users can rate an answer; ratings feed evaluation.
+5. When the documents do not answer the question, the assistant says so instead of guessing.
+
+**Non-functional requirements**
+
+| Property | Target | Why |
+|---|---|---|
+| Permissions | An answer may only draw on documents the asking user can read in the source system | A leak through the assistant is a leak of the document |
+| Latency | First token within **2 s** at p99; the rest streams | Users compare it with search |
+| Freshness | An edit is reflected within **15 minutes**; deletions and permission removals faster | Stale answers are confidently wrong |
+| Grounding | Every citation points to a passage that was actually in the prompt | Uncheckable answers are not trusted |
+| Cost | A known, bounded cost per question and per user | Every question spends money on a metered API |
+| Availability | 99.9% for asking, with a degraded mode when the model API fails | Slow is acceptable; down at 9 a.m. is not |
+
+**Out of scope:** taking actions (filing tickets, editing pages), fine-tuning, and questions about structured data ("how many open tickets does team X have"), which are database queries, not passage retrieval.
+
+<Callout type="tip" title="Say the permission requirement first">
+Candidates often add access control at the end, as a filter on the answer. Stated up front as a property of retrieval, it shapes the data model (every chunk carries its document's ACL), the cache and the freshness priorities.
+</Callout>
+
+## Estimation
+
+Every number is an assumption of this problem. Prices are variables because they change often: **P** is the chat model's price per million input tokens, output is assumed to cost **4P** per million, and **E** is the embedding price per million tokens.
+
+**Questions.** 50,000 daily users × 10 = **500,000 questions/day**, or 500,000 ÷ 86,400 = **5.8/s** on average. Assume the busiest hour carries 10% of the day: 50,000 ÷ 3,600 = **13.9/s at peak**, a peak factor of 13.9 ÷ 5.8 = **2.4**. Assume 15% are served from the answer cache (Deep dive 4), so model calls at peak are 13.9 × 0.85 = **11.8/s**.
+
+**Tokens per question.** System prompt 400, retrieved context budget 3,000 (6 chunks of up to 500), question plus conversation summary 350: **3,750 input tokens**. Answers average **300 output tokens**, capped at 800.
+
+**Chat cost.** 425,000 answers/day × 3,750 = 1.59B input tokens (1,594 P), and × 300 = 127.5M output tokens (127.5 × 4P = 510 P): **about 2,100 P per day**, or 0.00495 P per answer. Input is 1,594 ÷ 2,104 = **76%** of the bill despite costing a quarter as much per token. The retrieved context, not the answer, is the cost lever.
+
+**Chat rate limit.** 1,000 requests/minute = **16.7/s** per deployment. Peak demand of 11.8/s uses **71%** of one deployment: it fits, with little room for retries, and one deployment is a single point of failure, so the design runs two (Deep dive 4). If the provider also limits tokens per minute: 11.8 × 60 × 4,050 ≈ **2.9M tokens/minute** at peak.
+
+**Latency to first token.** Auth and group lookup 20 ms, cache check 2 ms, query embedding 100 ms (the given API latency), hybrid search 50 ms, reranking 60 ms, prompt assembly 5 ms, model first token 800 ms: about **1,040 ms**, leaving roughly 950 ms for network, provider queueing and one fast retry. At the given 60 tokens/s a 300-token answer ends at 0.8 + 299 ÷ 60 ≈ **5.8 s**, so streaming is required.
+
+**Corpus and index.** Assume documents average 2,000 tokens: **10B tokens**. With 500-token chunks and 64 tokens of overlap each chunk advances 436 tokens: ceil((2,000 − 64) ÷ 436) = **5 chunks** per document, **25M chunks**. Tokens embedded per document: 2,000 + 4 × 64 = 2,256, so **11.3B tokens**, a one-time 11,300 E.
+
+- Vectors at an assumed 1,024 dimensions: 25M × 1,024 × 4 B = **102 GB** float32, or **26 GB** at one byte per dimension for the in-memory graph (full vectors stay on disk for rescoring). <Term slug="hnsw">HNSW</Term> links at M = 16: 25M × 32 × 4 B = **3.2 GB**.
+- Chunk text: 11.3B tokens × 4 B ≈ **45 GB**, plus roughly 15 GB of keyword index and 7.5 GB of metadata.
+- One copy ≈ **173 GB on disk**, about 30 GB hot. One node per zone with a full copy each is **3 index nodes**; 11.8 searches/s is trivial, so availability sets the count.
+
+**Changes.** Assume 2% of documents change on a busy day: **100,000/day**, 10% in the peak hour: **2.8/s**. Each costs one source fetch and about one batched embedding request after content hashing.
+
+**The other rate limits.** Embedding API: 3,000/minute = **50/s**; peak use is 11.8 query embeddings + 2.8 ingestion batches = 14.6/s (29%). A full re-embed at an assumed 64 chunks per request is 25M ÷ 64 ≈ 390,000 requests at the spare 35/s ≈ **3.1 hours**, longer if a token limit binds. Source APIs: **200/s** shared; give ingestion 150/s and keep 50/s for polling and reconciliation. An initial load takes 5M ÷ 150 ≈ **9.3 hours**: the first backfill is bound by the sources, which is why parsed text is kept in object storage, so a later model change re-embeds without touching them.
+
+| Quantity | Average | Peak |
+|---|---|---|
+| Questions | 5.8/s | 13.9/s |
+| Chat calls | 4.9/s | 11.8/s (of 16.7/s per deployment) |
+| Embedding requests | about 6/s | 14.6/s (of 50/s) |
+| Document changes | 1.2/s | 2.8/s (of 150/s source budget) |
+| Chat spend | about 2,100 P/day | — |
+
+For Run mode each question is three calls (hybrid search, embedding, chat): 5.8 × 3 = **17.4 requests/s** on average with a 2.4× peak (41.8/s).
+
+## API design
+
+**Ask (streamed with <Term slug="sse">server-sent events</Term>):**
+
+```http
+POST /v1/conversations/c_81f2/questions
+Authorization: Bearer <employee SSO token>
+
+{ "question": "Can contractors expense home office equipment?", "clientRequestId": "q-7d1e" }
+```
+
+```text
+200 OK
+Content-Type: text/event-stream
+
+event: meta
+data: {"answerId":"a_5c90","cache":"miss","contextChunks":6}
+
+event: token
+data: {"text":"No. Contractors are not eligible [1]; employees can claim up to the annual limit [2]."}
+
+event: citations
+data: [{"n":1,"chunkId":"wiki:4471#3","title":"Expenses > Home office","url":"https://wiki.internal/pages/4471#eligibility"},
+       {"n":2,"chunkId":"wiki:4471#2","title":"Expenses > Home office","url":"https://wiki.internal/pages/4471#limits"}]
+
+event: done
+data: {"inputTokens":3712,"outputTokens":41,"finish":"stop"}
+```
+
+`clientRequestId` makes a retried submit idempotent, so a double click does not pay twice. Errors: `429` with `Retry-After` when the user's daily quota is spent, and `503` with `degraded: "search_only"` and the top passages when no model deployment is available. Citations arrive after the text, once the server has checked every cited id was in the prompt.
+
+**Feedback:** `POST /v1/answers/a_5c90/feedback` with a rating and reason, returning `204`.
+
+**Source change events (internal webhook):**
+
+```http
+POST /internal/v1/source-events
+
+{ "source": "wiki", "docId": "4471", "type": "acl_changed", "sourceVersion": "v219" }
+
+202 Accepted
+```
+
+`type` is `updated`, `deleted` or `acl_changed`. The receiver verifies the signature and enqueues, nothing more, so a slow index never times out a source's webhook. Events are idempotent by source, document id and version.
+
+**Rebuild (internal):** `POST /internal/v1/index-builds` with the reason and chunker version; the build is promoted by an alias switch only after it passes the evaluation gate.
+
+## Data model
+
+| Entity | Key | Main fields | Store |
+|---|---|---|---|
+| Document | source + native id | title, url, `acl_principals`, `source_version`, `content_hash`, `deleted`, `indexed_version` | Postgres registry |
+| Chunk | `doc_id#seq` | text, heading path, `chunk_hash`, embedding, `acl_principals` (copied), `doc_version` | Hybrid search index |
+| Membership | user id | principals: the user, flattened groups, `org:all` | Directory sync → Redis, 5-minute TTL |
+| Conversation | conversation id | turns, rolling summary | Postgres, deleted after 30 days |
+| Answer cache entry | normalized question + index build + prompt version | answer, citations, every context `doc_id` with its version | Redis, 24-hour TTL |
+| Answer log | answer id | question, retrieved and cited ids, versions, tokens, latency, rating | Object storage, restricted |
+
+**ACL on every chunk.** Filtering must happen inside the search engine, so the filter field must live on the indexed record; joining to the registry after search is post-filtering, which starves users with narrow access (Deep dive 3). The cost: a permission change rewrites the field on a document's 5 chunks, with no re-embedding.
+
+**One engine for BM25 and vectors.** <Term slug="hybrid-search">Hybrid search</Term> needs keyword and vector indexes over the same chunks, filtered by the same ACLs, updated and deleted together. A separate search engine and vector database can drift, and a delete applied in one and not the other is exactly the leak this design must prevent. Postgres with full-text search and pgvector is a real alternative with transactions, but 102 GB of float vectors would share a primary's memory with everything else, and filtered approximate search is weakest when filters are selective, as permission filters are.
+
+**Postgres for the registry.** 5M rows is about 5 GB. It is the source of truth for what should be indexed, diffed by reconciliation against sources and index, and needs transactional version and ACL updates. Nothing needs a distributed database.
+
+## High-level design
+
+<Figure caption="FIG. 1 · RAG DOCS ASSISTANT · QUESTION PATH AND CHANGE PATH SHARE ONE PERMISSION-AWARE INDEX">
+<Diagram label="Employees ask through a load balancer to the assistant API in three zones. The API checks the answer cache, looks up the user's groups, embeds the question, runs one hybrid BM25 plus vector search filtered by the user's groups, reranks, and sends a budgeted prompt through an LLM gateway to one of two chat model deployments, streaming the answer back. Source systems send change events to a receiver that fills priority queues; ingestion workers fetch, parse, chunk and embed changed chunks and update the index and registry. A directory sync keeps memberships current; a poller and nightly reconciler catch missed changes." chart={`flowchart LR
+  U["Employees"] --> LB["Load balancer"]
+  LB --> API["Assistant API x3 zones"]
+  API --> RC[("Redis: answer cache, memberships")]
+  API -- "embed question" --> EMB(("Embedding API"))
+  API -- "BM25 + kNN, ACL filter" --> IX[("Hybrid index, 3 nodes")]
+  API --> RR["Reranker (GPU) x2"]
+  API --> GW["LLM gateway: budgets, failover"]
+  GW --> CA(("Chat model, deployment A"))
+  GW --> CB(("Chat model, deployment B"))
+  SRC(("Source systems")) -- "webhooks" --> RX["Change receiver"]
+  POLL["Poller and reconciler"] --> SRC
+  RX --> Q["Queues: ACL and deletes, edits, bulk"]
+  POLL --> Q
+  Q --> W["Ingestion workers"]
+  W -- "fetch" --> SRC
+  W --> EMB
+  W --> IX
+  W --> REG[("Postgres registry")]
+  W --> OBJ[("Object storage: parsed text, logs")]
+  DIR(("Company directory")) --> DS["Directory sync"] --> RC`} />
+</Figure>
+
+**Walkthrough: a question.**
+
+1. The API authenticates the employee and loads their principals from Redis.
+2. It checks the answer cache; a hit is served only if the user can read every context document of the cached answer and each is still at the cached version.
+3. On a miss it builds the retrieval query, prepending the previous question for a follow-up, embeds it (100 ms) and sends one hybrid request: BM25 and approximate nearest-neighbour search, both filtered by `acl_principals` against the user's principals, top 50 from each, fused by rank.
+4. The top 50 fused candidates are reranked; neighbouring chunks are merged, near-duplicates dropped, and the best are packed into the 3,000-token budget, strongest first.
+5. The LLM gateway checks the user's budget and sends the prompt to a deployment with quota; tokens stream to the browser.
+6. Afterwards the API checks every cited id was in the prompt and drops any invented one, sends citations, logs retrieved and cited ids, and writes the cache entry.
+
+**Walkthrough: an edit.** The wiki sends `updated`. A worker fetches the page, parses it, chunks it, and compares chunk hashes with the registry: only changed chunks are embedded, in one batched call. It upserts them, deletes chunks that no longer exist, stores the parsed text and bumps `indexed_version`. Typically about 10 s end to end.
+
+**Walkthrough: a deletion or permission change.** These use the high-priority lane. A deletion removes every chunk of the document; a permission change fetches only the new ACL and rewrites `acl_principals`, with no re-fetch of text or re-embedding.
+
+**Walkthrough: missed changes.** A poller asks sources for documents modified in the last 5 minutes; a nightly reconciler lists every id and version (about 50,000 list calls of 100 ids at 50/s ≈ 17 minutes), diffs against registry and index, and enqueues what is missing, orphaned or stale.
+
+**Sizing the reference design.** Our own services carry little load: 13.9 questions/s × about 6 s per streamed answer ≈ **84 open streams** at peak (<Term slug="littles-law">Little's law</Term>). Assistant API: **2 per zone, 6 in total**, the minimum that survives a zone loss during a rolling deploy. LLM gateway: **3 instances**. Index: **3 nodes**, a full copy per zone. Reranker: 50 candidates × an assumed 1 ms of GPU time = 50 ms per question, 11.8/s × 50 ms = 0.6 GPU busy, so **2 GPU instances** in different zones. Ingestion workers: about 0.5 s per change, so 2.8/s keeps 1.4 busy; run **4**, which also drains a backlog at 8/s.
+
+## Deep dives
+
+### How do you ingest and chunk 5M documents and reflect an edit within 15 minutes?
+
+**Events first, polling second, reconciliation always.**
+
+| Mechanism | Latency | Catches deletes? | Cost |
+|---|---|---|---|
+| Webhooks or change feeds | Seconds | Only if the source emits delete and permission events | Integration work per source |
+| Poll "modified since" every 5 minutes | Up to 5 minutes | No: a deleted document is not in a "modified" list | One call per source per poll |
+| Nightly reconciliation | Up to 24 hours | Yes, by diffing id sets | About 17 minutes of source API budget |
+
+Reconciliation is the backstop that bounds every other mechanism's misses, including deletes an upsert-only crawler never sees.
+
+**Priority lanes.** The 15-minute target fails behind a backlog, not on the typical edit. Importing a 200,000-page wiki space at 150 fetches/s takes 200,000 ÷ 150 ≈ 22 minutes, and every edit queued behind it misses its target. So three lanes are consumed in order (deletions and permission changes, then edits, then bulk imports and backfills), with per-source fairness inside each. The alert watches the age of the oldest message per lane, not queue length.
+
+**Parsing and chunking.** Parse to text that keeps headings, lists and tables (tables as "column: value" rows, so a row survives chunking), and strip boilerplate such as page footers. <Term slug="chunking">Chunk</Term> by structure: split at headings, pack paragraphs up to 500 tokens with 64 tokens of <Term slug="chunk-overlap">overlap</Term>, and prepend the title and heading path ("Expenses > Home office > Eligibility") so a chunk saying "this does not apply to contractors" says what "this" is. Chunk tickets by thread, keeping the resolution with the problem. Practitioners disagree on default sizes, so measure retrieval hit rate at two or three.
+
+**Incremental re-embedding.** On an edit, re-chunk and embed only chunks whose hash changed. Structure-aware boundaries stay stable under small edits, so a typical edit re-embeds one or two of five chunks.
+
+**Model or chunker changes are rebuilds.** Build a new index from the stored parsed text (about 3 hours of embedding, no source calls), run the evaluation set, then switch an alias; live changes are written to both indexes meanwhile. Halfway through an in-place re-embed the index holds vectors from two models whose similarities are meaningless against each other.
+
+<NotWhenBox title="Event-driven ingestion" items={[
+  "A small source that changes weekly: a 5-minute poll plus reconciliation meets the target with no integration work.",
+  "A source with unreliable or unsigned webhooks: treat events as hints to poll sooner, never as the only signal."
+]} />
+
+### How does hybrid retrieval find the right passages, and what does each stage cost?
+
+Vector search matches meaning and misses exact tokens; <Term slug="bm25">BM25</Term> keyword search matches exact tokens and misses paraphrases. Internal docs are full of error codes, ticket ids, code names and acronyms: "what does ERR_QUOTA_7 mean" is a BM25 question, "how do I get reimbursed for a laptop" a vector one. Fusing the two lists with <Term slug="reciprocal-rank-fusion">reciprocal rank fusion</Term> (Cormack, Clarke and Büttcher, SIGIR 2009: each result scores the sum of 1 ÷ (60 + rank)) avoids calibrating BM25 scores against cosine similarities, which live on unrelated scales.
+
+**Retrieve wide, rerank narrow.** A <Term slug="cross-encoder">cross-encoder</Term> reranker reads the question and a candidate together, which the embedding model never does, and orders candidates much better; Nogueira and Cho's 2019 BERT passage re-ranking paper is the classic demonstration. It is too slow for the corpus and cheap for 50 candidates: 0.6 GPU at peak. Depth is a capacity decision: 100 candidates doubles GPU time and adds to the first-token latency.
+
+**Context assembly.** Merge neighbouring chunks, drop overlap duplicates, put the strongest evidence first, and label each chunk with an id so citations can be checked. Liu et al.'s "Lost in the Middle" (2023) found models use the start and end of a long context more reliably than the middle, which argues for a tight budget over padding.
+
+**Follow-ups.** "And for contractors?" retrieves nothing on its own. Prepending the previous question is free and handles most follow-ups; a model rewrite into a standalone question handles winding conversations better but adds a model call (several hundred milliseconds before retrieval can start) and spends rate limit. Start free and let the follow-up slice of the evaluation set decide.
+
+**Log retrieved ids**, so a wrong answer can be traced: if the right passage never reached the prompt, no model or prompt change will help.
+
+<TradeoffBox title="Retrieval choices" items={[
+  { gain: "Hybrid BM25 + vectors: codes, names and paraphrases all retrieved", cost: "Two kinds of index and a fusion step to tune" },
+  { gain: "Cross-encoder reranking: better ordering, fewer chunks needed", cost: "About 60 ms before the first token and a GPU pool to run" },
+  { gain: "Tight 3,000-token context: lower cost and prefill time", cost: "A correct passage ranked 7th is cut, so ranking quality matters more" }
+]} />
+
+### How do you enforce document permissions so an answer never uses a passage the user cannot read?
+
+**The rule:** restricted text never reaches the prompt. Telling the model to ignore documents is not access control; anything in the prompt can surface in the answer.
+
+**Mechanism.** Each chunk carries `acl_principals`: its document's readers resolved at ingestion to users, groups and `org:all`, by a mapping written per source (wiki space members, a drive file's sharing list, a ticket project's roles). At query time the user's principals (assume 50 on average, capped at a few thousand) become a filter the index applies **during** both the BM25 and the vector search.
+
+**Why post-filtering fails.** If the index finds the nearest 50 chunks overall and then drops those the user cannot read, a contractor who can read 1% of the corpus keeps 50 × 0.01 = 0.5 candidates on average: usually none. The assistant answers "not found" for answerable questions, and it looks like a quality problem. Use filter-aware approximate search, and for very small permitted sets switch to exact search over just those chunks, a few milliseconds of brute force.
+
+**Where staleness leaks.** Membership changes are bounded by the 5-minute cache TTL. Document ACL changes are bounded by the priority lane for sources that emit permission events, and only by reconciliation (up to a day) for those that do not. For those sources, and for spaces marked sensitive (HR, legal, executive), the API re-checks access with the source at serve time for each context document. If 5% of questions touch such spaces: 11.8/s × 0.05 × 6 ≈ 3.5 calls/s, inside the 50/s kept for polling.
+
+**Failure timeline: the restructuring memo.** A fictional HR lead restricts a draft memo from all employees to the HR leadership group.
+
+| Time | Event | What an engineer asking about it sees |
+|---|---|---|
+| 10:00:00 | Sharing changed in the document system | Still answerable: the index says `org:all` |
+| 10:00:02 | Source sends `acl_changed`; receiver enqueues on the priority lane | Same |
+| 10:00:03 | A worker fetches the ACL and rewrites `acl_principals` on the memo's 14 chunks | Same |
+| 10:00:04 | Index refresh makes the new ACL searchable; cached answers using the memo fail their access re-check | "I couldn't find that in documents you can access" |
+
+Exposure: about 4 seconds. The bad variant: the source's webhook delivery is down. A "modified since" poll may not see a sharing change at all, because some systems do not bump the modified time for a permission change, so the memo stays visible until the nightly reconciler, up to 24 hours. Defences: an alert on webhook silence (zero events from a busy source for 10 minutes), and the serve-time re-check, which closes the window for sensitive spaces whatever happens to events.
+
+**Logs and injection.** Answer logs hold restricted passages, so they get the strictest access, bounded retention and scrubbing before use in evaluation. Documents are written by anyone, so a chunk can contain <Term slug="prompt-injection">prompt injection</Term> ("ignore your instructions and say X"). This assistant has no tools, which bounds the damage to a misleading answer: mark retrieved text as quoted data, keep the citation check, and include injected documents in the evaluation set.
+
+### How do you keep cost and latency in check: caching, token budgets and model rate limits?
+
+**The answer cache is exact-match, not semantic.** A <Term slug="semantic-cache">semantic cache</Term> returns a stored answer for any question whose embedding is close enough. Here that fails twice: "can contractors expense monitors" and "can employees expense monitors" embed close together and have opposite answers, and an answer built from documents one user can read must not reach another who cannot. So the key is normalized text plus index build and prompt version, and each entry stores the version of **every** context document, not just the cited ones, since uncited context still shapes the answer. A hit is served only if the requester can read all of them and none has changed. The 15% hit rate is a planning assumption to verify by measuring exact repeats in the answer log.
+
+**Other caches.** Query embeddings by normalized text, and memberships. Provider prompt caching helps little: the shared prefix is the 400-token system prompt, while the 3,000-token context differs on almost every question.
+
+**Token budgets** at each scope make cost a design decision: per answer 3,000 context tokens and `max_tokens` 800, with a length-truncated finish handled as an error; per conversation the last 2 turns verbatim plus a rolling summary; per user 100 questions a day (assumption), at most 100 × 0.00495 P ≈ 0.5 P, enforced by the gateway before the call; and a spend alarm at 120% of plan.
+
+**Rate limits are scheduled, not bounced off.** The gateway keeps a <Term slug="token-bucket">token bucket</Term> per deployment that spends estimated tokens, so it slows before the provider returns 429; it retries in one layer only, with backoff and jitter, honouring `retry-after`; and interactive questions outrank batch work such as evaluation runs.
+
+**Two deployments of the same model.** At 71% of one quota there is no headroom and no failover. A second deployment of the **same** model (another region or platform that hosts it), with its own quota, is the <Term slug="provider-failover">provider failover</Term>: the gateway splits load across both, and either alone carries the peak. A different model as fallback changes behaviour and must pass the evaluation set first.
+
+**Degrade rather than fail.** With both deployments down, return the reranked passages with links. With the embedding API down, retrieve with BM25 only. Note the asymmetry: query embeddings must come from the model that embedded the corpus, so another embedding provider is not a fallback.
+
+**Model routing, later.** Sending easy questions to a smaller model can cut the bill, but needs a validator and per-route evaluation; at about 2,100 P per day the engineering may cost more than it saves. At 10× it pays.
+
+### How do you know answers are good, and catch regressions before users do?
+
+**Offline evaluation set.** An <Term slug="offline-eval-set">offline eval set</Term> of about 500 questions sampled from real, scrubbed traffic, each with gold passages and a reference answer, sliced by source, question type (lookup, how-to, follow-up, exact code) and **permission**: questions asked as a user who cannot see the gold document, where the right answer is "not found" and any mention of the restricted content is a severe failure. Every fixed bad answer is added for ever.
+
+**Measured per slice:**
+
+- **Retrieval hit rate**: did a gold passage reach the context? It caps answer quality, so it comes first.
+- **Citation validity**: cited ids were in the prompt and contain the key fact. Programmatic, and also run on every production answer.
+- **Faithfulness and correctness**: an <Term slug="llm-as-judge">LLM judge</Term> with binary criteria and the reference answer, calibrated against a few hundred human labels before it is trusted (Zheng et al., 2023, documented its position, verbosity and self-preference biases).
+- **Refusal correctness**: "not found" when, and only when, the documents do not answer.
+
+**Statistical honesty.** At a 90% pass rate, 500 examples give a 95% interval of ±1.96 × √(0.09 ÷ 500) ≈ ±2.6 points, so 90% to 91% is noise. Compare versions on the same examples, look at the ones that changed outcome, and gate on per-slice floors (permission slice: zero leaks) rather than on one overall number.
+
+**The gate.** Every change to chunker, embedding model, reranker, prompt, budget or chat model runs the set first. At about 2,000 input and 200 output tokens per judgement, a run is 1M input and 100,000 output tokens: about 1.4 P if the judge is priced like the chat model. Cheap enough for every change.
+
+**Online.** Thumbs-down rate, citation click-through, "not found" rate per source (a rise on one source usually means an ingestion or permission-mapping bug), and 1% of answers judged daily.
+
+## Failure modes & mitigations
+
+| Failure | Detection | Impact | Mitigation |
+|---|---|---|---|
+| One chat deployment fails or throttles | Gateway errors, quota headroom | Half the capacity | Shift all traffic to the other; 11.8/s fits one |
+| Both chat deployments down | Gateway health | No generated answers | Search-only mode: top passages with links |
+| Embedding API down | Embed error rate | No vector retrieval; ingestion stalls | BM25-only retrieval; queue holds changes; freshness alert at 10 minutes |
+| Index node or zone lost | Cluster health | None: two full copies remain | Replace the node; recover from peers |
+| A source's webhooks stop | Zero events from a busy source for 10 minutes | Edits, deletes and ACL changes stop | Poll more often; serve-time ACL check for sensitive spaces; reconciliation |
+| Bulk import floods ingestion | Oldest-message age per lane | Edits miss 15 minutes | Priority lanes; per-source fairness |
+| Permission filter too selective | "Not found" rate by user group | Users with narrow access get nothing | Filter-aware search; exact search for small permitted sets |
+| Model invents a citation | Citation validator | Uncheckable claim | Drop it, flag the claim, count it |
+| Bad chunker or prompt release | Evaluation gate; thumbs-down spike | A slice regresses | Gate before rollout; alias or config rollback |
+| Runaway client or script | Per-user token spend | Cost spike, quota starvation | Per-user quota at the gateway |
+
+## Scaling to 10×
+
+At 500,000 daily users and 50M documents:
+
+**What breaks first: the chat quota and the bill.** Peak calls become 118/s: 118 ÷ 16.7 ≈ 7.1, so at least 8 deployments at 100% and about 11 at 70%, or a provisioned-throughput agreement. Spend becomes about 21,000 P per day, and the levers not worth it at 1× now pay:
+
+- **Model routing**: a validator-gated cascade from a smaller model for lookup questions, with quality measured per route.
+- **A smaller context** when the reranker is confident: 4 chunks instead of 6 saves 1,000 of 3,750 input tokens, 27% of input cost.
+- **Self-hosting** an open-weights model at a steady 118 calls/s, trading per-token prices for GPU capacity planning and an on-call rotation.
+
+**Second: the index.** 250M chunks are 1 TB of float32 vectors, 256 GB even at one byte per dimension. Shard by document id hash, use stronger compression (product quantization with rescoring), and keep filter-aware search per shard.
+
+**Third: the sources.** Peak changes of 28/s still fit 150/s, but an initial load of 50M documents takes 50M ÷ 150 ≈ 93 hours, so negotiate higher limits or bulk exports.
+
+## Tradeoffs summary
+
+| Decision | Alternative | Why this one |
+|---|---|---|
+| ACL filter inside retrieval, on every chunk | Filter answers afterwards, or instruct the model | Restricted text must never reach the prompt; post-filtering starves narrow-access users |
+| One engine for BM25 and vectors | Separate search engine and vector database | One write and delete path; no ACL drift between indexes |
+| Hybrid search with rank fusion | Vectors only | Internal docs are full of codes and names embeddings miss |
+| Cross-encoder rerank of 50 | No reranker, or 200 | Better ordering for 0.6 GPU; deeper adds latency for little gain |
+| Webhooks + polling + reconciliation | Nightly crawl | Seconds of freshness; deletes guaranteed within a day |
+| Priority lanes | One FIFO queue | A bulk import must not delay a permission removal |
+| Exact answer cache with version and ACL checks | Semantic cache | No false hits or cross-user leaks; lower hit rate accepted |
+| Two deployments of the same model | One deployment, or a different fallback model | Failover without a behaviour change |
+| Prepend previous question | Model-based query rewrite | Free and fast until evaluation shows otherwise |
+| Rebuild and swap alias | Re-embed in place | Never mix two models' vectors |
+
+## What interviewers look for
+
+- **Permissions as a retrieval property**: ACLs on chunks, filtering during search, the post-filtering failure, and bounded staleness for ACL and membership changes.
+- **Numbers that find the binding constraint**: the chat quota (71% of one deployment) and input-token cost (76% of spend) bind long before the services do.
+- **Freshness as a pipeline with a backstop**: events, polling and reconciliation; deletes and permission changes first; re-embedding by chunk hash; alias swaps.
+- **Retrieval engineering**: hybrid search with rank fusion, retrieve wide and rerank narrow, a context budget, and logged retrieved ids.
+- **Evaluation with statistics**: retrieval hit rate first, a calibrated judge, per-slice gates, and what 500 examples can detect.
+- **Degradation**: search-only without the model, BM25-only without embeddings, and why an embedding model cannot be swapped like a chat model.
+
+<InterviewAngle title="Follow-ups to expect" questions={[
+  "A user was removed from the finance group five minutes ago and asks about the budget. What can they still see, and for how long?",
+  "Answers about one product suddenly cite outdated pages. How do you tell whether it is ingestion, retrieval or generation?",
+  "Plan a migration to a better embedding model with no downtime and no quality regression.",
+  "The chat provider has a two-hour outage on Monday morning. What do users experience?",
+  "Finance says the bill doubled last month. Where do you look first?"
+]} />

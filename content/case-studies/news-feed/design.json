@@ -1,0 +1,519 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "users",
+      "kind": "client",
+      "x": 0,
+      "y": 448,
+      "label": "Users",
+      "props": {
+        "platform": "both",
+        "users": 500000000
+      }
+    },
+    {
+      "id": "dns",
+      "kind": "dns",
+      "x": 224,
+      "y": 96,
+      "label": "DNS",
+      "props": {
+        "ttlS": 60,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "cdn",
+      "kind": "cdn",
+      "x": 224,
+      "y": 800,
+      "label": "CDN (images)",
+      "props": {
+        "hitRate": 95,
+        "latencyMs": 20,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "region",
+      "kind": "frame",
+      "x": 448,
+      "y": 0,
+      "label": "Region (primary)",
+      "props": {
+        "scope": "region"
+      },
+      "w": 1520,
+      "h": 1024
+    },
+    {
+      "id": "lb",
+      "kind": "load-balancer",
+      "x": 48,
+      "y": 448,
+      "label": "Load balancer (TLS)",
+      "props": {
+        "layer": "L7",
+        "algorithm": "least-connections",
+        "instances": 2,
+        "latencyMs": 1,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "az-a",
+      "kind": "frame",
+      "x": 256,
+      "y": 32,
+      "label": "AZ a",
+      "props": {
+        "scope": "az"
+      },
+      "w": 320,
+      "h": 256,
+      "parentId": "region"
+    },
+    {
+      "id": "api-a",
+      "kind": "service",
+      "x": 48,
+      "y": 96,
+      "label": "Feed API AZ-a (x76)",
+      "props": {
+        "name": "feed-api",
+        "instances": 76,
+        "capacityQps": 2000,
+        "latencyMs": 40,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-a"
+    },
+    {
+      "id": "az-b",
+      "kind": "frame",
+      "x": 256,
+      "y": 352,
+      "label": "AZ b",
+      "props": {
+        "scope": "az"
+      },
+      "w": 320,
+      "h": 256,
+      "parentId": "region"
+    },
+    {
+      "id": "api-b",
+      "kind": "service",
+      "x": 48,
+      "y": 96,
+      "label": "Feed API AZ-b (x76)",
+      "props": {
+        "name": "feed-api",
+        "instances": 76,
+        "capacityQps": 2000,
+        "latencyMs": 40,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-b"
+    },
+    {
+      "id": "az-c",
+      "kind": "frame",
+      "x": 256,
+      "y": 672,
+      "label": "AZ c",
+      "props": {
+        "scope": "az"
+      },
+      "w": 320,
+      "h": 256,
+      "parentId": "region"
+    },
+    {
+      "id": "api-c",
+      "kind": "service",
+      "x": 48,
+      "y": 96,
+      "label": "Feed API AZ-c (x76)",
+      "props": {
+        "name": "feed-api",
+        "instances": 76,
+        "capacityQps": 2000,
+        "latencyMs": 40,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "az-c"
+    },
+    {
+      "id": "timelines",
+      "kind": "nosql-db",
+      "x": 688,
+      "y": 64,
+      "label": "Timeline cache: Redis Cluster (60 primaries + 60 replicas)",
+      "props": {
+        "nodes": 120,
+        "consistency": "one",
+        "capacityQps": 25000,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "postcache",
+      "kind": "nosql-db",
+      "x": 688,
+      "y": 288,
+      "label": "Post cache: Memcached (12 nodes, 400 GB)",
+      "props": {
+        "nodes": 12,
+        "consistency": "one",
+        "capacityQps": 500000,
+        "latencyMs": 1,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "posts",
+      "kind": "nosql-db",
+      "x": 688,
+      "y": 512,
+      "label": "Post store: wide-column (48 nodes, RF=3)",
+      "props": {
+        "nodes": 48,
+        "consistency": "quorum",
+        "capacityQps": 10000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "ranker",
+      "kind": "service",
+      "x": 688,
+      "y": 736,
+      "label": "Ranking service (x150)",
+      "props": {
+        "name": "ranker",
+        "instances": 150,
+        "capacityQps": 2000,
+        "latencyMs": 30,
+        "stateless": true,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "events",
+      "kind": "queue",
+      "x": 1008,
+      "y": 512,
+      "label": "Kafka (RF=3): post-created (64 partitions)",
+      "props": {
+        "partitions": 64,
+        "retentionH": 72,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0,
+        "replication": 3
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "fanout",
+      "kind": "worker",
+      "x": 1248,
+      "y": 288,
+      "label": "Fan-out workers (x90)",
+      "props": {
+        "instances": 90,
+        "processingMs": 5.6,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "graph",
+      "kind": "shard-group",
+      "x": 1248,
+      "y": 64,
+      "label": "Social graph: sharded MySQL (64 shards, primary + replica)",
+      "props": {
+        "shards": 64,
+        "capacityQps": 5000,
+        "latencyMs": 5,
+        "availabilityPct": 99.9,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "mon",
+      "kind": "monitoring",
+      "x": 1248,
+      "y": 736,
+      "label": "Monitoring (feed p99, fan-out lag)",
+      "props": {
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      },
+      "parentId": "region"
+    },
+    {
+      "id": "media",
+      "kind": "object-storage",
+      "x": 2048,
+      "y": 800,
+      "label": "Media (images)",
+      "props": {
+        "latencyMs": 50,
+        "availabilityPct": 99.99,
+        "costPerMonth": 0
+      }
+    },
+    {
+      "id": "note",
+      "kind": "note",
+      "x": 0,
+      "y": 1072,
+      "label": "",
+      "props": {
+        "text": "Run mode routes only request traffic: feed reads to the timeline cache, post creates to the post store. Fan-out (~1.46M timeline inserts/s at peak) runs from Kafka in the background; workers pull from Kafka, so it is drawn as worker to Kafka. The timeline cluster is sized for those inserts, which is why it looks idle here. Feed API latency (40 ms) includes its parallel calls to ranking and the post cache."
+      },
+      "w": 460,
+      "h": 180
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-lb-api-a",
+      "source": "lb",
+      "target": "api-a",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-a-timelines",
+      "source": "api-a",
+      "target": "timelines",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "read feed IDs"
+    },
+    {
+      "id": "e-api-a-postcache",
+      "source": "api-a",
+      "target": "postcache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hydrate posts, celebrity recent posts"
+    },
+    {
+      "id": "e-api-a-posts",
+      "source": "api-a",
+      "target": "posts",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "create post / cache miss"
+    },
+    {
+      "id": "e-api-a-ranker",
+      "source": "api-a",
+      "target": "ranker",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "rank ~500 candidates"
+    },
+    {
+      "id": "e-api-a-events",
+      "source": "api-a",
+      "target": "events",
+      "kind": "async",
+      "direction": "forward",
+      "label": "post created"
+    },
+    {
+      "id": "e-lb-api-b",
+      "source": "lb",
+      "target": "api-b",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-b-timelines",
+      "source": "api-b",
+      "target": "timelines",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "read feed IDs"
+    },
+    {
+      "id": "e-api-b-postcache",
+      "source": "api-b",
+      "target": "postcache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hydrate posts, celebrity recent posts"
+    },
+    {
+      "id": "e-api-b-posts",
+      "source": "api-b",
+      "target": "posts",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "create post / cache miss"
+    },
+    {
+      "id": "e-api-b-ranker",
+      "source": "api-b",
+      "target": "ranker",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "rank ~500 candidates"
+    },
+    {
+      "id": "e-api-b-events",
+      "source": "api-b",
+      "target": "events",
+      "kind": "async",
+      "direction": "forward",
+      "label": "post created"
+    },
+    {
+      "id": "e-lb-api-c",
+      "source": "lb",
+      "target": "api-c",
+      "kind": "sync",
+      "direction": "forward"
+    },
+    {
+      "id": "e-api-c-timelines",
+      "source": "api-c",
+      "target": "timelines",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "read feed IDs"
+    },
+    {
+      "id": "e-api-c-postcache",
+      "source": "api-c",
+      "target": "postcache",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "hydrate posts, celebrity recent posts"
+    },
+    {
+      "id": "e-api-c-posts",
+      "source": "api-c",
+      "target": "posts",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "create post / cache miss"
+    },
+    {
+      "id": "e-api-c-ranker",
+      "source": "api-c",
+      "target": "ranker",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "rank ~500 candidates"
+    },
+    {
+      "id": "e-api-c-events",
+      "source": "api-c",
+      "target": "events",
+      "kind": "async",
+      "direction": "forward",
+      "label": "post created"
+    },
+    {
+      "id": "e-users-dns",
+      "source": "users",
+      "target": "dns",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "resolve"
+    },
+    {
+      "id": "e-users-lb",
+      "source": "users",
+      "target": "lb",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "GET /v1/feed, POST /v1/posts"
+    },
+    {
+      "id": "e-users-cdn",
+      "source": "users",
+      "target": "cdn",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "images"
+    },
+    {
+      "id": "e-cdn-media",
+      "source": "cdn",
+      "target": "media",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "miss"
+    },
+    {
+      "id": "e-users-media",
+      "source": "users",
+      "target": "media",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "presigned upload"
+    },
+    {
+      "id": "e-fanout-events",
+      "source": "fanout",
+      "target": "events",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "poll (consumer pull)"
+    },
+    {
+      "id": "e-fanout-graph",
+      "source": "fanout",
+      "target": "graph",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "follower list pages"
+    },
+    {
+      "id": "e-fanout-timelines",
+      "source": "fanout",
+      "target": "timelines",
+      "kind": "sync",
+      "direction": "forward",
+      "label": "insert post ID (~140 per post)"
+    },
+    {
+      "id": "e-fanout-mon",
+      "source": "fanout",
+      "target": "mon",
+      "kind": "async",
+      "direction": "forward",
+      "label": "consumer lag"
+    }
+  ]
+}

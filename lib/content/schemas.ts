@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { FRAMEWORK_HEADINGS } from "@/lib/studio/notes";
+import { RunChallenge, TrafficProfile } from "@/lib/studio/sim/types";
 
 // Zod versions of the CLAUDE.md §4 content types.
 export const Depth = z.enum(["deep", "tradeoffs", "awareness"]);
@@ -74,11 +76,30 @@ export const Plan = z.array(PlanWeek);
 export const CaseStudyMeta = z.strictObject({
   id,
   title: z.string().min(1),
+  /** One line for lists and search. */
   summary: z.string().min(1),
   difficulty: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-  topics: z.array(z.string()),
-  sectionIds: z.array(id),
+  weekRecommended: z.number().int().min(1).max(16),
+  relatedSectionIds: z.array(id).min(1),
+  /** 2–4 sentences, deliberately underspecified like a real interview. */
+  interviewerPrompt: z.string().min(1),
+  clarifyingQuestions: z.array(z.strictObject({ question: z.string().min(1), answer: z.string().min(1) })).min(8).max(12),
+  deepDiveQuestions: z.array(z.string().min(1)).min(3).max(5),
+  trafficProfile: TrafficProfile,
+  runChallenge: RunChallenge,
+  commonMistakes: z.array(z.string().min(1)).min(5).max(8),
 });
+
+/** Self-review rubric (Interview Mode): 10–14 criteria grouped by framework step, each scored 0 / 1 / 2. */
+export const Rubric = z.strictObject({
+  criteria: z.array(z.strictObject({
+    id,
+    step: z.enum(FRAMEWORK_HEADINGS),
+    title: z.string().min(1),
+    levels: z.strictObject({ "0": z.string().min(1), "1": z.string().min(1), "2": z.string().min(1) }),
+  })).min(10).max(14),
+});
+export type Rubric = z.infer<typeof Rubric>;
 
 export type SectionMeta = z.infer<typeof SectionMeta>;
 export type QuizQuestion = z.infer<typeof QuizQuestion>;

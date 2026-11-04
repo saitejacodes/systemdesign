@@ -1,0 +1,64 @@
+{
+  "criteria": [
+    { "id": "requirements-tension", "step": "Requirements", "title": "Requirements and the tension between them",
+      "levels": {
+        "0": "Restates 'limit requests' without rules, rejection behaviour or outage behaviour.",
+        "1": "Lists the rules, the 429 and the latency budget, but treats fleet-wide accuracy and 'the limiter must not take the API down' as unrelated.",
+        "2": "Per-user and per-key rules, 429 with Retry-After and remaining-count headers, no boundary bursts, fleet-wide limits with a few percent of slack, a 5 ms p99, rules changeable without deploys, and critical rules called out as behaving differently in an outage." } },
+    { "id": "nfr-priorities", "step": "Requirements", "title": "Accuracy versus availability decided up front",
+      "levels": {
+        "0": "Assumes limits must be exact and the limiter always available.",
+        "1": "Mentions that some overshoot may be acceptable, but never says what is sacrificed when the limiter fails.",
+        "2": "States that a few percent of overshoot buys latency and availability, that durability of counters is not a goal, and that limiter failure degrades limiting, never the API." } },
+    { "id": "ops-math", "step": "Estimation", "title": "Operations per second drive the store",
+      "levels": {
+        "0": "No numbers, or sizes the store by memory.",
+        "1": "Computes 1M requests/s and some Redis node count, but misses that there are two checks per request or never states a per-node assumption.",
+        "2": "1M peak and 500k average, 2 rules → 2M script calls/s, a labelled per-primary assumption (50k/s), ρ ≤ 0.5 for single-thread queueing → 80 primaries + 80 replicas, against only ~205 MB of data." } },
+    { "id": "latency-budget", "step": "Estimation", "title": "Latency budget and fleet headroom",
+      "levels": {
+        "0": "Says Redis is fast.",
+        "1": "Gives a single round-trip figure without the timeout or the parallel checks.",
+        "2": "Itemises rule match, round trip (cross-zone slower), script time and queueing; runs both checks in parallel; picks a 3 ms timeout inside the 5 ms budget; checks the API fleet at ρ 0.76 with a zone lost." } },
+    { "id": "api-headers", "step": "API", "title": "Caller-facing contract and internal interface",
+      "levels": {
+        "0": "Returns an error with no status code or hint.",
+        "1": "Returns 429 but no Retry-After or remaining count, or no rules API.",
+        "2": "429 with Retry-After and RateLimit (or X-RateLimit-*) headers on every response, a JSON error naming the rule, the in-process check call returning remaining and retry time, and a versioned rules API with shadow mode." } },
+    { "id": "data-model", "step": "Data Model", "title": "Counter layout and store choice",
+      "levels": {
+        "0": "A SQL table with one row per request.",
+        "1": "Redis counters with TTL, but no thought about cluster slots, persistence or why not Memcached or a database.",
+        "2": "One small hash per identity and rule with TTL of two windows, hash tags explained, Redis chosen for atomic scripts at ~1 ms, persistence off and async replication accepted, rules in Postgres pushed to servers." } },
+    { "id": "hld", "step": "High-Level Design", "title": "Architecture and request paths",
+      "levels": {
+        "0": "A box called 'rate limiter' between client and API.",
+        "1": "Shows API servers and Redis but not where rules come from or what happens on rejection.",
+        "2": "Walks allowed, rejected (with a local deny cache), rule-change and Redis-down paths across 50 servers in three zones, a Redis Cluster and a rules service." } },
+    { "id": "algorithm", "step": "Deep Dives", "title": "Algorithm choice",
+      "levels": {
+        "0": "Picks one algorithm without alternatives.",
+        "1": "Names several algorithms but not the fixed-window boundary burst or the sliding log's memory cost.",
+        "2": "Compares fixed window (2× burst), sliding log (exact, ~0.5 MB per busy key), sliding-window counter (2 counters, approximate), token bucket (burst-shaped plans) and leaky bucket (shaping), with a worked estimate, and chooses by the rule's wording and memory." } },
+    { "id": "atomicity", "step": "Deep Dives", "title": "Atomic distributed counters",
+      "levels": {
+        "0": "Reads and writes the counter in separate steps.",
+        "1": "Uses INCR or a Lua script but cannot explain the race or the cluster constraints.",
+        "2": "Explains the read-modify-write race, why MULTI/EXEC alone is not enough, a Lua script that uses Redis's own clock, does not count rejections, one key per script under hash slots, and the overcount when two rules disagree; handles global hot keys." } },
+    { "id": "placement-failure", "step": "Deep Dives", "title": "Placement and fail open versus closed",
+      "levels": {
+        "0": "No timeout on the limiter call; fails closed for everything or never considers failure.",
+        "1": "Fails open with a timeout but the same way for every rule, or the backstop throttles single-connection users.",
+        "2": "Sizes a separate service (~51 instances) before choosing an in-process library; 3 ms timeout and per-shard breaker; fail mode per rule (closed for login abuse); a per-key backstop that avoids breaking per-user rules; a failover timeline with detection." } },
+    { "id": "multi-region", "step": "Deep Dives", "title": "Limits across regions",
+      "levels": {
+        "0": "One global counter called from every region, or no answer.",
+        "1": "Per-region limits without stating the overshoot.",
+        "2": "Rejects a home-region counter on latency (60–150 ms vs 5 ms), counts locally and exchanges counts every second like a grow-only counter, and bounds overshoot (~3.3% for three regions)." } },
+    { "id": "wrapup", "step": "Wrap-up", "title": "Failure table, 10× and trade-offs",
+      "levels": {
+        "0": "No failures or scaling discussed.",
+        "1": "Lists Redis failure and adding nodes, but not what breaks first at 10×.",
+        "2": "Covers shard loss, slow shard, full outage, bad rule, clock skew and abusive clients; at 10× names Redis Cluster size and connection count first, with cells, a limiter tier for connection pooling and leases as the fixes; states each decision with its alternative." } }
+  ]
+}

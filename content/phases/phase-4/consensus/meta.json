@@ -15,6 +15,6 @@
     { "id": "coordination-services", "title": "etcd and ZooKeeper in practice", "depth": "tradeoffs" }
   ],
   "simulatorIds": ["raft"],
-  "practiceCaseStudyIds": [],
+  "practiceCaseStudyIds": ["job-scheduler"],
   "prerequisites": ["p4-quorums", "p2-replication"]
 }

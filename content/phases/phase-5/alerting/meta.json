@@ -13,6 +13,6 @@
     { "id": "runbooks", "title": "Runbooks", "depth": "tradeoffs" }
   ],
   "simulatorIds": [],
-  "practiceCaseStudyIds": ["metrics-monitoring"],
+  "practiceCaseStudyIds": ["metrics-monitoring", "job-scheduler"],
   "prerequisites": ["p5-slos", "p5-metrics"]
 }
