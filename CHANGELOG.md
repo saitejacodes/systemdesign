@@ -159,3 +159,28 @@
   - Open /simulators/code-labs/lru-cache, then Show reference solution → Run tests (Python loads about 10 MB the first time). Switch to Java → Download runnable file → `java LabTests.java`.
   - `pnpm test` (583 tests: every reference solution passes and every starter fails, in all five languages).
   - `pnpm test:e2e` (labs.spec plus all 15 lab routes).
+
+## Prompt 17 · Design Studio: canvas
+- **/studio** lists your designs (title, case study or template, last updated):
+  - New design, or New from template: 19 case-study practice starters plus a full three-tier example.
+  - Duplicate, delete (with confirm), and import JSON with readable validation errors.
+- **Editor** (`/studio/<id>`; `/studio/new?template=<id>` creates one), built on React Flow:
+  - **Canvas:** infinite, snap to a 16 px grid, minimap and zoom controls.
+  - **Selection:** multi-select and box-select.
+  - **Editing:** copy/paste/duplicate, undo/redo (100 steps, drags coalesced), delete, arrow nudge (Shift ×10), Space+drag pan.
+  - **Layout:** align and distribute tools; region/AZ frames that nodes join on drop; resizable text notes.
+  - **Edges:** a label, arrow direction, and a kind (sync solid, async dashed, replication dotted).
+- **Palette:** 18 components plus the Region/AZ frame, each with its own isometric icon in the colour of the phase that teaches it. It is searchable by name, description and keywords such as "kafka" or "s3". Drag a component, or press Enter to add it at the centre of the view.
+- **Properties panel:**
+  - Every default property with its unit, validated inline. Invalid values are never applied.
+  - Edge kind, label and direction.
+  - "Connect to" as a keyboard path for connecting nodes.
+  - Align tools for a multi-selection.
+  - A link to the lesson that teaches the selected component.
+- **Saving and history:** autosave to IndexedDB after 800 ms, with a Saved indicator. Version history keeps the last 20 snapshots, taken at most once a minute on save or whenever you click "Save version". Restoring a version can be undone.
+- **Notes tab per design:** prefilled with the 7-step framework headings. Under them are prompts covering requirements, capacity, API and data model, high-level design, scalability and fault tolerance, and bottlenecks and trade-offs. Templates add the problem statement on top.
+- **Export:** PNG and SVG in Paper or Blueprint, built from the graph with theme colours inlined (no new dependency), plus JSON.
+- **Verify:**
+  - Open /studio, then New from template → URL shortener, add a Load Balancer and two Services from the palette and connect them.
+  - Set instances to 0 to see the validation error, then use ⌘Z / ⇧⌘Z, reload, and export a PNG.
+  - `pnpm test` (725 tests); `pnpm test:e2e` (studio.spec plus the /studio routes).

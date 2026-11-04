@@ -1,0 +1,101 @@
+/* Design Studio: React Flow themed from the Field Manual tokens (both themes follow the CSS variables). */
+.sdl-flow {
+  --xy-background-color: var(--paper);
+  --xy-background-pattern-color: var(--grid);
+  --xy-node-color: var(--ink);
+  --xy-node-background-color: transparent;
+  --xy-node-border: 0;
+  --xy-node-border-radius: 2px;
+  --xy-node-boxshadow-selected: none;
+  --xy-node-boxshadow-hover: none;
+  --xy-edge-stroke: var(--ink);
+  --xy-edge-stroke-selected: var(--cobalt);
+  --xy-edge-stroke-width: 1.5;
+  --xy-connectionline-stroke: var(--cobalt);
+  --xy-connectionline-stroke-width: 1.5;
+  --xy-handle-background-color: var(--surface);
+  --xy-handle-border-color: var(--ink);
+  --xy-selection-background-color: color-mix(in srgb, var(--cobalt) 8%, transparent);
+  --xy-selection-border: 1px dashed var(--cobalt);
+  --xy-minimap-background-color: var(--surface);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--ink) 12%, transparent);
+  --xy-minimap-mask-stroke-color: var(--ink);
+  --xy-minimap-mask-stroke-width: 1;
+  --xy-minimap-node-background-color: var(--surface-sunk);
+  --xy-minimap-node-stroke-color: var(--ink);
+  --xy-minimap-node-stroke-width: 1;
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-hover: var(--ink);
+  --xy-controls-button-color: var(--ink);
+  --xy-controls-button-color-hover: var(--paper);
+  --xy-controls-button-border-color: var(--ink);
+  --xy-controls-box-shadow: none;
+  --xy-resize-background-color: var(--cobalt);
+  --xy-edge-label-background-color: var(--paper);
+  --xy-edge-label-color: var(--ink);
+  background: var(--paper);
+  font-family: var(--font-sans);
+}
+.sdl-flow .react-flow__node { font-family: var(--font-sans); }
+.sdl-flow .react-flow__node:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.sdl-flow .react-flow__edge:focus-visible { outline: none; }
+.sdl-flow .react-flow__edge:focus-visible .react-flow__edge-path { stroke: var(--focus) !important; stroke-width: 3 !important; stroke-opacity: 1 !important; }
+.sdl-flow .react-flow__controls { border: 1px solid var(--ink); border-radius: 2px; }
+.sdl-flow .react-flow__controls-button { border-bottom: 1px solid var(--ink); width: 28px; height: 28px; }
+.sdl-flow .react-flow__controls-button:last-child { border-bottom: 0; }
+.sdl-flow .react-flow__controls-button svg { fill: currentColor; }
+.sdl-flow .react-flow__controls-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sdl-flow .react-flow__minimap { border: 1px solid var(--ink); border-radius: 2px; }
+@media (max-width: 639px) { .sdl-flow .react-flow__minimap { display: none; } }
+
+/* Component card */
+.sdl-node { position: relative; display: grid; grid-template-columns: 40px 1fr; gap: 8px; align-items: start; width: 192px; height: 80px; padding: 8px 10px 8px 8px; box-sizing: border-box; background: var(--surface); border: 1.5px solid var(--ink); border-radius: 2px; color: var(--ink); }
+.sdl-node.is-selected { border: 2px solid var(--cobalt); padding: 7.5px 9.5px 7.5px 7.5px; box-shadow: 3px 3px 0 0 var(--cobalt); }
+.sdl-node__text { min-width: 0; display: grid; gap: 1px; }
+.sdl-node__label { font-size: 14px; font-weight: 600; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sdl-node__prop { font-family: var(--font-mono); font-size: 10.5px; line-height: 14px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.sdl-node__tag { position: absolute; left: 8px; bottom: 4px; font-family: var(--font-mono); font-size: 9px; line-height: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-muted); max-width: calc(100% - 16px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sdl-node__icon { display: block; }
+
+/* Handles: small squares on all four sides, visible on hover/selection or while connecting */
+.sdl-flow .sdl-handle { width: 9px; height: 9px; min-width: 0; min-height: 0; border-radius: 0; border: 1.5px solid var(--ink); background: var(--surface); opacity: 0; transition: opacity .15s ease; }
+.sdl-flow .react-flow__node:hover .sdl-handle, .sdl-flow .react-flow__node.selected .sdl-handle, .sdl-flow .react-flow__node:focus-visible .sdl-handle, .sdl-flow.is-connecting .sdl-handle { opacity: 1; }
+.sdl-flow .sdl-handle:hover, .sdl-flow .sdl-handle.connectingto { background: var(--cobalt); border-color: var(--cobalt); }
+
+/* Frame: dashed boundary; only its label tab (and resize controls) catch the pointer, so you can work inside it */
+.sdl-flow .react-flow__node-frame { pointer-events: none !important; }
+.sdl-frame { width: 100%; height: 100%; box-sizing: border-box; border: 1.5px dashed var(--ink); background: color-mix(in srgb, var(--surface) 35%, transparent); }
+.sdl-frame.is-selected { border-color: var(--cobalt); border-width: 2px; }
+.sdl-frame__tab { pointer-events: all; position: absolute; left: -1.5px; top: -1.5px; max-width: calc(100% + 3px); padding: 4px 10px; background: var(--ink); color: var(--paper); font-family: var(--font-mono); font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: grab; }
+.sdl-frame.is-selected .sdl-frame__tab { background: var(--cobalt); color: var(--on-cobalt); }
+.sdl-flow .react-flow__node-frame .react-flow__resize-control { pointer-events: all; }
+.sdl-flow .sdl-resize-line { border-color: var(--cobalt) !important; }
+.sdl-flow .sdl-resize-handle { width: 9px !important; height: 9px !important; border-radius: 0 !important; background: var(--surface) !important; border: 1.5px solid var(--cobalt) !important; }
+
+/* Text note */
+.sdl-note { position: relative; width: 100%; height: 100%; box-sizing: border-box; background: var(--surface-sunk); border: 1px solid var(--ink); border-radius: 2px; color: var(--ink); }
+.sdl-note.is-selected { border: 2px solid var(--cobalt); }
+.sdl-note__body { height: 100%; overflow: hidden; padding: 8px 10px; font-size: 13px; line-height: 1.45; }
+.sdl-note__body > * { margin: 0 0 .4em; }
+.sdl-note__body h1, .sdl-note__body h2, .sdl-note__body h3 { font-family: var(--font-display); font-weight: 800; font-size: 15px; letter-spacing: -.01em; }
+.sdl-note__body ul, .sdl-note__body ol { padding-left: 1.2em; list-style: square; }
+.sdl-note__body code { font-family: var(--font-mono); font-size: .9em; }
+
+/* Edges */
+.sdl-edge-dots { fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 0.1 4.5; }
+.sdl-edge-label { position: absolute; padding: 1px 6px; background: var(--paper); border: 1px solid var(--line); font-family: var(--font-mono); font-size: 11px; line-height: 15px; color: var(--ink); white-space: nowrap; pointer-events: none; }
+.sdl-edge-label.is-selected { border-color: var(--cobalt); color: var(--cobalt); }
+
+/* Palette */
+.sdl-pal-item { display: grid; grid-template-columns: 32px 1fr; gap: 10px; align-items: center; width: 100%; padding: 6px 8px; border: 1px solid transparent; border-radius: 2px; background: none; color: var(--ink); text-align: left; cursor: grab; }
+.sdl-pal-item:hover { border-color: var(--ink); background: var(--surface); }
+.sdl-pal-item:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.sdl-pal-item .t { display: block; font-size: 14px; font-weight: 600; line-height: 1.25; }
+.sdl-pal-item .b { display: block; font-size: 12.5px; line-height: 1.35; color: var(--ink-muted); }
+
+.sdl-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 40; min-width: 200px; padding: 4px; background: var(--surface); border: 1px solid var(--ink); border-radius: 2px; box-shadow: var(--shadow-hard); }
+.sdl-menu [role=menuitem] { display: flex; width: 100%; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 0; border-radius: 2px; background: none; color: var(--ink); font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; text-align: left; cursor: pointer; }
+.sdl-menu [role=menuitem]:hover, .sdl-menu [role=menuitem]:focus-visible { background: var(--ink); color: var(--paper); outline: none; }
+.sdl-menu .sep { height: 1px; margin: 4px 0; background: var(--line); }
+
+.sdl-kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 5px; border: 1px solid var(--ink); border-radius: 2px; background: var(--surface); white-space: nowrap; }

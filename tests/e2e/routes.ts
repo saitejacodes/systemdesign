@@ -37,7 +37,7 @@ export const ROUTES = [
   "/simulators/code-labs",
   ...["backoff-jitter","bloom-filter","circuit-breaker","consistent-hash-ring","geohash","lamport-vector-clocks","leaky-bucket","lfu-cache","lru-cache","merkle-tree","quorum-read-repair","sliding-window-counter","snowflake-id","token-bucket","trie-autocomplete"].map((id) => `/simulators/code-labs/${id}`),
   "/studio",
-  "/studio/sample",
+  "/studio/new", // creates a blank design client-side, then shows the editor (designs live in IndexedDB)
   "/interview/sample",
   "/case-studies",
   "/case-studies/sample",

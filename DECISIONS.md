@@ -164,3 +164,17 @@
 - **The sandbox is best-effort.** The JS worker hides network and storage globals so learner code can't reach out by accident. It isn't a security boundary, because the code is the learner's own.
 - **Backup import:** `lib/db/backup.ts` uses `z.partialRecord`, so exports made before the `labCode` table existed still import.
 - Geohash links only to p2-indexing until the ride-sharing case study exists (Prompt 20).
+
+## Prompt 17
+- **How it was built.** Three parallel subagents (canvas and engine, icons, templates) built against a contract written here first: `lib/studio/types.ts` (the zod graph), `catalog.ts` (components, defaults, validation, lesson links) and `notes.ts`.
+- **Graph format.** `Design.graph` is our own versioned `StudioGraph` (nodes, edges, parentId for frames), not React Flow's raw JSON. It is validated on import and converted to React Flow at the edge, so React Flow internals never reach saved data and Prompt 18's simulator reads a stable format. Case-study `design.json` files (Prompt 20) will use the same format.
+- **Templates are practice starters, not answers.** Each of the 19 case templates gives only the givens: clients with user counts, fixed third parties such as a payment provider or a maps/ETA provider, and a problem statement with the scale framed as assumptions. Only "three-tier web app" is a full example. The list includes the four cases the user added (api-gateway, search-engine, instagram, food-delivery). The photo-sharing template never names the company.
+- **Notes.** The 7 framework headings each carry the user's six focus areas as prompts, so the notes double as a self-review checklist for Interview Mode (Prompt 19).
+- **Export.** PNG/SVG are generated from the graph with the theme's token values inlined, and PNG is that SVG drawn on a 2× canvas, so there is no html-to-image dependency (§2 is fixed). Fonts fall back to system fonts because web fonts aren't embedded.
+- **Interaction choices.**
+  - Edges float from border to border, because StudioEdge has no handle fields.
+  - The clipboard is in-memory for the tab, not the system clipboard.
+  - Deleting a frame keeps its contents.
+  - Undo history isn't persisted across reloads; saved versions are.
+- **Routes.** Designs live only in the browser, so `/studio/[designId]` loads client-side and shows "Design not found" for unknown ids. Smoke tests use `/studio/new`.
+- **Limitation.** Resizing a frame doesn't re-check which nodes are inside it; drag a node to move it in or out.

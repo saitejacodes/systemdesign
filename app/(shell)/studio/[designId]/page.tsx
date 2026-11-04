@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
-import { PageHeader } from "@/components/layout/PageHeader";
+import { DesignEditor, NewDesign } from "@/components/studio/Editor";
+import { studioLessons } from "@/components/studio/lessons";
 
 export const metadata: Metadata = { title: "Design" };
 
-export default async function Page({ params }: PageProps<"/studio/[designId]">) {
-  const p = await params;
-  const ref = p.designId;
-  return (
-    <PageHeader code="D-00" spec="Design" before="Draw it, then" em="run" after=" it." lede="Your saved design, ready to edit or run.">
-      <p className="fm-cap">Ref · {decodeURIComponent(ref)}</p>
-    </PageHeader>
-  );
+// Designs live in this browser's IndexedDB, so any id renders here and the client loads it (or shows "Design not found").
+// "/studio/new" (optionally ?template=<id>) creates a design and replaces the URL with its id.
+export default async function Page({ params, searchParams }: PageProps<"/studio/[designId]">) {
+  const { designId } = await params;
+  const sp = await searchParams;
+  if (designId === "new") return <NewDesign templateId={typeof sp.template === "string" ? sp.template : undefined} />;
+  return <DesignEditor designId={decodeURIComponent(designId)} lessons={studioLessons()} />;
 }

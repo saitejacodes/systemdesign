@@ -17,7 +17,7 @@
 - [x] 14 Phase 5 Content + Simulators
 - [x] 15 Phase 6 Content + Simulators
 - [x] 16 Algorithm Sandboxes
-- [ ] 17 Design Studio: Canvas
+- [x] 17 Design Studio: Canvas
 - [ ] 18 Design Studio: Run Mode
 - [ ] 19 Interview Mode
 - [ ] 20a Case Studies 1–5
