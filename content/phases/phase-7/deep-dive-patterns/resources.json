@@ -1,0 +1,46 @@
+[
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "The mechanisms behind most deep dives: partitioning and skew, replication, consistency, and stream processing with exactly-once effects.",
+    "topicIds": [
+      "hot-keys",
+      "idempotency-effects",
+      "consistency-choices",
+      "read-write-scaling"
+    ],
+    "free": false
+  },
+  {
+    "id": "aws-builders-library",
+    "title": "The Amazon Builders' Library",
+    "author": "Amazon Web Services",
+    "kind": "blog",
+    "url": "https://aws.amazon.com/builders-library/",
+    "why": "Practitioner articles on timeouts, retries with jitter, load shedding and making retries safe with idempotent APIs.",
+    "topicIds": [
+      "backpressure",
+      "idempotency-effects",
+      "multi-region"
+    ],
+    "free": true
+  },
+  {
+    "id": "hello-interview-hurry",
+    "title": "System Design in a Hurry",
+    "author": "Hello Interview",
+    "kind": "blog",
+    "url": "https://www.hellointerview.com/learn/system-design/in-a-hurry/introduction",
+    "why": "A free interview-oriented guide whose common patterns and deep dives (contention, scaling reads and writes, long-running work) line up with the patterns here; compare its answers with the case-study numbers.",
+    "topicIds": [
+      "fan-out",
+      "hot-keys",
+      "read-write-scaling",
+      "backpressure"
+    ],
+    "free": true
+  }
+]

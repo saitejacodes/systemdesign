@@ -1,0 +1,19 @@
+[
+  { "id": "f1", "front": "The seven steps of the interview framework, in order?", "back": "Requirements, Estimation, API, Data Model, High-Level Design, Deep Dives, Wrap-up.", "topicId": "seven-steps" },
+  { "id": "f2", "front": "Why does the order of the seven steps matter?", "back": "Each step produces what the next consumes: targets → numbers → access patterns → store and keys → paths to stress → decisions to summarise.", "topicId": "seven-steps" },
+  { "id": "f3", "front": "When may you skip or compress a step?", "back": "When the interviewer asks you to, hands you the numbers, or the prompt is really one component in depth. Say that you are compressing it.", "topicId": "seven-steps" },
+  { "id": "f4", "front": "45-minute split (minutes per step)?", "back": "5 / 5 / 5 / 5 / 10 / 10 / 5. Architecture and deep dives get the two ten-minute blocks.", "topicId": "time-budget" },
+  { "id": "f5", "front": "60-minute split, and what the extra time buys?", "back": "About 7 / 7 / 7 / 7 / 13 / 13 / 6. It buys a third deep dive and a real wrap-up, not longer requirements.", "topicId": "time-budget" },
+  { "id": "f6", "front": "Four clock checkpoints in a 45-minute interview?", "back": "Min 5: a number on the board. Min 20: a diagram. Min 30: a deep dive started. Min 40: stop and wrap up.", "topicId": "time-budget" },
+  { "id": "f7", "front": "Which steps to compress first when time is short?", "back": "API and Data Model (they can share one block for simple systems). Never compress Deep Dives.", "topicId": "time-budget" },
+  { "id": "f8", "front": "The most useful sentence at the end of any step?", "back": "Its consequence for the design, e.g. 'Writes are 40/s, so I won't shard the write path.'", "topicId": "say-and-draw" },
+  { "id": "f9", "front": "What must be on the board by minute 30?", "back": "A box diagram with each core request (e.g. redirect, create, analytics) traced by numbered arrows.", "topicId": "say-and-draw" },
+  { "id": "f10", "front": "Signposting?", "back": "Announcing where you are and what comes next ('That's requirements; next, two minutes of estimation'), so the interviewer can redirect you cheaply.", "topicId": "driving-conversation" },
+  { "id": "f11", "front": "Ask, or proceed with an assumption?", "back": "Proceed (stated aloud) when the choice is reversible; ask when the answer changes the architecture; offer a choice when both directions are valid.", "topicId": "driving-conversation" },
+  { "id": "f12", "front": "How to handle an interviewer's interruption?", "back": "Answer briefly, note it as a deep-dive topic if it is large, then signpost back to where you were.", "topicId": "driving-conversation" },
+  { "id": "f13", "front": "URL shortener traffic numbers?", "back": "100M links/month ÷ 2.59M s = 38.6 writes/s; ×100 = 3,860 reads/s; ~3,900 total; 5× peak ≈ 19,500/s.", "topicId": "url-shortener-walkthrough" },
+  { "id": "f14", "front": "URL shortener: why 7 characters?", "back": "62⁷ = 3.52T; 6B links use 0.17%. 6 characters (56.8B) fit but a random guess hits a real link ~1 in 10.", "topicId": "url-shortener-walkthrough" },
+  { "id": "f15", "front": "URL shortener: the two deep dives to pick in 45 minutes?", "back": "Short-code generation (random + conditional insert) and 301 vs 302 with per-layer caching and hot keys.", "topicId": "url-shortener-walkthrough" },
+  { "id": "f16", "front": "Root cause of most failed interviews on a 'simple' prompt?", "back": "No estimate with a conclusion, so time goes to the wrong path (e.g. sharding 40 writes/s).", "topicId": "failure-recovery" },
+  { "id": "f17", "front": "Recovery line when you spot your own mistake?", "back": "'I want to revisit something: with 40 writes a second, this is unnecessary. Let me simplify.' One sentence, then move on.", "topicId": "failure-recovery" }
+]

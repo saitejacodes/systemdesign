@@ -1,0 +1,239 @@
+## Why it matters
+
+Two candidates can draw the same boxes for a URL shortener and get very different outcomes, because the interviewer is not grading the diagram. They are collecting evidence about how you would behave on a real team at a particular level: who sets the direction, how deep the reasoning goes, and whether you think about what happens after the code ships. Most of you reading this have 0–4 years of experience, so you will usually be assessed against junior or mid-level expectations, sometimes against senior ones. This section describes the general patterns many interviewers use to tell those levels apart, shows the same interview moment answered three ways, and explains how to show stronger signals honestly, without claiming experience you do not have.
+
+One honest caveat before anything else: **there is no universal standard.** Expectations vary between companies, between teams in one company, and between two interviewers on the same loop. Some loops for new graduates skip system design entirely or replace it with a smaller object-design exercise; others run the full 45 minutes. Titles do not map cleanly across companies either: one firm's "senior" may be another's "mid". Nothing below is any company's internal rubric. Treat it as a description of patterns that recur across many interviews, and when you know who you are interviewing with, ask the recruiter what the session covers.
+
+## The five dials that move with level
+
+<DepthStamp depth="tradeoffs" />
+
+An <Term slug="interview-signal">interview signal</Term> is a piece of evidence an interviewer writes down: "derived peak QPS unprompted", "needed a hint to consider failure", "changed the design when the numbers disagreed". Across levels, the same handful of dials keeps coming up.
+
+| Dial | Junior (0–2 years) | Mid (2–5 years) | Senior (5+ years) |
+|---|---|---|---|
+| **Who drives** | Follows the interviewer's lead; answers well when asked | Drives the main path; needs prompting for deep dives | Drives the whole session, proposes what to go deep on and why |
+| **Depth of trade-offs** | Names an option, sometimes one alternative | Compares 2 options against the requirements | Compares 2–3 options with numbers, picks one, states what would change the choice |
+| **Operational concerns** | Rarely raised unprompted | Raises monitoring or failure when asked | Raises failure modes, rollout, monitoring and cost unprompted, tied to this design |
+| **Breadth vs depth** | Gets a working end-to-end design | Working design plus one solid deep dive | Working design fast, two or more deep dives, knows which parts to skip |
+| **Ambiguity** | Asks some clarifying questions, may wait for answers | Asks good questions, states some assumptions | Turns vague prompts into explicit assumptions and scope cuts, and revisits them when new facts arrive |
+
+The columns are overlapping bands, not boxes: a strong junior often shows several mid-level behaviours. Interviewers generally form an overall picture rather than adding up points.
+
+Notice what is *not* in the table: knowledge of specific products. Naming Cassandra, Kafka or Redis is useful shorthand, but at every level the evidence that counts is *why* a component fits these requirements and what it costs. A junior who says "a key-value store, because the only access pattern is lookup by code" gives a better signal than a senior who says "Cassandra, because it scales".
+
+<Callout type="analogy" title="Learner driver, licensed driver, driving instructor">
+A learner driver can handle the car when someone in the passenger seat says "turn left here". A licensed driver plans the route and handles normal traffic alone. An instructor does all of that while also noticing the cyclist two junctions ahead, explaining why they chose this road over the motorway, and knowing what to do if the car breaks down. All three are driving the same car down the same street; what differs is how far ahead they look and how much they need the passenger. Where it breaks down: an interview is 45 minutes and partly a performance, so a candidate who looks far ahead but never gets the car moving (all deep dives, no working design) does not score as an instructor.
+</Callout>
+
+## One moment, three answers: the hot key
+
+<DepthStamp depth="deep" />
+
+Take a concrete moment from the [URL shortener case study](/case-studies/url-shortener). The candidate has a design on the board: load balancer, stateless link service, Redis in front of a key-value store, 302 redirects, async click events. Estimation earlier gave about **3,900 requests per second on average and 19,500 at a 5× peak**, almost all redirects. Around minute 30 the interviewer asks:
+
+> "A celebrity posts one of your short links and it gets 30,000 redirects per second for two hours. What happens?"
+
+The arithmetic is the same at every level: Redis Cluster places each key on one shard by hashing it, so all 30,000 lookups for that one code land on **one shard**, which is more than the 19,500 per second the whole system was sized for at peak. This is the classic <Term slug="hot-key">hot key</Term>.
+
+### The junior-level answer
+
+> "That shard would get overloaded. I'd add more Redis nodes, or add read replicas so the load is spread out."
+
+What it shows: the candidate recognises the problem. What is missing: more shards do not help, because adding nodes spreads *different* keys, not one key. Replicas would help reads, but there are no numbers and no check against the latency target. The interviewer will usually follow up ("would more shards help a single key?"), and a junior candidate who then corrects themselves recovers well; many interviewers count that recovery as a positive signal.
+
+### The mid-level answer
+
+> "Sharding won't help because one key maps to one shard. I'd add a small in-process cache on each link-service instance for the hottest codes, say a few thousand entries with a 30-second TTL. Then the viral code is served from memory on each instance and Redis only sees a refresh every 30 seconds per instance. Links are immutable, so the only staleness risk is a link that was just disabled, and 30 seconds is acceptable for that."
+
+What it shows: correct diagnosis, a specific mechanism, a number on the TTL and, importantly, a correctness check tied to a requirement (immutability makes caching safe; disable is the only staleness case). This is a solid answer. What is missing compared with the senior version: the cold-miss stampede, how anyone would know this is happening, and how to roll it out.
+
+### The senior-level answer
+
+> "One key, one shard, so more shards don't help. Two layers. First, an in-process LRU of about 5,000 hot codes with a 30-second TTL: with 9 instances that's at most 9 Redis reads per 30 seconds for the viral code, down from 30,000 a second. Second, the moment it goes viral it may not be cached anywhere, so I'd add <Term slug="request-coalescing">request coalescing</Term>: 1,000 concurrent misses for the same code become one store read instead of a <Term slug="cache-stampede">cache stampede</Term>.
+>
+> The cost of the LRU is a 30-second staleness window after a link is disabled. That's inside our 5-minute browser max-age anyway, so it doesn't weaken the guarantee we already give. To detect it I'd export a per-key request-rate metric from Redis and alert on any single key above a threshold; the dashboard would show hit rate per layer. I'd ship the LRU behind a <Term slug="feature-flag">feature flag</Term>, enable it on one instance first, and compare p99 and hit rate before turning it on everywhere. If this happens a lot and visitors are global, caching the 302 at a CDN for 60 seconds is the next step, but clicks served at the edge would then have to be recovered from CDN logs for analytics, so I wouldn't start there."
+
+What it shows: the same core mechanism as the mid-level answer, plus arithmetic (30,000 per second becomes about 0.3 per second against Redis), a second failure mode the interviewer did not ask about, the cost of the fix checked against an existing requirement, detection, a safe rollout, and an escalation path with its own trade-off. Each extra sentence is short and specific. None of it is a buzzword list.
+
+<Figure caption="FIG. 7.1 · THE HOT-KEY ANSWER, LAYER BY LAYER">
+  <Diagram label="Thirty thousand redirects per second for one viral code arrive at nine link-service instances. Each instance answers from its in-process LRU cache; only one refresh per instance every 30 seconds reaches the single Redis shard holding that code. On a cold miss, request coalescing collapses a thousand concurrent misses into one key-value store read. The mid-level answer stops at the in-process cache; the senior answer adds coalescing, a per-key rate metric with an alert, and a flagged rollout." chart={`flowchart LR
+    U[30,000 req/s for one code] --> LB[Load balancer]
+    LB --> I1[Link service x9]
+    I1 -->|hit| L1[In-process LRU, 30 s TTL]
+    I1 -->|miss, at most 9 per 30 s| R[(Redis shard owning the code)]
+    R -->|miss| C{Request coalescing}
+    C -->|1 read, not 1,000| KV[(KV store)]
+    R -.-> M[Per-key rate metric and alert]
+    subgraph mid[Mid-level answer]
+      L1
+    end
+    subgraph senior[Senior adds]
+      C
+      M
+    end`} />
+</Figure>
+
+*The core mechanism is the same at mid and senior level. The difference is the second failure mode, the arithmetic, the detection and the rollout.*
+
+## Driving the discussion and handling ambiguity
+
+<DepthStamp depth="deep" />
+
+<Term slug="driving-the-interview">Driving the interview</Term> means you decide what happens next and say why, while staying open to the interviewer redirecting you. It is probably the clearest difference between levels, and it shows up in small sentences.
+
+| Moment | Waiting to be led | Driving |
+|---|---|---|
+| Minute 0 | "OK. Should I start with the database?" | "I'll spend about five minutes on requirements, then estimate, because the read:write ratio will decide where the effort goes." |
+| Vague prompt | "How many users are there?" (then waits) | "I'll assume about 100 million new links a month and 100 reads per write; tell me if that's far off." |
+| After the high-level design | "What would you like me to go into?" | "The write path is about 40 per second, so it's not interesting. I'd like to go deep on the redirect cache and the ID scheme. Does that match what you want to see?" |
+| New fact from the interviewer | Keeps the old design | "That changes the latency budget, so the CDN moves from optional to required. Let me redraw that part." |
+
+Driving is not talking without pause. Propose a direction, ask for a quick yes or no, and move. When the interviewer steers you, follow and say how it connects to what you have.
+
+**Ambiguity** is the raw material for driving. Junior candidates often treat a vague prompt as a test with a hidden correct answer and try to extract it question by question. Stronger candidates treat it as a design input: ask the few questions whose answers change the design, state a number for everything else, and cut scope on purpose ("I'll leave link-in-bio pages and QR codes out; they don't change the core architecture"). When the interviewer later says "actually, it's 10× bigger", a senior answer names which decisions that breaks and which survive, rather than starting again.
+
+### How the interview went wrong: a timeline
+
+A realistic failure, from a capable candidate with three years of experience, on the [news feed case study](/case-studies/news-feed):
+
+| Clock | What happened | What the interviewer likely noted |
+|---|---|---|
+| 0–8 min | Asked 14 clarifying questions in a row, wrote none of the answers down | Thorough, but no assumptions stated; slow to commit |
+| 8–10 min | Skipped estimation: "it's big, so we'll need to scale" | No numbers, so later choices cannot be justified |
+| 10–25 min | Drew 14 boxes including a service mesh and three databases | Breadth without a reason for each part |
+| 25–32 min | Interviewer asked about a celebrity with 35 million followers; candidate said "use Kafka" | Named a tool instead of addressing fan-out cost |
+| 32–40 min | Interviewer led the deep dive question by question | Not driving |
+| 40–45 min | Ran out of time before failures or trade-offs | No operational signal |
+
+The fix is not more knowledge; this candidate knew about fan-out on write versus read. It is structure: five minutes of questions with answers written down, two minutes of arithmetic (the case's own numbers give **1.46 million timeline inserts per second** of fan-out, and a single celebrity post would add **35 million**), a smaller first diagram, and then *proposing* the celebrity deep dive before being asked. Recovery mid-interview is possible too: at minute 25, "let me step back and put numbers on fan-out, because that decides this" turns a drifting session around.
+
+## Depth of trade-offs
+
+<DepthStamp depth="deep" />
+
+A trade-off at junior level is often a label: "SQL is consistent, NoSQL scales". At mid level it is a comparison against these requirements. At senior level it is a decision with its losing alternative, its cost, and the condition under which you would switch.
+
+Three versions of the same decision, from the URL shortener's code generation:
+
+- **Label:** "I'll use random codes because hashing has collisions."
+- **Comparison:** "Hashing collides and also merges two users' links; a counter is enumerable; random codes with an insert-if-absent check avoid both."
+- **Decision:** "Random 7-character codes with a conditional insert. 62⁷ is about 3.5 trillion and we'll have about 6 billion links in five years, so 0.17% of the space is used and a retry happens about once in 600 creates. At 40 writes a second that costs nothing. If writes grew a thousandfold, I'd switch to counter blocks with a keyed permutation, which needs no existence check."
+
+The third version is longer by two sentences, and both are arithmetic you already did in estimation. That is the general pattern: senior-sounding depth is mostly *reusing your own numbers* to close a decision, not knowing more technologies.
+
+<TradeoffBox title="Going deeper vs covering more" items={[
+  { gain: "Deep trade-offs with numbers: strong evidence of judgement on the parts that matter", cost: "Less time for other parts; a missing component can look like a gap" },
+  { gain: "Broad coverage: a complete, working end-to-end design", cost: "Shallow everywhere reads as junior even when each part is correct" },
+  { gain: "Stating the switch condition ('if writes grew 1,000×...')", cost: "Takes one sentence and invites a follow-up you must be able to answer" },
+  { gain: "Asking the interviewer which area to go deep on", cost: "Hands over some control; do it with a proposal, not an open question" }
+]} />
+
+## Operational concerns: monitoring, rollout, failure, cost
+
+<DepthStamp depth="deep" />
+
+The dial that most separates mid from senior answers in many interviews is what happens *after* the design is drawn. Production engineers spend much of their time on four questions, and senior candidates raise them without being asked:
+
+1. **Failure.** What breaks, how do we notice, what do users see, what limits the <Term slug="blast-radius">blast radius</Term>? For the URL shortener: a cold cache sends store reads from about **1,930 to 19,300 per second** at peak, so the store is sized for 30,000 operations per second; Kafka being down must never fail a redirect, so click events go to a bounded buffer and are dropped with a counter.
+2. **Monitoring.** Which metric or <Term slug="slo">SLO</Term> tells you the design is working? "p99 redirect latency under 50 ms, hit rate per cache layer, dropped-click counter, per-key request rate."
+3. **Rollout.** How does this change reach production safely? A <Term slug="canary-release">canary release</Term> to a small slice of traffic, a feature flag, a backfill before a schema switch, a reversible migration.
+4. **Cost.** What does this cost and what is the expensive line? For a photo-sharing app the case study's own numbers say originals grow by about 83 PB a year, which makes storage tiering a cost decision, not just a technical one.
+
+One or two sentences per deep dive is enough: the hot-key answer above spent one sentence on detection and one on rollout.
+
+<Callout type="tip" title="One operational sentence per decision">
+After each deep dive, add one sentence that starts with "To know this is working I'd watch..." or "If this fails, users see..." It costs ten seconds and is the cheapest senior signal there is.
+</Callout>
+
+## Breadth vs depth
+
+<DepthStamp depth="tradeoffs" />
+
+Breadth means a complete design: every requirement has a path through the diagram. Depth means one part examined to the level of mechanisms, numbers and failure modes. Expectations generally rise on both with level, but the *order* matters at every level: **breadth first, then depth**. A design missing the create path entirely is a bigger problem than a shallow cache discussion, because the interviewer cannot tell whether you would have noticed.
+
+A workable time budget in a typical 45-minute loop, matching the default split in Interview Mode (5/5/5/5/10/10/5 minutes for requirements, estimation, API, data model, high-level design, deep dives, wrap-up):
+
+| Level target | First 25 minutes | Deep dives (10 min) | Wrap-up (5 min) |
+|---|---|---|---|
+| Junior | Complete, correct end-to-end design | One area, led partly by the interviewer | Name two things you'd improve |
+| Mid | Same, faster, with estimation driving choices | One area deep, chosen by you | Main failure modes and one trade-off |
+| Senior | Same, faster still, with explicit scope cuts | Two areas, chosen and justified by you | Failure table, what breaks at 10×, trade-offs as decisions |
+
+Senior candidates are also expected to know what *not* to go deep on. In the URL shortener, writes are about 40 per second; spending ten minutes sharding the write path is a negative signal at senior level precisely because the numbers say it does not matter. The case study's common-mistakes list calls this out directly.
+
+## Showing senior signals honestly at 0–4 years
+
+<DepthStamp depth="deep" />
+
+You cannot fake five years of production incidents, and you should not try: interviewers ask follow-ups, and an invented war story falls apart in two questions. You do not need to fake anything. Most senior signals in a design interview are *behaviours*, and behaviours can be practised.
+
+**Signals you can show honestly with little experience:**
+
+- **Drive with a plan.** Announce the agenda at minute 0 and checkpoint at each step. This is pure practice, no experience required.
+- **Close decisions with your own numbers.** Every deep dive should reuse a number from estimation. The arithmetic is the same at every level.
+- **Name the second failure mode.** After fixing the problem asked about, ask yourself "and what happens at the moment it starts?" (the cold miss, the failover, the retry storm). Phases 3 and 4 gave you the catalogue.
+- **Add the operational sentence.** Detection, rollout, cost. Phase 5 covered SLOs, canaries and alerting; use the vocabulary precisely.
+- **State the switch condition.** "I'd change this if..." shows you see the decision as contingent, which is the core of judgement.
+
+**Ways to be honest about limits without losing signal:**
+
+> "I haven't run Redis at this scale myself, but from the numbers one shard can't take 30,000 a second for one key, so I'd plan for that rather than assume it."
+
+> "I don't remember the exact default for that setting. The decision doesn't depend on it, though: either way I'd bound it with a timeout and measure."
+
+> "On my team we had a smaller version of this: a cron job that every service hit at the top of the hour. We added jitter. Same idea applies here at a bigger scale."
+
+The third example is the most valuable: a small, *true* experience mapped onto the large problem. A junior engineer who fixed a thundering herd on a cron job has real evidence of the mechanism, and saying so plainly is far stronger than pretending to have run a global cache fleet.
+
+**Over-reaching backfires**: listing every technology you have read about without a reason for each, claiming production experience you cannot describe in detail, or jumping to multi-region for a system that fits in one region. Interviewers read unjustified complexity as weaker judgement, not stronger.
+
+<NotWhenBox title="When not to push for senior signals" items={[
+  "The basic design is not finished yet: complete the end-to-end path first, then add depth.",
+  "The interviewer is steering you to a specific area: follow and go deep there, rather than reciting your own failure table.",
+  "You would have to invent experience or numbers: say what you know, reason from first principles, and mark assumptions as assumptions.",
+  "The session is explicitly scoped smaller (a component, an API): match the scope you were given."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Senior answers mention more technologies." right="Senior answers usually mention fewer, each with a reason, a cost and a condition for switching. Depth comes from reasoning about mechanisms and numbers, not from a longer list of products." />
+
+<Misconception wrong="As a junior candidate, I should wait for the interviewer to tell me what to do next." right="Following well is fine, but proposing the next step and asking for a quick confirmation is a positive signal at every level and costs nothing." />
+
+<Misconception wrong="There is a standard rubric for each level that every company uses." right="Expectations vary between companies, teams and interviewers, and titles don't map cleanly across companies. The patterns here recur widely, but ask your recruiter what a given session covers." />
+
+<Misconception wrong="Operational concerns are for the wrap-up only." right="One sentence of detection, rollout or cost inside each deep dive is more convincing than a generic checklist at the end, and it fits the time budget." />
+
+## Interview angle
+
+<InterviewAngle title="Level expectations" questions={[
+  "What happens when one key gets far more traffic than the rest?",
+  "How would you know this design is healthy in production?",
+  "How would you roll this change out safely?",
+  "Which part of this design would you go deeper on, and why?",
+  "What would change if traffic were ten times higher?",
+  "Have you dealt with something like this before?"
+]}>
+The questions do not change much with level; the expected depth of the answer does. For each one, aim for the shape of the senior hot-key answer: diagnosis in one sentence, a specific mechanism with a number, the second failure mode, how you would detect it, how you would roll it out, and the condition under which you would choose differently. For "have you dealt with this before?", give a small true example and map it onto the bigger problem; never invent one.
+</InterviewAngle>
+
+## Try it
+
+The cache simulator has a "Break it" menu with a hot key and a full flush. Trigger each and watch which metric moves first: that is the detection sentence for your next answer.
+
+<Simulator id="cache" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+1. Open the [URL shortener interview](/interview/url-shortener) in Practice mode. At the Deep Dives step, answer the caching question out loud three times: once as the junior answer above, once as the mid answer, once as the senior answer. Time each one. The senior version should take under two minutes.
+2. Read the [ticket booking case study](/case-studies/ticket-booking) and write a three-level answer to "a big show goes on sale and a million fans arrive in the same minute". Check your senior version contains a number, a second failure mode, a detection metric and a rollout step.
+3. In the [Design Studio](/studio), take any design you have saved and add one line to each component: what metric shows it is healthy, and what users see when it fails.

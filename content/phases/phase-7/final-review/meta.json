@@ -1,0 +1,20 @@
+{
+  "id": "p7-final-review",
+  "phase": 7,
+  "slug": "final-review",
+  "title": "Final review",
+  "order": 8,
+  "week": 16,
+  "estimatedMinutes": 45,
+  "topics": [
+    { "id": "final-two-weeks", "title": "The shape of the last two weeks", "depth": "deep" },
+    { "id": "weak-spot-loop", "title": "Weak spots on Today and the Dashboard", "depth": "deep" },
+    { "id": "flashcard-review", "title": "Flashcards in the last two weeks", "depth": "deep" },
+    { "id": "redo-failures", "title": "Redoing failed challenges and weak mocks", "depth": "deep" },
+    { "id": "score-trends", "title": "Reading your dashboard trends", "depth": "tradeoffs" },
+    { "id": "interview-day", "title": "The night before and interview day", "depth": "deep" }
+  ],
+  "simulatorIds": ["estimation-calculator"],
+  "practiceCaseStudyIds": ["news-feed", "ticket-booking", "chat-app"],
+  "prerequisites": ["p7-mock-interview-playbook", "p7-level-expectations", "p7-interview-framework"]
+}

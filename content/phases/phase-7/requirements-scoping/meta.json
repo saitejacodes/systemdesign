@@ -1,0 +1,19 @@
+{
+  "id": "p7-requirements-scoping",
+  "phase": 7,
+  "slug": "requirements-scoping",
+  "title": "Requirements and scoping",
+  "order": 2,
+  "week": 14,
+  "estimatedMinutes": 55,
+  "topics": [
+    { "id": "functional-vs-nonfunctional", "title": "Functional vs non-functional requirements", "depth": "deep" },
+    { "id": "question-bank", "title": "A reusable bank of clarifying questions", "depth": "deep" },
+    { "id": "stating-assumptions", "title": "Stating assumptions out loud", "depth": "deep" },
+    { "id": "cutting-scope", "title": "Cutting scope on purpose", "depth": "tradeoffs" },
+    { "id": "requirements-failures", "title": "How requirements go wrong", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": ["ticket-booking", "payment-system", "chat-app"],
+  "prerequisites": ["p7-interview-framework", "p1-estimation", "p4-consistency-models"]
+}

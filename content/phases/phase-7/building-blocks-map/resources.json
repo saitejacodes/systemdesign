@@ -1,0 +1,32 @@
+[
+  {
+    "id": "system-design-primer",
+    "title": "The System Design Primer",
+    "author": "Donne Martin",
+    "kind": "repo",
+    "url": "https://github.com/donnemartin/system-design-primer",
+    "why": "A free index of the same building blocks (load balancers, caches, databases, queues) with links to deeper sources; useful for checking your one-line definition of each.",
+    "topicIds": ["decision-table", "close-neighbours"],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "The deepest single treatment of replication, partitioning, storage engines and logs: the reasoning behind the close-neighbour choices in this section.",
+    "topicIds": ["close-neighbours", "capacity-rules"],
+    "free": false
+  },
+  {
+    "id": "aws-builders-library",
+    "title": "The Amazon Builders' Library",
+    "author": "Amazon Web Services",
+    "kind": "blog",
+    "url": "https://aws.amazon.com/builders-library/",
+    "why": "Practitioner articles on caching, load shedding, retries and queue backlogs: what the watch-out column looks like in production.",
+    "topicIds": ["decision-table", "capacity-rules"],
+    "free": true
+  }
+]

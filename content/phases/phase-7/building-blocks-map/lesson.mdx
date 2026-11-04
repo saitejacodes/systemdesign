@@ -1,0 +1,213 @@
+## Why it matters
+
+Every case study in this course has a "common mistakes" list, and one entry from the URL shortener is worth memorising: candidates spend the interview "sharding the write path when writes are about 40 per second and the real problems are the read path, the cache and correctness." The candidate knew what sharding is. What went wrong was the mapping from problem to component: a block was added because it sounded scalable, not because a number demanded it. Phases 1–6 taught each building block on its own. This section turns them into one lookup you can run in your head during an interview: what pressure am I under, which block relieves it, what does that block cost me, and where did I learn the details. It closes with the capacity figures you have already seen in earlier lessons, so that every block you draw arrives with a number attached.
+
+<Callout type="analogy" title="The pharmacist's formulary">
+A pharmacist does not hand out the strongest medicine on the shelf. A formulary lists, for each condition, the usual drug, the dose and the contraindications: "for this, consider that, but not if the patient is on X." The decision table below is a formulary for system design: the symptom is a number or a requirement, the drug is a component, the contraindication is the cost it brings. Like a pharmacist, you also check interactions: a cache plus a read replica plus a CDN can each serve stale data, and the staleness adds up. Where the analogy breaks: medicines have fixed doses, while components change character with load. A cache that is harmless at 1,000 reads a second becomes a single point of failure at 100,000, because the database behind it was sized for the hit rate, not for the traffic.
+</Callout>
+
+## The decision table
+
+<DepthStamp depth="deep" />
+
+Read each row left to right as a sentence: "if I **need** this, I **consider** that, and I **watch out** for this." The last column links to the lesson where the block is taught in depth.
+
+| Need (the signal) | Consider | Watch out for | Lesson |
+|---|---|---|---|
+| More request throughput than one server gives, or no single point of failure in the stateless tier | <Term slug="load-balancer">Load balancer</Term> (L4 or L7) in front of identical stateless servers | Health-check delay (crashed servers still get traffic until detected), sticky sessions that pin state, the balancer itself needing redundancy | [Load balancers](/phase/1/load-balancers) |
+| Repeated reads of the same small hot set, latency below what the database gives | <Term slug="cache">Cache</Term> (cache-aside with Redis, plus in-process for the hottest keys) | Invalidation and staleness, stampedes on expiry, hot keys on one shard, a database sized for the hit rate | [Cache strategies](/phase/3/cache-strategies) |
+| Static or media bytes, users far from your servers, high egress cost | <Term slug="cdn">CDN</Term> with versioned URLs | Cache keys and TTLs, purge delays, personalised responses that must not be shared | [CDNs](/phase/3/cdn) |
+| Work that can happen after the response, spikes above what workers can process, retries | <Term slug="message-queue">Message queue</Term> with competing consumers | At-least-once delivery (consumers must be idempotent), poison messages, a backlog that hides a real outage | [Queues vs pub/sub](/phase/3/queues-vs-pubsub) |
+| A stream of facts many teams consume independently, replay, ordered processing per key | Log-based broker (Kafka-style <Term slug="commit-log">commit log</Term>) | Partition count caps parallelism, ordering only within a partition, retention is a storage bill | [Kafka vs queues](/phase/3/kafka-vs-queues) |
+| Multi-row transactions, constraints, ad-hoc queries, money or inventory | <Term slug="relational-database">Relational database</Term> (Postgres, MySQL) | One primary caps write throughput; connection limits; schema changes on big tables | [SQL vs NoSQL](/phase/2/sql-vs-nosql) |
+| Key lookups or partition-scoped appends at a rate or size beyond one primary, no joins | <Term slug="key-value-store">Key-value</Term> or <Term slug="wide-column-store">wide-column store</Term> | The partition key decides everything; no cross-partition transactions; queries you did not plan for are expensive | [SQL vs NoSQL](/phase/2/sql-vs-nosql) |
+| Files, images, video, backups, anything large and written once | <Term slug="object-storage">Object storage</Term> with <Term slug="presigned-url">presigned URLs</Term> | No partial updates, flat namespace, listing is slow; uploads should bypass your API servers | [Object storage](/phase/2/object-storage) |
+| Find documents by words, typo tolerance, ranking, facets | Search engine built on an <Term slug="inverted-index">inverted index</Term> | Near-real-time only (refresh delay), a second copy of the data to keep in sync, it is not the source of truth | [Search](/phase/2/search) |
+| Writes or data volume beyond one database leader | <Term slug="sharding">Sharding</Term> by a well-chosen key | Hot shards, cross-shard queries and transactions, resharding later | [Sharding](/phase/2/sharding) |
+| Survive a node loss, scale reads, serve reads in another region | <Term slug="replica">Replicas</Term> (leader-follower, or quorum) | <Term slug="replication-lag">Replication lag</Term> (read-your-writes), data lost on async failover, split brain | [Replication](/phase/2/replication) |
+| Protect the system from one client, enforce plan limits, stop abuse | <Term slug="rate-limiter">Rate limiter</Term> (token bucket or sliding window, shared counters) | Fail open or closed when the counter store is down, hot keys for big tenants, per-server limits multiplying | [Rate limiting](/phase/2/rate-limiting) |
+| Find items by meaning (semantic search, recommendations, RAG retrieval) | <Term slug="vector-database">Vector database</Term> or a vector index in a store you already run | Recall vs latency of the <Term slug="approximate-nearest-neighbor">ANN</Term> index, RAM for vectors, filters that starve results, re-embedding on model change | [Embeddings and vector search](/phase/6/embeddings-vector-search) |
+
+Two rules make the table useful under time pressure.
+
+**The signal is usually a number.** "Read-heavy" is not a signal; "60,000 timeline reads a second at peak" is. The estimation step exists so that this table has inputs. When a candidate adds a block without a number or a requirement pointing at it, interviewers tend to ask "why?", and "it's best practice" is not an answer.
+
+**Every block brings its watch-out column with it.** Adding a cache means you now owe the interviewer an invalidation story. Adding a queue means you owe an idempotency story. A good habit is to say the cost in the same sentence as the block: "I'll put a queue between checkout and email so a slow provider can't slow checkout; that makes delivery at-least-once, so the email worker dedupes on the order ID."
+
+<Figure caption="FIG. 3.1 · FROM PRESSURE TO BLOCK">
+  <Diagram label="A decision tree. Start from the main pressure found in estimation. Read pressure leads to cache, read replicas or CDN depending on whether reads are key lookups, varied queries or static bytes. Write pressure leads to sharding or a queue depending on whether writes must be synchronous. Large blobs lead to object storage plus CDN. Text search leads to an inverted index; meaning-based search leads to a vector index. Abusive or bursty clients lead to a rate limiter." chart={`flowchart TD
+    P[Main pressure from estimation] --> R[Reads]
+    P --> W[Writes]
+    P --> B[Large bytes]
+    P --> Q[Query shape]
+    P --> C[Untrusted clients]
+    R -->|hot keys, small working set| CA[Cache]
+    R -->|varied SQL over all data| RR[Read replicas]
+    R -->|static or media, far users| CD[CDN]
+    W -->|can finish later| MQ[Queue or log]
+    W -->|must commit now, beyond one leader| SH[Sharding]
+    B --> OS[Object storage plus CDN]
+    Q -->|words, ranking| SE[Inverted index]
+    Q -->|meaning| VD[Vector index]
+    C --> RL[Rate limiter]`} />
+</Figure>
+
+*Start from the pressure, not from the component. The same block can be right for one design and noise in another.*
+
+## Choosing between close neighbours
+
+<DepthStamp depth="tradeoffs" />
+
+Most interview arguments are not about whether to add something but about which of two similar blocks to add. Four pairs come up again and again.
+
+### Cache vs read replica
+
+Both take read load off the primary. They differ in what they hold and what they can answer.
+
+| | Cache | Read replica |
+|---|---|---|
+| Holds | Whatever you put in it: rows, rendered JSON, computed results, keyed by your choice | A full copy of the database |
+| Answers | Key lookups only | Any query the primary can run |
+| Typical read cost (Phase 3 figures) | About 0.5 ms for a same-data-centre Redis hit | A database read, about 10 ms in the same example |
+| Staleness | Until invalidation or TTL | Replication lag, usually milliseconds, sometimes seconds |
+| Failure mode | Cold cache sends the full miss load to the database | Lag spikes break read-your-writes; promotion on primary loss |
+
+The rule: **if the hot reads are key lookups over a small working set, cache; if they are varied queries over the whole dataset, replicate; at scale you usually have both.** The ticket-booking case study shows the combination: seat-map reads are served from Redis, and the misses (4,000 reads a second at 10%, so 400 a second) land on an inventory database of one primary and two replicas. The ride-sharing case study uses replicas for a different reason: nearby-driver searches go to replicas so "search bursts cannot slow ingestion" on the primary.
+
+### Queue vs stream
+
+A <Term slug="message-queue">queue</Term> hands each message to one worker and forgets it once acknowledged: it distributes **work**. A log-based stream keeps every record for its retention period, and each consumer group reads at its own offset: it distributes **facts**. Ask two questions. Will a second, independent consumer want this data next quarter? Do I ever need to replay it? Two yeses mean a log. The notification-system case study uses both, deliberately: a Kafka-style log for its transactional and bulk lanes (partitioned by user ID to keep per-user order), and per-channel queues in front of each provider.
+
+### SQL vs NoSQL
+
+Start relational unless a requirement pushes you off it. The requirements that push are specific: a write rate or data size beyond one primary for an access pattern that is a key lookup or a partition-scoped append, with no need for multi-row transactions. The case studies show both sides with numbers:
+
+- **Payment system: Postgres** with a synchronous replica, because "multi-row transactions and constraints are the safety net" and the scale fits one primary.
+- **Food delivery: one Postgres** for orders and couriers, because 1,852 writes a second at peak is about 37% of the 5,000 a second that the case study assumes one primary sustains, and assignment becomes one local transaction.
+- **Chat app: wide-column store**, because messages are appends and range reads by conversation at more than 2 million writes a second, with no joins.
+
+And one case where the field honestly splits: the URL shortener picks a partitioned key-value store over sharded Postgres for pure key lookups, then says in its own tradeoff table that Postgres is "equally valid for a Postgres team." When both options meet the requirements, team familiarity is a legitimate tiebreaker, and saying so is a sign of judgement, not weakness.
+
+### Replication vs sharding
+
+Replication copies the same data: it buys **read capacity and survival**, never write capacity, because every replica applies every write. Sharding splits the data: it buys **write capacity and storage**, and costs cross-shard queries. If estimation says writes fit on one leader, sharding is premature; if the leader dying would lose acknowledged writes you cannot afford to lose, you need a synchronous replica regardless of load.
+
+## Capacity rules of thumb
+
+<DepthStamp depth="deep" />
+
+These are the planning figures already stated in Phases 1–6, gathered in one place. Several were labelled as illustrative or as assumptions to benchmark when they were introduced, and that label still applies: in an interview, say "assume" and name the figure, then show that the design is not fragile to it.
+
+| Block | Rule of thumb | From |
+|---|---|---|
+| Any request rate | 1 million a day ≈ 12 a second; 1 billion a day ≈ 12,000 a second; peak is 2–10× average | [Estimation](/phase/1/estimation) |
+| Stateless app servers | If one server is comfortable at 500 requests a second, peak ÷ 500 servers, then add N+2 for a failure plus a deploy | [Scaling](/phase/1/scaling), [Fault tolerance](/phase/4/fault-tolerance) |
+| Load balancer | Health checks every 5 s with a threshold of 3 mean up to about 15 s of traffic to a dead server | [Load balancers](/phase/1/load-balancers) |
+| Cache | Memory is about 1,000× faster than an SSD random read; one Redis instance handles on the order of 100,000 simple operations a second; going from a 90% to a 99% hit ratio cuts database reads ten-fold | [Estimation](/phase/1/estimation), [Redis](/phase/3/redis), [Cache layers](/phase/3/cache-layers) |
+| CDN | Light in fibre covers about 200 km per millisecond; dropping from a 95% to an 80% hit rate quadruples origin egress | [CDNs](/phase/3/cdn) |
+| Queue | Backlog grows at (arrival − service) rate; 3,000 in vs 500 out for 10 minutes is 1.5 million messages and about 83 minutes to drain at 300 a second of spare capacity | [Queues vs pub/sub](/phase/3/queues-vs-pubsub) |
+| Log-based stream | Partitions ≥ peak events ÷ events one consumer handles; storage = ingest rate × retention × replication factor (50 MB/s for 7 days ≈ 30 TB per copy) | [Kafka vs queues](/phase/3/kafka-vs-queues) |
+| Relational database | Illustrative: one leader comfortably at 10,000 writes a second and 2 TB; total connections around 32–40 for a 16-core database | [Sharding](/phase/2/sharding), [Connection pooling](/phase/2/connection-pooling) |
+| Sharding | Shards = the larger of (peak writes ÷ per-leader writes) and (data ÷ per-leader storage), with growth room; many logical shards on fewer servers | [Sharding](/phase/2/sharding) |
+| Replication | Async failover loses about write rate × lag: 5,000 writes a second × 200 ms ≈ 1,000 acknowledged writes | [Replication](/phase/2/replication) |
+| Object storage | Multipart parts from 5 MB to 5 GB, up to 10,000 parts, objects up to 5 TB; 10 million 2 MB uploads a day ≈ 20 TB a day | [Object storage](/phase/2/object-storage) |
+| Search | Elastic's guidance: shards of roughly 10–50 GB; new documents searchable after about a 1 s refresh | [Search](/phase/2/search) |
+| Rate limiter | Shared-counter round trip well under 1 ms in-zone; 10 servers each enforcing 100 a minute locally let a client send about 1,000 | [Rate limiting](/phase/2/rate-limiting) |
+| Vector index | Raw vectors = count × dimensions × 4 bytes (10 million × 768 ≈ 30.72 GB); brute force over that takes about 1.5 s a query, so ANN is mandatory at scale | [Embeddings and vector search](/phase/6/embeddings-vector-search) |
+
+### Worked example: running the URL shortener through the table
+
+The URL-shortener case study's assumptions: 100 million new links a month, 100 redirects per link, 5-year retention, a 5× peak.
+
+1. **Load.** 100M ÷ 2,592,000 s ≈ **39 creates a second**; × 100 ≈ **3,860 redirects a second**; × 5 ≈ **19,500 requests a second** at peak.
+2. **Database writes.** 195 creates a second at peak against an illustrative 10,000 per leader: about 2%. Writes do not justify sharding. (This is the mistake from the opening.)
+3. **Database storage.** 100M × 12 × 5 = 6 billion links × a 500 B budget = **3 TB**, above the illustrative 2 TB per leader. Storage, not throughput, is the reason to partition, so the case study picks a store that partitions natively and sizes it to six nodes for 9 TB with three replicas.
+4. **Cache.** About 30 million links clicked per day × 500 B = **15 GB**: fits in memory. At a 90% hit rate, misses are 19,300 × 10% ≈ 1,930 reads a second. Total cache operations at peak (about 19,500) are a fifth of one Redis instance's planning figure, so the cluster exists for memory headroom and availability, not throughput.
+5. **What is left.** One viral code can send tens of thousands of requests a second to one cache shard: a hot key, solved with an in-process cache in front of Redis. The case study does exactly this.
+
+Five minutes of arithmetic removed sharding-for-writes from the design and put the time on hot keys and caching correctness, which is where the rubric's points are.
+
+## Which case studies use which blocks
+
+<DepthStamp depth="awareness" />
+
+Across the 19 reference designs, load balancers appear in 17, queues or logs in 17 and object storage in 17. Drawing them earns little on its own. The points come from the one decision each case study makes about the block.
+
+| Block | Case studies where it decides the design | The decision |
+|---|---|---|
+| Load balancer | [Chat app](/case-studies/chat-app), [API gateway](/case-studies/api-gateway) | L4 with least connections for long-lived WebSockets ("parsing every frame at layer 7 costs CPU for nothing"); L4 in front of 36 gateways per region that terminate TLS themselves |
+| Cache | [URL shortener](/case-studies/url-shortener), [News feed](/case-studies/news-feed) | Redis plus in-process LRU for hot codes; timeline cluster sized by fan-out writes (60 primaries), not memory |
+| CDN | [Video streaming](/case-studies/video-streaming), [Ticket booking](/case-studies/ticket-booking), [Typeahead](/case-studies/typeahead) | Edge + shield + origin so the origin sees about 1% of requests; one shared now-serving file at the edge; 5-minute TTL plus purge |
+| Queue / log | [Notification system](/case-studies/notification-system), [Payment system](/case-studies/payment-system) | Separate transactional and bulk lanes; transactional outbox instead of publish-after-commit |
+| SQL | [Payment system](/case-studies/payment-system), [Food delivery](/case-studies/food-delivery), [Ticket booking](/case-studies/ticket-booking) | Postgres with a synchronous replica; one primary for orders and couriers; conditional update for seat holds |
+| NoSQL | [Chat app](/case-studies/chat-app), [Job scheduler](/case-studies/job-scheduler) | Wide-column for appends at 2M+ writes a second; KV store for 28,800 conditional run writes a second, Postgres for jobs |
+| Object storage | [Photo-sharing app](/case-studies/instagram), [File sync](/case-studies/file-sync), [Web crawler](/case-studies/web-crawler) | Presigned uploads keep 37 Gbps off the API; 4 MiB content-addressed blocks; 1 GB WARC files instead of one object per page |
+| Search | [Web search engine](/case-studies/search-engine), [Typeahead](/case-studies/typeahead) | Document-partitioned index; full 22 GB index replicated rather than sharded |
+| Sharding | [File sync](/case-studies/file-sync), [Web crawler](/case-studies/web-crawler), [Metrics & alerting](/case-studies/metrics-monitoring) | Shard by namespace; frontier by host hash; series hash rather than metric name |
+| Replication | [Ride sharing](/case-studies/ride-sharing), [Metrics & alerting](/case-studies/metrics-monitoring) | Synchronous replica for assignments, read replicas for search; RF 3 with quorum 2 |
+| Rate limiter | [Rate limiter service](/case-studies/rate-limiter-service), [API gateway](/case-studies/api-gateway) | Sliding-window counter in Redis via Lua, fail open by default; per-region counters |
+| Vector index | [RAG docs assistant](/case-studies/rag-docs-assistant) | One engine for BM25 and vectors so there is one write and delete path and no ACL drift |
+
+Two patterns stand out. First, the **sharding key** is almost always chosen so the most important transaction stays on one shard: by namespace for file sync, by host for the crawler, by city (later) for ride sharing and food delivery. Second, several designs choose **not** to use the obvious block: typeahead replicates instead of sharding because 22 GB fits in memory, and the RAG assistant refuses a separate vector database to avoid two indexes drifting apart.
+
+<TradeoffBox title="Adding a block" items={[
+  { gain: "Cache: an order of magnitude lower read latency and database load", cost: "Invalidation, stampedes and a database sized for the hit rate" },
+  { gain: "Queue or log: absorbs spikes and decouples slow work", cost: "At-least-once delivery, idempotent consumers, backlog monitoring" },
+  { gain: "Read replicas: read capacity for any query", cost: "Replication lag and read-your-writes handling" },
+  { gain: "Sharding: write and storage capacity", cost: "Cross-shard queries, hot shards, resharding" },
+  { gain: "Separate search or vector store: query shapes the database cannot serve", cost: "A second copy to keep in sync, with its own lag and failure modes" },
+  { gain: "Every extra block: one problem solved", cost: "One more thing to run, monitor, secure and explain" }
+]} />
+
+<NotWhenBox title="When not to reach for the block" items={[
+  "Sharding when estimation shows writes and data fit one leader with headroom: replicate for availability instead.",
+  "A cache in front of data that is written as often as it is read, or must never be stale (seat holds, balances).",
+  "Kafka for a single consumer doing background jobs: a managed queue is simpler.",
+  "A dedicated vector database when vectors fit beside the rows in a store you already run.",
+  "A NoSQL store chosen for scale the numbers do not show, at the cost of transactions you need."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="More components show more knowledge, so draw everything in the toolbox." right="Every block must be justified by a number or a requirement, and each brings a cost you must then explain. Interviewers reward the shortest design that meets the requirements." />
+
+<Misconception wrong="Read replicas and caches are interchangeable ways to scale reads." right="A cache answers key lookups over a hot set in well under a millisecond; a replica answers any query over all the data at database speed. They solve different read shapes and often coexist." />
+
+<Misconception wrong="NoSQL is the choice for scale and SQL is the choice for small systems." right="The choice follows the access pattern and the transaction needs. A Postgres primary carried 1,852 writes a second at peak in the food-delivery design; chat messages chose wide-column for appends at millions a second." />
+
+<Misconception wrong="Adding replicas increases write capacity." right="Every replica applies every write. Replication buys reads and survival; only sharding (or a bigger machine) buys write capacity." />
+
+## Interview angle
+
+<InterviewAngle title="Building blocks" questions={[
+  "Why did you add a cache here, and what happens to the database if it goes cold?",
+  "Would read replicas solve this instead of a cache?",
+  "Why a queue and not just calling the service directly?",
+  "Do you actually need to shard? Show me the numbers.",
+  "Why Kafka rather than a simple queue?",
+  "Why a separate search index? What keeps it in sync?"
+]}>
+Most follow-ups are the watch-out column read back to you. Answer them before they are asked: name the block, the number that justifies it and its cost in one breath ("19,300 redirects a second at peak, a 15 GB hot set, so Redis cache-aside plus an in-process LRU for viral codes; the risk is a cold cache, so the store is sized for the miss rate after a restart"). When the interviewer pushes on a neighbour ("why not replicas?"), compare on the dimensions in this section: what the block holds, what queries it answers, how stale it gets and how it fails. And when the arithmetic says a block is not needed, say that out loud: "writes are 40 a second, so I'm not sharding for writes" is one of the strongest sentences in a design interview.
+</InterviewAngle>
+
+## Try it
+
+Feel the cache-versus-database trade in the cache simulator: shrink the cache size or lower the popularity skew, watch the hit rate fall and the DB load climb, then use "Break it" to flush the cache and see why the database must be sized for the miss rate after a restart. Then use the message-queue simulator to see the difference between a queue that deletes acknowledged messages and a log that keeps them for replay.
+
+<Simulator id="cache" />
+
+<Simulator id="message-queue" />
+
+## Practice
+
+1. For the [news feed](/case-studies/news-feed), list every block in the reference design, and for each one write the number or requirement that justifies it, using the table above. Which block would you remove first if traffic were 100× smaller?
+2. In [Interview Mode for the ticket-booking case](/interview/ticket-booking), stop at the high-level design and justify each block in one sentence with its watch-out. Compare with the reference design's tradeoff table.
+3. In the [Design Studio](/studio), draw the URL shortener twice: once with sharded Postgres and once with a partitioned key-value store. Write the three criteria that would decide between them for a team you know.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

@@ -6,6 +6,7 @@ import { WeakSpotList } from "@/components/plan/WeakSpotList";
 import { useCardReviews, useInterviewAttempts, useStudySessions } from "@/lib/db/hooks";
 import type { PlanWeek } from "@/lib/content/schemas";
 import type { InterviewAttempt } from "@/lib/db/types";
+import { attemptScore } from "@/lib/interview/session";
 import { dayKey, humanize, lastDays, type PlanSection } from "@/lib/learning/plan";
 import { overallProgress, phaseProgress } from "@/lib/learning/progress";
 import { streak } from "@/lib/learning/streaks";
@@ -16,15 +17,15 @@ import { AccuracyLine, DailyBars, Figure } from "./Charts";
 const short = (k: string) => k.slice(5).replace("-", "/");
 
 /**
- * Self-score % per attempt, oldest first, grouped by case and most recent case first. Every criterion must be scored before
- * an attempt saves, so the max is 2 × the scores stored (the hint penalty is not stored and so not applied here).
+ * Self-score % per attempt (after the Mock hint penalty, as on the save screen), oldest first, grouped by case and most
+ * recent case first.
  */
 function interviewTrends(attempts: InterviewAttempt[]) {
   const by = new Map<string, InterviewAttempt[]>();
   for (const a of attempts) by.set(a.caseStudyId, [...(by.get(a.caseStudyId) ?? []), a]);
   return [...by.entries()].map(([caseId, list]) => {
     const sorted = list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    const pcts = sorted.map((a) => { const v = Object.values(a.selfScores); return v.length ? Math.round((v.reduce((x, y) => x + y, 0) / (2 * v.length)) * 100) : 0; });
+    const pcts = sorted.map((a) => attemptScore(a).pct);
     return { caseId, pcts, last: sorted[sorted.length - 1].createdAt };
   }).sort((a, b) => b.last.localeCompare(a.last));
 }

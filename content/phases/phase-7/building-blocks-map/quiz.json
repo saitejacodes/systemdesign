@@ -1,0 +1,329 @@
+[
+  {
+    "id": "bbm-q1",
+    "type": "scenario",
+    "prompt": "What should the candidate have said instead?",
+    "scenario": "URL shortener: 100M new links a month, 100 redirects per link, 5× peak. Ten minutes in, the candidate says: \"Writes will be heavy at this scale, so I'll shard Postgres 16 ways by a hash of the short code before anything else.\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "Sixteen shards is too few for five years of growth; start with 64 logical shards"
+      },
+      {
+        "id": "b",
+        "text": "Writes are about 40 a second, so they don't justify sharding; focus on reads"
+      },
+      {
+        "id": "c",
+        "text": "Sharding SQL is hard to operate, so move the links to Cassandra and skip the sharding question"
+      },
+      {
+        "id": "d",
+        "text": "Put a queue in front of the database so bursts of link creation are smoothed out"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "100M ÷ 2,592,000 s ≈ 39 creates a second (195 at peak), about 2% of an illustrative 10,000 writes a second per leader. The real partitioning pressure is 3 TB of storage, and the hard problems are hot keys and cache correctness on 19,300 redirects a second. Option a refines a decision that should not have been made for that reason. Option c swaps the store without addressing the missing arithmetic. Option d adds a block (and an at-least-once problem) to smooth a load of 40 writes a second that needs no smoothing.",
+    "topicId": "decision-table",
+    "difficulty": 1
+  },
+  {
+    "id": "bbm-q2",
+    "type": "scenario",
+    "prompt": "What is the better fix for the read load?",
+    "scenario": "An internal reporting page lets staff filter all orders by any combination of date, region, status and product. These queries are overloading the primary. The candidate proposes Redis cache-aside keyed by the full query string with a 10-minute TTL.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Keep the cache but raise the TTL to an hour so more queries hit"
+      },
+      {
+        "id": "b",
+        "text": "Shard the orders table by region so each query touches one shard"
+      },
+      {
+        "id": "c",
+        "text": "Send these queries to read replicas, since they are varied and cover all data"
+      },
+      {
+        "id": "d",
+        "text": "Put the reporting page behind a CDN so repeated filters are served at the edge"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "The queries are varied and span the whole dataset, so almost every query string is unique and the cache's hit rate would be low. A read replica answers any query the primary can, at database speed, and removes the load from the primary (staleness of a few hundred milliseconds is fine for reports). Raising the TTL (a) doesn't fix unique keys and adds staleness. Sharding (b) buys write capacity and breaks the queries that cross regions. A CDN (d) has the same unique-key problem as the cache, plus it would cache internal data at the edge.",
+    "topicId": "close-neighbours",
+    "difficulty": 2
+  },
+  {
+    "id": "bbm-q3",
+    "type": "scenario",
+    "prompt": "Which messaging choice fits the requirements?",
+    "scenario": "Order events today feed one email worker. The candidate is told that next quarter the fraud and analytics teams will also consume them, and analytics wants to backfill a new model from the last 7 days of events. The candidate proposes an SQS standard queue.",
+    "options": [
+      {
+        "id": "a",
+        "text": "A log-based stream with a consumer group per team and 7-day retention"
+      },
+      {
+        "id": "b",
+        "text": "An SQS FIFO queue so every team receives the events in the right order"
+      },
+      {
+        "id": "c",
+        "text": "RabbitMQ with message priorities so fraud checks are processed first"
+      },
+      {
+        "id": "d",
+        "text": "An events table in Postgres that each team polls on its own schedule"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Several independent consumers plus replay of past events are exactly the two signals for a log: each consumer group reads at its own offset, and a new group can start from 7 days ago. A queue (b) deletes messages once acknowledged, so there is nothing to backfill, and one queue serves competing consumers, not independent ones. Priorities (c) solve a different problem and still give no replay. A polled table (d) can be made to work but turns the primary database into a message broker and puts polling load on it.",
+    "topicId": "close-neighbours",
+    "difficulty": 2
+  },
+  {
+    "id": "bbm-q4",
+    "type": "single",
+    "prompt": "A topic receives 30,000 events a second at peak and one consumer instance processes 1,500 a second. What is the minimum partition count?",
+    "options": [
+      {
+        "id": "a",
+        "text": "15, because each partition can be read by two consumers"
+      },
+      {
+        "id": "b",
+        "text": "20, because each partition is read by one consumer in a group"
+      },
+      {
+        "id": "c",
+        "text": "30, one partition for every thousand events a second of peak load"
+      },
+      {
+        "id": "d",
+        "text": "45, three times the consumers to allow for replication"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Within a consumer group each partition is assigned to exactly one consumer, so partitions cap parallelism: 30,000 ÷ 1,500 = 20 consumers, so at least 20 partitions (more in practice for growth). Option a gets the assignment rule backwards. Option c uses a made-up per-partition rate instead of the consumer's measured rate. Option d confuses the replication factor, which copies partitions across brokers, with the partition count.",
+    "topicId": "capacity-rules",
+    "difficulty": 1
+  },
+  {
+    "id": "bbm-q5",
+    "type": "scenario",
+    "prompt": "Roughly how many acknowledged writes could be lost if the leader's disk dies now?",
+    "scenario": "A candidate's design uses one Postgres leader with an asynchronous follower for failover. Estimation shows 4,000 writes a second at peak, and the candidate states typical replication lag of 250 ms.",
+    "options": [
+      {
+        "id": "a",
+        "text": "None, because the follower already has a full copy of the data"
+      },
+      {
+        "id": "b",
+        "text": "About 16, because only writes in the last few milliseconds are at risk"
+      },
+      {
+        "id": "c",
+        "text": "About 1,000, which is the write rate multiplied by the replication lag"
+      },
+      {
+        "id": "d",
+        "text": "About 4,000, because a whole second of writes is lost on any failover"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Async failover loses about write rate × lag: 4,000 × 0.25 s = 1,000 writes that clients were told had succeeded. If that is unacceptable (payments, seat holds), the design needs a synchronous replica. Option a ignores that the follower lags. Option b divides instead of multiplying. Option d assumes a fixed one-second window that has nothing to do with the stated lag.",
+    "topicId": "capacity-rules",
+    "difficulty": 2
+  },
+  {
+    "id": "bbm-q6",
+    "type": "scenario",
+    "prompt": "What is the strongest pushback on this proposal?",
+    "scenario": "Food delivery at 1,852 state-changing writes a second at peak. The candidate says: \"For scale I'll put orders in a wide-column store and couriers in a separate service, and use a Redis distributed lock so two orders can't be assigned the same courier.\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "The Redis lock is unsafe on one node; it needs Redlock across five independent nodes"
+      },
+      {
+        "id": "b",
+        "text": "Wide-column stores can't hold order status, which changes often"
+      },
+      {
+        "id": "c",
+        "text": "Couriers should be sharded by city before anything else is decided"
+      },
+      {
+        "id": "d",
+        "text": "One Postgres primary fits; with couriers in it, assignment is one transaction"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "1,852 writes a second is about 37% of the 5,000 a second the case study assumes one primary sustains, so 'for scale' is not supported by the numbers. Putting couriers and orders in the same database makes assignment a single local transaction with a conditional write, so the database, not a lock that can expire mid-operation, prevents double-booking. Option a strengthens the wrong mechanism. Option b is false: wide-column stores handle frequent updates; the issue is transactions across two entities. Option c is the case study's answer at 10× load, not at this one.",
+    "topicId": "close-neighbours",
+    "difficulty": 3
+  },
+  {
+    "id": "bbm-q7",
+    "type": "single",
+    "prompt": "A candidate adds a queue between checkout and the email service. Which obligation comes with that block?",
+    "options": [
+      {
+        "id": "a",
+        "text": "The email worker must be idempotent, since delivery is at least once"
+      },
+      {
+        "id": "b",
+        "text": "Emails must now be delivered in global order across all customers"
+      },
+      {
+        "id": "c",
+        "text": "Checkout becomes slower because it waits for the email to be queued and sent"
+      },
+      {
+        "id": "d",
+        "text": "The checkout service no longer needs any retry logic of its own"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Brokers redeliver a message whose consumer crashed before acknowledging, so the same email job can arrive twice; the worker dedupes, for example on the order ID. Global order (b) is neither provided nor needed. Checkout waits only for the enqueue (c), which is the point of the queue. Checkout still needs a retry or outbox for the enqueue itself (d); the queue centralises retries of the email, not of publishing.",
+    "topicId": "decision-table",
+    "difficulty": 1
+  },
+  {
+    "id": "bbm-q8",
+    "type": "scenario",
+    "prompt": "What does the reference design do instead, and why?",
+    "scenario": "Search typeahead. The candidate's index of precomputed top-10 suggestions per prefix is about 22 GB. The candidate says: \"I'll shard the index by the first letter of the prefix so each server holds a slice.\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "Shard by a hash of the full prefix, which spreads letters evenly"
+      },
+      {
+        "id": "b",
+        "text": "Store the index in Postgres and add read replicas for throughput"
+      },
+      {
+        "id": "c",
+        "text": "Keep letter sharding but put the busiest letters on bigger machines"
+      },
+      {
+        "id": "d",
+        "text": "Replicate the whole index on every server, since 22 GB fits in memory"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "22 GB fits in one server's memory, so every server can hold the whole index and throughput scales by adding replicas, with no routing and no hot shards. Letter sharding is skewed (far more queries start with some letters). Hash sharding (a) evens the load but adds a routing hop and fan-out for no benefit when the data fits. Postgres (b) misses the latency budget that an in-memory lookup meets. Bigger machines for busy letters (c) treats the symptom of a sharding choice that wasn't needed.",
+    "topicId": "blocks-in-case-studies",
+    "difficulty": 2
+  },
+  {
+    "id": "bbm-q9",
+    "type": "scenario",
+    "prompt": "What is the main argument for the reference design's alternative?",
+    "scenario": "RAG docs assistant over internal documents with per-document permissions. The candidate draws Elasticsearch for keyword search, a separate dedicated vector database for embeddings, and merges results in the application.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Dedicated vector databases cannot hold more than a few million vectors in practice"
+      },
+      {
+        "id": "b",
+        "text": "One engine for BM25 and vectors gives one write and delete path, no ACL drift"
+      },
+      {
+        "id": "c",
+        "text": "Keyword search is obsolete once embeddings are available, so drop Elasticsearch"
+      },
+      {
+        "id": "d",
+        "text": "Two engines double the RAM, which is the deciding cost at this scale"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "With two indexes, every update, delete and permission change must reach both, and any lag lets one index return text the user may no longer see. The reference design keeps BM25 and vectors in one engine so there is one write and delete path. Option a is false: dedicated vector databases are built to scale horizontally. Option c is wrong: internal documents are full of codes and names that embeddings miss, which is why the design uses hybrid search. Option d names a real cost but not the deciding one; correctness of permissions is.",
+    "topicId": "decision-table",
+    "difficulty": 2
+  },
+  {
+    "id": "bbm-q10",
+    "type": "single",
+    "prompt": "A service reads 20,000 times a second. After a deploy changes cache key names, the hit ratio drops from 99% to 90%. What happens to database reads?",
+    "options": [
+      {
+        "id": "a",
+        "text": "They rise by about 9%, from 200 to about 220 a second"
+      },
+      {
+        "id": "b",
+        "text": "They rise from 2,000 to 2,200 a second"
+      },
+      {
+        "id": "c",
+        "text": "They rise ten-fold, from 200 to 2,000 a second"
+      },
+      {
+        "id": "d",
+        "text": "They are unchanged, because cache misses are retried"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Misses are (1 − hit ratio) × reads: 1% of 20,000 is 200, 10% is 2,000. A database sized for 200 reads a second can fall over. Option a applies the 9-point change to the database load instead of to the miss rate. Option b starts from the wrong baseline. Option d is wrong: retries add load, they don't remove misses.",
+    "topicId": "capacity-rules",
+    "difficulty": 1
+  },
+  {
+    "id": "bbm-q11",
+    "type": "multi",
+    "prompt": "Which of these are valid reasons to shard a relational database? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Peak writes exceed what one leader handles with headroom"
+      },
+      {
+        "id": "b",
+        "text": "Data size will outgrow one leader's storage within the plan"
+      },
+      {
+        "id": "c",
+        "text": "Read queries are overloading the primary"
+      },
+      {
+        "id": "d",
+        "text": "The system must survive the loss of a database node"
+      }
+    ],
+    "correct": [
+      "a",
+      "b"
+    ],
+    "explanation": "Sharding splits data so each leader takes a fraction of the writes and storage, so a and b are its two signals. Read overload (c) is cheaper to solve with read replicas or a cache, which add read capacity without cross-shard queries. Surviving a node loss (d) is what replication provides; sharding alone makes more nodes that can fail, each holding data nobody else has.",
+    "topicId": "close-neighbours",
+    "difficulty": 2
+  }
+]

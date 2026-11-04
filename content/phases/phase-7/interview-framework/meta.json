@@ -1,0 +1,20 @@
+{
+  "id": "p7-interview-framework",
+  "phase": 7,
+  "slug": "interview-framework",
+  "title": "The 7-step interview framework",
+  "order": 1,
+  "week": 14,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "seven-steps", "title": "The seven steps and why this order", "depth": "deep" },
+    { "id": "time-budget", "title": "A minute-by-minute time budget", "depth": "deep" },
+    { "id": "say-and-draw", "title": "What to say and what to draw at each step", "depth": "deep" },
+    { "id": "driving-conversation", "title": "Driving the conversation", "depth": "tradeoffs" },
+    { "id": "url-shortener-walkthrough", "title": "Worked walkthrough: the URL shortener", "depth": "deep" },
+    { "id": "failure-recovery", "title": "How interviews go wrong, and how to recover", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["estimation-calculator"],
+  "practiceCaseStudyIds": ["url-shortener", "news-feed", "rate-limiter-service"],
+  "prerequisites": ["p1-estimation", "p3-cache-strategies", "p4-id-generation"]
+}

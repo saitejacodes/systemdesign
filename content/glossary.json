@@ -3946,5 +3946,113 @@
     "slug": "cmaf",
     "definition": "Common Media Application Format (ISO/IEC 23000-19): a fragmented-MP4 segment format that both HLS and DASH can reference, so one set of encoded segments serves both protocols and halves CDN storage.",
     "sectionId": "p3-cdn"
+  },
+  {
+    "term": "Non-functional requirement",
+    "slug": "non-functional-requirement",
+    "definition": "A property the system must have rather than a feature it offers, stated as a measurable target: latency (e.g. under 50 ms at p99), availability, consistency, durability, throughput or cost.",
+    "sectionId": "p7-interview-framework"
+  },
+  {
+    "term": "Signposting",
+    "slug": "signposting",
+    "definition": "In an interview, announcing where you are and what you will do next ('That's requirements; next, two minutes of estimation'), so the interviewer can follow or redirect you cheaply.",
+    "sectionId": "p7-interview-framework"
+  },
+  {
+    "term": "Timeboxing",
+    "slug": "timeboxing",
+    "definition": "Giving each step of a task a fixed time budget and moving on when it runs out, even if the step feels unfinished; in a design interview, the 5/5/5/5/10/10/5 split for 45 minutes.",
+    "sectionId": "p7-interview-framework"
+  },
+  {
+    "term": "Interview signal",
+    "slug": "interview-signal",
+    "definition": "A piece of evidence an interviewer notes about how a candidate would work at a given level, such as deriving peak load unprompted or raising failure modes without a hint. Interviewers usually form an overall picture from many signals rather than adding up points.",
+    "sectionId": "p7-level-expectations"
+  },
+  {
+    "term": "Driving the interview",
+    "slug": "driving-the-interview",
+    "definition": "Deciding what happens next in a design interview and saying why (an agenda, assumptions, which deep dive to take), then asking for a quick confirmation, while still following the interviewer when they steer.",
+    "sectionId": "p7-level-expectations"
+  },
+  {
+    "term": "Vector database",
+    "slug": "vector-database",
+    "definition": "A data store whose main index finds the stored vectors closest to a query vector, usually with an approximate nearest-neighbour index such as HNSW. Used for semantic search, recommendations and RAG retrieval; the same capability is also offered as an extension or feature of general-purpose databases and search engines.",
+    "sectionId": "p7-building-blocks-map"
+  },
+  {
+    "term": "Key salting",
+    "slug": "key-salting",
+    "definition": "Splitting one hot key into several sub-keys, for example by appending hash(user_id) mod N, so its writes spread over several partitions. Reading a total then means combining the sub-keys, usually through an asynchronously maintained counter.",
+    "sectionId": "p7-deep-dive-patterns"
+  },
+  {
+    "term": "Scatter-gather",
+    "slug": "scatter-gather",
+    "definition": "Sending one request to many shards in parallel and merging their answers. Latency is set by the slowest shard, so rare per-shard slowness becomes common at high fan-out.",
+    "sectionId": "p7-deep-dive-patterns"
+  },
+  {
+    "term": "Head-of-line blocking",
+    "slug": "head-of-line-blocking",
+    "definition": "When an item at the front of a FIFO queue or connection holds up everything behind it, for example urgent messages stuck behind a large bulk backlog in the same partition.",
+    "sectionId": "p7-deep-dive-patterns"
+  },
+  {
+    "term": "Reconciliation",
+    "slug": "reconciliation",
+    "definition": "Periodically comparing your records with an external party's records, such as a payment provider's settlement report, matching them by a shared reference and resolving every mismatch.",
+    "sectionId": "p7-deep-dive-patterns"
+  },
+  {
+    "term": "Spaced repetition",
+    "slug": "spaced-repetition",
+    "definition": "A study method that schedules each review just as you are likely to forget, with intervals that grow after each successful recall and reset after a failure. The flashcards here use the classic SM-2 algorithm (1 day, 6 days, then the interval times an ease factor).",
+    "sectionId": "p7-final-review"
+  },
+  {
+    "term": "Taper",
+    "slug": "taper",
+    "definition": "Reducing study volume in the final days before an interview while keeping short, focused retrieval practice, so you arrive rested rather than tired. Borrowed from endurance sport, where training volume is cut before a race.",
+    "sectionId": "p7-final-review"
+  },
+  {
+    "term": "Functional requirement",
+    "slug": "functional-requirement",
+    "definition": "Something a user or caller must be able to do with the system, written as a verb phrase: 'create a short link', 'hold up to 4 seats for 10 minutes'. Functional requirements drive the API and data model.",
+    "sectionId": "p7-requirements-scoping"
+  },
+  {
+    "term": "Invariant",
+    "slug": "invariant",
+    "definition": "A rule that must hold in every state of the system, such as 'a seat is never sold twice' or 'a buyer is charged exactly once'. Violating it even once is a correctness failure, so it usually needs a dedicated mechanism (conditional write, lock, idempotency key).",
+    "sectionId": "p7-requirements-scoping"
+  },
+  {
+    "term": "Decision log",
+    "slug": "decision-log",
+    "definition": "A short running list kept on the whiteboard during a design interview: each decision that had a real alternative, the alternative, and the reason it lost. It anchors answers to pushback and becomes the trade-off summary at wrap-up.",
+    "sectionId": "p7-tradeoff-communication"
+  },
+  {
+    "term": "Revisit trigger",
+    "slug": "revisit-trigger",
+    "definition": "The condition stated alongside a design decision under which the rejected alternative would win, for example \"if writes grew a thousandfold, switch to counter blocks.\" It shows the decision is tied to current numbers rather than taste.",
+    "sectionId": "p7-tradeoff-communication"
+  },
+  {
+    "term": "Mock interview",
+    "slug": "mock-interview",
+    "definition": "A timed rehearsal of a real interview, alone against a clock or with a partner playing the interviewer, followed by scoring against a rubric and feedback.",
+    "sectionId": "p7-mock-interview-playbook"
+  },
+  {
+    "term": "Scoring rubric",
+    "slug": "scoring-rubric",
+    "definition": "A list of criteria, each with a written description of what earns 0, 1 or 2 points, used to score a design attempt by evidence rather than impression.",
+    "sectionId": "p7-mock-interview-playbook"
   }
 ]

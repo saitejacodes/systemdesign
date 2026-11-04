@@ -1,15 +1,15 @@
 import fs from "node:fs";
 import { expect, test } from "@playwright/test";
 
-test("plan shows week 1 open and live, later weeks coming soon; today points at the next lesson", async ({ page }) => {
+test("plan shows week 1 open and every week live; today points at the next lesson", async ({ page }) => {
   await page.goto("/plan");
   const wk1 = page.locator("details").first();
   await expect(wk1).toHaveAttribute("open", "");
   await expect(wk1.getByRole("link", { name: "Client–server and where state lives" })).toBeVisible();
-  // Phases 1–4 are built, so week 1 is all live; week 11 (Phase 5) still has coming-soon items.
-  await expect(wk1.getByText("· Coming soon")).toHaveCount(0);
+  // Every phase is built, so no week has coming-soon items; week 14 opens Phase 7.
+  await expect(page.getByText("· Coming soon")).toHaveCount(0);
   await page.locator("details").nth(13).locator("summary").click();
-  await expect(page.locator("details").nth(13).getByText("· Coming soon").first()).toBeVisible();
+  await expect(page.locator("details").nth(13).getByRole("link", { name: "The 7-step interview framework" })).toBeVisible();
   await page.locator("details").nth(4).locator("summary").click();
   await expect(page.locator("details").nth(4).getByText("Deliverable")).toBeVisible();
 

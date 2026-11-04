@@ -1,0 +1,8 @@
+[
+  { "id": "ddp-c1", "text": "Given a prompt, I can name which of the seven deep-dive patterns it will trigger and point to the clue in the requirements or numbers.", "topicId": "hot-keys" },
+  { "id": "ddp-c2", "text": "I can derive a hybrid fan-out threshold from spare capacity and explain the scatter-gather tail with 0.99²⁰⁰.", "topicId": "fan-out" },
+  { "id": "ddp-c3", "text": "I can walk a payment timeout through an unknown state to one charge, naming the idempotency key at each hop.", "topicId": "idempotency-effects" },
+  { "id": "ddp-c4", "text": "I can choose strong or eventual consistency per operation, and fail open or closed per rule, and justify each from the requirements.", "topicId": "consistency-choices" },
+  { "id": "ddp-c5", "text": "I can size a burst with Little's law and describe admission control, separate lanes and jittered retries with their costs.", "topicId": "backpressure" },
+  { "id": "ddp-c6", "text": "I can compute the per-region capacity needed to survive a region loss and tell a failure timeline for it.", "topicId": "multi-region" }
+]

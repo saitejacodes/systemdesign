@@ -1,0 +1,8 @@
+[
+  { "id": "bbm-c1", "text": "For each of the 13 building blocks, I can name the signal that justifies it, its main cost, and the Phase 1–6 lesson that covers it.", "topicId": "decision-table" },
+  { "id": "bbm-c2", "text": "I can say a block and its watch-out in the same sentence, with the number from estimation that triggered it.", "topicId": "decision-table" },
+  { "id": "bbm-c3", "text": "I can choose between cache and read replica, queue and log, SQL and NoSQL, and replication and sharding, by comparing what each holds, what it answers and how it fails.", "topicId": "close-neighbours" },
+  { "id": "bbm-c4", "text": "I can quote a planning figure for each block from earlier lessons, label it as an assumption, and use it to decide whether the block is needed.", "topicId": "capacity-rules" },
+  { "id": "bbm-c5", "text": "I can run a case study's estimates through the table and show which blocks the numbers rule out, as in the URL-shortener example.", "topicId": "capacity-rules" },
+  { "id": "bbm-c6", "text": "I can name at least one case study where each block is the decisive choice, and one where the obvious block was deliberately not used.", "topicId": "blocks-in-case-studies" }
+]

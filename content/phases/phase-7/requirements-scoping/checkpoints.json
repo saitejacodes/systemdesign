@@ -1,0 +1,7 @@
+[
+  { "id": "c1", "text": "I can sort a list of requirements into functional, non-functional (with numbers) and invariants, and write each invariant on its own line.", "topicId": "functional-vs-nonfunctional" },
+  { "id": "c2", "text": "I can ask questions on users, scale, read/write mix, latency, consistency, durability and regions, and say how each answer changes the design.", "topicId": "question-bank" },
+  { "id": "c3", "text": "I turn every numeric answer into requests per second or storage before leaving the Requirements step.", "topicId": "question-bank" },
+  { "id": "c4", "text": "I state assumptions aloud with a reason, label them on the board, and never assume away the hard part.", "topicId": "stating-assumptions" },
+  { "id": "c5", "text": "I write an out-of-scope list that keeps the core loop and the hard requirement, with a reason for each cut and an offer to return.", "topicId": "cutting-scope" }
+]

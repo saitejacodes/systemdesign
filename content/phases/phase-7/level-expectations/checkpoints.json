@@ -1,0 +1,8 @@
+[
+  { "id": "c1", "text": "I can describe how the five dials (who drives, trade-off depth, operational concerns, breadth vs depth, ambiguity) generally differ between junior, mid and senior answers, and I know expectations vary between companies and interviewers.", "topicId": "level-dials" },
+  { "id": "c2", "text": "I can give the junior, mid and senior answers to the URL shortener hot-key question, including the arithmetic (30,000 req/s on one shard down to about 9 Redis reads per 30 s).", "topicId": "hot-key-three-levels" },
+  { "id": "c3", "text": "I can open an interview with an agenda, turn a vague prompt into stated assumptions, and propose my own deep dives.", "topicId": "driving-ambiguity" },
+  { "id": "c4", "text": "I can close a decision with my own estimation numbers, the losing alternative and a switch condition.", "topicId": "tradeoff-depth" },
+  { "id": "c5", "text": "After every deep dive I add one sentence on detection, rollout, failure or cost.", "topicId": "operational-concerns" },
+  { "id": "c6", "text": "I have a short, true experience from my own work that I can map onto a large-scale problem, and phrases for admitting what I have not done.", "topicId": "honest-senior-signals" }
+]

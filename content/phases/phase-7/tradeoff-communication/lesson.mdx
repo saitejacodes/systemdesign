@@ -1,0 +1,255 @@
+## Why it matters
+
+Eighteen of the 19 case-study rubrics in this course score trade-offs, and eleven of them name the criterion "Trade-offs stated as decisions." Read the URL shortener's levels side by side. A 1 "names trade-offs generically (consistency vs availability) without tying them to this design." A 2 gives each key decision "the alternative and the specific reason it lost here." The two candidates might know exactly the same facts. What separates them is how they say it: whether a choice arrives with its rivals, its criteria and its cost, or as a bare assertion or a shrug of "it depends." This section is about that skill. It covers how to lay out two or three options against explicit criteria, how to turn "it depends" into a decision, how to handle pushback without either caving or digging in, and how to say "I don't know" in a way that still earns credit. Every example comes from a decision a reference design actually makes.
+
+<Callout type="analogy" title="The consultant's recommendation">
+A good doctor explaining a treatment does not say "surgery" and stop, nor "it depends" and stop. They say: here are the two or three realistic options; here is what matters for you (your age, your job, how much risk you will accept); given that, I recommend this one; here is what it costs you; and here is what would make me change my mind. That is the whole structure of a well-communicated trade-off: options, criteria, decision, cost, revisit trigger. Where the analogy breaks: a patient rarely knows more than the doctor, while your interviewer often knows the answer and may push back only to see whether your reasoning holds. You are being examined on the reasoning, not just advising.
+</Callout>
+
+## Presenting options against explicit criteria
+
+<DepthStamp depth="deep" />
+
+**Two or three options.** One option is a pronouncement: the interviewer cannot tell whether you considered anything else. Five options is a lecture that eats your clock. Two or three, including the obvious one the interviewer expects to hear, shows the search space without wasting minutes.
+
+**Criteria from the requirements, not from a textbook.** "Consistency, availability, latency, cost" applies to every design and so says nothing about this one. The useful criteria are the requirements you wrote down in the first five minutes. For the URL shortener those were: a code must never resolve to another URL, codes must not be enumerable, redirects must add under 50 ms at p99, and creation can be slower. Those four lines decide almost every later choice.
+
+**The five-part shape.** Every trade-off statement can be built from the same parts:
+
+1. **Options:** "Three ways to generate codes: hash the URL, a counter, or random."
+2. **Criteria:** "What matters here is no collisions, no enumeration, and no coordinator."
+3. **Comparison:** one sentence per option against the criteria.
+4. **Decision and cost:** "Random, 7 characters, conditional insert. The cost is a retry 0.17% of the time at worst."
+5. **<Term slug="revisit-trigger">Revisit trigger</Term>:** "If writes grew a thousandfold, I'd switch to counter blocks with a keyed permutation."
+
+<Figure caption="FIG. 4.1 · THE SHAPE OF A TRADE-OFF STATEMENT">
+  <Diagram label="A left-to-right flow. Requirements feed the criteria. Two or three options are compared against the criteria. The comparison produces a decision, which carries its cost and a revisit trigger. The decision is written in the decision log on the whiteboard." chart={`flowchart LR
+    REQ[Requirements and estimates] --> CR[Criteria]
+    OP[2 or 3 options] --> CMP[Compare]
+    CR --> CMP
+    CMP --> DEC[Decision]
+    DEC --> COST[What it costs]
+    DEC --> TRIG[What would change it]
+    DEC --> LOG[Decision log on the board]`} />
+</Figure>
+
+*The criteria come from the requirements you already wrote down. That is what ties a trade-off to this design rather than to every design.*
+
+### Worked example: short codes on the whiteboard
+
+At minute 20 of a 45-minute loop, this small grid in the corner of the board does more than a paragraph of talk (figures from the URL-shortener reference design):
+
+| | Never collides | Not enumerable | No coordinator |
+|---|---|---|---|
+| Hash of URL, truncated | No: about 5 million birthday collisions across 6B links | Yes | Yes |
+| Counter + base62 | Yes | **No**: `/aZ3kQ9x` → `/aZ3kQ9y` | No: needs a ticket server or block allocator |
+| Random 42 bits, conditional insert | Yes, after a retry at most 0.17% of the time | Yes | Yes |
+
+Spoken: "Random wins on all three at our write rate. The only cost is a rare retry, and at 40 creates a second that costs nothing. If writes grew a thousandfold and conditional inserts got expensive, I'd move to counter blocks with a keyed permutation, which needs no existence check."
+
+<Callout type="example" title="Exchange 1 · URL shortener: 301 or 302?">
+**Interviewer:** Which redirect status do you return?
+
+**Weak:** A 301, since it's permanent and browsers cache it, so it's faster.
+
+**Strong:** Two options. A 301 is cacheable by default, so repeat clicks never reach us: least load, fastest repeat visit. A 302 with `max-age=300` reaches us after five minutes. Our requirements include click analytics, expiry and deletion, and a 301 cached in a browser breaks all three for anyone who clicked once. So 302 with a 5-minute max-age; the cost is a request per click after five minutes, which the cache absorbs. If a paying creator wanted no analytics, a per-link 301 would be a fair option.
+
+*Why the strong answer scores:* both options are named, the criteria are this design's requirements, the cost is stated, and there is a condition under which the other option wins.
+</Callout>
+
+## Turning "it depends" into a decision
+
+<DepthStamp depth="deep" />
+
+"It depends" is a true answer to almost every design question, which is why it earns nothing on its own. Treat it as the first half of a sentence:
+
+> "It depends on **X**. Here X is **[value from the requirements or the estimate]**, so I'll choose **Y**. If X were **[other value]**, I'd choose **Z**."
+
+The work is in finding X, the variable the choice really turns on, and then reading its value from your own numbers. If you don't have the value, either ask ("Do we expect accounts with tens of millions of followers?") or assume it out loud and move on.
+
+### Worked example: deriving the fan-out threshold
+
+"Push or pull for the news feed?" (<Term slug="fan-out">fan-out</Term> on write or on read) depends on follower count: push makes reads cheap but a post by an account with 50 million followers would mean tens of millions of feed inserts; pull bounds that cost but makes every feed read expensive. The reference design turns the dependence into a number:
+
+1. Fan-out capacity is about 3M inserts a second; peak load is 1.46M; spare is about **1.5M a second**.
+2. Only followers active in the last 30 days get a copy, 70% of them. For freshness, no single post should take more than about a second of spare capacity: 0.7 × F ≤ 1.5M, so **F ≤ 2.1M followers**.
+3. Pick **1M**, half that bound, with hysteresis: switch to pull above 1M, back to push only below 800k, so an account near the line does not flip.
+
+The candidate now says "hybrid, threshold 1M, here's why" instead of "it depends on follower count."
+
+<Callout type="example" title="Exchange 2 · News feed: push or pull?">
+**Interviewer:** Push or pull for the feed?
+
+**Weak:** It depends on the use case. Push is faster for reads, pull is better for celebrities. There are trade-offs either way.
+
+**Strong:** It depends on follower count, so let me put a number on it. We have about 1.5M spare fan-out inserts a second at peak, and a post costs 0.7 inserts per follower, so above about 2 million followers one post would eat more than a second of spare capacity. I'll push for accounts below 1 million and pull above, with hysteresis at 800k. The threshold is a config value, so during a live-event spike we can lower it to shed fan-out load.
+
+*Why the strong answer scores:* the variable is named, its value comes from the estimate, the decision is concrete, and it even turns the threshold into an operational lever.
+</Callout>
+
+### Spend time in proportion to how hard the decision is to undo
+
+Some choices are cheap to reverse: a TTL, a threshold, a timeout. Decide them in a sentence and say they are tunable. Others are expensive: the sharding key, the ID format, the primary database, whether destinations can be edited. Spend your minutes there. The food-delivery design shows why: sharding orders by **city** keeps every assignment a local transaction; choosing the wrong key would mean cross-shard transactions on every dispatch, and moving the data later is a migration, not a config change.
+
+### When the field genuinely disagrees
+
+Some debates are not settled. Metrics collection by push or by scrape (pull) is one: pull gives a free "target is up" signal, push crosses network boundaries more easily. Do not pretend there is a universal answer. Say both sides in a sentence each, then let **this problem's** constraint decide. In the metrics case study, the requirements fix it: the interviewer's answer to "do agents push or does the system scrape?" was that agents push and buffer locally. The reference design takes push and replaces pull's free liveness signal with staleness detection.
+
+## Handling pushback
+
+<DepthStamp depth="tradeoffs" />
+
+Pushback is not a verdict. It comes in three kinds, and the right response differs for each.
+
+| Kind | What it sounds like | What changed | Your move |
+|---|---|---|---|
+| **Probe** | "Why not Redis? It's faster." | Nothing: the interviewer is testing whether you know why | Defend with the criterion that decided it; acknowledge what the alternative does better |
+| **New information** | "Our team runs Postgres everywhere." "Logins need protecting too." | A requirement or constraint | Re-run the comparison out loud; change if the new criterion tips it |
+| **Error** | "62⁶ is about 57 billion, not 57 million." | A fact or calculation you got wrong | Concede at once, fix it, and say what (if anything) it changes downstream |
+
+**How to tell which one you are facing.** Ask yourself one question: did a requirement or a number change? If not, it is a probe, and the decision should stand. If yes, re-decide. If you can't tell, ask: "Is there a constraint I'm missing, or would you like me to compare the alternatives?" That question is not weakness; it is how real design reviews work.
+
+**The two failure modes** are symmetric. Caving to a probe (switching with no new reason) tells the interviewer your decisions are not anchored to anything. Digging in against new information or a demonstrated error tells them you will be hard to work with. Both are scored far below a candidate who holds a decision for a stated reason and updates it for a stated reason.
+
+<Callout type="example" title="Exchange 3 · Payment system: defend (a probe)">
+**Interviewer:** You're storing <Term slug="idempotency-key">idempotency keys</Term> in Postgres. Wouldn't Redis be faster?
+
+**Weak:** Good point, Redis would be faster. Let's move them to Redis.
+
+**Strong:** Redis would be faster per lookup, yes. I'd still keep them in the payment database, because the key's job is to stop a double charge. In Postgres it's written in the same transaction as the payment, so they can't disagree. In Redis, an eviction, a failover or an expiry during a long retry loop could silently re-open the door to a second charge. A few milliseconds per payment is a fair price for that. If lookup load ever mattered, I'd put Redis in front as a cache, with Postgres still the record.
+
+*Why it scores:* the interviewer's point is granted, the deciding criterion (never double-charge) is restated, and the answer offers a yes-and rather than a flat no.
+</Callout>
+
+<Callout type="example" title="Exchange 4 · URL shortener: change your mind (new information)">
+**Interviewer:** You picked a partitioned key-value store. What if I told you our team runs Postgres for everything and has no one who operates Cassandra?
+
+**Weak:** A key-value store is still the right tool for key lookups at this scale, so I'd hire for it.
+
+**Strong:** That changes my answer. The workload is pure key lookups, about 2,100 store operations a second at peak after the cache, and 3 TB of data. Sharded Postgres handles that comfortably, and running a system nobody knows is a real availability risk. I'd use Postgres, partitioned by a hash of the code, with replicas per shard. What I give up is native rebalancing, so I'd create many logical shards up front.
+
+*Why it scores:* a new criterion (operational familiarity) arrived, the candidate showed both options still meet the requirements, and switched for a stated reason. The reference design itself calls Postgres "equally valid for a Postgres team."
+</Callout>
+
+<Callout type="example" title="Exchange 5 · Rate limiter: change part of the decision">
+**Interviewer:** You said the limiter fails open if Redis is down. What about the login-attempts limit?
+
+**Weak:** Fail open is the standard choice, because a limiter outage shouldn't become an API outage.
+
+**Strong:** You're right that one default doesn't fit every rule. For fairness limits per user or key, <Term slug="fail-open">fail open</Term>: a few minutes of unfairness is cheap. For login attempts per account, <Term slug="fail-closed">fail closed</Term> and return a 503 on that endpoint only, because unlimited password guessing during an outage is the attack. Same for limits that protect a fragile backend. So it's a per-rule setting, and failing open needs a local backstop so an outage doesn't mean unlimited traffic.
+
+*Why it scores:* the candidate kept what was right (the default), changed what was wrong (one size for all rules), and generalised the fix.
+</Callout>
+
+### Failure timeline: how a defensible decision got lost
+
+A ticket-booking mock, 45 minutes:
+
+| Minute | What happened |
+|---|---|
+| 18 | Candidate chooses a Postgres conditional update to hold seats. Good choice, but says no reason. |
+| 22 | Interviewer: "Why not Redis `SET NX`? It's much faster." Candidate: "True, let's use Redis." (Caved to a probe.) |
+| 26 | Interviewer: "What happens to a hold if the Redis primary fails?" Candidate: "Hmm, then maybe Postgres after all." |
+| 29 | Interviewer: "So which is it?" Candidate spends three minutes re-arguing both. |
+| 32 | Deep dives start late; the waiting room, the real scaling problem, gets four minutes. |
+
+**The recovery** at minute 26 would have been one sentence: "Let me reset. The criterion is that a seat must never be sold twice. Redis replication is asynchronous, so a failover can forget an acknowledged hold. The waiting room keeps seat writes at about 100 a second, which Postgres handles easily. So Postgres is the record; Redis can be a front filter for seats it already knows are taken." Stating the criterion is what lets you stop oscillating.
+
+## Saying "I don't know" well
+
+<DepthStamp depth="tradeoffs" />
+
+Nobody knows every throughput figure or every product. Interviewers commonly probe one level deeper on any specific claim, so a bluff tends to be found within a question or two, and a found bluff costs more than the gap it hid. A good "I don't know" has three parts:
+
+1. **Say precisely what you don't know.** Not "I'm not sure about Redis," but "I don't know the throughput of a pipelined `ZADD` plus trim."
+2. **Reason from what you do know.** A related figure, a bound, first principles.
+3. **Make the design robust to the gap, or say how you'd close it.** Size with headroom, show the sensitivity, name the benchmark.
+
+<Callout type="example" title="Exchange 6 · News feed: an unknown number">
+**Interviewer:** How many feed inserts a second can one Redis primary take?
+
+**Weak:** Redis is really fast, something like a million operations a second, so a handful of nodes.
+
+**Strong:** I don't know the exact figure for a pipelined `ZADD` plus a trim. My planning figure for one Redis instance is on the order of 100,000 simple operations a second, and this is heavier than a `GET`, so I'll assume 50,000 inserts and run at 50%: 1.46M ÷ 25,000 ≈ 60 primaries. If the real number is half that, it's 120 primaries: the count changes, the design doesn't. I'd confirm with `redis-benchmark` on our value sizes before ordering hardware.
+</Callout>
+
+<Callout type="example" title="Exchange 7 · Video streaming: an unfamiliar technology">
+**Interviewer:** Have you used Vitess? Would it work for the metadata?
+
+**Weak:** Yes, it would work well. *(The candidate has never used it, and the next question is about how it routes queries.)*
+
+**Strong:** I haven't used it. I know it's a sharding layer for MySQL. The metadata workload is point reads by video ID at about 50 new videos a second and 16 TB over five years, so any store that partitions by ID and replicates fits. If the team already runs MySQL, a MySQL sharding layer is as good a choice as a key-value store; I'd pick by what the team can operate. What property were you thinking of?
+</Callout>
+
+The second answer turns the gap into a question about requirements, which is exactly where the decision should be made anyway. The reference design reaches the same place: a key-value store, with sharded MySQL "equally valid for a MySQL team."
+
+## The decision log
+
+<DepthStamp depth="awareness" />
+
+Keep a <Term slug="decision-log">decision log</Term>, a three-column list in a corner of the whiteboard, and add a line each time you decide something that had a real alternative:
+
+| Decision | Instead of | Because |
+|---|---|---|
+| Random 7-char codes | Counter + permutation | No coordinator; retry ≤ 0.17% at 40 writes/s |
+| 302, max-age 300 | 301 | Analytics, expiry, deletion |
+| Async click events | Synchronous counter | No write on the redirect path |
+
+It costs seconds as you go and pays twice. Mid-interview, when pushback comes, the "because" column is your anchor: defend it or update it. At wrap-up, reading the log aloud is the trade-offs criterion, already written. In Interview Mode, you score yourself 0, 1 or 2 against the case study's rubric after the session; a filled decision log makes that self-review honest, because you can point to where each alternative and reason was stated.
+
+<TradeoffBox title="Communication choices under a clock" items={[
+  { gain: "Comparing 2 to 3 options: shows the search space and earns the trade-off criterion", cost: "About a minute per decision, so reserve it for decisions that are hard to undo" },
+  { gain: "Deciding cheap, reversible choices in one sentence: saves time for deep dives", cost: "The interviewer may probe one; have the reason ready" },
+  { gain: "Holding a decision under a probe: shows anchored reasoning", cost: "Risk of digging in if you misread new information as a probe; ask when unsure" },
+  { gain: "Admitting a gap and reasoning around it: credibility for everything else you say", cost: "You must still produce a number or a direction, not stop at the admission" }
+]} />
+
+<NotWhenBox title="When not to run a full options comparison" items={[
+  "Choices with one sensible answer at this scale: a load balancer in front of stateless servers, TLS, a CDN for static assets. Name them and move on.",
+  "Cheap, reversible settings (TTLs, timeouts, thresholds): pick a value, say it is tunable.",
+  "When the interviewer has asked you to move on: record the decision in the log and go.",
+  "When you have not yet written the requirements: the criteria do not exist yet, so the comparison will be generic."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Changing your mind when the interviewer pushes back looks weak." right="Changing your mind for a stated reason (a new constraint, a demonstrated error) looks senior. Changing it for no reason, or refusing to change after new information, is what looks weak." />
+
+<Misconception wrong="'It depends' shows nuance." right="It shows nuance only when followed by what it depends on, the value of that variable here, and the resulting choice. On its own it is a non-answer." />
+
+<Misconception wrong="Saying 'I don't know' loses points, so it's better to give a confident guess." right="A bluff is usually found within a question or two. A precise admission plus reasoning from what you know, sized with headroom, keeps credibility and still moves the design forward." />
+
+<Misconception wrong="Listing many trade-offs at the end covers the trade-off criterion." right="Rubrics reward trade-offs tied to this design: each key decision with its alternative and the reason it lost here. Generic pairs like consistency versus availability score lower." />
+
+## Interview angle
+
+<InterviewAngle title="Trade-off communication" questions={[
+  "What alternatives did you consider, and why did they lose?",
+  "Why not use X instead? (Often a probe.)",
+  "What would make you change this decision?",
+  "What if the team has no experience with that database?",
+  "You don't seem sure about that number. How would you find out?",
+  "If you had to cut one component, which one and what would you lose?"
+]}>
+Expect the first question at every major decision and the last at wrap-up. Answer with the five-part shape: options, criteria from the requirements, comparison, decision with its cost, and a revisit trigger. When challenged, decide out loud whether it is a probe, new information or an error, and say which ("that's a new constraint, so let me re-check"). When you don't know, say exactly what, reason from a related figure, and show the design survives if you are off by 2×. Keep a decision log on the board so your reasons are visible and your wrap-up is already written.
+</InterviewAngle>
+
+## Try it
+
+Practise a decision you will have to defend. In the CAP and PACELC simulator, run the same carts in CP and AP mode, cut a link, and count rejected requests against stale reads. Then write the two-sentence statement you would give an interviewer for a shopping cart: options, criterion, decision, cost.
+
+<Simulator id="cap" />
+
+## Practice
+
+1. Pick three decisions from the [ticket-booking tradeoff table](/case-studies/ticket-booking) and say each aloud in the five-part shape, in under 45 seconds each. Record yourself.
+2. Run [Interview Mode for the URL shortener](/interview/url-shortener) in Practice mode and keep a decision log on paper. In self-review, score the "Trade-offs stated as decisions" criterion against your log only.
+3. With a friend, take the [news feed](/case-studies/news-feed) and have them push back on three of your decisions, mixing probes and new constraints without telling you which. Name the kind of pushback before you answer each one. Sketch the final design in the [Design Studio](/studio).
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />

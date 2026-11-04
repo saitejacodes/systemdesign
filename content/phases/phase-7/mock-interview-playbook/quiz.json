@@ -1,0 +1,329 @@
+[
+  {
+    "id": "mip-q1",
+    "type": "single",
+    "prompt": "Which statement about Interview Mode's Mock mode is accurate?",
+    "options": [
+      {
+        "id": "a",
+        "text": "You can pause, but each pause costs a rubric point"
+      },
+      {
+        "id": "b",
+        "text": "Each hint you reveal costs one rubric point"
+      },
+      {
+        "id": "c",
+        "text": "The attempt submits itself when the clock reaches zero"
+      },
+      {
+        "id": "d",
+        "text": "Deep-dive questions can be requested early with a button"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "In Mock, hints are subtracted from your points, one per hint. Mock has no pause at all; only Practice can pause. At zero the clock keeps counting as time over and never submits for you. The \"Ask the next question now\" button exists only in Practice; in Mock questions arrive on the schedule.",
+    "topicId": "interview-mode",
+    "difficulty": 1
+  },
+  {
+    "id": "mip-q2",
+    "type": "scenario",
+    "prompt": "What explains what the candidate saw?",
+    "scenario": "In a 45-minute Mock of a case with 4 deep-dive questions, a candidate finished the design quickly and opened the Deep Dives tab at minute 26. The first question appeared immediately, earlier than the 15:00-remaining mark they expected.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Opening Deep Dives early starts the question schedule from that moment"
+      },
+      {
+        "id": "b",
+        "text": "Mock mode always shows the first question as soon as the tab opens"
+      },
+      {
+        "id": "c",
+        "text": "The app shortened the attempt to 30 minutes because the design was done"
+      },
+      {
+        "id": "d",
+        "text": "A hint was used, which moves the deep dives forward as a penalty"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Questions are spread over the Deep Dives window, which starts at its scheduled time or earlier if you open the tab earlier, so opening it at minute 26 started the schedule then. It is not a fixed rule of Mock that the first question appears on opening; opened at minute 30 or later, the normal schedule applies. The duration never changes after start. Hints cost points but do not move the schedule.",
+    "topicId": "interview-mode",
+    "difficulty": 2
+  },
+  {
+    "id": "mip-q3",
+    "type": "single",
+    "prompt": "A 12-criterion case. You score 17 points and used 2 hints in Mock. What percentage does the save screen show?",
+    "options": [
+      {
+        "id": "a",
+        "text": "71%"
+      },
+      {
+        "id": "b",
+        "text": "79%"
+      },
+      {
+        "id": "c",
+        "text": "63%"
+      },
+      {
+        "id": "d",
+        "text": "54%"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "(17 − 2) ÷ 24 = 0.625, shown as 63%, and the dashboard trend shows the same 63%. 71% is 17 ÷ 24, forgetting the penalty. 79% adds the hints instead of subtracting them. 54% subtracts 2 points per hint, but each hint costs one.",
+    "topicId": "self-review",
+    "difficulty": 2
+  },
+  {
+    "id": "mip-q4",
+    "type": "scenario",
+    "prompt": "What score should the candidate give the traffic criterion?",
+    "scenario": "The URL shortener's 2-point level for traffic wants 38.6 writes/s, 3,860 reads/s, a 5× peak of about 19,500/s, and the conclusion that design effort belongs on reads. The candidate's Estimation panel shows 40 writes/s and 4,000 reads/s. They remember thinking about a peak but never wrote one down.",
+    "options": [
+      {
+        "id": "a",
+        "text": "2, because the reasoning was in their head"
+      },
+      {
+        "id": "b",
+        "text": "1: averages are there, but no peak or conclusion"
+      },
+      {
+        "id": "c",
+        "text": "0, because the numbers are rounded rather than exact"
+      },
+      {
+        "id": "d",
+        "text": "2, because the averages are within 5% of the reference"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Score what was said or written: correct averages without a peak or the reads conclusion matches the 1-point level. A 2 for unspoken reasoning is exactly the inflation the evidence rule prevents. Rounding to 40 and 4,000 is fine; precision is not what the criterion tests, so 0 is too harsh. Being close on two numbers does not supply the missing peak and conclusion.",
+    "topicId": "self-review",
+    "difficulty": 2
+  },
+  {
+    "id": "mip-q5",
+    "type": "scenario",
+    "prompt": "What should the candidate do with their High-Level Design score?",
+    "scenario": "A candidate gave their high-level design a 2. The Run comparison shows their design with 3 single points of failure (reference: 0), p99 marked ▲, and a failed run challenge that the reference passes.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Keep the 2: the comparison is a simulation, not the rubric"
+      },
+      {
+        "id": "b",
+        "text": "Copy the reference design into the canvas and re-run it"
+      },
+      {
+        "id": "c",
+        "text": "Score 0 automatically, since any ▲ means the criterion failed"
+      },
+      {
+        "id": "d",
+        "text": "Lower the score and note which components were the SPOFs"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "The comparison is evidence for checking rubric scores: single points of failure and a failed run challenge contradict a 2, so lower it and record the cause for next time. Ignoring the evidence defeats the purpose of the comparison. Copying the reference changes nothing about what you produced in the interview. A ▲ is not an automatic 0; read the rubric's level descriptions and pick the one that matches.",
+    "topicId": "self-review",
+    "difficulty": 2
+  },
+  {
+    "id": "mip-q6",
+    "type": "scenario",
+    "prompt": "What should the interviewer do?",
+    "scenario": "Peer mock, news feed, minute 18. The candidate has chosen pure fan-out on write and is drawing workers that insert into every follower's feed. The case has a 50M-follower account the candidate has not mentioned.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Stop them and explain the hybrid fan-out so the mock stays useful"
+      },
+      {
+        "id": "b",
+        "text": "Wait a minute, then ask how many inserts one 50M-follower post makes"
+      },
+      {
+        "id": "c",
+        "text": "Say nothing for the rest of the interview and raise it in the debrief"
+      },
+      {
+        "id": "d",
+        "text": "Move on to the next step to keep the timing on track"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A wrong but recoverable direction gets a minute, then a question that exposes the problem; whether the candidate recovers is valuable signal. Explaining the answer mid-interview turns the mock into a lesson and measures nothing. Staying silent throughout misses the chance to see recovery, which real interviewers often probe. Moving on skips the most important design decision in the case.",
+    "topicId": "peer-mock",
+    "difficulty": 2
+  },
+  {
+    "id": "mip-q7",
+    "type": "scenario",
+    "prompt": "Which piece of feedback is most useful?",
+    "scenario": "In the debrief after a ticket-booking mock, the interviewer has many notes. The candidate's biggest problem was saying \"we'll put a lock on it\" for seat holds without saying where the lock lives or what happens when it expires.",
+    "options": [
+      {
+        "id": "a",
+        "text": "\"Your locking discussion felt a bit weak overall, so work on it.\""
+      },
+      {
+        "id": "b",
+        "text": "All fourteen notes, read in order, so nothing is missed"
+      },
+      {
+        "id": "c",
+        "text": "\"At minute 31 you said 'a lock'; name the store and the expiry.\""
+      },
+      {
+        "id": "d",
+        "text": "\"Read the case study's solution before your next mock.\""
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Evidence (minute 31, the exact words), impact (it was unclear where the lock lived) and a concrete suggestion make feedback actionable. \"Felt weak\" gives no evidence or fix. Fourteen notes bury the two that matter; limit feedback to two strengths and two gaps. Reading the solution is homework, not feedback on what happened in this interview.",
+    "topicId": "peer-mock",
+    "difficulty": 1
+  },
+  {
+    "id": "mip-q8",
+    "type": "scenario",
+    "prompt": "What is the most accurate reading of the dashboard?",
+    "scenario": "The dashboard shows \"URL shortener: 46% → 63% → 79% · ▲ 33 pts\" and \"News feed: 42%\". The three URL shortener attempts were a week apart, and the candidate read the case's reference after the first.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Interview readiness has risen 33 points across every case type"
+      },
+      {
+        "id": "b",
+        "text": "The news feed score is now probably about 75% as well"
+      },
+      {
+        "id": "c",
+        "text": "Partly memory; a new case with the same patterns says more"
+      },
+      {
+        "id": "d",
+        "text": "The URL shortener is mastered, so it should not be mocked again"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Repeat attempts after reading the reference partly measure recall, so the real test is a different case exercising the same patterns. The trend is per case, so it says nothing about all cases. The news feed exercises fan-out the shortener does not, so its score cannot be inferred. One case rising does not mean mastered; a later re-mock checks the gain held.",
+    "topicId": "score-tracking",
+    "difficulty": 2
+  },
+  {
+    "id": "mip-q9",
+    "type": "single",
+    "prompt": "The dashboard shows \"URL shortener 50% → 63% → 75% · ▲ 25 pts\". What does ▲ 25 pts measure?",
+    "options": [
+      {
+        "id": "a",
+        "text": "The average gain per attempt across all three attempts"
+      },
+      {
+        "id": "b",
+        "text": "How far the latest attempt beats the reference design"
+      },
+      {
+        "id": "c",
+        "text": "The change from the second attempt to the third"
+      },
+      {
+        "id": "d",
+        "text": "The change from the first attempt to the latest one"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "The arrow and points compare the latest attempt with the first: 75 − 50 = 25. The average gain per attempt would be 12.5. The reference design is compared only on the review screen, never on the dashboard. The change from the second attempt to the third is 12 points, not 25.",
+    "topicId": "score-tracking",
+    "difficulty": 1
+  },
+  {
+    "id": "mip-q10",
+    "type": "scenario",
+    "prompt": "What is the best advice?",
+    "scenario": "A learner in week 14 wants their first-ever Mock to be the video streaming case \"to get the hardest one out of the way\". They have not done any case in Interview Mode yet.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Start with the URL shortener so the score measures method"
+      },
+      {
+        "id": "b",
+        "text": "Do video streaming in Mock with hints on to learn the domain"
+      },
+      {
+        "id": "c",
+        "text": "Skip Mock and read all difficulty-3 solutions first"
+      },
+      {
+        "id": "d",
+        "text": "Do it, since a hard case gives the most accurate baseline score"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "A difficulty-1 case keeps the domain small, so a low score points at timing, estimates or structure rather than unfamiliar topics such as bitrate ladders. A hard first case mixes domain gaps with method gaps, so it is not a clean baseline. Hints in Mock cost points and muddy the score; learning belongs in Practice. Reading every solution first turns later mocks into recall.",
+    "topicId": "case-selection",
+    "difficulty": 1
+  },
+  {
+    "id": "mip-q11",
+    "type": "multi",
+    "prompt": "Of the first six recommended cases, which two together give the most practice on backpressure? Select two.",
+    "options": [
+      {
+        "id": "a",
+        "text": "URL shortener"
+      },
+      {
+        "id": "b",
+        "text": "Ticket booking"
+      },
+      {
+        "id": "c",
+        "text": "Notification system"
+      },
+      {
+        "id": "d",
+        "text": "Rate limiter service"
+      }
+    ],
+    "correct": [
+      "b",
+      "c"
+    ],
+    "explanation": "Ticket booking's waiting room turns a million arrivals into a controlled admission rate, and the notification system needs priority lanes and provider quotas through a 5× campaign burst. The URL shortener is about read scaling and hot keys. The rate limiter is a tool other systems use for load control, but its own deep dives are atomic counters, failing open and multi-region counting.",
+    "topicId": "case-selection",
+    "difficulty": 2
+  }
+]

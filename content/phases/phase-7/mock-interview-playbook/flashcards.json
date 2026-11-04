@@ -1,0 +1,18 @@
+[
+  { "id": "mip-f1", "front": "Practice vs Mock in Interview Mode?", "back": "Practice: pause any time, free hints, deep-dive questions on demand. Mock: no pause, wall-clock timer, each hint costs 1 rubric point.", "topicId": "interview-mode" },
+  { "id": "mip-f2", "front": "Suggested split for a 45-minute interview?", "back": "Requirements 5, Estimation 5, API 5, Data Model 5, High-Level Design 10, Deep Dives 10, Wrap-up 5.", "topicId": "interview-mode" },
+  { "id": "mip-f3", "front": "When do deep-dive questions arrive in a 45-minute Mock?", "back": "Spread evenly over minutes 30–40 (4 questions: at 15:00, 12:30, 10:00, 7:30 remaining), or earlier if you open Deep Dives early.", "topicId": "interview-mode" },
+  { "id": "mip-f4", "front": "What happens when the Mock clock reaches zero?", "back": "It keeps counting as time over (+mm:ss) and flags Over time. Nothing submits for you.", "topicId": "interview-mode" },
+  { "id": "mip-f5", "front": "Interview Mode score formula?", "back": "max(0, points − hint penalty) ÷ (2 × criteria). The penalty is hints used in Mock; Practice has none.", "topicId": "self-review" },
+  { "id": "mip-f6", "front": "The three rules of honest self-scoring?", "back": "Evidence or zero; read the 2-point text first and step down; when torn, take the lower score.", "topicId": "self-review" },
+  { "id": "mip-f7", "front": "What does the Run comparison show?", "back": "Your design and the reference run at the case's peak: worst p99, successful QPS, error rate, SPOFs, availability, cost and run challenge pass/fail. ▲ marks a metric over 5% worse.", "topicId": "self-review" },
+  { "id": "mip-f8", "front": "Your design differs from the reference. Score it low?", "back": "No. Score against the rubric descriptions; use the Run comparison to catch real problems such as SPOFs or a failed run challenge.", "topicId": "self-review" },
+  { "id": "mip-f9", "front": "Four reasons to interrupt a candidate in a peer mock?", "back": "More than 2 minutes over a step's budget, a number with no derivation, out-of-scope design, or about a minute of silence.", "topicId": "peer-mock" },
+  { "id": "mip-f10", "front": "Interviewer sees a wrong but recoverable direction. What now?", "back": "Wait about a minute, then ask a question that exposes the problem. Whether the candidate recovers is the signal. Never teach mid-interview.", "topicId": "peer-mock" },
+  { "id": "mip-f11", "front": "Feedback format for a debrief?", "back": "Evidence, impact, suggestion; at most two strengths and two gaps.", "topicId": "peer-mock" },
+  { "id": "mip-f12", "front": "What does \"▲ 25 pts\" mean on the dashboard interview trend?", "back": "The latest attempt at that case scored 25 percentage points higher than the first one (not the previous one, not an average).", "topicId": "score-tracking" },
+  { "id": "mip-f13", "front": "Why is a re-mock of the same case a weak signal?", "back": "You have read its reference, so the score partly measures memory. Confirm progress on a different case with the same pattern.", "topicId": "score-tracking" },
+  { "id": "mip-f14", "front": "The first six cases to mock, in order?", "back": "URL shortener, rate limiter service, ticket booking, notification system, news feed, payment system.", "topicId": "case-selection" },
+  { "id": "mip-f15", "front": "Why start with difficulty-1 cases?", "back": "Small domains mean the mock measures method (timing, estimates, signposting), not domain knowledge you have not met yet.", "topicId": "case-selection" },
+  { "id": "mip-f16", "front": "Which of the first six covers multi-region?", "back": "The rate limiter service: local counting with a one-second exchange of counts, merged like a G-counter.", "topicId": "case-selection" }
+]

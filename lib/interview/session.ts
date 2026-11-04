@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { InterviewAttempt } from "@/lib/db/types";
 import { StudioGraph } from "@/lib/studio/types";
 import { DB_CHOICES, DEFAULT_ESTIMATION, DURATIONS, HTTP_METHODS, KEY_ROLES, STEPS, zeroSteps, type DurationMin, type InterviewSession, type Mode } from "./types";
+import { hintsUsed } from "./scoring";
 import { elapsedMs, flush } from "./timing";
 
 const steps = <T extends z.ZodType>(v: T) => z.object(Object.fromEntries(STEPS.map((s) => [s, v])) as Record<(typeof STEPS)[number], T>);
@@ -97,4 +98,18 @@ export function fromAttempt(a: InterviewAttempt): AttemptView | null {
   if (!session) return null;
   const g = StudioGraph.safeParse(json(a.panels.graph));
   return { session: { ...session, selfScores: { ...session.selfScores, ...a.selfScores } }, graph: g.success ? g.data : null, notes: a.panels.notes ?? "" };
+}
+
+/**
+ * A saved attempt's score, with the Mock hint penalty read back from its stored session (the attempt row has no field for
+ * it). Every criterion is scored before an attempt saves, so the max is 2 × the scores stored.
+ */
+export function attemptScore(a: InterviewAttempt): { raw: number; max: number; hintPenalty: number; pct: number } {
+  const v = Object.values(a.selfScores);
+  const raw = v.reduce((x, y) => x + y, 0);
+  const max = 2 * v.length;
+  let session: InterviewSession | null = null;
+  try { session = parseSession(JSON.parse(a.panels.session ?? "null")); } catch { /* unreadable: no penalty */ }
+  const hintPenalty = session?.mode === "mock" ? hintsUsed(session.hints) : 0;
+  return { raw, max, hintPenalty, pct: max ? Math.round((Math.max(0, raw - hintPenalty) / max) * 100) : 0 };
 }

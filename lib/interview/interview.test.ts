@@ -5,7 +5,7 @@ import { runDesign } from "./compare";
 import { miniEstimate } from "./estimate";
 import { stepHints } from "./hints";
 import { groupByStep, scoreTotal } from "./scoring";
-import { fromAttempt, newSession, parseSession, submit, toAttempt } from "./session";
+import { attemptScore, fromAttempt, newSession, parseSession, submit, toAttempt } from "./session";
 import { discardDraft, loadDraft, saveAttempt, saveDraft, startAttempt } from "./store";
 import { elapsedMs, formatClock, minuteMark, pause, resume, revealedCount, revealSchedule, splitTime, stepElapsed, stepWindows, switchStep } from "./timing";
 import { STEPS, zeroSteps } from "./types";
@@ -108,6 +108,9 @@ describe("attempt serialization", () => {
     expect(back?.session).toEqual(s);
     expect(back?.graph).toEqual(graph);
     expect(back?.notes).toBe("## Notes");
+    // Mock with one hint: 2 − 1 of 2 points, as on the save screen
+    expect(attemptScore(a)).toEqual({ raw: 2, max: 2, hintPenalty: 1, pct: 50 });
+    expect(attemptScore({ ...a, panels: { ...a.panels, session: JSON.stringify({ ...s, mode: "practice" }) } }).pct).toBe(100);
   });
 
   it("rejects a corrupted session", () => {

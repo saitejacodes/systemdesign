@@ -1,0 +1,358 @@
+[
+  {
+    "id": "ddp-q1",
+    "type": "scenario",
+    "prompt": "What should the candidate do next?",
+    "scenario": "Designing a URL shortener, the candidate says: \"A celebrity's link can get 30,000 redirects a second. Redis is sharded by code across 12 nodes, so I'll add 12 more nodes to spread the load.\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "Accept it: doubling the shards halves the load per shard"
+      },
+      {
+        "id": "b",
+        "text": "Add a short-TTL in-process cache and coalesce misses for that code"
+      },
+      {
+        "id": "c",
+        "text": "Move the link table to a relational database with a read replica per region"
+      },
+      {
+        "id": "d",
+        "text": "Switch the redirect to a 301 so browsers never ask again"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "One code hashes to one shard however many shards exist, so the fix must absorb or split the key: an in-process cache turns 30,000 reads/s into about one read per instance per TTL, and coalescing collapses concurrent misses. Adding shards spreads keys, not one key's traffic. A relational database with replicas adds a slower store without removing the hot key. A 301 helps repeat visitors from the same browser but not millions of first-time clickers, and it loses analytics and the ability to disable the link.",
+    "topicId": "hot-keys",
+    "difficulty": 1
+  },
+  {
+    "id": "ddp-q2",
+    "type": "single",
+    "prompt": "A post gets 3,000 likes a second. Why do designs split its like records with `hash(user_id) mod 64`?",
+    "options": [
+      {
+        "id": "a",
+        "text": "So a single partition is not hit by every write"
+      },
+      {
+        "id": "b",
+        "text": "So each like is stored 64 times for durability"
+      },
+      {
+        "id": "c",
+        "text": "So reading the total count needs only one partition read"
+      },
+      {
+        "id": "d",
+        "text": "So users who like the post see it ranked higher"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Salting the key spreads 3,000 writes/s over 64 partitions, about 47/s each, on different nodes. It does not replicate a like 64 times; replication is separate. It makes the total harder, not easier, to read: a total spans 64 buckets, which is why it is paired with an asynchronously aggregated counter. Ranking is unrelated to how like rows are partitioned.",
+    "topicId": "hot-keys",
+    "difficulty": 2
+  },
+  {
+    "id": "ddp-q3",
+    "type": "scenario",
+    "prompt": "What is the strongest next step?",
+    "scenario": "Designing a news feed, the candidate says: \"Fan-out on write: when someone posts, workers write the post ID into every follower's feed in Redis. Reads are then one lookup.\" Average followers are 200; the largest account has 50M.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Switch to fan-out on read for every account to keep posting cheap"
+      },
+      {
+        "id": "b",
+        "text": "Add more fan-out workers until the 50M-follower post finishes in a second"
+      },
+      {
+        "id": "c",
+        "text": "Store full post bodies in each feed so reads skip hydration"
+      },
+      {
+        "id": "d",
+        "text": "Pull large accounts at read time, with a threshold derived from capacity"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "One 50M-follower post is about 35M inserts at 70% active, many seconds of the whole cluster's spare capacity, so the hybrid pulls large accounts at read time and derives the threshold from spare capacity (0.7 × F ≤ 1.5M gives F ≤ 2.1M; pick 1M with hysteresis). Pure pull turns each of 156,250 loads/s into 200 lookups. Provisioning workers for the single largest post wastes capacity the rest of the time and still floods Redis. Full bodies multiply storage by follower count and make edits and deletes impossible to apply.",
+    "topicId": "fan-out",
+    "difficulty": 2
+  },
+  {
+    "id": "ddp-q4",
+    "type": "single",
+    "prompt": "A search query fans out to 200 shards, each slow on 1% of requests. Roughly what share of queries wait on at least one slow shard?",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 1.0%"
+      },
+      {
+        "id": "b",
+        "text": "About 87%"
+      },
+      {
+        "id": "c",
+        "text": "About 20%"
+      },
+      {
+        "id": "d",
+        "text": "About 50%"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The chance all 200 are fast is 0.99²⁰⁰ ≈ 0.134, so about 87% of queries hit at least one slow shard. 1% treats the query as one request. 20% and 50% underestimate how quickly rare per-server slowness compounds at high fan-out; this is why deadlines, hedged requests and partial results exist.",
+    "topicId": "fan-out",
+    "difficulty": 2
+  },
+  {
+    "id": "ddp-q5",
+    "type": "scenario",
+    "prompt": "What is missing from this answer?",
+    "scenario": "Asked \"the PSP call timed out after 10 seconds; what happens?\", the candidate says: \"We mark the payment failed and show the buyer a retry button. The retry generates a new request to the PSP.\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "A shorter timeout, such as 2 seconds, so buyers wait less"
+      },
+      {
+        "id": "b",
+        "text": "A second PSP to fail over the in-flight payment to"
+      },
+      {
+        "id": "c",
+        "text": "An unknown state, resolved by status checks with the same key"
+      },
+      {
+        "id": "d",
+        "text": "A distributed lock on the buyer for the length of the checkout"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "A timeout means the outcome is unknown: the PSP may have charged the card. The payment should move to an unknown state and be resolved by status queries, webhooks and reconciliation, with every retry reusing the same idempotency key toward the PSP. A shorter timeout creates more unknowns, not fewer. Failing an in-flight payment over to a second PSP is exactly how double charges happen; failover is for new payments. A lock on the buyer does not tell you whether the first charge succeeded.",
+    "topicId": "idempotency-effects",
+    "difficulty": 2
+  },
+  {
+    "id": "ddp-q6",
+    "type": "single",
+    "prompt": "Which statement about exactly-once is accurate?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Exactly-once effects come from at-least-once delivery plus deduplication"
+      },
+      {
+        "id": "b",
+        "text": "Kafka's transactions make external side effects such as emails exactly-once"
+      },
+      {
+        "id": "c",
+        "text": "TCP retransmission already guarantees each request is processed once"
+      },
+      {
+        "id": "d",
+        "text": "At-most-once delivery is the safe default for payments"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Networks can lose or repeat messages, so systems retry (at-least-once) and make the effect idempotent with keys, unique constraints or conditional writes. Broker transactions cover reads and writes inside the broker, not an email provider or a PSP. TCP deduplicates segments within one connection, not application retries over new connections. At-most-once loses payments silently, which is worse than a handled duplicate.",
+    "topicId": "idempotency-effects",
+    "difficulty": 1
+  },
+  {
+    "id": "ddp-q7",
+    "type": "scenario",
+    "prompt": "How should the candidate respond?",
+    "scenario": "In a ticket-booking interview the candidate says: \"I'll use an AP database everywhere so the site stays up during the on-sale.\" The interviewer asks: \"Can two fans end up with the same seat?\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "Yes, but refunds will fix it, so availability matters more"
+      },
+      {
+        "id": "b",
+        "text": "No, because last-writer-wins picks one fan deterministically"
+      },
+      {
+        "id": "c",
+        "text": "Make the hold one conditional write; other reads can be eventual"
+      },
+      {
+        "id": "d",
+        "text": "Use a quorum read before every write so both fans see the same state of the seat"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Consistency is chosen per operation: the seat hold must be atomic, for example UPDATE … WHERE status = 'available' in Postgres, while seat maps and counts can be eventually consistent. Refunding oversold seats violates a hard requirement. Last-writer-wins silently overwrites the first fan's hold after both were told they succeeded. A quorum read followed by a separate write is still check-then-write, so both fans can pass the check.",
+    "topicId": "consistency-choices",
+    "difficulty": 2
+  },
+  {
+    "id": "ddp-q8",
+    "type": "scenario",
+    "prompt": "Which answer best fits the requirements?",
+    "scenario": "Requirement: \"A limiter outage must never become an API outage.\" The interviewer asks what the limiter does when its Redis shard stops answering. One rule protects a costly SMS-sending endpoint from abuse.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Fail closed for every rule, since limits exist to protect the system"
+      },
+      {
+        "id": "b",
+        "text": "Fail open for every rule, since the requirement says so"
+      },
+      {
+        "id": "c",
+        "text": "Queue requests until Redis returns, then decide"
+      },
+      {
+        "id": "d",
+        "text": "Fail open for ordinary rules; fail closed for the SMS rule"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "The default follows the requirement (fail open, with a short timeout and a breaker so requests are only a few milliseconds slower), but a rule guarding money or abuse-prone endpoints can fail closed because an outage there is cheaper than unlimited SMS spend. Failing closed everywhere turns a Redis outage into an API outage. Failing open everywhere ignores the costly endpoint. Queuing adds unbounded latency and memory during exactly the outage you are designing for.",
+    "topicId": "consistency-choices",
+    "difficulty": 3
+  },
+  {
+    "id": "ddp-q9",
+    "type": "scenario",
+    "prompt": "What is the best response to the estimate?",
+    "scenario": "Estimating a URL shortener, the candidate computes 38.6 writes/s and 3,860 reads/s, then says: \"I'll shard the links table across 16 write nodes from day one.\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "Note that writes are trivial and put the effort into caching reads"
+      },
+      {
+        "id": "b",
+        "text": "Correct: sharding early avoids a painful migration later"
+      },
+      {
+        "id": "c",
+        "text": "Use a write-behind cache so writes are acknowledged from memory"
+      },
+      {
+        "id": "d",
+        "text": "Add a queue in front of writes to absorb any sudden bursts"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "At about 40 writes/s a single database copes; the 100:1 read ratio means the design belongs on the read path (in-process cache, Redis, CDN), and the rubric rewards saying so. Sixteen write shards add operational cost for no benefit. Write-behind risks losing acknowledged links to save time nobody needs. A write queue solves a burst problem the numbers do not show.",
+    "topicId": "read-write-scaling",
+    "difficulty": 1
+  },
+  {
+    "id": "ddp-q10",
+    "type": "scenario",
+    "prompt": "What protects the password resets?",
+    "scenario": "A notification platform sends password resets and marketing campaigns through one Kafka topic. Each message has a priority field and consumers process high-priority messages first. A 300M-message campaign starts.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Nothing changes: the priority field lets consumers skip ahead"
+      },
+      {
+        "id": "b",
+        "text": "Add consumers to the shared topic until the campaign drains faster"
+      },
+      {
+        "id": "c",
+        "text": "Separate topics, consumer pools and provider quotas per lane"
+      },
+      {
+        "id": "d",
+        "text": "Lower the campaign's message size so more fit per batch"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "A Kafka partition is FIFO; a consumer cannot skip past 300M bulk messages to reach a reset, so the priority field does nothing (head-of-line blocking). The fix is separate lanes: topics, worker pools and token buckets per provider with bulk capped below the limit. More consumers on the shared topic still serve messages in order and still share the provider's limit. Smaller messages do not change ordering or the provider's rate limit.",
+    "topicId": "backpressure",
+    "difficulty": 2
+  },
+  {
+    "id": "ddp-q11",
+    "type": "single",
+    "prompt": "A PSP normally answers in 0.85 s at 1,157 calls/s. It slows to the 10 s timeout. By Little's law, about how many calls are in flight?",
+    "options": [
+      {
+        "id": "a",
+        "text": "About 980 calls"
+      },
+      {
+        "id": "b",
+        "text": "About 1,157"
+      },
+      {
+        "id": "c",
+        "text": "About 11,570"
+      },
+      {
+        "id": "d",
+        "text": "About 116 calls"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "In flight = arrival rate × time in system = 1,157 × 10 ≈ 11,570, which is why each PSP gets its own bounded pool. 980 is the normal figure at 0.85 s. 1,157 is the arrival rate per second, not the concurrency. 116 divides instead of multiplying.",
+    "topicId": "backpressure",
+    "difficulty": 2
+  },
+  {
+    "id": "ddp-q12",
+    "type": "scenario",
+    "prompt": "What is the right capacity plan?",
+    "scenario": "An API gateway runs active-active in 3 regions. Global peak is 500,000 requests/s. The candidate provisions each region for 200,000 requests/s, \"20% headroom over its 167,000 share\".",
+    "options": [
+      {
+        "id": "a",
+        "text": "Size each for at least 250,000 so two regions carry the peak"
+      },
+      {
+        "id": "b",
+        "text": "Fine: 20% headroom is the usual target"
+      },
+      {
+        "id": "c",
+        "text": "Provision each region for 500,000 so any one can carry everything"
+      },
+      {
+        "id": "d",
+        "text": "Keep 200,000 each and autoscale the survivors after a failover"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Losing a region moves its traffic to the other two: 500,000 ÷ 2 = 250,000 each, so each region needs more than that (the case uses 360,000, giving 69% busy after a region loss). 200,000 overloads the survivors by 25%. Provisioning each region for the full peak survives two region losses at 3× the cost, which the requirement did not ask for. Autoscaling takes minutes to add capacity, while the failed region's traffic arrives within the DNS failover window, so the survivors overload before new instances are ready.",
+    "topicId": "multi-region",
+    "difficulty": 3
+  }
+]

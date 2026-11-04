@@ -1,0 +1,5 @@
+[
+  { "id": "hello-interview-hurry", "title": "System Design in a Hurry", "author": "Hello Interview", "kind": "docs", "url": "https://www.hellointerview.com/learn/system-design/in-a-hurry/introduction", "why": "A concise interview-focused guide to structure and core concepts; one more independent view to compare with this section's general patterns.", "topicIds": ["level-dials", "breadth-vs-depth"], "free": true },
+  { "id": "sre-monitoring", "title": "Monitoring Distributed Systems", "author": "Google SRE book", "kind": "free-book", "url": "https://sre.google/sre-book/monitoring-distributed-systems/", "why": "The four golden signals give you precise vocabulary for the 'how would you know it's working' sentence.", "topicIds": ["operational-concerns"], "free": true },
+  { "id": "system-design-primer", "title": "The System Design Primer", "author": "Donne Martin", "kind": "repo", "url": "https://github.com/donnemartin/system-design-primer", "why": "Broad reference for the mechanisms (caching, sharding, replication) behind every trade-off you will be asked to justify.", "topicIds": ["tradeoff-depth", "hot-key-three-levels"], "free": true }
+]

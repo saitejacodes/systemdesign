@@ -1,0 +1,32 @@
+[
+  {
+    "id": "hello-interview-in-a-hurry",
+    "title": "System Design in a Hurry",
+    "author": "Hello Interview",
+    "kind": "blog",
+    "url": "https://www.hellointerview.com/learn/system-design/in-a-hurry/introduction",
+    "why": "A free guide to the interview flow from the interviewer's side, useful for seeing where trade-off discussions and deep-dive pushback typically arrive.",
+    "topicIds": ["options-and-criteria", "handling-pushback"],
+    "free": true
+  },
+  {
+    "id": "ddia",
+    "title": "Designing Data-Intensive Applications",
+    "author": "Martin Kleppmann",
+    "kind": "book",
+    "url": "https://dataintensive.net/",
+    "why": "Models how to present a design choice: each chapter lays out the alternatives, the criteria that separate them and where the field disagrees.",
+    "topicIds": ["it-depends", "options-and-criteria"],
+    "free": false
+  },
+  {
+    "id": "system-design-primer",
+    "title": "The System Design Primer",
+    "author": "Donne Martin",
+    "kind": "repo",
+    "url": "https://github.com/donnemartin/system-design-primer",
+    "why": "Each topic ends with a list of trade-offs; practise turning those generic pairs into decisions for a specific case study.",
+    "topicIds": ["decision-log", "saying-i-dont-know"],
+    "free": true
+  }
+]

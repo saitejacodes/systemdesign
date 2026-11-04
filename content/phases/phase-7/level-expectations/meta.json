@@ -1,0 +1,21 @@
+{
+  "id": "p7-level-expectations",
+  "phase": 7,
+  "slug": "level-expectations",
+  "title": "Level expectations",
+  "order": 7,
+  "week": 16,
+  "estimatedMinutes": 50,
+  "topics": [
+    { "id": "level-dials", "title": "The five dials that move with level", "depth": "tradeoffs" },
+    { "id": "hot-key-three-levels", "title": "One moment, three answers: the hot key", "depth": "deep" },
+    { "id": "driving-ambiguity", "title": "Driving the discussion and handling ambiguity", "depth": "deep" },
+    { "id": "tradeoff-depth", "title": "Depth of trade-offs", "depth": "deep" },
+    { "id": "operational-concerns", "title": "Operational concerns: monitoring, rollout, failure, cost", "depth": "deep" },
+    { "id": "breadth-vs-depth", "title": "Breadth vs depth", "depth": "tradeoffs" },
+    { "id": "honest-senior-signals", "title": "Showing senior signals honestly at 0–4 years", "depth": "deep" }
+  ],
+  "simulatorIds": ["cache"],
+  "practiceCaseStudyIds": ["url-shortener", "news-feed", "ticket-booking"],
+  "prerequisites": ["p7-tradeoff-communication", "p7-deep-dive-patterns", "p3-cache-failures", "p5-release-strategies"]
+}

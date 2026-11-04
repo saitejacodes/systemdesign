@@ -1,0 +1,18 @@
+{
+  "id": "p7-building-blocks-map",
+  "phase": 7,
+  "slug": "building-blocks-map",
+  "title": "The Building Blocks Map",
+  "order": 3,
+  "week": 14,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "decision-table", "title": "The decision table", "depth": "deep" },
+    { "id": "close-neighbours", "title": "Choosing between close neighbours", "depth": "tradeoffs" },
+    { "id": "capacity-rules", "title": "Capacity rules of thumb", "depth": "deep" },
+    { "id": "blocks-in-case-studies", "title": "Which case studies use which blocks", "depth": "awareness" }
+  ],
+  "simulatorIds": ["cache", "message-queue"],
+  "practiceCaseStudyIds": ["url-shortener", "news-feed", "ticket-booking"],
+  "prerequisites": ["p1-estimation", "p2-sql-vs-nosql", "p3-cache-strategies", "p3-kafka-vs-queues"]
+}

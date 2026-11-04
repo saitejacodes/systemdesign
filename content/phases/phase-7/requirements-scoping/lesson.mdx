@@ -1,0 +1,191 @@
+## Why it matters
+
+"Design a chat app" can mean a weekend project for a hundred friends or a service moving hundreds of thousands of messages a second with end-to-end encryption and a promise that a message is never lost after one tick. Those are different systems with almost nothing in common below the API. The first five minutes of an interview decide which one you are building, and an interviewer who planted a hard constraint ("never sell a seat twice", "a code must never resolve to another URL") is waiting to see whether you find it. Requirements are also the scoring sheet for your own design: every later choice should trace back to a line you wrote here. This section gives you a reusable question bank, the reason each question changes the design, and the phrasing to state assumptions and cut scope on purpose. In Interview Mode, the Requirements step shows each case's clarifying questions as buttons that reveal the interviewer's answer, counts how many you asked, and gives you separate functional and non-functional lists to fill in.
+
+## Functional vs non-functional requirements
+
+<DepthStamp depth="deep" />
+
+A <Term slug="functional-requirement">functional requirement</Term> is something a user or caller can do: "create a short link", "send a message to a group", "hold up to 4 seats for 10 minutes". A <Term slug="non-functional-requirement">non-functional requirement</Term> is a property the system must have while doing it, stated as a measurable target: latency, availability, consistency, durability, throughput, freshness, cost.
+
+| | Functional | Non-functional |
+|---|---|---|
+| Answers | What does it do? | How well, how fast, how safely? |
+| Form | Verb phrase: "users can..." | Number or invariant: "p99 under 100 ms", "never..." |
+| Drives | API and data model | Architecture: caches, replication, partitioning, queues |
+| Typical count in an interview | 3–5 core features | 4–7 targets |
+| Common mistake | Listing every feature the product has | Saying "scalable, reliable, fast" with no numbers |
+
+Two habits separate strong lists from weak ones.
+
+**Put numbers on every non-functional line.** "Low latency" cannot be checked; "first page under 300 ms at p99, measured at our servers" (the news feed) can, and it tells you whether a fan-out-on-read query with a ranking call is even possible. Latency targets should name a <Term slug="percentile">percentile</Term> and where it is measured.
+
+**Write correctness rules as invariants, on their own line.** Some requirements are neither features nor performance targets but things that must never happen. An <Term slug="invariant">invariant</Term> is a rule that must hold in every state of the system. The case studies are full of them:
+
+- URL shortener: a short link must never resolve to a URL other than the one it was created for, even after expiry or deletion.
+- Ticket booking: two people must never hold tickets for the same seat at the same show.
+- Payment system: a buyer is charged exactly once per order, and no money is created or lost in the books.
+- Ride sharing: a driver is assigned to at most one active trip, even under retries and failures.
+
+Each invariant points straight at a mechanism (a conditional insert, a seat lock with a fence, an idempotency key plus a ledger, a compare-and-set on driver state), and each is a natural deep dive. Missing one is usually more costly than missing a feature.
+
+<Callout type="analogy" title="Ordering a custom bike">
+Telling a frame builder "I want gears, brakes and a rack" is the functional list. "Under 9 kg, survives a 120 kg rider, rides 100 km a day on gravel" is the non-functional list, and it decides the material, the tube thickness and the tyres. "The brakes must never fail" is an invariant: it is not a feature or a speed, and it changes how everything else is built. Where it breaks: a bike is specified once, while an interviewer can change a requirement halfway through to see how your design copes.
+</Callout>
+
+## A reusable bank of clarifying questions
+
+<DepthStamp depth="deep" />
+
+A clarifying question is worth asking only if some answer to it would change the design. The bank below covers seven dimensions. For each, the question to ask, why it matters, and how different answers fork the architecture.
+
+| Dimension | Ask | Why it changes the design | Example from the case studies |
+|---|---|---|---|
+| **Users** | Who uses it, on what devices, and are there different kinds of user? | Separate actors usually mean separate paths with separate targets; permissions shape every query | URL shortener: 10M creators on a web app and API, 500M visitors a month mostly on phones. RAG docs assistant: every answer may only use documents the asker can read in the source system |
+| **Scale** | How many daily active users, and how many actions each? | Sets QPS and storage, which decide single node vs cluster vs sharded | News feed: 300M daily users opening the feed 10 times a day. Chat: 500M daily users sending 40 messages each |
+| **Read/write mix** | How often is each item read compared with written? | Read-heavy leans on caches and replicas; write-heavy needs partitioned, write-optimised storage | URL shortener: 100 reads per write. Ride sharing: up to 1M drivers sending GPS every 4 s, so the dominant traffic is writes |
+| **Latency** | How fast must the main operation be, at which percentile, measured where? | Decides what can be on the synchronous path and what must be precomputed or async | Typeahead: 100 ms end to end at p99. Rate limiter: at most 5 ms added at p99. Payment: about 3 s at p99, mostly the provider's 800 ms |
+| **Consistency** | What happens if two users see different values, or one sees a stale one? Which things must never be wrong? | Strong consistency needs coordination (locks, consensus, conditional writes); eventual consistency allows caches and async replication | Ticket booking: never sell a seat twice, absolute. Photo-sharing app: like counts may lag seconds but must not drift permanently. Rate limiter: a few percent of overshoot is acceptable |
+| **Durability** | Once we say "done", what failures must the data survive? | Decides synchronous replication, acknowledgement points and backups | Chat: one tick means stored durably and never lost after that. Photo-sharing app: once the app says "shared", the photo survives any single machine, disk or zone failure |
+| **Regions** | One region or many? Where are users? Any data that must stay in a country? | Multi-region forces a choice between local writes with conflicts and a home region with latency | Rate limiter: one region today, two more next year, limits should still mean roughly the same globally. Typeahead: per language and country, start with one market |
+
+Four more questions are not in the seven but repeatedly change designs:
+
+- **Traffic shape.** "How spiky is it?" Ticket booking: 1M people arrive in the first minute for 50,000 seats, which is about 16,700 arrivals a second (1,000,000 ÷ 60) competing for 20 people per seat. That single answer is why the design needs a <Term slug="virtual-waiting-room">virtual waiting room</Term>, not just a bigger database.
+- **Freshness.** "How soon must a change be visible?" News feed: a new post appears in followers' feeds within a minute, but authors see their own post immediately. That is a <Term slug="read-your-writes">read-your-writes</Term> requirement for one user and eventual consistency for everyone else.
+- **External dependencies and their limits.** "What do we call, and how fast and how often may we call it?" Payment: the provider allows about 2,000 calls a second and can time out without saying whether it charged. Ride sharing: the maps provider allows about 20,000 requests a second. Hard external limits become queues, caches and rate limiters in your design.
+- **Failure behaviour.** "If this component is down, what should users see?" Rate limiter: an outage of the limiter must not become an outage of the API, which means the check must <Term slug="fail-open">fail open</Term>.
+
+### Doing the arithmetic on an answer
+
+Answers are only useful if you turn them into numbers before moving on. Three examples using the case figures:
+
+- **Chat:** 500M × 40 = 2 × 10¹⁰ messages a day ÷ 86,400 s ≈ **231,000 messages per second** on average, about **463,000** at the stated 2× evening peak. That is before fan-out to group members and multiple devices.
+- **Ride sharing:** 1M drivers ÷ one update per 4 s = **250,000 location writes per second** at peak. Location updates, not trips, are the scale problem.
+- **Typeahead:** 100M users × 5 searches × 12 requests per search = 6 × 10⁹ requests a day ÷ 86,400 ≈ **69,000 per second** on average, each needing an answer within 100 ms end to end. That rules out querying a database per keystroke and points at precomputed prefix results held in memory.
+
+### Which questions to ask first
+
+You will not have time for all eleven. Ask in this order and stop when you have enough to estimate: scale, read/write mix, the main latency target, then the question that probes the likely invariant (consistency or durability). Regions, freshness and failure behaviour can often be stated as assumptions instead (next section). Five to seven questions in four or five minutes is a good pace.
+
+<Callout type="analogy" title="A doctor's intake">
+A good doctor does not ask every question on the form. They ask the ones whose answers change the treatment: "Any allergies? Are you on blood thinners?" If the answer cannot change what they do, they skip it. Clarifying questions work the same way. Where it breaks: a patient answers honestly about everything, while an interviewer sometimes answers "you decide", and then the question becomes an assumption you must state.
+</Callout>
+
+## Stating assumptions out loud
+
+<DepthStamp depth="deep" />
+
+When the interviewer does not specify something, or answers "what would you assume?", make an assumption, say it, write it down, and give a reason. Hidden assumptions are the problem, not wrong ones: a wrong assumption stated aloud is corrected in five seconds; a wrong assumption kept silent surfaces at minute 35 as a design that solves the wrong problem.
+
+Sample phrasing that works:
+
+- *"I'll assume a 5× peak over the daily average, because a single link can go viral. If you have a number in mind, I'll use that."*
+- *"I'll assume one region for now and come back to multi-region in the wrap-up."*
+- *"I'll assume we can lose a few minutes of analytics but never a redirect. That lets analytics fail open."*
+- *"You said 'you decide' on consistency for like counts. I'll take eventual consistency with a lag of seconds, because a wrong count for a few seconds harms nobody and it lets me count asynchronously."*
+- *"I'm assuming authentication already exists and gives me a user ID on every request. I won't design it."*
+
+Write assumptions on the board with labels (A1, A2, A3). Later you can say "because of A2, analytics is asynchronous", which ties the design back to its reasons and makes it easy for the interviewer to say "what if A2 were false?", a follow-up you then want to welcome.
+
+Good assumptions are **round** (100M, not 87M), **conservative where it matters** (assume the higher peak for capacity, the stricter rule for an invariant), and **reversible**: pick the option you can change later without redrawing the board.
+
+What not to assume: anything that removes the hard part. "I'll assume no two people try to buy the same seat at once" deletes the ticket-booking problem. If an assumption makes the problem easy, ask instead.
+
+<Callout type="analogy" title="A surveyor's benchmark">
+A surveyor marks a reference point and writes its height down, and every other measurement on the plan is relative to it. If the reference was wrong, everyone can see which numbers to correct. Written assumptions are your benchmark. Where it breaks: a benchmark is fixed, but the interviewer can move yours at any time, and the right response is to recompute the parts that depend on it, out loud.
+</Callout>
+
+## Cutting scope on purpose
+
+<DepthStamp depth="tradeoffs" />
+
+Every case study prompt hides more product than fits in 45 minutes. Strong candidates cut deliberately, write an **out of scope** list, and say why. Weak candidates either try to cover everything or silently skip things the interviewer then asks about.
+
+A practical rule: **keep the core loop plus the requirement that makes the problem hard; park everything else.** The core loop is the smallest set of features without which the product has no reason to exist. The hard requirement is usually an invariant, a latency target or a skew.
+
+| Case | Keep | Cut (and say so) | Why the cut is safe |
+|---|---|---|---|
+| [URL shortener](/case-studies/url-shortener) | Create, redirect, disable/delete, minutes-fresh analytics; never-wrong codes | QR rendering, link-in-bio pages, billing, the account system | None of them touches the redirect path or the ID scheme |
+| [Ticket booking](/case-studies/ticket-booking) | Seat map, 10-minute hold, payment, the on-sale burst; never sell twice | Resale, dynamic pricing; bot detection assumed to exist | The hard part is contention on 50,000 seats, not pricing |
+| [Ride sharing](/case-studies/ride-sharing) | Location updates, matching within 10 s, one trip per driver, charge once | Shared rides, scheduled rides, food delivery; surge at awareness level | Each cut feature reuses the same matching core |
+| [Payment system](/case-studies/payment-system) | Authorise at checkout, capture on ship, refunds, ledger, reconciliation, payouts | Fraud scoring, 3-D Secure, tax; multi-currency mentioned only | The interviewer named them as provided by other systems |
+| [Photo-sharing app](/case-studies/instagram) | Upload, follow, home feed, likes and comments | Video, stories, direct messages, search, ranking model | The feed and the celebrity fan-out are the hard parts |
+
+Sample phrasing: *"I'll focus on creating links, redirecting and analytics. I'm leaving out QR codes and billing because they don't touch the redirect path. Happy to come back to them if you want."* The last clause matters: it shows the cut is a choice, not a blind spot.
+
+Three ways scope cutting goes wrong:
+
+1. **Cutting the hard part.** "Let's skip the on-sale spike and design normal booking" removes the reason the question was asked.
+2. **Cutting without saying.** The interviewer asks about deletion at minute 35, and "I didn't consider it" sounds like a gap, not a decision.
+3. **Keeping a "nice to have" because it is familiar.** Spending ten minutes on typing indicators in a chat interview, where the case says they may be stale or lost and are "never worth delaying a message for".
+
+<Callout type="analogy" title="Packing a carry-on bag">
+With one small bag, you pack what the trip cannot do without (passport, medication, the suit for the wedding) and leave the rest, knowing you can buy a toothbrush on arrival. You also do not leave the suit behind because it is awkward to fold. Where it breaks: on a trip nobody checks what you left at home, while in an interview the out-of-scope list is itself evaluated, so write it where it can be seen.
+</Callout>
+
+## How requirements go wrong: a timeline
+
+<DepthStamp depth="tradeoffs" />
+
+Ticket booking, 45 minutes, a candidate who skipped the questions that mattered:
+
+| Clock | What happens |
+|---|---|
+| 0:00–2:00 | Asks only "how many users?" (20M registered). Assumes steady traffic. No invariant written |
+| 2:00–6:00 | Estimates average load from 20M users. Gets a modest number of bookings a second |
+| 6:00–25:00 | Designs a REST API, an orders table and `SELECT ... FOR UPDATE` on the seat row inside the payment call |
+| 25:00–28:00 | Interviewer: "A popular show opens. 1M people arrive in the first minute for 50,000 seats. What happens?" |
+| 28:00–40:00 | The design holds a database lock for the 800 ms payment call while about 16,700 people a second arrive. The candidate starts adding caches, which cannot help with seat contention |
+| 40:00–45:00 | No time to discuss holds, fairness or the 4-tickets-per-account limit |
+
+Two questions at minute 1 ("What does a big on-sale look like?" and "How strict is never selling a seat twice?") would have produced the right design from the start: a waiting room that admits people at a rate the seat service can take, short seat holds with expiry, and payment outside any database lock. The recovery line, had the candidate used it at minute 28: *"That changes my assumption about steady traffic. Let me revise: the bottleneck is contention on 50,000 seats, so I'll put admission control in front and take payment out of the lock."*
+
+<TradeoffBox title="Asking vs assuming" items={[
+  { gain: "Asking gets the interviewer's intended constraint, often the hidden hard part", cost: "Every question costs 20–40 seconds; fifteen questions consume the whole step" },
+  { gain: "Assuming aloud keeps momentum and shows judgement", cost: "An assumption that removes the hard part makes the rest of the interview irrelevant" },
+  { gain: "A written out-of-scope list protects your time", cost: "Cutting a feature the interviewer cares about costs a redirect; offer to return to it" }
+]} />
+
+<NotWhenBox title="Running the full question bank" items={[
+  "The interviewer hands you a detailed spec with numbers: restate it in your three lists and move on to estimation.",
+  "The prompt is a narrow component ('design the rate-limiting algorithm'): ask about limits, accuracy and failure behaviour only.",
+  "You are already at minute 5: state the remaining unknowns as assumptions instead of asking."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Non-functional requirements are 'scalable, highly available, low latency'." right="Without numbers they constrain nothing. Name a percentile, a target and where it is measured: 'redirect adds under 50 ms at p99 at our servers', '99.99% for redirects, 99.9% for creates'." />
+
+<Misconception wrong="Asking lots of questions shows thoroughness." right="Only questions whose answers change the design earn credit. Ask scale, read/write mix, latency and the likely invariant first; state the rest as assumptions." />
+
+<Misconception wrong="Cutting scope looks like avoiding work." right="Cutting with a reason and an offer to return ('I'm leaving out billing because it doesn't touch the redirect path') is judgement. Silent omission is what looks like a gap." />
+
+<Misconception wrong="Strong consistency everywhere is the safe default." right="It costs latency and availability. Find the few invariants that need it (a seat, a payment, a code) and let everything else be eventually consistent with a stated bound." />
+
+## Interview angle
+
+<InterviewAngle title="Requirements and scope" questions={[
+  "What questions would you ask before designing this?",
+  "What would you assume if I said 'you decide'?",
+  "What would change in your design if this had to be strongly consistent?",
+  "You left X out of scope. Suppose we need it now: what changes?",
+  "Which of your requirements is the hardest to meet, and why?"
+]}>
+The last question is the one to answer before you are asked. Ending requirements with "the hardest part here is never selling a seat twice under a 1M-person burst, so that's where I expect to spend the deep dives" shows that you read the problem, and it sets up your own time budget.
+</InterviewAngle>
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+1. In [Interview Mode for ticket booking](/interview/ticket-booking), Practice mode, spend exactly five minutes on Requirements. Before revealing any answer, predict it; afterwards, check the "asked" count and the rubric's Requirements criteria. Then read the [ticket booking case study](/case-studies/ticket-booking).
+2. Do the same for [the payment system](/interview/payment-system) and [the chat app](/interview/chat-app), and for each write the single invariant you would put on its own line.
+3. For any three case studies, write an out-of-scope list with one reason per cut, then compare with the "Out of scope" part of each reference solution.
+4. In [Design Studio](/studio), fill only the Requirements heading of a new design for a prompt of your choice: three to five functional lines, four to seven non-functional lines with numbers, labelled assumptions and an out-of-scope list.

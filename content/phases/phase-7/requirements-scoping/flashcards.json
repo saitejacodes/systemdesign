@@ -1,0 +1,18 @@
+[
+  { "id": "f1", "front": "Functional vs non-functional requirement?", "back": "Functional: what a user can do ('create a short link'). Non-functional: a measurable property while doing it ('under 50 ms at p99').", "topicId": "functional-vs-nonfunctional" },
+  { "id": "f2", "front": "What makes a latency requirement well formed?", "back": "A target, a percentile and where it is measured: 'first page under 300 ms at p99, at our servers'.", "topicId": "functional-vs-nonfunctional" },
+  { "id": "f3", "front": "Invariant?", "back": "A rule that must hold in every state, e.g. never sell a seat twice, charge exactly once, one active trip per driver. Write each on its own line.", "topicId": "functional-vs-nonfunctional" },
+  { "id": "f4", "front": "The seven question dimensions?", "back": "Users, scale, read/write mix, latency, consistency, durability, regions. Plus traffic shape, freshness, external limits, failure behaviour.", "topicId": "question-bank" },
+  { "id": "f5", "front": "Test for whether to ask a clarifying question?", "back": "Would any answer change the design? If not, skip it or state an assumption.", "topicId": "question-bank" },
+  { "id": "f6", "front": "Which questions first, if time is short?", "back": "Scale, read/write mix, the main latency target, then the one probing the likely invariant (consistency or durability).", "topicId": "question-bank" },
+  { "id": "f7", "front": "Ticket booking burst in numbers?", "back": "1M arrivals in 60 s ≈ 16,700/s for 50,000 seats, 20 people per seat → waiting room and short holds.", "topicId": "question-bank" },
+  { "id": "f8", "front": "Ride sharing: the real write load?", "back": "1M drivers ÷ 4 s per GPS update = 250,000 location writes/s at peak, far more than trips.", "topicId": "question-bank" },
+  { "id": "f9", "front": "Why ask about durability ('when is it done?')", "back": "It sets the acknowledgement point: e.g. chat's one tick means a replicated durable write before the ack.", "topicId": "question-bank" },
+  { "id": "f10", "front": "Template for stating an assumption?", "back": "'I'll assume X because Y; tell me if you have a different number.' Then write it on the board as A1, A2...", "topicId": "stating-assumptions" },
+  { "id": "f11", "front": "Three properties of a good assumption?", "back": "Round, conservative where it matters (higher peak, stricter invariant), and reversible.", "topicId": "stating-assumptions" },
+  { "id": "f12", "front": "When must you ask instead of assume?", "back": "When the assumption would remove the hard part of the problem, or would change the architecture and cannot be guessed safely.", "topicId": "stating-assumptions" },
+  { "id": "f13", "front": "Rule for cutting scope?", "back": "Keep the core loop plus the requirement that makes the problem hard; park the rest on a written out-of-scope list.", "topicId": "cutting-scope" },
+  { "id": "f14", "front": "Phrasing for a scope cut?", "back": "'I'm leaving out X because it doesn't touch Y. Happy to come back to it.' Reason plus offer.", "topicId": "cutting-scope" },
+  { "id": "f15", "front": "Three ways scope cutting goes wrong?", "back": "Cutting the hard part, cutting without saying so, and keeping a familiar nice-to-have that eats the time.", "topicId": "cutting-scope" },
+  { "id": "f16", "front": "Recovery line when a new fact breaks an assumption?", "back": "'That changes my assumption about X. Let me revise: the bottleneck is now Y, so I'll change Z.'", "topicId": "requirements-failures" }
+]

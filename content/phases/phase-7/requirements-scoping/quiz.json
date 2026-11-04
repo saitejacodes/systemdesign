@@ -1,0 +1,358 @@
+[
+  {
+    "id": "q1",
+    "type": "single",
+    "prompt": "Which of these is a well-formed non-functional requirement?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Users can see a ranked feed of posts from the accounts they follow"
+      },
+      {
+        "id": "b",
+        "text": "The first feed page returns in under 300 ms at p99, measured at our servers"
+      },
+      {
+        "id": "c",
+        "text": "The feed should be fast, scalable and highly available for every one of our users"
+      },
+      {
+        "id": "d",
+        "text": "Posts are stored in a sharded database and cached in a Redis cluster"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "A non-functional requirement is a measurable property: a target, a percentile and where it is measured. (a) is a functional requirement: something a user can do. (c) names properties but has no numbers, so it constrains nothing. (d) is a design decision, not a requirement; it belongs in the high-level design.",
+    "topicId": "functional-vs-nonfunctional",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "scenario",
+    "prompt": "What is the most important thing missing from this non-functional list?",
+    "scenario": "Payment system interview. The candidate writes: \"Non-functional: scalable, highly available, low latency, secure.\" Then moves on to estimation.",
+    "options": [
+      {
+        "id": "a",
+        "text": "A list of the database technologies the team intends to use for storage"
+      },
+      {
+        "id": "b",
+        "text": "A security section covering card encryption, key rotation and PCI scope in detail"
+      },
+      {
+        "id": "c",
+        "text": "An availability figure in nines, since the others are fine as written"
+      },
+      {
+        "id": "d",
+        "text": "Numbers on each line and the invariant: charge exactly once, books balance"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "Every line needs a target (for example about 3 s at p99 for the whole call, 10× sale-day peaks) and the case's real hard requirement is an invariant: a buyer is charged exactly once and no money is created or lost. That invariant drives idempotency keys, the ledger and reconciliation. (a) is design, not requirements. (b) the case says the provider tokenises cards, so card storage is largely out of scope. (c) fixes one line and leaves the others unmeasurable and the invariant missing.",
+    "topicId": "functional-vs-nonfunctional",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "scenario",
+    "prompt": "Which clarifying question should the candidate ask next?",
+    "scenario": "Ticket booking interview, minute 1. The candidate has asked \"How many users?\" and heard \"about 20M registered\". They are about to start estimating from that number.",
+    "options": [
+      {
+        "id": "a",
+        "text": "\"What does a big on-sale look like: how many people, how many seats?\""
+      },
+      {
+        "id": "b",
+        "text": "\"Which programming language and framework does the team prefer here?\""
+      },
+      {
+        "id": "c",
+        "text": "\"Should the confirmation emails be sent in HTML or in plain text?\""
+      },
+      {
+        "id": "d",
+        "text": "\"How many registered users do we expect to have in five years' time, roughly?\""
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "The answer (1M people in the first minute for 50,000 seats) changes the whole architecture: about 16,700 arrivals a second competing for 20 people per seat demands admission control and short seat holds. (b) does not change the design. (c) is a detail of a side path. (d) refines average scale, but the problem is the burst, not the registered total.",
+    "topicId": "question-bank",
+    "difficulty": 1
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "What did the candidate miss?",
+    "scenario": "Ride sharing. The candidate hears \"up to 1M drivers online at peak, each sending a GPS update every 4 seconds\" and \"20M trips a day\", then says: \"Trips are mostly read, so I'll add read replicas and a cache in front of the trips database.\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "That 20M trips a day needs sharding of the trips table from the start"
+      },
+      {
+        "id": "b",
+        "text": "That riders read driver positions, so a CDN should serve the map tiles"
+      },
+      {
+        "id": "c",
+        "text": "That location updates are about 250,000 writes a second, the real load"
+      },
+      {
+        "id": "d",
+        "text": "That trips must be charged exactly once through the payment provider"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "1M drivers ÷ 4 s = 250,000 location writes per second at peak, far more than trip traffic (20M a day is about 230 a second on average). The workload is write-heavy, which points at in-memory, partitioned location storage rather than read replicas. (a) 230 trips a second does not force sharding at the start. (b) map tiles are not the bottleneck. (d) is a real requirement but does not correct the read/write mistake.",
+    "topicId": "question-bank",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "single",
+    "prompt": "Typeahead: suggestions must appear within 100 ms of a keystroke, end to end, at p99, at roughly 69,000 requests a second. What does this requirement most directly imply?",
+    "options": [
+      {
+        "id": "a",
+        "text": "A relational database with a LIKE 'prefix%' query and a good index"
+      },
+      {
+        "id": "b",
+        "text": "Strong consistency between the query log and the suggestion results"
+      },
+      {
+        "id": "c",
+        "text": "A global multi-leader database so writes are accepted in every region"
+      },
+      {
+        "id": "d",
+        "text": "Precomputed top results per prefix, held in memory close to users"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "100 ms end to end includes the network, so the server budget is tens of milliseconds; precomputing the top 10 completions per prefix and serving them from memory makes each request a lookup. (a) a database query per keystroke at this rate risks both latency and load. (b) the case allows trending queries to lag up to an hour, so strong consistency is unnecessary. (c) is about writes, while the requirement is about read latency.",
+    "topicId": "question-bank",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "What is the best response?",
+    "scenario": "Photo-sharing app. The candidate asks how consistent like counts must be. The interviewer replies: \"You decide.\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "\"Then I'll make counts strongly consistent everywhere, to be safe.\""
+      },
+      {
+        "id": "b",
+        "text": "\"I'll assume counts may lag seconds but never drift, so I count async.\""
+      },
+      {
+        "id": "c",
+        "text": "\"I'll leave consistency open for now and come back to it near the end.\""
+      },
+      {
+        "id": "d",
+        "text": "\"Could you pick one for me? I'd rather design to your requirement.\""
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "\"You decide\" invites a stated assumption with a reason. Seconds of lag harms nobody, and it allows asynchronous, batched counting; \"never drift\" keeps the correctness bar (the case's own answer). (a) pays coordination costs on a hot write path for no user benefit. (c) leaves a decision that affects the data model unmade. (d) hands back a decision the interviewer just delegated to you.",
+    "topicId": "stating-assumptions",
+    "difficulty": 1
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "prompt": "What is wrong with this assumption?",
+    "scenario": "Ticket booking. Candidate: \"To keep things simple, I'll assume two people rarely try to buy the same seat at the same moment, so a normal transaction per booking is enough.\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "Nothing: simplifying assumptions are always good if they are stated aloud"
+      },
+      {
+        "id": "b",
+        "text": "It is too vague; it should state the exact percentage of conflicting attempts"
+      },
+      {
+        "id": "c",
+        "text": "It removes the hard part of the problem, so it should be asked, not assumed"
+      },
+      {
+        "id": "d",
+        "text": "It should have been written on the board with a label such as A1"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "Contention on popular seats during an on-sale is the reason this question exists; assuming it away makes the rest of the interview irrelevant. If an assumption makes the problem easy, ask instead. (a) stated assumptions are good only when they do not delete the core difficulty. (b) a precise percentage of a wrong assumption is still wrong. (d) labelling is good practice but does not fix the content.",
+    "topicId": "stating-assumptions",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "prompt": "What should the candidate have done differently?",
+    "scenario": "Chat app, 45 minutes. The candidate spends ten minutes designing typing indicators with exact delivery and ordering guarantees. The case says presence and typing may be slightly stale or lost and are never worth delaying a message for.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Mark typing as best-effort, keep it brief, and spend time on message delivery"
+      },
+      {
+        "id": "b",
+        "text": "Design typing indicators first because they are the most visible feature"
+      },
+      {
+        "id": "c",
+        "text": "Use the same durable, ordered path for typing events as for the chat messages"
+      },
+      {
+        "id": "d",
+        "text": "Drop the feature silently and only mention it if the interviewer asks later"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Keep the core loop (durable, ordered, fast message delivery) and the hard requirements; treat nice-to-haves as best-effort in a sentence. (b) visibility is not difficulty. (c) puts lossy, high-volume signals on the durable path, adding load to the part that must never lose data. (d) cutting without saying looks like a blind spot; say what you cut and why.",
+    "topicId": "cutting-scope",
+    "difficulty": 1
+  },
+  {
+    "id": "q9",
+    "type": "scenario",
+    "prompt": "Which scope statement is strongest for the URL shortener?",
+    "scenario": "The candidate has heard the clarifying answers and is about to write the out-of-scope list.",
+    "options": [
+      {
+        "id": "a",
+        "text": "\"I'll cover everything a real product needs, including QR codes and billing.\""
+      },
+      {
+        "id": "b",
+        "text": "\"I'll skip analytics and expiry to keep the design small and simple to follow.\""
+      },
+      {
+        "id": "c",
+        "text": "\"Out of scope: lots of things. I'll focus on what is most important to us.\""
+      },
+      {
+        "id": "d",
+        "text": "\"I'm leaving out QR codes and billing; they don't touch the redirect path.\""
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "A good cut names what is left out, why it is safe, and (ideally) offers to return. QR rendering and billing do not affect the redirect path or the ID scheme. (a) tries to cover everything and runs out of time. (b) cuts requirements the interviewer stated, and analytics and expiry shape the 302 decision. (c) is not a list, so nobody can check it.",
+    "topicId": "cutting-scope",
+    "difficulty": 1
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "Which of these is an invariant rather than a feature or a performance target?",
+    "options": [
+      {
+        "id": "a",
+        "text": "A driver is assigned to at most one active trip, even under retries"
+      },
+      {
+        "id": "b",
+        "text": "A rider is matched with a nearby driver within 10 seconds of asking"
+      },
+      {
+        "id": "c",
+        "text": "Riders can see their driver's position move on the map as they approach"
+      },
+      {
+        "id": "d",
+        "text": "Up to 1M drivers are online at the evening peak across many cities"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "An invariant is a rule that must hold in every state; violating it once is a correctness failure, and it points at a mechanism such as a conditional update on driver state. (b) is a latency target. (c) is a functional requirement. (d) is a scale figure used for estimation.",
+    "topicId": "functional-vs-nonfunctional",
+    "difficulty": 1
+  },
+  {
+    "id": "q11",
+    "type": "scenario",
+    "prompt": "What is the best recovery?",
+    "scenario": "Ticket booking, minute 28. The candidate's design locks the seat row in the database for the whole 800 ms payment call. The interviewer says: \"A popular show opens. 1M people arrive in the first minute for 50,000 seats. What happens?\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "Add a cache in front of the seats table so reads stop hitting the database"
+      },
+      {
+        "id": "b",
+        "text": "Revise the assumption aloud, add admission control, take payment out of the lock"
+      },
+      {
+        "id": "c",
+        "text": "Argue that such a large on-sale is rare and design for the normal day instead"
+      },
+      {
+        "id": "d",
+        "text": "Scale the database vertically to the largest instance size available"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "The new fact breaks the steady-traffic assumption; the strong move is to say so and fix the bottleneck, which is contention on a few seats, not read volume: a waiting room admits people at a rate the seat service can take, and short holds plus payment outside the lock stop 800 ms locks queuing up. (a) caches help reads but not contention on writes to the same rows. (c) argues with a stated requirement. (d) a larger machine still serialises on the same row locks.",
+    "topicId": "requirements-failures",
+    "difficulty": 3
+  },
+  {
+    "id": "q12",
+    "type": "single",
+    "prompt": "Chat app: \"one tick means the server has stored the message durably; it must never be lost after that.\" What does this durability requirement imply?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Messages may be acknowledged first and written to disk a few seconds later"
+      },
+      {
+        "id": "b",
+        "text": "The recipient must receive the message before the sender sees one tick"
+      },
+      {
+        "id": "c",
+        "text": "The write must be replicated durably before the server sends the tick"
+      },
+      {
+        "id": "d",
+        "text": "Messages can be held only in the memory of the recipient's chat server"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "The tick is a promise, so the acknowledgement point must come after a durable write that survives a machine failure, typically replicated before acking. (a) is write-behind: a crash in those seconds loses acknowledged messages. (b) confuses one tick with two ticks, which means delivered to a device. (d) memory alone is lost when that server fails.",
+    "topicId": "question-bank",
+    "difficulty": 2
+  }
+]

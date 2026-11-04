@@ -21,6 +21,8 @@ export const ROUTES = [
   ...["/phase/5/logging", "/phase/5/metrics", "/phase/5/tracing", "/phase/5/slos", "/phase/5/alerting", "/phase/5/authn-authz", "/phase/5/access-control", "/phase/5/data-protection", "/phase/5/common-attacks", "/phase/5/containers", "/phase/5/kubernetes", "/phase/5/ci-cd", "/phase/5/release-strategies", "/phase/5/iac"],
   "/phase/6",
   ...["/phase/6/serverless", "/phase/6/edge-computing", "/phase/6/stream-processing", "/phase/6/batch-processing", "/phase/6/multi-region", "/phase/6/embeddings-vector-search", "/phase/6/rag", "/phase/6/llm-serving", "/phase/6/llm-cost-latency", "/phase/6/ai-reliability", "/phase/6/evals-guardrails", "/phase/6/agents", "/phase/6/llm-inference-internals", "/phase/6/gpu-parallelism", "/phase/6/speculative-decoding", "/phase/6/inference-optimization", "/phase/6/llm-serving-at-scale", "/phase/6/training-at-scale"],
+  "/phase/7",
+  ...["interview-framework", "requirements-scoping", "building-blocks-map", "tradeoff-communication", "deep-dive-patterns", "mock-interview-playbook", "level-expectations", "final-review"].map((s) => `/phase/7/${s}`),
   "/simulators",
   "/simulators/single-server-queue",
   "/simulators/estimation-calculator",

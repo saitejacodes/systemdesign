@@ -1,0 +1,190 @@
+[
+  {
+    "id": "q1",
+    "type": "scenario",
+    "prompt": "It is minute 13 of a 45-minute interview. What should the candidate do next?",
+    "scenario": "Prompt: design a URL shortener. The candidate has asked fourteen clarifying questions, including whether QR codes and link-in-bio pages are needed. The interviewer has answered all of them. Nothing is written on the board and no number has been mentioned.",
+    "options": [
+      { "id": "a", "text": "Ask the remaining questions about analytics and abuse so the scope is complete before designing" },
+      { "id": "b", "text": "Skip estimation entirely and draw the architecture, since time is now short" },
+      { "id": "c", "text": "Write the scope as three short lists, state assumptions for gaps, and estimate" },
+      { "id": "d", "text": "Apologise for the slow start and ask the interviewer which step to do next" }
+    ],
+    "correct": ["c"],
+    "explanation": "The candidate is eight minutes over the requirements budget and the interviewer cannot see the scope. Writing functional, non-functional and out-of-scope lists makes the answers usable, and stating assumptions for the gaps lets estimation start immediately. (a) spends more time on the step that is already over budget. (b) saves two minutes but removes the numbers that tell you the write path is trivial, which is exactly how candidates end up sharding 40 writes a second. (d) hands the driving to the interviewer; a one-line recovery and a signpost is better than an apology.",
+    "topicId": "failure-recovery",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "scenario",
+    "prompt": "The candidate has a 60-minute slot instead of 45. How should they spend the extra time?",
+    "scenario": "The candidate has practised only the 45-minute budget and asks for advice the night before a 60-minute interview.",
+    "options": [
+      { "id": "a", "text": "Keep the same order and add a third deep dive and a fuller wrap-up" },
+      { "id": "b", "text": "Spend the extra minutes on a longer requirements discussion to avoid surprises" },
+      { "id": "c", "text": "Add detail to the API step with full request and response schemas for every call" },
+      { "id": "d", "text": "Use the time to draw a more complete diagram with every possible component" }
+    ],
+    "correct": ["a"],
+    "explanation": "Scaling the 5/5/5/5/10/10/5 weights to 60 minutes gives about 7/7/7/7/13/13/6: each step grows a little, and in practice the extra signal comes from one more deep dive and a real wrap-up. (b) is the common trap: longer requirements rarely end deeper. (c) adds schema detail that seldom earns rubric points beyond status codes and idempotency. (d) adds boxes without adding reasoning; an untraced diagram does not score better for being larger.",
+    "topicId": "time-budget",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "What is the suggested split, in minutes, for a 45-minute interview across Requirements, Estimation, API, Data Model, High-Level Design, Deep Dives and Wrap-up?",
+    "options": [
+      { "id": "a", "text": "10 / 5 / 5 / 5 / 10 / 5 / 5" },
+      { "id": "b", "text": "5 / 10 / 5 / 5 / 10 / 5 / 5" },
+      { "id": "c", "text": "5 / 5 / 5 / 5 / 15 / 5 / 5" },
+      { "id": "d", "text": "5 / 5 / 5 / 5 / 10 / 10 / 5" }
+    ],
+    "correct": ["d"],
+    "explanation": "Interview Mode's base split is 5/5/5/5/10/10/5: the two ten-minute blocks go to the architecture and the deep dives, where most of the signal is. (a) doubles requirements and halves deep dives, the classic slow-start failure. (b) doubles estimation, which many interviewers see as a time sink. (c) gives the diagram 15 minutes at the expense of deep dives.",
+    "topicId": "time-budget",
+    "difficulty": 1
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "What is missing from this estimation step?",
+    "scenario": "Candidate: \"100 million links a month is 38.6 creates per second, and at 100 reads per create that is 3,860 redirects per second, 19,500 at a 5× peak.\" They then start drawing a ticket server with consistent hashing to shard link creation.",
+    "options": [
+      { "id": "a", "text": "A storage figure: the candidate must compute terabytes before any architecture" },
+      { "id": "b", "text": "A conclusion: writes are about 40/s, so the effort belongs on the read path" },
+      { "id": "c", "text": "A bandwidth estimate, because redirect responses could saturate the network" },
+      { "id": "d", "text": "A more precise peak factor derived from hourly traffic data for the product" }
+    ],
+    "correct": ["b"],
+    "explanation": "The arithmetic is right, but it never turns into a decision, so it does not stop the candidate from optimising a 40-writes-per-second path. The rubric's top level for traffic math asks for exactly this conclusion. (a) storage matters (3 TB, 9 TB replicated) but would not have changed the mistake. (c) redirect bandwidth is about 10 MB/s at peak, negligible. (d) precision is not the point of estimation; an assumed 5× is fine if stated.",
+    "topicId": "url-shortener-walkthrough",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "scenario",
+    "prompt": "What is the best next move?",
+    "scenario": "Minute 28. The board shows eleven boxes: load balancer, link service, Redis, a key-value store, a CDN, three queues, a search cluster, a ticket server and an analytics warehouse. The interviewer asks: \"Where does a redirect actually go?\"",
+    "options": [
+      { "id": "a", "text": "Trace one redirect with numbered arrows and remove boxes no path uses" },
+      { "id": "b", "text": "Explain what each of the eleven boxes does, in the order they were drawn" },
+      { "id": "c", "text": "Add a sequence diagram for every endpoint before answering the question" },
+      { "id": "d", "text": "Say the redirect goes through the CDN and move on to the deep dives" }
+    ],
+    "correct": ["a"],
+    "explanation": "The question signals that the diagram has no request walked through it. Tracing GET /{code} through load balancer, in-process cache, Redis, store and the async click event answers it, and pruning unused boxes shows judgement. (b) describes components without connecting them, the same problem at more length. (c) costs several minutes before answering a direct question. (d) is a one-line answer that skips the cache-aside path, the expiry check and the analytics hand-off.",
+    "topicId": "say-and-draw",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "Should the candidate ask or proceed on an assumption?",
+    "scenario": "During requirements for the URL shortener, the candidate is unsure whether a creator can change a link's destination after creating it.",
+    "options": [
+      { "id": "a", "text": "Proceed silently with editable links, since more features impress interviewers" },
+      { "id": "b", "text": "Proceed, assuming immutability, and mention it only if the interviewer asks" },
+      { "id": "c", "text": "Ask, because the answer decides whether cached redirects can ever be wrong" },
+      { "id": "d", "text": "Leave it open and design both versions in parallel during the high-level design" }
+    ],
+    "correct": ["c"],
+    "explanation": "Ask when the answer changes the architecture and cannot be guessed safely. Immutable destinations make every cache correct by construction; editable ones need invalidation at every layer, including browsers holding a 302 for 5 minutes. (a) adds hidden complexity without checking. (b) makes a big assumption without saying it; stated assumptions are fine, silent ones are not. (d) doubles the work and never commits to a design.",
+    "topicId": "driving-conversation",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "prompt": "What should the candidate do at minute 41?",
+    "scenario": "45-minute interview. The candidate is mid-way through comparing hash, counter, Snowflake and random code generation. They have not yet discussed failures, scaling or trade-offs.",
+    "options": [
+      { "id": "a", "text": "Finish the comparison table fully, since depth on one topic beats breadth" },
+      { "id": "b", "text": "Ask the interviewer for ten more minutes to complete the design properly" },
+      { "id": "c", "text": "Start a second deep dive on caching so both risky parts get some attention" },
+      { "id": "d", "text": "State the decision so far, then use the last minutes for failures and 10×" }
+    ],
+    "correct": ["d"],
+    "explanation": "At minute 40 the budget says stop and summarise. Stating the current decision (random codes with a conditional insert) closes the deep dive, and the wrap-up criteria (failure modes, what breaks at 10×, trade-offs) are cheap points: in the URL shortener rubric they are 4 of 24. (a) trades those points for detail. (b) the slot is fixed and asking signals poor time management. (c) starts something that cannot finish and still skips the wrap-up.",
+    "topicId": "failure-recovery",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "single",
+    "prompt": "The URL shortener stores 6 billion links over 5 years. Why are codes 7 base62 characters rather than 6?",
+    "options": [
+      { "id": "a", "text": "62⁶ is about 56.8 billion, which is too small to hold 6 billion links" },
+      { "id": "b", "text": "With 6 characters, a random guess would hit a real link about 1 time in 10" },
+      { "id": "c", "text": "Snowflake IDs need 7 characters, and the design generates codes with Snowflake" },
+      { "id": "d", "text": "Seven characters removes the need for a conditional insert on creation" }
+    ],
+    "correct": ["b"],
+    "explanation": "6 billion ÷ 56.8 billion ≈ 0.106, so a guessed 6-character code would land on a real link about 1 time in 10, failing the unguessability requirement. With 62⁷ = 3.52 trillion only 0.17% is used (about 1 in 590). (a) is false: 6 characters do fit. (c) a 64-bit Snowflake ID needs 11 base62 characters, which is why it was rejected. (d) random codes still need insert-if-absent; the 0.17% figure is the retry probability, not zero.",
+    "topicId": "url-shortener-walkthrough",
+    "difficulty": 2
+  },
+  {
+    "id": "q9",
+    "type": "scenario",
+    "prompt": "What is the strongest response?",
+    "scenario": "Minute 25. While walking the redirect path, the candidate realises that the sharded write path with a ticket server they drew at minute 18 is unnecessary for about 40 creates per second.",
+    "options": [
+      { "id": "a", "text": "Say so out loud, simplify the write path, and continue the walkthrough" },
+      { "id": "b", "text": "Leave it on the board, since erasing work looks like a mistake was made" },
+      { "id": "c", "text": "Defend it as future-proofing for a thousandfold growth in link creation" },
+      { "id": "d", "text": "Restart the design from requirements so the whole board is consistent again" }
+    ],
+    "correct": ["a"],
+    "explanation": "Noticing and correcting your own over-engineering is a positive signal: one sentence (\"with 40 writes a second this is unnecessary, let me simplify\") and move on. (b) leaves a contradiction the interviewer has probably already noticed. (c) justifies complexity for a growth nobody asked for; the case study says to switch schemes only if writes grow a thousandfold, and to say so in the wrap-up. (d) throws away 25 minutes to fix one box.",
+    "topicId": "failure-recovery",
+    "difficulty": 1
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "prompt": "Why does Estimation come before Data Model in the framework?",
+    "options": [
+      { "id": "a", "text": "Interviewers score estimation first, so it should be finished early" },
+      { "id": "b", "text": "The API cannot be written until the storage size in terabytes is known" },
+      { "id": "c", "text": "Peak load and storage size decide the store, keys and need for sharding" },
+      { "id": "d", "text": "Estimation is the easiest step, so it builds confidence before harder ones" }
+    ],
+    "correct": ["c"],
+    "explanation": "Each step feeds the next: knowing that writes are 40/s and storage is 3 TB tells you a single key-value cluster or a few Postgres shards are enough, and that the cache matters more than write sharding. (a) rubrics are not scored in order. (b) the API depends on requirements and access patterns, not on terabytes. (d) the order is about dependencies, not comfort.",
+    "topicId": "seven-steps",
+    "difficulty": 1
+  },
+  {
+    "id": "q11",
+    "type": "scenario",
+    "prompt": "How should the candidate handle the interruption?",
+    "scenario": "Minute 12, during the API step. The interviewer interrupts: \"What happens when one link goes viral and gets 30,000 requests a second?\"",
+    "options": [
+      { "id": "a", "text": "Say that hot keys belong in deep dives and continue with the API as planned" },
+      { "id": "b", "text": "Abandon the API and redesign the whole caching layer around that question" },
+      { "id": "c", "text": "Ask the interviewer to hold the question until after the high-level design" },
+      { "id": "d", "text": "Answer briefly, note it as a deep-dive topic, then signpost back to the API" }
+    ],
+    "correct": ["d"],
+    "explanation": "An interruption tells you where the points are. A short answer (an in-process cache in front of Redis plus request coalescing, so one shard is not saturated), a note to go deeper later, and a signpost back keeps both the interviewer's interest and the spine of the interview. (a) and (c) postpone the interviewer's question, which reads as not listening. (b) loses the structure and may never return to the API or data model.",
+    "topicId": "driving-conversation",
+    "difficulty": 2
+  },
+  {
+    "id": "q12",
+    "type": "single",
+    "prompt": "Which sentence is the best way to close the estimation step for the URL shortener?",
+    "options": [
+      { "id": "a", "text": "\"So we have roughly 3,900 requests a second, which is quite a lot of traffic.\"" },
+      { "id": "b", "text": "\"Writes are about 40 a second, so the read path, cache and code correctness get my time.\"" },
+      { "id": "c", "text": "\"Those are the numbers; I'll come back to them if they turn out to be relevant.\"" },
+      { "id": "d", "text": "\"It's a large system with billions of links, so everything will need to be sharded.\"" }
+    ],
+    "correct": ["b"],
+    "explanation": "A step should end with its consequence for the design. (b) turns the numbers into a priority. (a) restates a number without a decision. (c) parks the numbers, so they never guide a choice. (d) draws the wrong conclusion: 6 billion links is about 3 TB and 40 writes a second, which needs little sharding.",
+    "topicId": "say-and-draw",
+    "difficulty": 1
+  }
+]

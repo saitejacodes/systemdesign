@@ -1,0 +1,7 @@
+[
+  { "id": "tc-c1", "text": "I can state a design decision in the five-part shape: options, criteria taken from the requirements, comparison, decision with its cost, and a revisit trigger.", "topicId": "options-and-criteria" },
+  { "id": "tc-c2", "text": "I can turn \"it depends\" into a decision by naming the variable, reading its value from my estimates, and deriving a threshold, as in the news-feed fan-out example.", "topicId": "it-depends" },
+  { "id": "tc-c3", "text": "I can tell a probe from new information from an error, and respond by defending, re-deciding or conceding, each with a stated reason.", "topicId": "handling-pushback" },
+  { "id": "tc-c4", "text": "I can answer a question I don't know by saying exactly what I don't know, reasoning from a related figure, and showing the design survives a 2× error.", "topicId": "saying-i-dont-know" },
+  { "id": "tc-c5", "text": "I keep a decision log on the board during a mock and use it to answer the trade-offs criterion at wrap-up.", "topicId": "decision-log" }
+]

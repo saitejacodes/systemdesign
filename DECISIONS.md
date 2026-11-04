@@ -186,7 +186,7 @@
 ## Prompt 19
 - **Layout.** Left = the 7 step panels; centre and right = the full Design Studio editor for the attempt's design, whose Notes tab is the "notes" column. Reusing the editor gives Run mode inside an interview for free, and the canvas also appears in /studio.
 - **Persistence.** The running session is a Dexie draft (`interviewDrafts`, one per case), so a reload resumes it. The clock is wall-clock based, so Mock keeps counting across a closed tab. Saving writes an InterviewAttempt and deletes the draft.
-- **Scoring.** Every criterion must be scored before saving. Mock subtracts 1 point per hint, Practice nothing. The dashboard trend uses stored self-scores, so it does not include the hint penalty.
+- **Scoring.** Every criterion must be scored before saving. Mock subtracts 1 point per hint, Practice nothing. (Amended in 20d: the dashboard and attempt list now apply the penalty too, read back from the stored session.)
 - **Hints** are derived from the case meta (clarifying questions, traffic profile, common mistakes), not stored per case, so every case gets them without a new schema field.
 - **Comparison.** Both designs run headlessly (steady state) at the case's peak with the case's run challenge. ▲ marks a metric more than 5% worse than the reference.
 - **Fixture.** `tests/fixtures/case-studies/fixture-kv-store` loads only when `SDL_FIXTURE_CASES=1` (unit tests, the e2e server).
@@ -203,3 +203,11 @@
   - Background paths (fan-out, transcoding, ingestion) are drawn and sized in the prose but carry no Run traffic.
   - A few edges are left off so one request type does not route through another's nodes.
 - **Lesson → case links.** Each lesson's `practiceCaseStudyIds` lists up to 3 cases whose `relatedSectionIds` include it, preferring cases that list it earliest.
+
+## Prompt 20d
+- **Written by four parallel agents** from one brief, two sections each, built in a scratch folder and copied in whole, then checked by the content test and a quiz balance check (the correct option may be the longest in at most 30% of questions). The scratch folder was deleted afterwards.
+- **Hint penalty on the dashboard.** Writing the mock-interview lesson showed that the dashboard trend left out the Mock hint penalty, so the same attempt showed two different scores. `attemptScore()` now reads mode and hints back from the attempt's stored session JSON; no schema change, and older attempts score the same way.
+- **Figures** are numbered by section order inside the phase (FIG. 1.1 … FIG. 8.1), as in Phases 1–6.
+- **Interview-day checklist.** `final-review` links `/reference/interview-day-checklist`; Prompt 22 must create the cheat sheet with that slug.
+- **No company rubrics.** Level expectations describe general patterns and say plainly that they vary by company and interviewer.
+- **Week 16 deliverable** asked for "3+ on every rubric row" on a 0–2 scale; it now asks for 80% or more with no row scored 0.

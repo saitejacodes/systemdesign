@@ -234,3 +234,12 @@
 - **Pages:** `/case-studies` lists them. `/case-studies/<id>` shows the prompt behind a "try it first" fold, the solution, the reference design, traffic, run challenge, related lessons and common mistakes, with links to Interview Mode and the Studio template.
 - **Links:** 55 lessons now link to the cases that use them, the 4 added cases are in week 16 of the plan, and 13 new glossary terms were added (658 total).
 - **Verify:** open /case-studies and any case. Run `pnpm test` (`case-studies.test.ts`: files, section order, word count, rubric coverage, and every reference design passing its challenge) and `pnpm test:e2e` (every case page and interview page in both themes).
+
+## Prompt 20d · Phase 7 Interview Mastery
+- All 8 Phase 7 sections, each with lesson, quiz, flashcards, checkpoints and resources (about 25,000 lesson words, 92 quiz questions with 62 scenario-type, 131 flashcards):
+  - **Week 14:** the 7-step interview framework (minute budgets for 30/45/60 minutes, say/draw tables, a full URL-shortener walkthrough), requirements and scoping (a clarifying-question bank built from the cases), the building-blocks map ("need → consider → watch out for", every row linked to its lesson) and trade-off communication (seven weak-vs-strong exchanges).
+  - **Week 15:** deep-dive patterns (hot keys, fan-out, idempotency, consistency, read vs write scaling, backpressure, multi-region; each with the signal, solutions, a failure timeline and the cases that use it) and the mock-interview playbook (Interview Mode, honest self-review, a peer-mock script, the first six cases to mock).
+  - **Week 16:** level expectations (one hot-key moment answered at junior, mid and senior level) and a two-week final review routine using Today, Flashcards, simulators, Interview Mode and the Dashboard.
+- 19 new glossary terms. Sidebar and plan now show Phase 7 with real sections; no week has "Coming soon" items left.
+- Fix: the dashboard trend and the saved-attempt list now apply the Mock hint penalty, so they match the save screen.
+- Verify: open /phase/7/interview-framework and /plan (week 14); save a Mock attempt with a hint and check /dashboard shows the same % as the save screen. `pnpm test`, `pnpm test:e2e` (Phase 7 routes added).

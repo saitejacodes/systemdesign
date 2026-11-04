@@ -1,0 +1,19 @@
+{
+  "id": "p7-tradeoff-communication",
+  "phase": 7,
+  "slug": "tradeoff-communication",
+  "title": "Communicating Trade-offs",
+  "order": 4,
+  "week": 14,
+  "estimatedMinutes": 55,
+  "topics": [
+    { "id": "options-and-criteria", "title": "Presenting options against explicit criteria", "depth": "deep" },
+    { "id": "it-depends", "title": "Turning \"it depends\" into a decision", "depth": "deep" },
+    { "id": "handling-pushback", "title": "Handling pushback", "depth": "tradeoffs" },
+    { "id": "saying-i-dont-know", "title": "Saying \"I don't know\" well", "depth": "tradeoffs" },
+    { "id": "decision-log", "title": "The decision log", "depth": "awareness" }
+  ],
+  "simulatorIds": ["cap"],
+  "practiceCaseStudyIds": ["url-shortener", "ticket-booking", "news-feed"],
+  "prerequisites": ["p7-interview-framework", "p7-building-blocks-map", "p4-cap-pacelc"]
+}

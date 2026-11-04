@@ -1,0 +1,4 @@
+[
+  { "id": "hello-interview-hurry", "title": "System Design in a Hurry", "author": "Hello Interview", "kind": "docs", "url": "https://www.hellointerview.com/learn/system-design/in-a-hurry/introduction", "why": "A short, interview-focused refresher of core concepts and structure: good for a D-2 skim instead of rereading whole lessons.", "topicIds": ["final-two-weeks", "interview-day"], "free": true },
+  { "id": "system-design-primer", "title": "The System Design Primer", "author": "Donne Martin", "kind": "repo", "url": "https://github.com/donnemartin/system-design-primer", "why": "Its Anki flashcard decks and practice questions are a second source of retrieval practice if you finish your own due cards.", "topicIds": ["flashcard-review", "redo-failures"], "free": true }
+]

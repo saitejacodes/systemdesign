@@ -1,0 +1,8 @@
+[
+  { "id": "c1", "text": "I have written my own D-14 to D-1 plan with real dates, mock cases and weak spots filled in.", "topicId": "final-two-weeks" },
+  { "id": "c2", "text": "I know a weak spot means under 70% on a topic over my last two quiz attempts (or a stale section), and I retake quizzes the next day rather than immediately.", "topicId": "weak-spot-loop" },
+  { "id": "c3", "text": "I review due flashcards every day and stop adding new cards about eight days before the interview.", "topicId": "flashcard-review" },
+  { "id": "c4", "text": "I have redone my failed simulator challenges, predicting the mechanism out loud before running each one.", "topicId": "redo-failures" },
+  { "id": "c5", "text": "I can read my dashboard interview trend critically: my own self-score, inflated by repeats of the same case.", "topicId": "score-trends" },
+  { "id": "c6", "text": "I have read the interview-day checklist, prepared my setup, and planned a 20–30 minute warm-up.", "topicId": "interview-day" }
+]

@@ -1,0 +1,19 @@
+{
+  "id": "p7-mock-interview-playbook",
+  "phase": 7,
+  "slug": "mock-interview-playbook",
+  "title": "Mock interview playbook",
+  "order": 6,
+  "week": 15,
+  "estimatedMinutes": 60,
+  "topics": [
+    { "id": "interview-mode", "title": "Interview Mode: Practice vs Mock", "depth": "deep" },
+    { "id": "self-review", "title": "Self-review with the rubric", "depth": "deep" },
+    { "id": "peer-mock", "title": "Running a peer mock", "depth": "deep" },
+    { "id": "score-tracking", "title": "Tracking scores over time", "depth": "tradeoffs" },
+    { "id": "case-selection", "title": "Which six cases to mock first", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": [],
+  "practiceCaseStudyIds": ["url-shortener", "rate-limiter-service", "ticket-booking"],
+  "prerequisites": ["p7-interview-framework", "p7-deep-dive-patterns", "p1-estimation"]
+}

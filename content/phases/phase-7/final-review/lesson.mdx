@@ -1,0 +1,212 @@
+## Why it matters
+
+By week 16 you have more material than you can re-read: about a hundred lessons, nineteen case studies, dozens of simulator challenges and hundreds of flashcards. The last two weeks are not for covering it again. They are for finding what you would get wrong under pressure and fixing that, while arriving at the interview rested. The common failure is the opposite: re-reading favourite topics because it feels productive, starting a new subject four days out, and doing two mock interviews the night before. This section turns the tools you have used all course (Today, Flashcards, Simulators, Interview Mode and the Dashboard) into a fourteen-day routine, then covers the night before and the day itself.
+
+<Callout type="analogy" title="The taper before a race">
+Distance runners do not run their longest training week just before a marathon. They <Term slug="taper">taper</Term>: keep the intensity, cut the volume, and fix only what is broken, so they arrive fresh rather than tired. The last two weeks of interview prep work the same way: short, focused sessions aimed at known weak spots, fewer new inputs, and a light final few days. Where it breaks down: muscles need physical recovery time, while knowledge mostly needs retrieval and sleep. You do not lose a design skill by resting, but you can lose recall of details you never practised retrieving.
+</Callout>
+
+## The shape of the last two weeks
+
+<DepthStamp depth="deep" />
+
+Two principles from learning research drive this routine, and both are well established. **Retrieval practice**: recalling an answer from memory strengthens it more than re-reading it (this is why quizzes, flashcards and mocks beat re-reading). **Spacing**: reviews spread over days stick better than the same reviews crammed into one sitting. Everything below is retrieval, spaced.
+
+The plan assumes your plan setting of about 8–10 hours a week, so roughly 1.5 hours on a weekday and 2–3 hours on a weekend day. Scale the blocks, not the order.
+
+| Day | Main block (60–90 min) | Daily block (15–25 min) |
+|---|---|---|
+| D-14 | Baseline: open [/dashboard](/dashboard), list weak spots and interview trends; pick 3 mock cases to redo | Flashcards due |
+| D-13 | Weak spot 1: reread the topic's H2 only, retake the section quiz tomorrow, not today | Flashcards due |
+| D-12 | Mock 1 (45 min, Mock mode) on your lowest-scoring case, then self-review | Flashcards; retake yesterday's quiz |
+| D-11 | Redo 2 failed simulator challenges from [/simulators](/simulators) | Flashcards |
+| D-10 | Weak spot 2 and 3 (reread, then quiz on D-9) | Flashcards |
+| D-9 | Mock 2 on a case you have **never** attempted | Flashcards; retake quizzes |
+| D-8 | Redo 2 more simulator challenges; last day to add new flashcards | Flashcards |
+| D-7 | Mock 3: redo Mock 1's case, compare scores on the dashboard | Flashcards |
+| D-6 | Deep-dive drill: 3 deep-dive questions from different cases, 5 minutes each, out loud | Flashcards |
+| D-5 | Mock 4 on a second unseen case | Flashcards |
+| D-4 | Weak spots left on [/today](/today); estimation drills | Flashcards |
+| D-3 | Last full mock (redo your weakest remaining case) | Flashcards |
+| D-2 | Light: reread your own mock notes and the reference designs you missed | Flashcards |
+| D-1 | Very light: checklist, setup, one 10-minute estimation warm-up, stop early | Flashcards due only |
+| D-0 | Warm-up only (see below) | Skip unless you want to |
+
+Five full mocks in two weeks is a sensible maximum for most people at 1.5 hours a day: each one is 45 minutes plus 20–30 minutes of honest self-review, and the review is where the learning happens. Two mocks back to back with no review teach you less than one with a careful review.
+
+<Figure caption="FIG. 8.1 · ONE DAY OF THE FINAL-REVIEW LOOP">
+  <Diagram label="Each day starts on the Today page, which shows flashcards due, the next simulator challenge and the top weak spot. Flashcards are reviewed first. The main block is either a weak-spot fix (reread one topic, then retake that section's quiz the next day), a failed simulator challenge, or a mock in Interview Mode followed by self-review. Results flow into the Dashboard, whose weak-spot list and interview score trends choose the next day's main block." chart={`flowchart LR
+    T[Today page] --> F[Flashcards due]
+    F --> M{Main block}
+    M --> W[Weak spot: reread topic, quiz next day]
+    M --> S[Failed simulator challenge]
+    M --> I[Mock in Interview Mode plus self-review]
+    W --> D[Dashboard]
+    S --> D
+    I --> D
+    D -->|weak spots and score trends| T`} />
+</Figure>
+
+*The loop is the point: every day's results decide the next day's work, so you spend time where the evidence says you are weak, not where you feel weak.*
+
+## Weak spots: what /today and /dashboard actually show
+
+<DepthStamp depth="deep" />
+
+The [Today](/today) page lists five things: flashcards due, the next unfinished lesson, the next simulator challenge, your top weak spot, and this week's deliverable. The [Dashboard](/dashboard) shows up to five weak spots. Knowing exactly how a weak spot is computed tells you how to use it well.
+
+A weak spot appears in two cases:
+
+1. **A quiz topic below 70%.** For each section, the app takes your **last two quiz attempts**, groups the answers by topic, and flags any topic where you got under 70% right. The list is sorted lowest accuracy first.
+2. **A stale section.** If you set a plan start date in [Settings](/settings), a section whose checkpoints you have never touched 14 or more days after its plan week ended is flagged as late.
+
+The first rule has a consequence worth doing the arithmetic on. A 10-question quiz over 5 topics gives about 2 questions per topic per attempt, so a topic's weak-spot score is usually based on about **4 answers**. 2 of 4 is 50% (flagged); 3 of 4 is 75% (cleared). So a single retake where you get that topic's two questions right clears it, even if you only remembered the answers from yesterday. That is why the routine says *reread the topic, then retake the quiz the next day*, not straight away: a retake 24 hours later is retrieval; a retake 2 minutes later is short-term memory. With so few answers per topic, also treat the list as a pointer, not a verdict: a 50% from two attempts is a reason to look, and a cleared topic you still feel unsure about is worth a flashcard pass anyway.
+
+<Callout type="tip" title="Fix the reason, not the score">
+When a weak spot appears, read the explanation of each question you missed before rereading the lesson. Most quiz explanations here say why each wrong option is wrong; if you picked the same distractor twice, that distractor is your misconception, and it is usually one sentence to fix.
+</Callout>
+
+## Flashcards in the last two weeks
+
+<DepthStamp depth="deep" />
+
+[Flashcards](/flashcards) use the classic <Term slug="spaced-repetition">spaced repetition</Term> algorithm SM-2. Its intervals decide what you can still usefully add this late:
+
+- A new card graded Good or Easy comes back after **1 day**, then after **6 days**, then after about 6 × 2.5 = **15 days** (the default ease is 2.5).
+- A card graded **Again** restarts: it comes back tomorrow and counts a lapse.
+- Hard, Good and Easy push the interval out; Again pulls it back to one day.
+
+Work out what this means for a card you add at D-7: you see it at D-7 and D-6, and its next review lands on D-0, interview day. You get only two reviews before the interview. A card added at D-8 is seen on D-8 and D-7, and its 6-day review lands on D-1: three reviews, the last one spaced. So roughly **D-8 is the last useful day to add new cards**; after that, review only what is due. That is the "last day to add new flashcards" line in the table.
+
+Daily load is easy to estimate. With the default limit of 20 new cards a day, a steady state has today's 20 new cards, yesterday's 20 at their 1-day review and the 20 from six days ago at their 6-day review: about 60 cards plus older reviews and lapses. At roughly 10–15 seconds a card, that is 10–20 minutes, which is why the daily block is 15–25 minutes. If the due count on Today gets above 150, lower **New cards / day** on the Flashcards page for a few days rather than skipping reviews; skipped reviews pile up.
+
+Two habits help this late. Use the **Phase** filter on the Flashcards page to review Phase 7 and the phases behind your weak spots first. And grade honestly: "Hard" for a card you got slowly is information, "Good" for a card you half-remembered is not.
+
+## Redoing failed simulator challenges and weak mocks
+
+<DepthStamp depth="deep" />
+
+### Simulator challenges
+
+The [Simulators](/simulators) page shows each simulator with a count of challenges passed, and each challenge inside a simulator is marked **Passed** or **Not yet**, with your best value and number of tries. The unfinished ones are your list. Prioritise the simulators behind your deep-dive weak points: if hot keys and stampedes worry you, the cache simulator's "Survive a cache flush" challenge is directly on topic; if retries and failure handling do, the retry-storm and circuit-breaker simulators are.
+
+The rule for a redo: **say the mechanism out loud before touching the controls.** "The flush sends every read to the database at once; coalescing or a warm-up should keep the database under capacity." Then run it. If the prediction was wrong, that gap is exactly what an interviewer would have found.
+
+### Mocks in Interview Mode
+
+[Interview Mode](/interview/url-shortener) offers **Practice** (pause any time, hints free, deep dives can be asked for early) and **Mock** (timed with no pause, each hint costs one rubric point). For the last two weeks use **Mock at 45 minutes**: the default time split is 5/5/5/5/10/10/5 minutes for requirements, estimation, API, data model, high-level design, deep dives and wrap-up, and the deep-dive questions arrive on the clock during the deep-dive window, as they would in a real loop.
+
+After submitting, self-review is where the value is. Score each rubric criterion 0, 1 or 2 against **what you actually said or drew**, not what you meant. Then use the comparison: the review shows the case's reference design, runs both designs against the case's traffic (p99, error rate, single points of failure, cost and the case's run challenge) and lists the case's common mistakes. Write down the one or two criteria where you scored 0; those are tomorrow's focus.
+
+Which mocks to redo:
+
+- **Your lowest recent score** on the Dashboard's interview list, after at least 3–4 days so you are reconstructing the design, not replaying it.
+- **At least two cases you have never attempted.** A redo measures whether you fixed a gap; an unseen case measures whether the skill transfers, which is what the real interview tests.
+- **Cases that stress your weak deep dives**: [news feed](/case-studies/news-feed) for fan-out and celebrities, [ticket booking](/case-studies/ticket-booking) for contention and holds, [chat app](/case-studies/chat-app) for connections and ordering.
+
+### How the last two weeks went wrong: a timeline
+
+| When | What happened | Why it hurt |
+|---|---|---|
+| D-14 to D-8 | Reread Phase 2 and Phase 3 lessons cover to cover | Felt productive; no retrieval, weak spots unchanged |
+| D-7 | Started a new topic not in the plan | New material with only a week to space it |
+| D-6 to D-3 | Skipped flashcards "to focus"; due count grew to 400 | Reviews piled up; old material started to fade |
+| D-2 | Did a first mock, scored 45%, panicked | No time left to act on the review |
+| D-1 | Two more mocks back to back until midnight | Tired, no review of either, short sleep |
+| D-0 | Ran out of time at the deep dives, again | The pacing problem was visible on D-2 and never fixed |
+
+Every fix is in the routine above: mocks start on D-12 so their reviews have time to change something, flashcards stay daily, nothing new after D-8, and D-1 is light.
+
+## Reading your trends on /dashboard
+
+<DepthStamp depth="tradeoffs" />
+
+The [Dashboard](/dashboard) shows quiz accuracy over your last 30 quizzes, cards reviewed per day, study minutes per day, your weak spots, and **interview attempts grouped by case**: each case lists its self-score percentages oldest to newest (for example "50% → 63% → 75%") with an up or down arrow and the change in points between the first and latest attempt.
+
+Read these numbers with their limits in mind:
+
+- **The interview percentage is your self-score after hints**: the sum of your rubric scores minus one point per hint used in Mock mode, out of 2 × the number of criteria, the same number the save screen showed. It is still your own judgement, so it is only as honest as your scoring.
+- **A redo of the same case is not independent.** A rise from 50% to 75% on a case you have now seen three times is partly memory. The unseen-case mocks are the honest test.
+- **Self-scores drift.** You will be stricter on a bad day and kinder on a good one. Re-score one old attempt's criteria from your saved notes on D-2 to check you are applying the same standard.
+- **Accuracy and minutes are inputs, not outcomes.** Rising study minutes with flat quiz accuracy usually means re-reading instead of retrieving.
+
+<TradeoffBox title="Final-review choices" items={[
+  { gain: "Redoing a failed mock case: direct evidence the gap is fixed", cost: "Memory inflates the score; it says little about transfer to a new problem" },
+  { gain: "A fresh, unseen case: honest test of the skill", cost: "A low score late on can shake confidence; schedule it no later than D-3" },
+  { gain: "Adding new flashcards: covers gaps you just found", cost: "After about D-8 a new card gets only two reviews before the interview" },
+  { gain: "Mock mode with hints off: closest to the real thing", cost: "Harder to learn mid-session; use Practice mode for a case you have never seen at all" },
+  { gain: "A light final two days: rested and sharp", cost: "Feels like wasted time, and anxiety pushes you to cram instead" }
+]} />
+
+<NotWhenBox title="When not to follow this routine as written" items={[
+  "Your interview is a specific format you know (for example, only an API design or only a component): weight the mocks and drills toward that format.",
+  "Your dashboard shows no weak spots and mocks above 80% on unseen cases: cut volume further and keep only flashcards and one mock every three days.",
+  "You have far less than two weeks: keep the daily flashcards, do one mock with a full review every other day, and skip the simulator redos.",
+  "You are exhausted or ill: sleep beats an extra mock every time."
+]} />
+
+## The night before and interview day
+
+<DepthStamp depth="deep" />
+
+### The night before (D-1)
+
+- **Stop studying early in the evening.** Last-minute cramming adds little you will recall and costs sleep, which consolidation needs.
+- **Read the [interview-day checklist](/reference/interview-day-checklist)** once and set up what it asks for.
+- **Prepare the environment.** For a remote interview: test the video tool, the drawing tool or shared whiteboard you will use, your microphone and your internet connection; have paper and a pen. For an on-site: route, arrival time, ID if asked.
+- **Write a one-page card** for yourself: the seven steps with the 5/5/5/5/10/10/5 split, the seconds-per-day shortcut (about 10⁵), and two or three opening sentences you have practised ("I'll spend about five minutes on requirements, then estimate...").
+- **Do not do a mock.** A bad mock the night before teaches nothing you can still use and hurts sleep.
+
+### Interview day (D-0)
+
+A 20–30 minute warm-up, finished at least 30 minutes before the start:
+
+1. **One estimation drill** (5 minutes): open the estimation calculator below, or do the URL shortener numbers on paper: 100M links a month ÷ about 2.6M seconds ≈ 40 writes/s, ×100 ≈ 4,000 reads/s, ×5 at peak ≈ 19,500/s.
+2. **Say the framework out loud once** (3 minutes), with the minute marks.
+3. **One deep-dive answer out loud** (5 minutes): pick a pattern you have practised, such as the hot-key answer, and give it the shape you would use: diagnosis, mechanism with a number, second failure mode, detection, rollout.
+4. **Glance at the checklist** and stop.
+
+During the interview, the routine's habits do the work: state assumptions, keep to the clock, propose deep dives, add one operational sentence per decision. If one part goes badly, say so briefly and move on; interviewers generally form an overall picture, and a strong recovery is evidence too.
+
+## Common misconceptions
+
+<Misconception wrong="The last two weeks are for re-reading everything once more." right="Re-reading feels productive but builds little recall. Spend the time on retrieval aimed at measured weak spots: quizzes, flashcards, challenges and mocks with reviews." />
+
+<Misconception wrong="Clearing a weak spot on Today means I have fixed it." right="A weak-spot score is usually based on about four answers over your last two attempts, so one lucky or memorised retake clears it. Retake the next day, and treat the list as a pointer, not a verdict." />
+
+<Misconception wrong="More mocks in the final days means better performance." right="Each mock is only as useful as its review. Five mocks with careful reviews beat ten without, and the last full mock should be on D-3, not D-1." />
+
+<Misconception wrong="A rising score on the same case shows I'm ready." right="Repeat attempts are inflated by memory, and the dashboard trend does not include Mock-mode hint penalties. Unseen cases are the honest test." />
+
+## Interview angle
+
+<InterviewAngle title="Final review" questions={[
+  "Walk me through how you'd approach this problem.",
+  "What would you do first if you had only 30 minutes?",
+  "Which part of your design are you least sure about?",
+  "What would you monitor once this is in production?",
+  "What would you change with more time?"
+]}>
+These general questions often open or close a session, and they reward the habits the final two weeks drill: a stated agenda with minute marks, a quick estimate that drives decisions, honest naming of your weakest part with a plan for it, and an operational close. If you have reviewed your own mocks, you already know your typical weak criterion; volunteering how you would strengthen that part of the design is a good answer to "what would you change with more time?".
+</InterviewAngle>
+
+## Try it
+
+Use the estimation calculator as your interview-day warm-up: do the numbers on paper first, then check them here.
+
+<Simulator id="estimation-calculator" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+1. Today: open [/dashboard](/dashboard), write down your top three weak spots and your lowest interview score, and put them into the D-14 to D-1 table above with real dates.
+2. Run a 45-minute Mock in [Interview Mode for the news feed](/interview/news-feed) if you have never attempted it, then score every criterion and write one sentence for each criterion you scored 0.
+3. Open your mock's design in the [Design Studio](/studio), press Run, and compare it with the reference design in the [news feed case study](/case-studies/news-feed).
+4. Read the [interview-day checklist](/reference/interview-day-checklist) now, not the night before, so nothing on it surprises you.

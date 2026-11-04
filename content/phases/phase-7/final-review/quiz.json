@@ -1,0 +1,331 @@
+[
+  {
+    "id": "q1",
+    "type": "scenario",
+    "prompt": "It is D-12. What should this learner change first?",
+    "scenario": "Plan for the next five days: reread all of Phase 2 and Phase 3 cover to cover, then start mocks on D-6. Flashcards paused \"to focus\".",
+    "options": [
+      {
+        "id": "a",
+        "text": "Nothing: rereading everything once more is the safest way to finish strong"
+      },
+      {
+        "id": "b",
+        "text": "Swap rereading for weak-spot quizzes, keep daily cards, start mocks now"
+      },
+      {
+        "id": "c",
+        "text": "Add a brand-new topic so there are no gaps left at all"
+      },
+      {
+        "id": "d",
+        "text": "Move every mock to the final two days so the practice is fresh in memory"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "(b) is right: retrieval aimed at measured weak spots beats rereading, daily flashcards stop reviews piling up, and starting mocks early leaves time for their reviews to change something. (a) feels productive but builds little recall. (c) adds material with too little time to space it. (d) leaves no time to act on what the mocks reveal and costs sleep.",
+    "topicId": "final-two-weeks",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "scenario",
+    "prompt": "What is the best next step for this weak spot?",
+    "scenario": "Today shows a weak spot: \"Replication lag\", 50%, 4 answers. The learner is about to retake that section's quiz right now.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Retake now, since clearing the weak spot is the goal of the exercise"
+      },
+      {
+        "id": "b",
+        "text": "Ignore it, because four answers are too few to mean anything"
+      },
+      {
+        "id": "c",
+        "text": "Read the missed explanations and the topic, then retake tomorrow"
+      },
+      {
+        "id": "d",
+        "text": "Reset the quiz history so the topic starts again from a clean slate"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "(c) is right: the explanations show which misconception you picked, and a retake a day later tests retrieval rather than short-term memory. (a) would probably clear the flag (two right answers turn 2/4 into 3/4 = 75%) without fixing anything. (b) overcorrects: a small sample is a reason to look, not to ignore. (d) throws away the evidence.",
+    "topicId": "weak-spot-loop",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "single",
+    "prompt": "Which situation produces a weak spot on Today and the Dashboard?",
+    "options": [
+      {
+        "id": "a",
+        "text": "A topic under 70% over the section's last two quiz attempts"
+      },
+      {
+        "id": "b",
+        "text": "Any flashcard you have graded Again more than once in the last week"
+      },
+      {
+        "id": "c",
+        "text": "A mock interview that scored under 50% overall on the rubric"
+      },
+      {
+        "id": "d",
+        "text": "A simulator challenge marked Not yet after three tries"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "(a) is right: weak spots come from quiz topics under 70% over the last two attempts, plus stale sections whose checkpoints are untouched 14+ days after their plan week (with a plan start date set). (b) is not used: lapses affect the card's schedule, not the weak-spot list. (c) shows up in the Dashboard's interview trend, not as a weak spot. (d) shows on the Simulators page, not the weak-spot list.",
+    "topicId": "weak-spot-loop",
+    "difficulty": 1
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "It is D-5. Should the learner add these 40 new cards now?",
+    "scenario": "The learner found a gap in consistency models and wants to add the 40 new cards from that section's deck. Flashcards use SM-2: new cards come back after 1 day, then 6 days.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Yes, all 40 today, since more cards always means more recall"
+      },
+      {
+        "id": "b",
+        "text": "Yes, but grade them all Easy so they come back faster"
+      },
+      {
+        "id": "c",
+        "text": "No: cards are useless unless added at least a month ahead"
+      },
+      {
+        "id": "d",
+        "text": "Mostly no: drill the few that matter by hand; added cards get ~2 reviews"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "(d) is right: a card added at D-5 is seen at D-5 and D-4, and its 6-day review lands after the interview, so the scheduler adds little; a short manual drill of the few cards that matter is better. (a) adds 40 cards for only two scheduled reviews each and raises tomorrow's load. (b) is backwards: Easy pushes the next review further away. (c) overstates it: two reviews still help a little, they just aren't spaced.",
+    "topicId": "flashcard-review",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "scenario",
+    "prompt": "What should the learner do about this flashcard backlog?",
+    "scenario": "D-9. Today shows 310 flashcards due. The learner has been adding 20 new cards a day (the default) and skipped reviews for three days.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Lower new cards per day for a few days and clear due reviews first"
+      },
+      {
+        "id": "b",
+        "text": "Raise the new-card limit so that the backlog is cleared faster overall"
+      },
+      {
+        "id": "c",
+        "text": "Skip flashcards until after the interview and focus on the mocks"
+      },
+      {
+        "id": "d",
+        "text": "Grade the whole backlog Good without reading the cards to reset it"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "(a) is right: the queue shows due reviews before new cards, and lowering the new-card limit stops adding to the pile while you catch up. (b) adds more cards, making the backlog worse. (c) lets older material fade during the exact weeks you need it. (d) corrupts the schedule: cards you no longer know would be pushed days away.",
+    "topicId": "flashcard-review",
+    "difficulty": 1
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "Which redo approach gets the most out of this failed challenge?",
+    "scenario": "The cache simulator's \"Survive a cache flush\" challenge shows Not yet, best value below target, 4 tries.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Try random control settings until the challenge passes, then move on quickly"
+      },
+      {
+        "id": "b",
+        "text": "Predict out loud why the flush overloads the DB and what fixes it, then run"
+      },
+      {
+        "id": "c",
+        "text": "Skip it, since simulator challenges are never asked about in real interviews"
+      },
+      {
+        "id": "d",
+        "text": "Reset the seed repeatedly until you find one where it happens to pass"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "(b) is right: stating the mechanism first (every read hits the database at once; coalescing or warming keeps it under capacity) turns the run into a test of your understanding, which is what an interviewer probes. (a) may pass without learning why. (c) is wrong: the stampede after a flush is a standard deep-dive follow-up. (d) games the randomness instead of fixing the design.",
+    "topicId": "redo-failures",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "prompt": "How should the learner interpret this dashboard trend?",
+    "scenario": "Dashboard, interview attempts: URL shortener 50% → 63% → 88% · ▲ 38 pts · 3 attempts. All three were Mock mode. No other case has been attempted.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Ready: 88% is a strong score, so stop doing mocks now"
+      },
+      {
+        "id": "b",
+        "text": "Not ready: the trend is meaningless and should be ignored"
+      },
+      {
+        "id": "c",
+        "text": "Real progress, but inflated by repeating one case; mock an unseen case"
+      },
+      {
+        "id": "d",
+        "text": "Retake the URL shortener until it reaches 100%"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "(c) is right: the rise is real evidence, but three attempts at one case are partly memory of that case, so an unseen case is the honest test of transfer. (a) trusts a number earned on a case seen three times. (b) overcorrects: the rise does show some improvement. (d) optimises memory of one case rather than the skill.",
+    "topicId": "score-trends",
+    "difficulty": 2
+  },
+  {
+    "id": "q8",
+    "type": "scenario",
+    "prompt": "It is the evening of D-1. What should the learner do?",
+    "scenario": "The interview is at 10:00 tomorrow. The learner feels unprepared on multi-region and plans two full mocks tonight, finishing around midnight.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Do both mocks: more practice is always better the night before"
+      },
+      {
+        "id": "b",
+        "text": "Do one mock and skip its review to save time for sleep later"
+      },
+      {
+        "id": "c",
+        "text": "Read the multi-region lesson twice in full, then sleep"
+      },
+      {
+        "id": "d",
+        "text": "Read the checklist, set up, write a one-page card, stop early"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "(d) is right: the night before is for setup and rest; a mock now cannot be reviewed and acted on, and short sleep hurts recall tomorrow. (a) costs sleep and adds stress for no usable learning. (b) is a mock without its review, which is where the value is. (c) is cramming a new deep topic hours before the interview.",
+    "topicId": "interview-day",
+    "difficulty": 1
+  },
+  {
+    "id": "q9",
+    "type": "single",
+    "prompt": "Which Interview Mode setting is closest to a real interview for late-stage mocks?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Practice mode, 60 minutes, hints on"
+      },
+      {
+        "id": "b",
+        "text": "Mock mode, 45 minutes, hint buttons off"
+      },
+      {
+        "id": "c",
+        "text": "Practice mode, 30 minutes, paused between steps"
+      },
+      {
+        "id": "d",
+        "text": "Mock mode, 60 minutes, with all deep dives requested early"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "(b) is right: Mock mode is timed with no pause, 45 minutes matches a typical loop, and with hints off there is no help a real interviewer would not give. (a) allows pausing and free hints. (c) allows pausing, which removes time pressure. (d) is not possible as described: requesting deep dives early is a Practice-mode feature; in Mock they arrive on the clock.",
+    "topicId": "redo-failures",
+    "difficulty": 1
+  },
+  {
+    "id": "q10",
+    "type": "multi",
+    "prompt": "Which belong in an interview-day warm-up? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "One quick estimation drill, on paper or in the calculator"
+      },
+      {
+        "id": "b",
+        "text": "Saying the seven steps and their minute marks out loud once"
+      },
+      {
+        "id": "c",
+        "text": "A full 45-minute mock on a case you have never seen"
+      },
+      {
+        "id": "d",
+        "text": "One practised deep-dive answer, out loud"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "d"
+    ],
+    "explanation": "(a), (b) and (d) are right: short retrieval that primes the habits you will use, finished well before the start. (c) is too long and risks a bad result shaking your confidence an hour before the interview.",
+    "topicId": "interview-day",
+    "difficulty": 1
+  },
+  {
+    "id": "q11",
+    "type": "scenario",
+    "prompt": "What does this pattern on the dashboard most likely mean?",
+    "scenario": "Over two weeks, study minutes per day have doubled, while quiz accuracy over the last 30 quizzes is flat at about 65%.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Accuracy always lags study time by weeks; nothing needs to change yet"
+      },
+      {
+        "id": "b",
+        "text": "The quizzes are too hard and should be skipped from now on"
+      },
+      {
+        "id": "c",
+        "text": "Likely extra time on re-reading; shift it to retrieval on weak topics"
+      },
+      {
+        "id": "d",
+        "text": "The dashboard is probably miscounting minutes, so the chart can be ignored"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "(c) is right: more minutes with flat accuracy usually means the added time is passive; moving it to quizzes, flashcards and weak-spot fixes is the change. (a) assumes improvement will arrive without changing the method, which two weeks of flat data argue against. (b) removes the measurement instead of acting on it. (d) blames the instrument with no evidence.",
+    "topicId": "score-trends",
+    "difficulty": 2
+  }
+]

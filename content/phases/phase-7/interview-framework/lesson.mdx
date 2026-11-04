@@ -1,0 +1,264 @@
+## Why it matters
+
+A system design interview is not a quiz with a right answer. It is 45 minutes in which an interviewer watches how you turn a one-line prompt ("design a URL shortener") into a defensible design, and most candidates who fail do not fail on knowledge. They fail on process: twelve minutes of questions and no numbers, a beautiful diagram with no request walked through it, a deep dive into the part that did not matter, or a clock that runs out before they ever say what breaks. Everything in Phases 1–6 is the material; this section is the order you present it in. The seven steps taught here (Requirements, Estimation, API, Data Model, High-Level Design, Deep Dives, Wrap-up) are the same seven headings used by your Design Studio notes and by Interview Mode, whose rubrics tag every criterion with one of these steps. Learn the framework once and every practice session reinforces it.
+
+## The seven steps and why this order
+
+<DepthStamp depth="deep" />
+
+Each step produces something the next one consumes. That dependency chain is the reason for the order, and the reason skipping a step usually hurts later.
+
+| Step | What it produces | Who consumes it |
+|---|---|---|
+| 1. Requirements | Functional list, <Term slug="non-functional-requirement">non-functional</Term> targets, out-of-scope list | Every later step: it is the scoring sheet for your own design |
+| 2. Estimation | Peak reads/s, writes/s, storage, working set | Data model (store choice), HLD (cache, instance count), deep dive choice |
+| 3. API | Endpoints with request, response and status codes | Data model (what must be queryable), HLD (which paths to draw) |
+| 4. Data Model | Entities, keys, store choice and why | HLD (where data lives), deep dives (consistency, hot partitions) |
+| 5. High-Level Design | Boxes, arrows, and each core request walked end to end | Deep dives pick the riskiest box or arrow |
+| 6. Deep Dives | 2–3 hard sub-problems solved with options and a decision | Wrap-up |
+| 7. Wrap-up | Failure modes, what breaks at 10×, trade-offs restated as decisions | The interviewer's final impression |
+
+<Figure caption="FIG. 1.1 · THE SEVEN STEPS AND WHAT FLOWS BETWEEN THEM">
+  <Diagram label="Seven steps in a row: Requirements feeds Estimation with targets; Estimation feeds API and Data Model with numbers; API feeds Data Model with access patterns; Data Model feeds High-Level Design with store choice; High-Level Design feeds Deep Dives with the riskiest components; Deep Dives feed Wrap-up with decisions. A feedback arrow from Deep Dives back to Requirements shows that a deep dive can revisit an assumption." chart={`flowchart LR
+    R[1 Requirements] -->|targets| E[2 Estimation]
+    E -->|peak numbers| A[3 API]
+    A -->|access patterns| D[4 Data Model]
+    D -->|store and keys| H[5 High-Level Design]
+    H -->|riskiest parts| X[6 Deep Dives]
+    X -->|decisions| W[7 Wrap-up]
+    X -.->|revisit an assumption| R`} />
+</Figure>
+
+*The dotted arrow matters: a deep dive that contradicts an early assumption should send you back to say so out loud, not be quietly ignored.*
+
+Two clarifications. First, the steps are a spine, not a cage. If the interviewer says "skip the API, I care about the storage layer", you skip it. Second, the field genuinely disagrees about estimation. Some interviewers want explicit arithmetic in every interview; others consider detailed math a time sink and prefer that candidates estimate only when a number changes a decision. The safe middle is a two-to-three minute estimate that ends in a conclusion ("writes are trivial, reads need a cache"), and an offer: "I can go deeper on the numbers if useful."
+
+<Callout type="analogy" title="Building a house">
+You do not pour a foundation before you know how many floors the house has. Requirements are the brief, estimation is the load calculation, API and data model are the floor plan, the high-level design is the frame, deep dives are the plumbing that could flood the house, and the wrap-up is the inspection. Where it breaks: a house cannot be redesigned mid-build cheaply, while in an interview you can and should revisit an early decision when a deep dive proves it wrong.
+</Callout>
+
+## A minute-by-minute time budget
+
+<DepthStamp depth="deep" />
+
+<Term slug="timeboxing">Timeboxing</Term> means giving each step a fixed amount of time and moving on when it runs out, even if the step feels unfinished. Interview Mode's suggested split for 45 minutes is **5 / 5 / 5 / 5 / 10 / 10 / 5**, and the same weights scale to other lengths: 60 minutes becomes **7 / 7 / 7 / 7 / 13 / 13 / 6**, and 30 minutes becomes **4 / 3 / 3 / 3 / 7 / 7 / 3**.
+
+| Clock (45 min) | Step | On the whiteboard by the end | Clock (60 min) |
+|---|---|---|---|
+| 0:00–5:00 | Requirements | Three lists: functional, non-functional with numbers, out of scope | 0:00–7:00 |
+| 5:00–10:00 | Estimation | Peak reads/s, writes/s, storage over retention, working set, one-line conclusion | 7:00–14:00 |
+| 10:00–15:00 | API | 3–5 endpoints with method, path, key fields, status codes | 14:00–21:00 |
+| 15:00–20:00 | Data Model | Entities with keys, the store chosen, one sentence why | 21:00–28:00 |
+| 20:00–30:00 | High-Level Design | Box diagram, each core request traced with numbered arrows | 28:00–41:00 |
+| 30:00–40:00 | Deep Dives | 2 deep dives (3 in 60 min), each with options, numbers and a decision | 41:00–54:00 |
+| 40:00–45:00 | Wrap-up | Failure table, the first thing to break at 10×, trade-offs list | 54:00–60:00 |
+
+Treat this as the budget for the design portion. A real 45-minute slot often loses three to five minutes to introductions and to your own questions at the end, so in practice you may have 38–40 minutes. Compress API and Data Model first (they can share one five-minute block for simple systems); never compress Deep Dives, because that is where most of the signal is.
+
+What the extra 15 minutes of a 60-minute interview buys: not more requirements, but a third deep dive and a real wrap-up. Candidates who spend the extra time on a longer requirements list usually end at the same depth they would have reached in 45.
+
+Checkpoints worth glancing at the clock for:
+
+- **Minute 5.** If you have not written a single number yet, start estimating now.
+- **Minute 20.** If there is no diagram on the board, draw the simplest one that serves the core request.
+- **Minute 30.** If you have not started a deep dive, pick the riskiest component and say "let me go deep on this".
+- **Minute 40.** Stop whatever you are doing and summarise. An unfinished deep dive plus a wrap-up scores better than a finished deep dive and silence.
+
+<Callout type="analogy" title="A flight plan">
+A pilot files a plan with waypoints and times. Being two minutes late at a waypoint is normal; being twenty minutes late means you change something now, not at the destination. The minute marks above are waypoints. Where it breaks: a flight plan is fixed before take-off, while an interviewer can redirect you mid-flight, and following them beats sticking to the plan.
+</Callout>
+
+## What to say and what to draw at each step
+
+<DepthStamp depth="deep" />
+
+Strong candidates narrate their reasoning in short, decision-shaped sentences. Below is a compact script per step: one opening sentence, what goes on the board, and what a weak version sounds like.
+
+| Step | Say | Draw | Weak version |
+|---|---|---|---|
+| Requirements | "Let me confirm what we're building. I'll list functional requirements, then targets, then what I'm leaving out." | Three labelled lists | Asks fifteen questions without writing anything down |
+| Estimation | "I'll size the peak, because that's what we design for. Assumptions first." | Assumptions, then derived numbers with units | Numbers with no derivation, or arithmetic with no conclusion |
+| API | "Here's the contract. I'll include status codes and idempotency since retries matter here." | Endpoint list | `createLink()` and `getLink()` with no shapes |
+| Data Model | "The hot access pattern is X, so the key is Y, and that points at store Z." | Entity table with keys marked | "We'll use NoSQL because it scales" |
+| High-Level Design | "Let me walk a redirect through this, request by request." | Boxes plus numbered arrows for each core path | Ten boxes, no path traced |
+| Deep Dives | "The riskiest part is X. Options are A, B, C. Given our numbers, I pick B because..." | A comparison table or a zoomed sub-diagram | Describes one option as if there were no others |
+| Wrap-up | "Let me close with failures, what breaks at 10×, and the trade-offs I made." | Short failure list and a 10× note | "I think that's it" |
+
+The single most useful habit is ending each step with a sentence that names its consequence. "Writes are 40 per second, so the write path doesn't need sharding" is worth more than the arithmetic before it, because it shows you know why you did the math.
+
+<Callout type="analogy" title="A cooking show">
+A good cooking presenter says what they are doing and why while their hands work. Silence while chopping loses the audience; talking without cooking is a lecture. Narrate and draw at the same time. Where it breaks: a cooking show is rehearsed, and an interview should sound like thinking, so it is fine to pause and say "give me ten seconds to work this out".
+</Callout>
+
+## Driving the conversation
+
+<DepthStamp depth="tradeoffs" />
+
+Many interviewers expect the candidate to drive: to decide what comes next, announce it, and keep the session moving, while staying open to redirection. Three habits do most of the work.
+
+**<Term slug="signposting">Signposting</Term>** means announcing where you are and where you are going: "That's requirements. Next I'll estimate traffic, two or three minutes." It lets the interviewer redirect you cheaply ("skip estimation, I'll give you 4,000 QPS") before you have spent the time.
+
+**Checking in** at step boundaries, not every sentence: "Does this scope match what you had in mind?" or "Anything you'd like me to go deeper on before I move to the data model?" Checking in after every sentence reads as needing permission; never checking in reads as not listening.
+
+**Ask permission vs proceed.** A useful rule:
+
+- **Proceed with a stated assumption** when the choice is reversible and the interviewer can easily correct you: "I'll assume 5× peak because one link can go viral; tell me if you'd prefer a different number."
+- **Ask** when the answer changes the architecture and you cannot guess it safely: "Can a link's destination be edited after creation? That decides whether caches can ever be wrong."
+- **Offer a choice** when two directions are equally valid and the interviewer may have a preference: "For deep dives I'd take ID generation and caching. Or would you rather I look at analytics?"
+
+When the interviewer interrupts, treat it as a gift: they are telling you where the points are. Answer the question, then signpost back: "Good question, let me answer it and then return to the create path."
+
+<Callout type="analogy" title="A tour guide">
+A good tour guide says where the group is going next, checks nobody is lost at each stop, and changes route if someone asks to see the cathedral, without asking permission before every step. Where it breaks: a tour group has no hidden agenda, while an interviewer often holds back a deep-dive question until you reach the right point.
+</Callout>
+
+## Worked walkthrough: the URL shortener
+
+<DepthStamp depth="deep" />
+
+This follows the [URL shortener case study](/case-studies/url-shortener) step by step, with the numbers from its reference solution. The interviewer opens: *"Let's design a URL shortener. People paste a long link and get a short one back, and anyone who opens the short link ends up at the original page. Where would you like to start?"*
+
+### 0:00–5:00 · Requirements
+
+Candidate: *"I'll start with scope. Functionally: create a short link, optionally with a custom alias and an expiry; redirect; list, disable and delete links; and click analytics. Can a destination be edited after creation?"* Interviewer: no. *"Good, then I'll treat destinations as immutable. That makes every cache correct by construction: a cached entry can only go stale by being disabled or expired."*
+
+Non-functional targets, after asking the interviewer: redirect adds under **50 ms at p99**; redirect availability higher than create availability (**99.99% vs 99.9%**); a code must **never** resolve to another URL; codes must **not be enumerable**; analytics can be minutes stale and must never slow a redirect. Out of scope: QR rendering, billing, the account system, abuse detection beyond a hook.
+
+### 5:00–10:00 · Estimation
+
+Assumptions from the interviewer: 100M new links a month, 100 redirects per create, 5-year retention, 5× peak.
+
+- Writes: 100M ÷ (30 × 86,400 = 2,592,000 s) = **38.6/s**, call it 40.
+- Reads: 38.6 × 100 = **3,860/s**; total about **3,900/s**; at 5× peak **19,500/s**.
+- Links stored: 100M × 12 × 5 = **6 billion**.
+- ID space: 62⁷ = **3.52 trillion**; 6B ÷ 3.52T = **0.17%** used. Six characters (62⁶ = 56.8B) would fit, but a random guess would then hit a real link about 1 time in 10.
+- Storage: budget 500 B per link → **3 TB**, **9 TB** with three replicas.
+- Working set: about 30M links clicked per day × 500 B = **15 GB**, fits in one cache cluster.
+
+Candidate, concluding: *"So the write path is about 40 per second, a single database could take it. I'm not going to spend time sharding writes. The design effort goes on the read path: tail latency, hot links, and making sure a code is never wrong."* That sentence is what the rubric's top level for traffic math asks for.
+
+### 10:00–15:00 · API
+
+- `POST /v1/links` with an <Term slug="idempotency-key">Idempotency-Key</Term> header and body `{longUrl, customAlias?, expiresAt?}` → `201` with the code; `409` if the alias is taken, `400` for a bad URL, `429` over quota.
+- `GET /{code}` → `302` with `Location` and `Cache-Control: private, max-age=300`; `404` if the code never existed, `410` if expired, disabled or deleted.
+- `GET /v1/links?cursor=…`, `DELETE /v1/links/{code}`, `GET /v1/links/{code}/stats`.
+
+Candidate: *"I'm choosing 302 rather than 301 here and I'll justify it in a deep dive. Short version: a 301 can be cached by browsers indefinitely, which breaks analytics, expiry and deletion."*
+
+### 15:00–20:00 · Data Model
+
+`link` keyed by `code` (the <Term slug="partition-key">partition key</Term>) holding `long_url`, `owner_id`, `expires_at`, `status`; `owner_link` keyed by owner for "my links"; `daily_stats` keyed by `(code, date)`; an idempotency record with a 24-hour TTL. Candidate: *"The hot path is a single-key lookup with no joins, and uniqueness needs insert-if-absent. A partitioned key-value store with conditional writes fits. Sharded Postgres would work just as well for a team that already runs it; at 40 writes a second this is an operations choice, not a scale choice."*
+
+### 20:00–30:00 · High-Level Design
+
+<Figure caption="FIG. 1.2 · THE BOARD AT MINUTE 30">
+  <Diagram label="Visitors and creators reach a load balancer, then nine stateless link-service instances across three zones. Redirect path numbered 1 to 4: in-process cache, then Redis, then the key-value store on a miss, then a 302 response. Create path: conditional insert into the key-value store and deletion of any negative-cache entry. Click events go asynchronously to a Kafka topic and analytics consumers." chart={`flowchart LR
+    V[Visitors] -->|1 GET code| LB[Load balancer]
+    C[Creators] -->|POST links| LB
+    LB --> S[Link service x9, 3 AZs]
+    S -->|2 in-process LRU 30 s| S
+    S -->|3 cache-aside, ~1 ms| R[(Redis 64 GB)]
+    S -->|4 miss or conditional insert| KV[(KV store RF=3)]
+    S -.->|async click event| K[[Kafka clicks]]
+    K -.-> A[Analytics consumers]`} />
+</Figure>
+
+The candidate walks three paths separately. **Redirect:** in-process cache, then Redis (<Term slug="cache-aside">cache-aside</Term>), then the store on a miss; check `status` and `expires_at`; return 302; append a click event to an in-memory buffer without waiting. Latency: about 1 ms load balancer + 5 ms service + 1 ms Redis, with 10% of requests paying about 5 ms more for the store: roughly 8 ms median, far under 50 ms at p99. **Create:** check idempotency record, validate, generate code, conditional insert, write `owner_link`, delete any <Term slug="negative-caching">negative-cache</Term> entry, return 201. **Analytics:** consumers aggregate per code per minute into `daily_stats`.
+
+Sizing aloud: *"If one instance serves about 5,000 redirects a second, peak needs 3.9 at full load. I want under 50% normally and under 80% with a zone down, so 9 instances, 3 per zone: 43% normally, 65% with a zone lost."*
+
+### 30:00–40:00 · Deep Dives
+
+The candidate proposes two: *"The riskiest parts are code generation and caching correctness. I'll take those unless you'd prefer analytics."*
+
+1. **Code generation.** Compare hash-and-truncate (birthday collisions: about (6×10⁹)² ÷ (2 × 3.52×10¹²) ≈ 5 million expected, plus two creators sharing one code), counter plus base62 (enumerable), Snowflake (11 characters, too long), and random 7 characters with a conditional insert. Decision: random, because at 40 writes per second a retry 0.17% of the time costs nothing and one mechanism serves custom aliases too.
+2. **301 vs 302 and caching.** Per-layer staleness: browser 5 min, in-process 30 s, Redis up to 24 h but deleted on disable, negative cache 60 s and deleted on create. A viral link becomes a <Term slug="hot-key">hot key</Term> on one Redis shard; the in-process cache plus <Term slug="request-coalescing">request coalescing</Term> absorbs it.
+
+### 40:00–45:00 · Wrap-up
+
+Candidate: *"Failures: a lost zone leaves 6 instances at 65%; a cold Redis sends up to about 19,300 reads a second to the store, so the store is sized for 30,000; if Kafka is down, redirects continue and we drop clicks with a metric, because analytics fails open. At 10×, the cache tier and hot keys break first, and I'd move new links to 8 characters. Codes are never reused; expired links become <Term slug="tombstone">tombstones</Term>. If we went multi-region, two regions could mint the same random code, so each region gets its own slice of the code space."*
+
+<Callout type="example" title="Scoring it">
+The case's rubric has 12 criteria, each tagged with one of the seven steps and scored 0, 1 or 2, so the maximum is 24. Notice where the points come from: two criteria for Requirements, two for Estimation, one each for API, Data Model and High-Level Design, three for Deep Dives and two for Wrap-up. The walkthrough reaches the top level on most of them; its weakest is the third deep-dive criterion (analytics, aliases and expiry), which it only touches in the wrap-up, the realistic cost of choosing two deep dives in 45 minutes. Running out of time before the wrap-up throws away up to 4 of 24 points (17%) that cost almost nothing to earn.
+</Callout>
+
+## How interviews go wrong, and how to recover
+
+<DepthStamp depth="tradeoffs" />
+
+A typical failure, minute by minute, on the same prompt:
+
+| Clock | What happens | What it costs |
+|---|---|---|
+| 0:00–12:00 | Eighteen clarifying questions, including QR codes and link-in-bio pages; nothing written down | Seven minutes over budget; the interviewer cannot see the scope |
+| 12:00–14:00 | "It's a big system, millions of users." No arithmetic | No numbers to justify later choices |
+| 14:00–24:00 | Designs a sharded write path with a ticket server and consistent hashing | Ten minutes on a path that carries 40 writes a second |
+| 24:00–33:00 | Draws twelve boxes including a CDN, three queues and a search cluster | No request is ever traced; the interviewer asks "where does a redirect go?" |
+| 33:00–43:00 | Interviewer asks about 301 vs 302; candidate picks 301 for speed | Analytics, expiry and deletion silently broken |
+| 43:00–45:00 | Time is up mid-sentence | No failures, no 10×, no trade-offs |
+
+The root cause is the missing estimate at minute 12: without "writes are 40 per second", nothing stops the candidate optimising the wrong path. Recovery is always possible, and naming it out loud is itself a positive signal:
+
+- **Over time on a step:** "I'm over time here, let me write down what we have and move on."
+- **Realise a mistake:** "I want to revisit something: with 40 writes a second, the sharding I drew is unnecessary. Let me simplify."
+- **Lost the thread:** "Let me step back and walk one redirect through what's on the board."
+- **Five minutes left, mid deep dive:** "Let me stop here and summarise: here's what I'd finish, and here's what breaks first."
+
+<Callout type="analogy" title="A sat-nav recalculating">
+A sat-nav does not refuse to work when you miss a turn; it says "recalculating" and finds the best route from where you are. Interviewers watch for exactly that: notice, say so, re-plan from here. Where it breaks: a sat-nav never apologises at length, and neither should you. One sentence of correction, then move.
+</Callout>
+
+<TradeoffBox title="Following the framework strictly vs flexibly" items={[
+  { gain: "Strict timeboxing guarantees you reach deep dives and a wrap-up", cost: "You may cut off a line of discussion the interviewer was enjoying" },
+  { gain: "Following the interviewer's redirects shows you listen", cost: "Without signposting back, you can lose the spine and never reach the wrap-up" },
+  { gain: "A short estimate that ends in a conclusion buys credibility for later choices", cost: "Some interviewers see detailed math as a time sink, so keep it to minutes" }
+]} />
+
+<NotWhenBox title="Running all seven steps at equal depth" items={[
+  "The interviewer says up front they want one component in depth (for example, only the storage engine): spend most of the time on that and compress the rest to a sentence each.",
+  "The prompt is a deep-dive question in disguise ('how would you build a distributed rate limiter?'): requirements and API take two minutes, the algorithm takes twenty.",
+  "The interviewer hands you the numbers: skip derivation, restate them, and draw the conclusion."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="More clarifying questions show more thoroughness." right="Questions earn points only when their answers change the design. Five targeted questions with the answers written down beat fifteen with none recorded." />
+
+<Misconception wrong="The diagram is the deliverable." right="The reasoning is. A diagram with one request traced through it, and numbers on the arrows, scores higher than a large diagram nobody walked through." />
+
+<Misconception wrong="The interviewer should lead, so wait for direction." right="Many interviewers expect you to drive: announce the next step, check in at boundaries, and follow their redirects when they come." />
+
+<Misconception wrong="If time runs short, skip the wrap-up to finish the deep dive." right="The wrap-up is cheap points: failure modes, what breaks at 10×, and trade-offs. Stop the deep dive at minute 40 and summarise." />
+
+## Interview angle
+
+<InterviewAngle title="The framework itself" questions={[
+  "Where would you like to start?",
+  "We have ten minutes left. What would you focus on?",
+  "Why did you choose to go deep on that component rather than another?",
+  "If you had another hour, what would you add?",
+  "What would you change if writes were 100 times higher?"
+]}>
+"Where would you like to start?" is a test of whether you have a process. Answer with the plan in one breath ("I'll confirm requirements, size it, sketch the API and data model, then the architecture, and go deep on the riskiest parts"), then start. "Ten minutes left" is a test of prioritisation: name the riskiest open question, spend six minutes on it, and keep four for the wrap-up.
+</InterviewAngle>
+
+## Try it
+
+Interview Mode's Estimation step has a small calculator of its own; the full simulator below lets you drill estimates against the clock. Set it to the URL shortener's shape and check that you land near 3,900 requests per second on average and 19,500 at a 5× peak, then try the drills with the calculator hidden.
+
+<Simulator id="estimation-calculator" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+1. Open [Interview Mode for the URL shortener](/interview/url-shortener) in Practice mode at 45 minutes, and follow this lesson's minute marks. At review, score yourself against the rubric and note which step's criteria lost points.
+2. Read the [URL shortener reference solution](/case-studies/url-shortener) only after your attempt, and compare your board at minute 30 with FIG. 1.2.
+3. Repeat the framework on [the news feed](/interview/news-feed) and [the rate limiter service](/interview/rate-limiter-service). In each, write the one-sentence conclusion of your estimate before minute 10.
+4. In [Design Studio](/studio), start a blank design and use its seven note headings as a checklist while you draw.

@@ -1,0 +1,5 @@
+[
+  { "id": "hello-interview-in-a-hurry", "title": "System Design in a Hurry", "author": "Hello Interview", "kind": "blog", "url": "https://www.hellointerview.com/learn/system-design/in-a-hurry/introduction", "why": "A free guide to a step-by-step interview delivery framework; compare its step names and timings with the seven steps here.", "topicIds": ["seven-steps", "time-budget"], "free": true },
+  { "id": "system-design-primer", "title": "The System Design Primer", "author": "Donne Martin", "kind": "repo", "url": "https://github.com/donnemartin/system-design-primer", "why": "Includes a short 'how to approach a system design interview question' outline and worked solutions to practise the framework on.", "topicIds": ["seven-steps", "say-and-draw"], "free": true },
+  { "id": "bytebytego", "title": "ByteByteGo", "author": "Alex Xu", "kind": "blog", "url": "https://bytebytego.com/", "why": "Its interview course opens with a four-step framework; useful to see the same ideas grouped differently.", "topicIds": ["seven-steps", "driving-conversation"], "free": false }
+]

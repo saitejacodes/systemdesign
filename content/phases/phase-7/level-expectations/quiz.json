@@ -1,0 +1,331 @@
+[
+  {
+    "id": "q1",
+    "type": "scenario",
+    "prompt": "The interviewer asks what happens when one short link gets 30,000 redirects per second. What is the most important thing missing from this answer?",
+    "scenario": "Candidate: \"That Redis shard gets overloaded, so I'd add more shards to the cluster to spread the load.\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "A plan for adding read replicas to the database behind Redis"
+      },
+      {
+        "id": "b",
+        "text": "The fact that one key lives on one shard, so more shards don't help"
+      },
+      {
+        "id": "c",
+        "text": "A switch from Redis to Memcached, which spreads hot keys across nodes natively"
+      },
+      {
+        "id": "d",
+        "text": "An estimate of total storage for five years of links"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "(b) is right: Redis Cluster hashes each key to one shard, so all 30,000 requests for that code still hit one shard however many shards exist; the fix is to absorb the key above Redis (an in-process cache) or replicate it. (a) moves load away from the store, but the store is not the bottleneck here; the single Redis shard is. (c) is false: Memcached also maps each key to one node and has no built-in hot-key spreading. (d) is irrelevant to a read-hotspot question.",
+    "topicId": "hot-key-three-levels",
+    "difficulty": 1
+  },
+  {
+    "id": "q2",
+    "type": "scenario",
+    "prompt": "This mid-level answer is solid. Which single addition would most move it towards a senior-level answer?",
+    "scenario": "Candidate: \"One key maps to one shard, so I'd add an in-process LRU of the hottest few thousand codes with a 30-second TTL on each instance. Links are immutable, so the only staleness is a just-disabled link, and 30 seconds is fine.\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "Replacing the LRU with an LFU eviction policy for better hit rates"
+      },
+      {
+        "id": "b",
+        "text": "Rewriting the link service in a faster language to cut latency"
+      },
+      {
+        "id": "c",
+        "text": "Moving from Redis to a managed key-value store with auto-scaling"
+      },
+      {
+        "id": "d",
+        "text": "The cold-miss stampede, plus how it's detected and rolled out"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "(d) is right: the answer already has the core mechanism; the senior additions are the second failure mode (the moment the code goes viral it is cached nowhere, so request coalescing is needed), a per-key rate metric to detect it, and a flagged canary rollout. (a) is a tuning detail that changes little for a handful of extremely hot keys. (b) does not address one shard taking all requests. (c) does not change that one key lives on one partition; managed stores have per-partition limits too.",
+    "topicId": "hot-key-three-levels",
+    "difficulty": 2
+  },
+  {
+    "id": "q3",
+    "type": "scenario",
+    "prompt": "It is minute 2 of a 45-minute interview. Which opening best shows the candidate driving the discussion?",
+    "scenario": "Prompt: \"Design a URL shortener.\" The candidate has not said anything yet.",
+    "options": [
+      {
+        "id": "a",
+        "text": "\"Should I start with the database schema or the API?\""
+      },
+      {
+        "id": "b",
+        "text": "\"I'll take five minutes on requirements, then estimate, since the read:write mix decides where effort goes.\""
+      },
+      {
+        "id": "c",
+        "text": "\"I'll use Cassandra, Kafka and Redis because they scale, so let me draw those three on the board first.\""
+      },
+      {
+        "id": "d",
+        "text": "\"How many users, regions, links, reads and writes, what latency, what consistency, and what budget do we have?\""
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "(b) is right: it sets an agenda, gives a reason for the order, and leaves room for the interviewer to redirect. (a) hands the direction back to the interviewer, the 'waiting to be led' pattern. (c) jumps to products before knowing the requirements, so none of the choices can be justified. (d) fires many questions at once without stating any assumptions, which reads as extracting a hidden answer rather than designing.",
+    "topicId": "driving-ambiguity",
+    "difficulty": 1
+  },
+  {
+    "id": "q4",
+    "type": "scenario",
+    "prompt": "Which statement shows the deepest trade-off reasoning about code generation?",
+    "scenario": "Context: 100M new links a month, 7-character base62 codes, about 6 billion links over five years, about 40 writes per second.",
+    "options": [
+      {
+        "id": "a",
+        "text": "\"Random codes, because hashing the URL can collide.\""
+      },
+      {
+        "id": "b",
+        "text": "\"Hashing collides and merges users' links; counters are guessable; random avoids both.\""
+      },
+      {
+        "id": "c",
+        "text": "\"Random with insert-if-absent: 0.17% of 62⁷ used, so retries are rare at 40/s. At 1,000× writes I'd switch.\""
+      },
+      {
+        "id": "d",
+        "text": "\"Snowflake IDs, because they're used at very large scale and never collide.\""
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "(c) is right: it is a decision closed with the candidate's own numbers (6B of 3.5T codes ≈ 0.17%), the cost at this write rate, and a switch condition. (a) is a label with one reason. (b) is a good comparison against requirements but stops short of numbers and a switch condition. (d) appeals to popularity and ignores that a Snowflake ID needs 11 base62 characters, too long for a short link.",
+    "topicId": "tradeoff-depth",
+    "difficulty": 2
+  },
+  {
+    "id": "q5",
+    "type": "scenario",
+    "prompt": "The candidate has just finished a deep dive on async click analytics. What is the best one-sentence addition?",
+    "scenario": "Candidate: \"Each redirect appends a click event to an in-memory buffer that a background thread sends to Kafka, so the redirect never waits.\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "\"If Kafka is down the buffer fills, then we drop events and count them in a clicks_dropped metric we alert on.\""
+      },
+      {
+        "id": "b",
+        "text": "\"Kafka is replicated and very reliable in practice, so we don't really need to plan for it failing here.\""
+      },
+      {
+        "id": "c",
+        "text": "\"We could also use Flink, Spark or Pulsar here instead.\""
+      },
+      {
+        "id": "d",
+        "text": "\"To be safe I'd write each click synchronously to the database in the same request before redirecting.\""
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "(a) is right: it covers failure and detection in one sentence and keeps the requirement that analytics never breaks a redirect. (b) dismisses failure, which is the opposite of an operational signal. (c) lists alternatives without a reason, which reads as breadth without judgement. (d) puts a write on the hottest read path and couples redirect availability to the database, which the requirements forbid.",
+    "topicId": "operational-concerns",
+    "difficulty": 2
+  },
+  {
+    "id": "q6",
+    "type": "scenario",
+    "prompt": "At minute 22 this candidate is 12 minutes into sharding the URL shortener's write path. What should they do?",
+    "scenario": "Earlier estimate on the board: about 40 writes/s and 19,500 reads/s at peak. The read path and caches have not been discussed.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Finish the sharding design properly, since depth is a senior signal"
+      },
+      {
+        "id": "b",
+        "text": "Ask the interviewer whether they are allowed to skip ahead"
+      },
+      {
+        "id": "c",
+        "text": "Say writes are trivial at 40/s and move to the read path"
+      },
+      {
+        "id": "d",
+        "text": "Add a second database for writes to show breadth"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "(c) is right: the candidate's own numbers show the write path does not matter, and naming that out loud is itself a good signal; the read path and cache are where the design risk is. (a) confuses depth with depth in the right place; deep work on an irrelevant part reads as weak prioritisation. (b) is passive; propose the move and ask for a quick confirmation instead. (d) adds complexity the numbers don't justify.",
+    "topicId": "breadth-vs-depth",
+    "difficulty": 2
+  },
+  {
+    "id": "q7",
+    "type": "scenario",
+    "prompt": "A candidate with two years of experience is asked \"Have you run a cache at this scale?\" Which answer is best?",
+    "scenario": "The candidate has never worked on a large cache fleet but once fixed a problem where every service hit a cron endpoint at the top of the hour.",
+    "options": [
+      {
+        "id": "a",
+        "text": "\"Yes, I've run large Redis clusters at this scale in production for a few years now.\""
+      },
+      {
+        "id": "b",
+        "text": "\"No, I haven't, so honestly I'm not able to say how a cache would behave at this scale.\""
+      },
+      {
+        "id": "c",
+        "text": "\"I'd rather not answer that; let's keep designing.\""
+      },
+      {
+        "id": "d",
+        "text": "\"Not at this scale, but I fixed a top-of-hour herd with jitter; same idea here.\""
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "(d) is right: it is honest about the limit and maps a small true experience onto the mechanism, which is real evidence. (a) is a false claim that falls apart under two follow-up questions. (b) is honest but stops reasoning; you can still derive behaviour from first principles and numbers. (c) avoids the question and loses the chance to show judgement.",
+    "topicId": "honest-senior-signals",
+    "difficulty": 1
+  },
+  {
+    "id": "q8",
+    "type": "single",
+    "prompt": "Which statement about level expectations in system design interviews is most accurate?",
+    "options": [
+      {
+        "id": "a",
+        "text": "All large technology companies share one rubric for the junior, mid and senior levels"
+      },
+      {
+        "id": "b",
+        "text": "Patterns recur widely, but expectations vary by company, team and interviewer"
+      },
+      {
+        "id": "c",
+        "text": "Level is decided only by how many technologies the candidate names"
+      },
+      {
+        "id": "d",
+        "text": "System design is never part of interviews for new graduates"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "(b) is right: the dials in this section recur across many interviews, but there is no universal standard and titles do not map cleanly between companies. (a) is false; rubrics are internal and differ. (c) is false; reasons and trade-offs matter far more than product names. (d) overstates it: some new-graduate loops skip system design or shrink it, others include it.",
+    "topicId": "level-dials",
+    "difficulty": 1
+  },
+  {
+    "id": "q9",
+    "type": "multi",
+    "prompt": "Which of these are operational concerns a senior answer typically raises without being asked? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "How the change is rolled out, e.g. a canary behind a flag"
+      },
+      {
+        "id": "b",
+        "text": "Which metric or SLO shows the design is healthy"
+      },
+      {
+        "id": "c",
+        "text": "The exact syntax of the cache client's API calls"
+      },
+      {
+        "id": "d",
+        "text": "What it costs and which line item dominates"
+      }
+    ],
+    "correct": [
+      "a",
+      "b",
+      "d"
+    ],
+    "explanation": "(a), (b) and (d) are right: rollout, monitoring and cost (with failure) are the four operational questions. (c) is an implementation detail that does not change the design and is rarely expected in a design interview.",
+    "topicId": "operational-concerns",
+    "difficulty": 1
+  },
+  {
+    "id": "q10",
+    "type": "scenario",
+    "prompt": "The interviewer says: \"Actually, traffic will be ten times what you assumed.\" Which response best handles the new information?",
+    "scenario": "The design on the board was sized for 19,500 requests/s at peak with a 15 GB daily working set in Redis.",
+    "options": [
+      {
+        "id": "a",
+        "text": "\"Then I'll start again with a different architecture.\""
+      },
+      {
+        "id": "b",
+        "text": "\"Everything in the design just scales horizontally, so nothing really changes at 10×.\""
+      },
+      {
+        "id": "c",
+        "text": "\"So ~195,000/s: hot keys and a ~150 GB working set break first; the stateless tier just scales out.\""
+      },
+      {
+        "id": "d",
+        "text": "\"I'd move the whole system to multi-region active-active straight away to absorb it all.\""
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "(c) is right: it redoes the arithmetic, names which decisions break (cache shards, single-key limits, working set) and which survive (the stateless service). (a) throws away a design that mostly still works. (b) ignores that one key cannot scale horizontally and that the cache tier grows tenfold. (d) jumps to the most complex option without showing it is needed; 10× more traffic is not by itself a reason to go multi-region.",
+    "topicId": "driving-ambiguity",
+    "difficulty": 3
+  },
+  {
+    "id": "q11",
+    "type": "single",
+    "prompt": "In a typical 45-minute interview, what is the safest order of work at any level?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Deep dives first, then fill in the rest of the design"
+      },
+      {
+        "id": "b",
+        "text": "Failure modes first, then requirements and design"
+      },
+      {
+        "id": "c",
+        "text": "Draw every component you know, then trim what's unused"
+      },
+      {
+        "id": "d",
+        "text": "A complete end-to-end design first, then deep dives"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "(d) is right: breadth first means every requirement has a path, so the interviewer can see you would not miss a whole flow; deep dives then show judgement. (a) risks running out of time with a missing path. (b) discusses failures of a design that does not exist yet. (c) produces breadth without reasons and wastes time.",
+    "topicId": "breadth-vs-depth",
+    "difficulty": 1
+  }
+]

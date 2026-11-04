@@ -1,0 +1,7 @@
+[
+  { "id": "mip-c1", "text": "I have completed one Practice and one Mock attempt in Interview Mode and can explain how hints, pausing and deep-dive timing differ between them.", "topicId": "interview-mode" },
+  { "id": "mip-c2", "text": "I can score an attempt against the rubric using the evidence rule, and use the Run comparison to check my high-level design score.", "topicId": "self-review" },
+  { "id": "mip-c3", "text": "I have run a peer mock as interviewer with the script, including at least one interruption and an evidence-impact-suggestion debrief.", "topicId": "peer-mock" },
+  { "id": "mip-c4", "text": "I can read my dashboard trend per case, keeping Practice and Mock attempts apart, and name the criterion I lose most often.", "topicId": "score-tracking" },
+  { "id": "mip-c5", "text": "I can justify the first six cases to mock by difficulty and by the deep-dive patterns each one exercises.", "topicId": "case-selection" }
+]

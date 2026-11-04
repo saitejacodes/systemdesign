@@ -1,0 +1,18 @@
+[
+  { "id": "f1", "front": "Two learning principles behind the final-review routine?", "back": "Retrieval practice (recalling beats re-reading) and spacing (reviews spread over days beat cramming).", "topicId": "final-two-weeks" },
+  { "id": "f2", "front": "Sensible maximum number of full mocks in the final two weeks at ~1.5 h/day?", "back": "About five, each with a 20–30 minute self-review. The review is where the learning happens.", "topicId": "final-two-weeks" },
+  { "id": "f3", "front": "When should the last full mock be?", "back": "Around D-3, so its review can still change something. D-1 stays light.", "topicId": "final-two-weeks" },
+  { "id": "f4", "front": "What makes a quiz topic a weak spot?", "back": "Under 70% correct over the section's last two quiz attempts.", "topicId": "weak-spot-loop" },
+  { "id": "f5", "front": "What makes a section a stale weak spot?", "back": "With a plan start date set, its checkpoints are untouched 14+ days after its plan week ended.", "topicId": "weak-spot-loop" },
+  { "id": "f6", "front": "Why retake a weak-spot quiz the next day, not immediately?", "back": "The score rests on about 4 answers, so one memorised retake clears it. A retake a day later is real retrieval.", "topicId": "weak-spot-loop" },
+  { "id": "f7", "front": "SM-2 intervals for a new card graded Good?", "back": "1 day, then 6 days, then about 15 days (6 × default ease 2.5).", "topicId": "flashcard-review" },
+  { "id": "f8", "front": "What does grading a card Again do?", "back": "Restarts it: back tomorrow, one more lapse counted.", "topicId": "flashcard-review" },
+  { "id": "f9", "front": "Last useful day to add new flashcards, and why?", "back": "About D-8: its 6-day review still lands on D-1. A card added later gets only two reviews (the day added and the next day) before the interview.", "topicId": "flashcard-review" },
+  { "id": "f10", "front": "Due count too high late in prep?", "back": "Lower 'New cards / day' for a few days; don't skip due reviews, which pile up.", "topicId": "flashcard-review" },
+  { "id": "f11", "front": "Rule before redoing a failed simulator challenge?", "back": "Say the mechanism and your prediction out loud first, then run it. A wrong prediction is the gap to fix.", "topicId": "redo-failures" },
+  { "id": "f12", "front": "Which mocks to redo in the final weeks?", "back": "Your lowest recent case (after 3–4 days), at least two unseen cases, and cases that stress your weak deep dives.", "topicId": "redo-failures" },
+  { "id": "f13", "front": "Mock vs Practice mode?", "back": "Mock: timed, no pause, each hint costs one rubric point. Practice: pause any time, free hints, deep dives on request.", "topicId": "redo-failures" },
+  { "id": "f14", "front": "What does the dashboard interview trend show, and what does it leave out?", "back": "Self-score % per attempt per case (Mock hint penalty included), oldest to newest, plus the change from first to latest. It leaves out how much of a rise is memory of a repeated case.", "topicId": "score-trends" },
+  { "id": "f15", "front": "Why is a rising score on a repeated case weak evidence?", "back": "Memory of the case inflates it. Unseen cases test whether the skill transfers.", "topicId": "score-trends" },
+  { "id": "f16", "front": "Interview-day warm-up?", "back": "20–30 min, done 30+ min before: one estimation drill, the framework out loud, one deep-dive answer out loud, a glance at the checklist.", "topicId": "interview-day" }
+]

@@ -1,0 +1,236 @@
+## Why it matters
+
+Reading 19 reference designs teaches you what good answers contain. It does not teach you to produce one in 45 minutes while someone watches, the clock runs and a question about failover arrives just as you were finishing your diagram. That is a performance skill, and like any performance skill it improves with timed repetition and honest feedback, not with more reading. This section shows how to use this site's Interview Mode for that repetition (what Practice and Mock actually do, and how to score yourself without flattering yourself), how to run a mock with a friend, playing both roles, how to read your score trend on the dashboard, and which six cases to mock first.
+
+<Callout type="analogy" title="Sparring, not shadow-boxing">
+Boxers shadow-box to learn combinations and spar to learn to use them against someone who hits back. Practice mode is shadow-boxing: pause, take hints, pull deep-dive questions early. Mock mode and peer mocks are sparring: a clock you cannot stop, questions that arrive whether you are ready or not, and a scorecard afterwards. You need both, in that order. Where the analogy breaks: a sparring partner tries to beat you, while a good interviewer is trying to find the best version of your thinking, and the strongest candidates treat the interviewer as a collaborator rather than an opponent.
+</Callout>
+
+## Interview Mode: Practice vs Mock
+
+<DepthStamp depth="deep" />
+
+Open any case at `/interview/<caseId>`. The start screen shows the interviewer's opening prompt and three choices.
+
+| Setting | Practice | Mock |
+|---|---|---|
+| Clock | Counts down; **Pause** and **Resume** buttons | Counts down; no pause. It is wall-clock based, so a reload or a closed tab keeps counting |
+| Hints | Up to 2 per step, free | Up to 2 per step, **each costs 1 rubric point** |
+| Deep-dive questions | Arrive on a schedule, plus an **Ask the next question now** button | Arrive on the schedule only |
+| Use it for | Learning a case, drilling one step | Measuring yourself under interview conditions |
+
+**Duration** is 30, 45 or 60 minutes. Each step gets a suggested share, scaled from a 45-minute split:
+
+| Step | 30 min | 45 min | 60 min |
+|---|---|---|---|
+| Requirements | 4 | 5 | 7 |
+| Estimation | 3 | 5 | 7 |
+| API | 3 | 5 | 7 |
+| Data Model | 3 | 5 | 7 |
+| High-Level Design | 7 | 10 | 13 |
+| Deep Dives | 7 | 10 | 13 |
+| Wrap-up | 3 | 5 | 6 |
+
+The hint checkbox ("Show hint buttons") decides whether hints are offered at all. The first hint for a step nudges the method; the second is specific to the case, for example the traffic range your estimate should land in, or a common mistake for that step taken from the case's list.
+
+**During the session.** The left column has a tab per step with time spent against the suggested budget; past the budget its timer turns red and a note says to wrap the step up and move on. Requirements has the case's clarifying questions as buttons: clicking one reveals the interviewer's answer and counts it as asked. Estimation has a small calculator (daily users, actions per user, reads per write, item size, retention, peak factor) that shows each formula. API and Data Model are structured forms, and the right side is a full Design Studio canvas, opened from the case's starter template, for the high-level design. The clock does not stop at zero: it shows time over as `+02:13` and flags "Over time", but it never submits for you.
+
+**How deep dives arrive.** The case's deep-dive questions are spread evenly across the Deep Dives window. In a 45-minute Mock, that window is minutes 30 to 40, so for a case with 4 questions they appear at 15:00, 12:30, 10:00 and 7:30 remaining; with 5 questions, every 2 minutes from 15:00. If you open the Deep Dives tab early, the schedule starts from that moment instead, which is a realistic penalty: rush the design and the questions come sooner. The panel tells you when the next one will arrive.
+
+<Figure caption="FIG. 6.1 · ONE INTERVIEW MODE ATTEMPT">
+  <Diagram label="Start screen with mode, duration and hints. Timed session with seven step tabs and the Design Studio canvas, deep-dive questions arriving on the clock. Submit stops the clock and opens self-review: rubric scored 0, 1 or 2 per criterion, your design next to the reference, both run at peak traffic, reference walkthrough and common mistakes. Saving requires every criterion scored and adds the attempt to the case history and the dashboard trend." chart={`flowchart LR
+    A[Start: mode, duration, hints] --> B[Session: 7 step tabs and canvas]
+    B -->|deep dives arrive on the clock| B
+    B -->|Submit| C[Self-review]
+    C --> C1[Rubric 0/1/2 per criterion]
+    C --> C2[Your design vs reference, run at peak]
+    C --> C3[Reference walkthrough and common mistakes]
+    C1 --> D[Save attempt]
+    D --> E[Case history and dashboard trend]`} />
+</Figure>
+
+*Work is saved in the browser as you go. One draft exists per case, so reopening the case resumes it; Discard deletes the step answers but leaves the canvas in your Design Studio list.*
+
+A sensible progression for each new case: one Practice run at 60 minutes with hints on, reading the reference afterwards; a few days later, a 45-minute Mock with hints off. Hints off in Mock matters more than it looks: on a 12-criterion case the maximum is 24, so each hint costs about 4 percentage points.
+
+## Self-review with the rubric
+
+<DepthStamp depth="deep" />
+
+Submitting stops the clock and opens the review. Every case has a <Term slug="scoring-rubric">scoring rubric</Term> of 12 or 13 criteria grouped by step, each with written descriptions of what earns 0, 1 and 2 points. You must score every criterion before the attempt can be saved. The score is
+
+```
+score % = max(0, points − hint penalty) ÷ (2 × criteria)
+```
+
+where the hint penalty is the number of hints used in Mock (zero in Practice). Example: 17 of 24 points with 2 hints in Mock gives (17 − 2) ÷ 24 = **63%**.
+
+### Scoring honestly
+
+The review screen says to score against "what you actually said or drew, not what you meant". In practice that means three rules:
+
+1. **Evidence or zero.** For each criterion, find the line in your step panels or the box on your canvas that earns it. If the peak QPS is not written down, the estimation criterion cannot be a 2, however sure you are that you knew it.
+2. **Read the 2 first, then step down.** The 2-point text is specific. The URL shortener's traffic criterion, for example, wants 100M ÷ 2.59M s = 38.6 writes/s, ×100 = 3,860 reads/s, a 5× peak of about 19,500/s, *and* the conclusion that the design effort belongs on reads. Three of the four is a 1.
+3. **When torn between two scores, take the lower.** A self-score that is a point too high on several criteria hides exactly the gaps the mock exists to find.
+
+### Comparing against the reference
+
+Below the rubric, your canvas and the reference design sit side by side, and both are run headlessly at the case's peak traffic. The comparison table shows p99 of the worst request type, successful QPS, error rate, single points of failure, estimated availability and monthly cost, plus whether each design passes the case's run challenge (for example "Viral peak: fast redirects, no single point of failure" for the URL shortener). A ▲ marks any metric more than 5% worse than the reference.
+
+Use the comparison to check your rubric scores, not replace them. If your high-level design scored a 2 but the table shows 3 single points of failure and a failed run challenge, lower the score. If your numbers match the reference with a different design, that is fine: the reference is one good answer, not the only one. The collapsible reference walkthrough below it is the case's full solution, and the **common mistakes** list lets you tick the ones you made; those ticks are the most useful notes for your next attempt.
+
+### Failure timeline: how a mock goes wrong
+
+A typical failed 45-minute attempt at the news feed, minute by minute:
+
+| Clock | What happened | What it cost |
+|---|---|---|
+| 0–11 | Requirements: discussed stories, ads, DMs and video before settling scope | Requirements tab red at minute 5; 6 minutes lost |
+| 11–13 | Skipped estimation: "it's big, we'll need to scale" | No fan-out number, so no reason for a hybrid later |
+| 13–28 | API, a data model and a diagram with a feed service and a cache | Fine, but drawn with no numbers |
+| 28–30 | Opened Deep Dives early | Questions started arriving at 28:00 instead of 30:00 |
+| 30–41 | Answered Q1 with pure fan-out on write; Q2 and Q3 half-answered | The 50M-follower account never examined |
+| 41–45 | No wrap-up | Wrap-up criteria scored 0 |
+
+Honest score: about 9 of 24, 38%. The fix is not more knowledge; this candidate knew what a hybrid fan-out was. It was time discipline: requirements in 5 minutes, and a 3-minute estimate that produces "140 inserts per post, 1.46M a second at peak", which makes the fan-out deep dive almost write itself.
+
+## Running a peer mock
+
+<DepthStamp depth="deep" />
+
+A <Term slug="mock-interview">mock interview</Term> with another person adds what the app cannot: someone who interrupts, asks "why?", and notices when you are talking without saying anything. Swap roles each session; playing the interviewer teaches you what interviewers see.
+
+### Preparation (interviewer, 15 minutes before)
+
+- Pick a case the candidate has not studied recently. Read its reference walkthrough at `/case-studies/<caseId>`, then open its Interview Mode in Practice yourself and click through the clarifying questions to see the given answers. Discard that draft afterwards.
+- Note the 3 or 4 rubric criteria you expect to be decisive (usually the estimation and deep-dive ones), and the case's deep-dive questions (in that Practice draft, open Deep Dives and use "Ask the next question now" to see them all).
+
+### Script for the interviewer
+
+| Clock | Say or do |
+|---|---|
+| 0:00 | Read the case's opening prompt word for word, then stop talking. |
+| 0–5 | Answer clarifying questions using the case's given answers. If asked something the case does not cover, invent a reasonable answer and write it down. |
+| 5 | If requirements are still going: "Let's say that's the scope. What load are we designing for?" |
+| 5–10 | Let them estimate. Ask "where does that number come from?" once if a number appears without derivation. |
+| 10–30 | API, data model, design. Ask one "walk me through a read, box by box" question. |
+| 30–40 | Deep dives: ask the case's questions in order, then one follow-up on whichever answer was weakest ("and if that cache node dies?"). |
+| 40–45 | "You have 5 minutes. What breaks first at 10×, and what would you monitor?" |
+
+**When to interrupt.** Interrupt when the candidate is more than 2 minutes over a step's budget, when a number has no derivation, when they are designing something out of scope, or after about a minute of silence ("talk me through what you're weighing"). Do *not* interrupt a wrong but recoverable direction straight away; give it a minute, then ask a question that exposes the problem ("how many inserts is one post from the 50M-follower account?"). Whether the candidate recovers is one of the most useful things a mock can show.
+
+**Do not teach during the interview.** Hold explanations for the debrief; a mock where the interviewer explains the answer measures nothing.
+
+### Script for the candidate
+
+- **Open:** "Before I design anything, I'd like 4 or 5 minutes on requirements and scale. Is that all right?"
+- **Signpost each step:** "I have the functional scope. Next I'll estimate peak load, because it decides whether we need fan-out on write."
+- **Commit to numbers out loud:** "I'll assume 200 followers on average and 70% active; that's 140 inserts per post."
+- **Check in at the transitions, not constantly:** "Here's the high-level design. Is there an area you'd like me to go deeper on, or shall I pick?"
+- **When stuck:** "I'm not sure of the exact figure; I'll assume 50,000 inserts a second per Redis primary and we can revisit it."
+
+### The debrief (15 minutes)
+
+1. **Both score the rubric independently** using the case's rubric (open it in the candidate's Interview Mode review), then compare. Disagreements of 2 points on a criterion are where the learning is.
+2. **Interviewer gives feedback as evidence, impact, suggestion:** "At minute 14 you said 'we'll shard it' without a key (evidence). I couldn't tell whether the celebrity rows would land on one shard (impact). Name the key and the hottest value it can have (suggestion)."
+3. **Limit it to two strengths and two gaps.** Ten notes produce no change; two do.
+4. The candidate saves the attempt with the agreed scores, so the peer mock appears in the dashboard trend alongside solo mocks.
+
+## Tracking scores over time
+
+<DepthStamp depth="tradeoffs" />
+
+The **Interview attempts** panel on [the dashboard](/dashboard) lists each case you have attempted with its scores oldest to newest, for example `42% → 58% → 71%`, the change between the first and latest attempt (▲ 29 pts), the date of the last attempt and the number of attempts. Each case links back to its Interview Mode. After saving, the attempt screen also lists every attempt at that case with its date, mode, points and percentage.
+
+The dashboard uses the same formula as the save screen, Mock hint penalty included: a Mock with 17 of 24 points and 2 hints shows as 63% in both places, and the attempt list writes it as `17 − 2/24 = 63%`. Practice attempts carry no penalty, so a Practice score and a Mock score on the same case are not quite the same measurement; compare like with like.
+
+How to read the trend:
+
+- **Compare like with like.** A 60-minute Practice score and a 45-minute Mock score of the same case are not comparable; the attempt list shows the mode for this reason.
+- **Watch criteria, not just totals.** If Estimation is a 2 every time and Deep Dives is a 0 or 1 every time, the next week's work is deep dives, whatever the total says.
+- **A second attempt on the same case inflates scores**, because you have read the reference. The real test is whether a *different* case exercising the same pattern also improves.
+- **Self-scores are not an interviewer's verdict.** They are a consistent instrument for measuring your own change, provided you score by the same rules each time. A peer debrief now and then keeps them calibrated.
+
+## Which six cases to mock first
+
+<DepthStamp depth="tradeoffs" />
+
+Choose the first mocks to cover all seven recurring deep-dive patterns, starting with the easiest cases so that early mocks practise the method rather than the domain.
+
+| Order | Case | Difficulty | Patterns it exercises | Why here |
+|---|---|---|---|---|
+| 1 | [URL shortener](/interview/url-shortener) | 1 | Read scaling, hot keys, ID generation | Small domain, so every minute goes on method; the 100:1 read ratio rewards a clear estimate |
+| 2 | [Rate limiter service](/interview/rate-limiter-service) | 1 | Consistency vs availability (fail open), multi-region counting, atomic counters | A tight 5 ms budget forces numbers; the multi-region deep dive is self-contained |
+| 3 | [Ticket booking](/interview/ticket-booking) | 2 | Contention, backpressure (waiting room), payment timeouts | Three patterns in one prompt; a good test of naming deep dives early |
+| 4 | [Notification system](/interview/notification-system) | 2 | Backpressure (priority lanes), idempotency (never send twice), fan-out (campaigns) | A 5× burst against provider limits you do not control |
+| 5 | [News feed](/interview/news-feed) | 2 | Fan-out, hot keys, the live-event backlog | The classic fan-out problem; the threshold must be derived, not guessed |
+| 6 | [Payment system](/interview/payment-system) | 3 | Exactly-once effects, unknown outcomes, state machines | The first difficulty-3 case; idempotency at every hop is the core of the rubric |
+
+Together they cover every pattern in [the deep-dive patterns lesson](/phase/7/deep-dive-patterns): hot keys (1, 5), fan-out (4, 5), idempotency (4, 6), consistency choices (2, 3), read and write scaling (1), backpressure (3, 4) and multi-region (2). The first four are the case studies recommended for week 14 and the last two for week 15, so the order also follows the study plan.
+
+Why not start with the difficulty-3 cases such as video streaming, web search or ride sharing? They need domain knowledge (bitrate ladders, inverted indexes, geospatial indexes) on top of method, so a low early score does not tell you which of the two failed. Mock them in the second round, together with the chat app, job scheduler and API gateway.
+
+### Worked example: a week of mocks
+
+| Day | Session | Purpose |
+|---|---|---|
+| Mon | URL shortener, Practice 60 min, hints on | Learn the flow of the tool and the framework |
+| Tue | Rate limiter, Mock 45 min, hints off | First real score |
+| Wed | Ticket booking, peer mock (you as candidate) | Interruptions and a debrief |
+| Thu | Notification system, Mock 45 min | Backpressure and idempotency |
+| Fri | News feed, Mock 45 min; then interview a friend on the URL shortener | Fan-out; and seeing an interview from the other side |
+| Sat | Payment system, Mock 45 min | The first difficulty-3 case |
+| Sun | Re-mock the lowest-scoring case | Did the gap close? |
+
+<TradeoffBox title="Ways to practise" items={[
+  { gain: "Practice mode: pause, free hints, deep dives on demand", cost: "No time pressure, so it overstates what you can do in a real loop" },
+  { gain: "Mock mode: real timing and a consistent self-score", cost: "No one interrupts or asks why, and self-scores drift without calibration" },
+  { gain: "Peer mock: interruptions, follow-ups and a second opinion", cost: "Needs a partner, an hour and a prepared interviewer" },
+  { gain: "Re-mocking the same case: shows whether a specific gap closed", cost: "Inflated by memory of the reference, so it overstates general progress" }
+]} />
+
+<NotWhenBox title="When not to run a Mock yet" items={[
+  "You have not read the 7-step framework or done a single case in Practice: the score will measure unfamiliarity with the tool.",
+  "You read that case's reference walkthrough in the last day or two: you will be recalling, not designing.",
+  "You are too tired to talk for 45 minutes: a mock at the end of a long day measures fatigue.",
+  "You plan to keep hints on in Mock: use Practice instead and keep Mock scores clean."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="A high self-score on a case means I'm ready for that kind of question." right="Only if you scored by evidence and the case was new to you. A second attempt after reading the reference measures memory; check the pattern on a different case." />
+
+<Misconception wrong="A Practice score and a Mock score on the same case measure the same thing." right="Practice allows pauses, free hints and early deep-dive questions; only Mock charges hints and keeps the wall clock running. Track the two separately." />
+
+<Misconception wrong="If my design differs from the reference, I should score the design criterion low." right="The reference is one good answer. Score against the rubric's descriptions and use the Run comparison to check for real problems such as single points of failure or a failed run challenge." />
+
+<Misconception wrong="A good mock interviewer helps the candidate reach the right answer." right="During the interview they ask questions that expose problems and let the candidate recover or not. Teaching belongs in the debrief." />
+
+## Interview angle
+
+<InterviewAngle title="Using mocks well" questions={[
+  "What did you change between your first and third attempt at the same case?",
+  "Which rubric criteria do you lose points on most often, and what is your fix?",
+  "How do you decide when to stop on requirements and move to estimation?",
+  "When an interviewer interrupts you, how do you decide whether to defend your approach or change it?"
+]}>
+Interviewers do not ask about your practice routine directly, but they see its effects within the first five minutes: a candidate who has run timed mocks asks focused questions, writes numbers down, signposts each step and arrives at deep dives with 15 minutes left. Mocks build exactly those habits. The common failure they expose is not missing knowledge but time: overlong requirements, skipped estimates, a missing wrap-up. Track which criteria you lose across cases, fix one per week, and get at least two peer mocks in before a real loop so that interruptions feel normal.
+</InterviewAngle>
+
+## Try it
+
+There is no simulator for this section: the tool is Interview Mode itself. Start with the first case in the list above.
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+1. Run a 60-minute Practice of the [URL shortener](/interview/url-shortener) with hints on. In review, score every criterion with the evidence rule, then read the [case study](/case-studies/url-shortener) and re-score; note every criterion that dropped.
+2. Run a 45-minute Mock of the [rate limiter service](/interview/rate-limiter-service) with hints off. Open the [dashboard](/dashboard) and confirm the attempt appears in the trend.
+3. Run a peer mock of [ticket booking](/interview/ticket-booking) with the interviewer script above, then swap roles on the [notification system](/interview/notification-system). Afterwards, open your canvas in [Design Studio](/studio), press Run and find where traffic piles up.

@@ -1,0 +1,8 @@
+[
+  { "id": "c1", "text": "I can name the seven steps in order and say what each one hands to the next.", "topicId": "seven-steps" },
+  { "id": "c2", "text": "I can state the 45-minute budget (5/5/5/5/10/10/5), where I would be at minutes 5, 20, 30 and 40, and how it changes for 60 minutes.", "topicId": "time-budget" },
+  { "id": "c3", "text": "I end every step with one sentence naming its consequence for the design.", "topicId": "say-and-draw" },
+  { "id": "c4", "text": "I can signpost, check in at step boundaries, and decide when to ask versus proceed with a stated assumption.", "topicId": "driving-conversation" },
+  { "id": "c5", "text": "I can run the URL shortener from requirements to wrap-up from memory, including 38.6 writes/s, 3,860 reads/s, 19,500/s peak, 62⁷ and 0.17%.", "topicId": "url-shortener-walkthrough" },
+  { "id": "c6", "text": "I have a one-sentence recovery line ready for running over time, spotting my own mistake, and being cut short.", "topicId": "failure-recovery" }
+]

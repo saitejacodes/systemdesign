@@ -1,0 +1,21 @@
+{
+  "id": "p7-deep-dive-patterns",
+  "phase": 7,
+  "slug": "deep-dive-patterns",
+  "title": "Deep-dive patterns",
+  "order": 5,
+  "week": 15,
+  "estimatedMinutes": 70,
+  "topics": [
+    { "id": "hot-keys", "title": "Hot keys and celebrities", "depth": "deep" },
+    { "id": "fan-out", "title": "Fan-out", "depth": "deep" },
+    { "id": "idempotency-effects", "title": "Idempotency and exactly-once effects", "depth": "deep" },
+    { "id": "consistency-choices", "title": "Consistency vs availability choices", "depth": "tradeoffs" },
+    { "id": "read-write-scaling", "title": "Scaling reads vs scaling writes", "depth": "deep" },
+    { "id": "backpressure", "title": "Backpressure", "depth": "deep" },
+    { "id": "multi-region", "title": "Multi-region", "depth": "tradeoffs" }
+  ],
+  "simulatorIds": ["sharding", "retry-storm"],
+  "practiceCaseStudyIds": ["news-feed", "ticket-booking", "payment-system"],
+  "prerequisites": ["p2-sharding", "p2-idempotency", "p3-failure-handling", "p4-cap-pacelc", "p6-multi-region"]
+}

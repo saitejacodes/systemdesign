@@ -1,0 +1,359 @@
+[
+  {
+    "id": "tc-q1",
+    "type": "scenario",
+    "prompt": "What is the biggest gap in this statement?",
+    "scenario": "Chat app, data model step. The candidate says: \"For messages I'll use Cassandra, because it scales horizontally and it's highly available.\" Then moves on to the API.",
+    "options": [
+      {
+        "id": "a",
+        "text": "It should name the replication factor and the consistency level used for every single read"
+      },
+      {
+        "id": "b",
+        "text": "It should mention that Cassandra is used by large companies for the same job"
+      },
+      {
+        "id": "c",
+        "text": "No alternative, and criteria that fit any design rather than this one's needs"
+      },
+      {
+        "id": "d",
+        "text": "It should say whether the cluster is self-managed or a managed cloud service"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "\"Scales and is available\" applies to many stores, so it doesn't tie the choice to this design. The strong version names the rival (sharded SQL) and the criteria from this problem: appends and range reads by conversation at more than 2 million writes a second, with no joins, which is why wide-column wins. Replication settings (a) and hosting (d) are later details that don't justify the choice. Who else uses it (b) is an appeal to authority, not a criterion.",
+    "topicId": "options-and-criteria",
+    "difficulty": 1
+  },
+  {
+    "id": "tc-q2",
+    "type": "scenario",
+    "prompt": "What should the candidate do next?",
+    "scenario": "News feed. Interviewer: \"Push or pull?\" Candidate: \"It depends on the use case. Push makes reads fast, pull handles celebrities better. Both have trade-offs.\" Then silence.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Name follower count as the variable, size it from the estimate, and decide"
+      },
+      {
+        "id": "b",
+        "text": "Ask the interviewer which of the two they would prefer the design to use"
+      },
+      {
+        "id": "c",
+        "text": "Choose push for everyone, since fast reads matter most on a home screen"
+      },
+      {
+        "id": "d",
+        "text": "List more trade-offs, such as storage cost and read consistency, to show the breadth of knowledge"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "\"It depends\" is half a sentence. The choice turns on follower count; from the estimate (about 1.5M spare inserts a second, 0.7 inserts per follower) the bound is about 2.1M followers, so push below 1M and pull above, with hysteresis. Asking for a preference (b) hands the decision back. Push for everyone (c) ignores that one 50M-follower post would need tens of millions of inserts. More trade-offs (d) is breadth without a decision.",
+    "topicId": "it-depends",
+    "difficulty": 2
+  },
+  {
+    "id": "tc-q3",
+    "type": "scenario",
+    "prompt": "Which response handles this pushback best?",
+    "scenario": "Payment system. The candidate stores idempotency keys in the payment database, in the same transaction as the payment. Interviewer: \"Wouldn't Redis be faster for the keys?\" No requirement has changed.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Agree and move the keys to Redis, since lower latency always helps checkout"
+      },
+      {
+        "id": "b",
+        "text": "Say Redis is unreliable in general and should not be used in payment systems"
+      },
+      {
+        "id": "c",
+        "text": "Move the keys to Redis but turn on persistence so that none of them can be lost on a restart"
+      },
+      {
+        "id": "d",
+        "text": "Grant it's faster, but keep Postgres: an evicted key could allow a double charge"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "Nothing changed, so this is a probe: defend with the deciding criterion. Keys written in the same transaction as the payment cannot disagree with it, while an eviction, failover or expiry in Redis can re-open a double charge. A Redis cache in front is a fine yes-and. Caving (a) switches for no new reason. Option b overstates: Redis is fine as a cache or front filter. Option c still leaves async replication and a second store that can disagree with the payment row.",
+    "topicId": "handling-pushback",
+    "difficulty": 2
+  },
+  {
+    "id": "tc-q4",
+    "type": "scenario",
+    "prompt": "What is the best response?",
+    "scenario": "URL shortener. The candidate chose a partitioned key-value store. Interviewer: \"Our team runs Postgres for everything and nobody here has operated Cassandra.\" The workload is about 2,100 store operations a second at peak and 3 TB of data.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Keep the key-value store, since it is the textbook tool for pure key lookups"
+      },
+      {
+        "id": "b",
+        "text": "Switch to sharded Postgres: it meets the needs and the team can run it"
+      },
+      {
+        "id": "c",
+        "text": "Keep the key-value store and add a training plan so the team can learn it"
+      },
+      {
+        "id": "d",
+        "text": "Use both: Postgres for creates and the key-value store for redirects"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "This is new information: operational familiarity is a real criterion, and both options meet the requirements at 2,100 operations a second and 3 TB, so the new criterion tips it. The reference design itself calls Postgres equally valid for a Postgres team. Option a digs in against new information. Option c accepts the operational risk the interviewer just raised. Option d doubles the systems and adds a sync problem with no requirement asking for it.",
+    "topicId": "handling-pushback",
+    "difficulty": 2
+  },
+  {
+    "id": "tc-q5",
+    "type": "scenario",
+    "prompt": "How should the candidate respond?",
+    "scenario": "URL shortener. The candidate says 62⁶ is about 57 million, so 6 characters cannot hold 6 billion links and 7 are needed. Interviewer: \"62⁶ is about 57 billion.\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "Recheck quickly, then argue that the order of magnitude does not matter here"
+      },
+      {
+        "id": "b",
+        "text": "Switch to 6 characters at once, since the space now fits all the links"
+      },
+      {
+        "id": "c",
+        "text": "Concede, then note 6 fits but 1 in 10 guesses would hit, so keep 7"
+      },
+      {
+        "id": "d",
+        "text": "Move to 8 characters to be safe in case other numbers are also wrong"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "This is an error, so concede immediately and say what it changes downstream. With 56.8 billion codes, 6 billion links would fill about a tenth of the space, so a random guess would hit a real link about 1 time in 10, which fails the unguessability requirement; 7 characters is still right, for a different reason. Arguing (a) digs in after an error. Switching to 6 (b) fixes the arithmetic but forgets a requirement. Jumping to 8 (d) replaces reasoning with padding.",
+    "topicId": "handling-pushback",
+    "difficulty": 3
+  },
+  {
+    "id": "tc-q6",
+    "type": "scenario",
+    "prompt": "Which answer is strongest?",
+    "scenario": "News feed. Peak fan-out is 1.46M feed inserts a second into Redis. Interviewer: \"How many inserts a second can one Redis primary take?\" The candidate doesn't know the figure for a pipelined ZADD plus trim.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Admit the gap, assume 50,000 at 50% use (about 60 primaries), note 2× off means 120"
+      },
+      {
+        "id": "b",
+        "text": "Say Redis does about a million operations a second, so a handful of primaries"
+      },
+      {
+        "id": "c",
+        "text": "Say the number cannot be estimated without a benchmark, and move straight on to the next topic"
+      },
+      {
+        "id": "d",
+        "text": "Avoid the number and say Redis Cluster will scale automatically as load grows"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "A good 'I don't know' names the exact gap, reasons from a related figure (about 100,000 simple operations a second per instance, and this command is heavier), sizes with headroom, and shows the sensitivity: off by 2× changes the count, not the design. Option b is a confident guess likely to be probed and found wrong. Option c stops at the admission and leaves no number. Option d dodges; clusters don't add primaries by themselves.",
+    "topicId": "saying-i-dont-know",
+    "difficulty": 2
+  },
+  {
+    "id": "tc-q7",
+    "type": "scenario",
+    "prompt": "Which reply handles an unfamiliar technology best?",
+    "scenario": "Video streaming, metadata store: point reads by video ID, about 50 new videos a second, 16 TB over five years. Interviewer: \"Have you used Vitess? Would it work here?\" The candidate has never used it.",
+    "options": [
+      {
+        "id": "a",
+        "text": "Say yes, it would work well, and continue so the interview keeps its momentum"
+      },
+      {
+        "id": "b",
+        "text": "Say you haven't used it, so you would rather keep your key-value store design as it stands"
+      },
+      {
+        "id": "c",
+        "text": "Ask the interviewer to explain how Vitess works before saying anything else"
+      },
+      {
+        "id": "d",
+        "text": "Say you haven't used it, know it shards MySQL, and judge it against the workload"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "Admit the gap precisely, state what you do know (a MySQL sharding layer), and turn the question back to requirements: any store that partitions by ID and replicates fits this workload, so the team's operational experience can decide. The reference design says Vitess-sharded MySQL is equally valid for a MySQL team. Bluffing (a) is usually found by the next question. Option b refuses to engage. Option c puts the whole burden on the interviewer instead of reasoning first.",
+    "topicId": "saying-i-dont-know",
+    "difficulty": 1
+  },
+  {
+    "id": "tc-q8",
+    "type": "single",
+    "prompt": "Under a 45-minute clock, which decision most deserves a full options comparison?",
+    "options": [
+      {
+        "id": "a",
+        "text": "The TTL on the cached redirect responses"
+      },
+      {
+        "id": "b",
+        "text": "The sharding key for the orders database"
+      },
+      {
+        "id": "c",
+        "text": "The timeout on calls to the email provider"
+      },
+      {
+        "id": "d",
+        "text": "The threshold for switching fan-out to pull"
+      }
+    ],
+    "correct": [
+      "b"
+    ],
+    "explanation": "Spend time in proportion to how hard a decision is to undo. A sharding key decides which transactions stay local, and changing it later is a data migration (food delivery shards by city to keep assignment local). A TTL (a), a timeout (c) and a fan-out threshold (d) are configuration values: pick one, say it is tunable, and move on.",
+    "topicId": "it-depends",
+    "difficulty": 1
+  },
+  {
+    "id": "tc-q9",
+    "type": "single",
+    "prompt": "What is the main job of the \"because\" column in a whiteboard decision log?",
+    "options": [
+      {
+        "id": "a",
+        "text": "To record the interviewer's preferences so you can agree with them later"
+      },
+      {
+        "id": "b",
+        "text": "To list every component in the design so none is forgotten at wrap-up"
+      },
+      {
+        "id": "c",
+        "text": "To anchor answers to pushback and supply the trade-off summary at wrap-up"
+      },
+      {
+        "id": "d",
+        "text": "To track how long each step took against the 45-minute time budget"
+      }
+    ],
+    "correct": [
+      "c"
+    ],
+    "explanation": "The reason is what you defend against a probe or update for new information, and read aloud at wrap-up it is the trade-offs criterion already written. Recording preferences (a) encourages caving. A component list (b) is the diagram's job. Time tracking (d) is useful but not what the decision log is for.",
+    "topicId": "decision-log",
+    "difficulty": 1
+  },
+  {
+    "id": "tc-q10",
+    "type": "scenario",
+    "prompt": "At minute 26, what is the best recovery?",
+    "scenario": "Ticket booking. Minute 18: the candidate holds seats with a Postgres conditional update, giving no reason. Minute 22: \"Why not Redis SET NX? It's faster.\" The candidate switches to Redis. Minute 26: \"What happens to a hold if the Redis primary fails?\"",
+    "options": [
+      {
+        "id": "a",
+        "text": "State the criterion (never sell a seat twice), choose Postgres, keep Redis as a filter"
+      },
+      {
+        "id": "b",
+        "text": "Keep Redis and turn on AOF persistence so that a failover cannot lose any of the acknowledged holds"
+      },
+      {
+        "id": "c",
+        "text": "Lay out both options again in full and ask the interviewer which one they want"
+      },
+      {
+        "id": "d",
+        "text": "Move to the waiting room deep dive and come back to seat holds at the end"
+      }
+    ],
+    "correct": [
+      "a"
+    ],
+    "explanation": "Oscillating happens when no criterion anchors the decision. Restating it ends the loop: Redis replication is asynchronous, so a failover can forget an acknowledged hold; the waiting room keeps seat writes near 100 a second, which Postgres handles easily. Redis stays useful as a front filter. AOF (b) protects against restarts, not against a promoted replica that never received the write. Option c re-argues and hands off the decision. Option d leaves a correctness hole open in the middle of the design.",
+    "topicId": "handling-pushback",
+    "difficulty": 3
+  },
+  {
+    "id": "tc-q11",
+    "type": "multi",
+    "prompt": "Which interviewer remarks bring new information that should make you re-run a decision? Select all that apply.",
+    "options": [
+      {
+        "id": "a",
+        "text": "\"Why not use a queue here instead?\""
+      },
+      {
+        "id": "b",
+        "text": "\"Login attempts need rate limits too.\""
+      },
+      {
+        "id": "c",
+        "text": "\"Are you sure about that choice?\""
+      },
+      {
+        "id": "d",
+        "text": "\"The team has never run Kafka in production.\""
+      }
+    ],
+    "correct": [
+      "b",
+      "d"
+    ],
+    "explanation": "A new rule type with a different failure cost (b) and a new operational constraint (d) change the criteria, so re-run the comparison out loud. \"Why not X?\" (a) and \"Are you sure?\" (c) add no requirement or number; treat them as probes and defend with your criterion, while acknowledging what the alternative does better.",
+    "topicId": "handling-pushback",
+    "difficulty": 2
+  },
+  {
+    "id": "tc-q12",
+    "type": "single",
+    "prompt": "Why present two or three options rather than one or five?",
+    "options": [
+      {
+        "id": "a",
+        "text": "Interviewers usually require exactly three options for every decision, so plan for three"
+      },
+      {
+        "id": "b",
+        "text": "One option lets you skip trade-offs, so it is fine for hard decisions"
+      },
+      {
+        "id": "c",
+        "text": "Five options are better whenever the clock allows, to show breadth"
+      },
+      {
+        "id": "d",
+        "text": "One looks like a pronouncement; five eats the clock without adding much"
+      }
+    ],
+    "correct": [
+      "d"
+    ],
+    "explanation": "One option gives the interviewer no evidence you considered anything else; five turns a decision into a lecture that costs deep-dive time. Two or three, including the obvious one, shows the search space cheaply. There is no universal 'exactly three' rule (a). Skipping trade-offs on hard decisions (b) is exactly what rubrics penalise. Breadth for its own sake (c) rarely beats depth on the decisions that matter.",
+    "topicId": "options-and-criteria",
+    "difficulty": 1
+  }
+]

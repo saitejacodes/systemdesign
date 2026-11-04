@@ -10,7 +10,7 @@ import type { CaseStudyMeta, Rubric } from "@/lib/content/schemas";
 import { useInterviewAttempts } from "@/lib/db/hooks";
 import { COMPARE_ROWS, runDesign, type RunResult } from "@/lib/interview/compare";
 import { groupByStep, hintsUsed, scoreTotal } from "@/lib/interview/scoring";
-import { submit } from "@/lib/interview/session";
+import { attemptScore, submit } from "@/lib/interview/session";
 import { discardDraft, loadDraft, readDesign, saveAttempt, saveDraft, startAttempt } from "@/lib/interview/store";
 import { elapsedMs, fmtMinutes, formatClock, minuteMark, pause, resume, splitTime, stepElapsed, switchStep } from "@/lib/interview/timing";
 import { DURATIONS, STEPS, type DurationMin, type InterviewSession, type Mode, type Step } from "@/lib/interview/types";
@@ -345,8 +345,8 @@ function Saved({ c, pct, onAgain }: { c: InterviewCase; pct: number; onAgain: ()
       {mine.length > 0 && (
         <ol className="grid gap-1" aria-label="Your attempts at this case">
           {mine.map((a, i) => {
-            const raw = Object.values(a.selfScores).reduce((x, y) => x + y, 0);
-            return <li key={a.id} className="font-mono text-[14px]">#{i + 1} · {new Date(a.createdAt).toLocaleDateString()} · {a.panels.mode ?? "mock"} · {raw}/{max}</li>;
+            const sc = attemptScore(a);
+            return <li key={a.id} className="font-mono text-[14px]">#{i + 1} · {new Date(a.createdAt).toLocaleDateString()} · {a.panels.mode ?? "mock"} · {sc.raw}{sc.hintPenalty ? ` − ${sc.hintPenalty}` : ""}/{max} = {sc.pct}%</li>;
           })}
         </ol>
       )}

@@ -1,0 +1,219 @@
+## Why it matters
+
+The first 25 minutes of a design interview are mostly the same for every candidate: requirements, numbers, an API, a box diagram. The last 15 are where interviews are decided, because the interviewer stops listening and starts pushing: "one account has 50 million followers", "the payment call timed out", "Redis just went down". Across the 19 case studies in this course the same handful of pushes come back again and again, and the rubrics reward them heavily: 3 to 5 of each case's 12 or 13 criteria sit in Deep Dives. This section names the seven recurring deep dives, shows the clue in the prompt or the numbers that tells you each one is coming, gives the two or three standard answers with their costs worked in numbers, and points to the case studies and earlier lessons where you practise each one.
+
+<Callout type="analogy" title="A mechanic's diagnostic chart">
+An experienced mechanic hears a squeal under braking and already knows the three likely causes and what each repair costs. They did not memorise every car; they learned a short list of symptoms, the parts behind each, and how to check which one it is. Deep dives work the same way: a short list of symptoms (a skewed key, a huge follower count, a timeout on a payment) maps to a short list of mechanisms. Where the analogy breaks: a car has one right repair, while a design has several defensible ones, and the interviewer is grading whether you can state what each costs and pick one for this system.
+</Callout>
+
+### Answering any deep dive in four beats
+
+Interview Mode's hint for the Deep Dives step suggests a structure that works for every pattern below: **what saturates or fails, how you detect it, what a request sees meanwhile, and the fix with its cost.** A weak answer jumps straight to the fix ("add a cache"). A strong one spends 20 seconds on the first beat with a number ("one post from that account is 35M cache inserts, about 23 seconds of the whole cluster's spare capacity"), because that number is what justifies the fix.
+
+<Figure caption="FIG. 5.1 · FROM SIGNAL TO PATTERN">
+  <Diagram label="Clues in the prompt or estimates point to a deep-dive pattern: skewed or viral keys lead to hot keys; followers, groups or campaigns lead to fan-out; money, sends and retries lead to idempotency; never oversell or never double-assign lead to the consistency choice; a large read to write ratio or a huge write rate leads to read or write scaling; bursts and slow providers lead to backpressure; several continents or surviving a region loss lead to multi-region." chart={`flowchart LR
+    S1[Skewed or viral keys] --> P1[Hot keys]
+    S2[Followers, groups, campaigns, shards per query] --> P2[Fan-out]
+    S3[Money, sends, retries, webhooks] --> P3[Idempotency]
+    S4[Never oversell, never assign twice] --> P4[Consistency vs availability]
+    S5[Read to write ratio, writes per second] --> P5[Scale reads or writes]
+    S6[Bursts, slow downstream, rate limits] --> P6[Backpressure]
+    S7[Several continents, lose a region] --> P7[Multi-region]`} />
+</Figure>
+
+*Most prompts trigger two or three. Name the ones you expect while estimating.*
+
+## Hot keys and celebrities
+
+<DepthStamp depth="deep" />
+
+**Problem signal.** "Viral", "celebrity", "a hit event", "one tenant is 40% of traffic", or any popularity that follows a power law. Hashing spreads *keys* evenly, not *traffic*: a <Term slug="hot-key">hot key</Term> sends all its load to one shard however many shards you add.
+
+**Standard solutions.**
+
+| Solution | How it works | Worked number | Cost |
+|---|---|---|---|
+| In-process cache with a short TTL | Each app instance keeps the hottest objects for a few seconds | Photo-sharing app: 225 instances × 1 Redis read per 5 s = **45 reads/s** for a post read 33,000 times a second | Staleness up to the TTL; memory on every instance |
+| <Term slug="request-coalescing">Request coalescing</Term> | Concurrent misses for one key share a single backend read | URL shortener: 1,000 concurrent misses for one code → 1 store read | Only helps misses; needs a per-key in-flight map |
+| <Term slug="key-salting">Key salting</Term> | Split one hot write key into N sub-keys and sum them | Photo-sharing likes: 3,000 likes/s over `hash(user_id) mod 64` = about **47/s per bucket** | Reading a total touches N keys, so pair it with an asynchronous counter |
+
+**Failure timeline (URL shortener, cache flushed at peak).** t = 0: a bad deploy restarts every Redis node; the hit rate drops from 90% to 0. t + 1 s: store reads jump from 1,930/s to about 19,300/s, ten times normal. t + 2 s: the in-process caches (5,000 hottest codes, 30 s TTL) and coalescing absorb the viral links, so the store, sized for 30,000 ops/s, holds. Without them, every viral code would be thousands of reads a second against a single partition. Size the store for the cold-cache case.
+
+**Where it appears:** [URL shortener](/case-studies/url-shortener), [photo-sharing app](/case-studies/instagram) (a 100M-follower post hits every layer at once), [news feed](/case-studies/news-feed), [payment system](/case-studies/payment-system) (the platform fee account as a hot row), [metrics and alerting](/case-studies/metrics-monitoring) (sharding by metric name creates <Term slug="hot-shard">hot shards</Term>). **Mechanism lessons:** [Sharding](/phase/2/sharding), [Consistent hashing](/phase/2/consistent-hashing), [Cache failure modes](/phase/3/cache-failures), [Redis in depth](/phase/3/redis).
+
+## Fan-out
+
+<DepthStamp depth="deep" />
+
+**Problem signal.** "Followers", "groups", "send to a segment", or a query that must ask many shards. Multiply the average out-degree by the event rate during estimation; if the product dwarfs every other number, <Term slug="fan-out">fan-out</Term> is the deep dive.
+
+**Standard solutions, with the news-feed numbers.**
+
+- **Fan-out on write (push).** Each post is written into every follower's precomputed feed. 200 followers × 70% active = 140 inserts per post; 3,472 posts/s gives **486,000 inserts/s average, 1.46M/s at peak**. Reads become one cache lookup. Breaks on a 50M-follower account: 35M inserts for one post.
+- **Fan-out on read (pull).** Store nothing per reader; merge 200 followees on every load. At 156,250 loads/s that is **31M lookups/s**, and the slowest of 200 parallel lookups sets the latency.
+- **Hybrid.** Push for normal accounts, pull for large ones. The threshold comes from capacity: about 1.5M spare inserts/s, and no post should take more than a second of it, so 0.7 × F ≤ 1.5M gives F ≤ 2.1M. Pick **1M**, with hysteresis (back to push only below 800k) so an account near the line does not flip.
+
+Read-side fan-out has its own trap, <Term slug="scatter-gather">scatter-gather</Term> tail latency. The web search engine queries 200 shards: if each is slow 1% of the time, 0.99²⁰⁰ ≈ 0.134, so **87% of queries hit at least one slow shard**. Deadlines, <Term slug="hedged-request">hedged requests</Term> and partial results (199 of 200 shards answered = coverage 0.995) are the standard answers.
+
+**Failure timeline (news feed, final whistle).** t = 0: posting jumps 5× to 52,000/s; fan-out demand is 7.3M inserts/s against 2.25M/s of worker capacity. Feeds stay fast but miss friends' newest posts; authors still see their own. t + 30 s: the <Term slug="consumer-lag">consumer-lag</Term> alert fires. t + 2 min: lower the celebrity threshold to 100k (assumed to halve insert volume) and scale workers to 100. t + 10 min: the spike ends with about 1.16B inserts queued; at 1.77M/s of spare capacity the backlog drains in about 11 minutes. Freshness degraded; availability never did.
+
+**Where it appears:** [news feed](/case-studies/news-feed), [photo-sharing app](/case-studies/instagram), [chat app](/case-studies/chat-app) (groups capped at 500 make push safe: at most 499 upserts per message), [notification system](/case-studies/notification-system) (campaigns to 200M users), [web search engine](/case-studies/search-engine). **Mechanism lessons:** [Queues vs pub/sub](/phase/3/queues-vs-pubsub), [Partitioning and ordering](/phase/3/partitioning-ordering), [Latency, throughput and the tail](/phase/1/latency-throughput).
+
+## Idempotency and exactly-once effects
+
+<DepthStamp depth="deep" />
+
+**Problem signal.** Money, inventory, a message a person will see, or any arrow labelled "retry", "webhook" or "at-least-once". The interviewer's phrasing is often "the call timed out: did it happen?" No network delivers <Term slug="exactly-once">exactly once</Term>; you build exactly-once *effects* from at-least-once delivery plus deduplication.
+
+**Standard solutions.**
+
+1. **An <Term slug="idempotency-key">idempotency key</Term> with a stored response.** The client generates one key per attempt and reuses it on every retry; the server stores (key, request hash, response). Sizing from the payment system: 10M payments a day × 500 B, kept 7 days = **35 GB**, small enough for the payment database itself, so the key and the payment commit in one transaction. Cost: a lookup on every write, and a retention window the client must respect.
+2. **Make the operation naturally idempotent.** "Insert like (post, user) if absent" instead of "likes = likes + 1"; a conditional update `WHERE status = 'available'` instead of read-then-write. Cost: you must redesign the data model around facts rather than counters.
+3. **Deduplicate at the consumer.** Record processed message IDs under a unique constraint in the same transaction as the effect. Cost: a dedup table per consumer, and a window after which a very late duplicate slips through.
+
+The hard case is the **unknown outcome**. The payment system calls its PSP with a 10 s timeout and its own `payment_id` as the PSP's key. On timeout the payment moves to an `unknown` state and is resolved by status queries, webhooks and daily <Term slug="reconciliation">reconciliation</Term>, never by charging again with a fresh key.
+
+**Failure timeline.** 10:00:00 the client submits a $49 charge. 10:00:10 the PSP call times out; the API returns "processing". 10:00:12 the client retries with the same key; the server finds the record in `unknown` and returns the same response without calling the PSP. 10:00:40 the PSP's webhook confirms the authorization; the payment moves to `authorized` by compare-and-set. One charge. With a fresh key on retry, the buyer would have been charged twice.
+
+**Where it appears:** [payment system](/case-studies/payment-system), [food delivery](/case-studies/food-delivery), [ride sharing](/case-studies/ride-sharing), [notification system](/case-studies/notification-system) ("never twice from its own side"), [job scheduler](/case-studies/job-scheduler) (owners must make a second run harmless), [ticket booking](/case-studies/ticket-booking). **Mechanism lessons:** [Idempotency](/phase/2/idempotency), [Delivery semantics](/phase/3/delivery-semantics), [Event-driven architecture and the outbox](/phase/3/event-driven), [Distributed transactions](/phase/4/distributed-transactions).
+
+## Consistency vs availability choices
+
+<DepthStamp depth="tradeoffs" />
+
+**Problem signal.** Absolutes in the requirements: "never oversell", "a driver is never assigned two trips", "a limiter outage must not become an API outage", "stale for up to a minute is fine". The strong move is to **decide per operation**, not per system. Most systems in this course are strongly consistent on one or two writes and eventually consistent everywhere else.
+
+**Standard solutions.**
+
+- **One authority plus a conditional write** for the operations that must never be wrong. Ticket booking holds seats with a single `UPDATE … WHERE status = 'available'`; ride sharing reserves a driver the same way. Cost: a single leader per key, and the operation stops during a failover rather than risk a double sale.
+- **Eventual consistency with a stated bound** for everything else: feed contents, like counts refreshed every 10 s, the search index within a day. Add <Term slug="read-your-writes">read-your-writes</Term> for the author, who is the one person who notices.
+- **Fail open or fail closed, chosen per rule.** The rate limiter <Term slug="fail-open">fails open</Term> for ordinary limits (availability wins) but <Term slug="fail-closed">fails closed</Term> for rules that protect money or abuse-prone endpoints.
+
+Do the arithmetic before choosing. Without ticket booking's waiting room, a million fans aiming 2 hold attempts each at the best few thousand seats in the first minute is about **33,000 conditional writes a second** fighting over the same rows. Strong consistency there is not a slogan; it is lock contention you have to shrink first.
+
+**Failure timeline (rate limiter, one Redis primary lost).** t = 0: primary 37 of 80 loses power; checks for the 1/80 of keys it owns start timing out at 3 ms, and those requests succeed 3 ms slower. t + 1 s: the per-shard circuit breaker opens on every API server; those checks now fail open instantly and a fail-open counter climbs. t + 15 to 20 s: the cluster promotes a replica and checks resume. No caller saw an error; for about 20 seconds 1/80 of keys were unlimited. That is the trade the requirements asked for.
+
+**Where it appears:** [ticket booking](/case-studies/ticket-booking), [ride sharing](/case-studies/ride-sharing), [rate limiter service](/case-studies/rate-limiter-service), [file sync](/case-studies/file-sync) (conflicting edits kept as conflicted copies, never silently lost), [payment system](/case-studies/payment-system). **Mechanism lessons:** [CAP and PACELC](/phase/4/cap-pacelc), [Consistency models](/phase/4/consistency-models), [Locking](/phase/2/locking), [Quorums](/phase/4/quorums).
+
+## Scaling reads vs scaling writes
+
+<DepthStamp depth="deep" />
+
+**Problem signal.** The read:write ratio and the absolute write rate from your estimate. The two need different tools, and naming which side dominates is often worth a rubric point by itself.
+
+| Side | Signal | Tools | Example from the cases |
+|---|---|---|---|
+| Read-heavy | Ratio of 10:1 or more; small, cacheable, skewed reads | Cache layers, read replicas, CDN, precomputed answers | URL shortener: 100M links a month ÷ 2.59M s = **38.6 writes/s**, × 100 = 3,860 reads/s. At a 5× peak, 19,300 reads/s × 10% miss = 1,930 store reads/s, plus 195 writes/s, about **2,100 ops/s**: a few nodes |
+| Write-heavy | Hundreds of thousands of writes/s, each small | Partition by a key that spreads load, batch and aggregate, keep the latest value in memory | Ride sharing: 250,000 GPS updates/s to an in-memory geo index, latest wins, with no acknowledgement or retries |
+| Write-heavy, countable | One event per action would flood storage | Pre-aggregate before writing | API gateway metering: one event per request would be 150 MB/s; counting per tuple and flushing every 10 s gives about **32,000 rows/s (4 MB/s)** |
+
+For read-heavy systems, notice that the write path is trivial: the URL shortener's rubric gives full marks for concluding "the design effort belongs on reads". For write-heavy systems the trap is the shard key. The metrics case hashes by series ID because sharding by metric name would put `http_requests_total`, which might have 10M series on its own, on one hot shard.
+
+**Failure timeline (metrics, a high-cardinality label).** t = 0: a team adds `user_id` to a metric with 40,000 series; with 1M active users even 1% of combinations is **400M new series**, four times the system's capacity. t + minutes: ingester memory climbs and queries slow. Detection is a per-tenant series-count limit and alert; the fix is rejecting new series past the limit at the distributor.
+
+**Where it appears:** [URL shortener](/case-studies/url-shortener), [search typeahead](/case-studies/typeahead), [video streaming](/case-studies/video-streaming) (read-heavy through a CDN); [metrics and alerting](/case-studies/metrics-monitoring), [ride sharing](/case-studies/ride-sharing), [food delivery](/case-studies/food-delivery) (83,000 courier positions a second without a database write per ping). **Mechanism lessons:** [Cache strategies](/phase/3/cache-strategies), [Replication](/phase/2/replication), [CDNs](/phase/3/cdn), [Stream processing](/phase/6/stream-processing).
+
+## Backpressure
+
+<DepthStamp depth="deep" />
+
+**Problem signal.** A burst far above average ("50,000 jobs due at the top of the hour", "a million fans in a minute", "a 5× campaign") or a downstream with a hard limit you do not control (an email provider, a PSP). <Term slug="backpressure">Backpressure</Term> means the slow part pushes back instead of being buried.
+
+**Standard solutions.**
+
+1. **Admission control in front.** Ticket booking's <Term slug="virtual-waiting-room">virtual waiting room</Term> admits shoppers at a set rate; without it, a million people refreshing every 5 s is **200,000 requests a second** at the booking API. Cost: a fairness design and a queue service to run.
+2. **Separate lanes and quotas.** The notification system splits transactional and bulk into different topics, consumer pools and provider token buckets (bulk may use at most 70% of a provider's limit), because one FIFO queue causes <Term slug="head-of-line-blocking">head-of-line blocking</Term>: 300M marketing messages in front of a password reset. Cost: twice the queues and pools to operate.
+3. **Bounded queues, shedding and jittered retries.** Bound every queue and in-flight pool, reject the lowest priority first with `503` and `Retry-After` (<Term slug="load-shedding">load shedding</Term>), and retry with exponential backoff and full jitter. Cost: some requests fail on purpose.
+
+Size the burst, not the average. The job scheduler needs 50,000 runs started within 5 s, **10,000 fires/s**, which is 86 times its daily average. And <Term slug="littles-law">Little's law</Term> shows why a slow dependency is a capacity problem: the payment system has 1,157 authorizations/s × 0.85 s ≈ **980 in flight**; if the PSP slows to the 10 s timeout, that becomes **11,570**, which is why each PSP gets its own bounded pool (a <Term slug="bulkhead">bulkhead</Term>).
+
+**Failure timeline (job scheduler, synchronised retries).** 00:00:00 a shared database is down and 5,000 jobs fail together. 00:00:30 all 5,000 retry at once on a fixed 30 s delay and knock the recovering database over again: a <Term slug="retry-storm">retry storm</Term>. With full jitter, the same retries spread evenly over the 30 s window, about 170 a second, and the database recovers. Retries also run on a lower-priority path than on-time runs.
+
+**Where it appears:** [notification system](/case-studies/notification-system), [ticket booking](/case-studies/ticket-booking), [job scheduler](/case-studies/job-scheduler), [API gateway](/case-studies/api-gateway) (priority shedding), [web crawler](/case-studies/web-crawler) (one request per second per host). **Mechanism lessons:** [Failure handling](/phase/3/failure-handling), [Bulkheads and load shedding](/phase/4/bulkheads-load-shedding), [Timeouts and retries](/phase/4/timeouts-retries), [Rate limiting](/phase/2/rate-limiting).
+
+## Multi-region
+
+<DepthStamp depth="tradeoffs" />
+
+**Problem signal.** "Users on three continents", "survive the loss of a region", a recovery point objective of zero, data residency, or a latency budget smaller than an ocean crossing. If none of these appear, say "single region, multi-zone" and move on; volunteering a global design nobody asked for costs time.
+
+**Standard solutions.**
+
+- **Active-passive.** One region serves; another receives asynchronous replicas. Cheap and simple, but <Term slug="rpo">RPO</Term> equals the replication lag at the moment of failure, and failover takes minutes.
+- **Active-active with regional data planes.** Every region serves its nearby users. Capacity rule: with N equal regions each may run at most (N − 1)/N busy at peak. The API gateway runs 3 regions of 36 instances (360,000 requests/s each); normal load is 167,000/s per region, and after losing one region the survivors carry 250,000 ÷ 360,000 = **0.69**.
+- **A home region per entity.** Each conversation, namespace or merchant is owned by one region and writes go there: the chat app pays one inter-region round trip (about 100 to 200 ms) inside a 500 ms budget. It avoids write conflicts without global consensus.
+
+For state that genuinely spans regions, look for data that merges itself. The rate limiter counts locally and publishes per-key counts to the other regions every second; counts only grow within a window, so they merge like a <Term slug="g-counter">grow-only counter</Term>, and overshoot is bounded by the one-second sync delay. A single global Redis would cost a 60 to 150 ms round trip against a 5 ms budget. Synchronous cross-region writes are the expensive option: with a 65 ms round trip to the nearest other region, an API call that makes 4 sequential writes spends **260 ms** on replication alone.
+
+**Failure timeline (API gateway, region loss; detection times assumed).** t = 0: region A's load balancers stop answering. t + 30 s: GeoDNS health checks mark A unhealthy. t + 30 s to t + 2 min: resolvers pick up the new answer as cached records expire; A's callers move to B and C, each rising from 167,000/s to 250,000/s, 69% busy. Per-key limits are briefly looser because A's counts are gone. If a zone in a survivor also fails, load is 250,000 ÷ 240,000 = 1.04 of capacity, so the plan is to shed the lowest-priority traffic rather than provision for a double failure.
+
+**Where it appears:** [API gateway](/case-studies/api-gateway), [rate limiter service](/case-studies/rate-limiter-service), and in the 10× wrap-up of [chat app](/case-studies/chat-app), [file sync](/case-studies/file-sync), [news feed](/case-studies/news-feed) (each region fans out only to its own users) and [payment system](/case-studies/payment-system) (regional ledgers for data residency). **Mechanism lessons:** [Multi-region architecture](/phase/6/multi-region), [Disaster recovery](/phase/4/disaster-recovery), [High availability](/phase/4/high-availability).
+
+## Worked example: spotting three deep dives in one prompt
+
+The prompt: "Design a ticketing system for stadium concerts. A big artist's on-sale brings a million fans in the first minute for 50,000 seats." Within the first five minutes a strong candidate says:
+
+> "Three things will matter. First, contention: a million people want 50,000 seats, so the hold must be one atomic conditional write, and I'll keep seats and orders in one relational database. Second, backpressure: a million arrivals in a minute against an API that should see a few thousand admitted shoppers, so I want a waiting room in front. Third, payment idempotency: holds expire, so a slow payment must never charge for seats we've released. I'll design the happy path, then come back to those three in that order."
+
+Then the numbers that make each concrete: admitting 2,000 shoppers a minute with 60% completing gives 1,200 orders a minute, so at about 2 seats per order the 25,000 orders that sell the show out take about 21 minutes, and roughly 958,000 fans must be told early that they will not get tickets. That one paragraph covers three of the four deep-dive criteria in the case's rubric before the interviewer has asked a single question.
+
+<TradeoffBox title="Recurring deep-dive choices" items={[
+  { gain: "In-process cache for hot keys: thousands of reads become tens", cost: "Staleness up to the TTL, and invalidation you cannot do precisely" },
+  { gain: "Hybrid fan-out: bounded write cost and cheap reads", cost: "Two code paths and a threshold you must tune and change during incidents" },
+  { gain: "Idempotency keys with stored responses: safe retries end to end", cost: "A lookup on every write and a key table with a retention window" },
+  { gain: "Strong consistency on the one critical write: no double sale", cost: "A single authority per key that pauses during failover" },
+  { gain: "Waiting room and priority lanes: bursts cannot starve urgent work", cost: "More queues, pools and fairness rules to operate" },
+  { gain: "Active-active regions: survive a region loss with low latency", cost: "1.5× capacity for three regions, and conflict rules for shared state" }
+]} />
+
+<NotWhenBox title="When not to raise a deep dive" items={[
+  "Multi-region when the prompt names one country and no regional-failure requirement: say single region, three zones, and move on.",
+  "Hot-key mitigation before you have shown the traffic is skewed: state the assumption about the distribution first.",
+  "Exactly-once machinery on idempotent reads or on latest-wins updates such as GPS positions.",
+  "Sharding a write path that does 40 writes a second: one database handles it, and saying so scores."
+]} />
+
+## Common misconceptions
+
+<Misconception wrong="Adding shards fixes a hot key." right="Hashing spreads keys, not traffic. A single hot key stays on one shard however many you add; you need caching, coalescing or splitting the key." />
+
+<Misconception wrong="Kafka (or any queue) gives exactly-once, so duplicates are not my problem." right="Delivery is at-least-once across the boundaries that matter: the client, the PSP, the email provider. Exactly-once effects come from idempotency keys and deduplication at each hop." />
+
+<Misconception wrong="A system is either CP or AP." right="Choose per operation. The seat hold is strongly consistent; the seat map, like counts and feeds are eventually consistent with a stated bound." />
+
+<Misconception wrong="Backpressure means adding a bigger queue." right="An unbounded queue only delays the failure and adds latency. Backpressure bounds the queue and makes the source slow down, wait or be rejected." />
+
+## Interview angle
+
+<InterviewAngle title="Deep-dive patterns" questions={[
+  "One account with 50M followers posts. Walk me through the next minute.",
+  "The PSP call timed out. Did the charge happen, and what does your system do now?",
+  "Redis is down. Does your rate limiter fail open or closed, and for which rules?",
+  "A campaign to every user starts while password resets are flowing. What protects the resets?",
+  "Your read path is 100:1. Where does the effort go, and where would it go at 1:10?",
+  "We are launching in Europe. What changes, and what does losing a region cost?"
+]}>
+Interviewers describe a situation, not a pattern. Name the pattern first ("this is a hot-key problem on the post object"), then give the four beats: what saturates (with a number), how you detect it, what users see in the meantime, and the fix with its cost. Offer two or three options in one sentence each and pick one for this system's requirements. Close with the failure timeline: what happens at t = 0, when the alert fires, and when the system has recovered. Raising these patterns during estimation, before being asked, lets you lead the last 15 minutes.
+</InterviewAngle>
+
+## Try it
+
+Mark a celebrity in the sharding simulator and compare salting with a dedicated shard; then watch jitter and shedding end a retry storm.
+
+<Simulator id="sharding" />
+
+<Simulator id="retry-storm" />
+
+<CheckpointList />
+
+<QuizPlayer />
+
+<FlashcardDeck />
+
+<ResourceList />
+
+## Practice
+
+1. Open [Interview Mode for the news feed](/interview/news-feed) in Practice mode, go straight to Deep Dives and answer the fan-out question in the four beats, deriving the celebrity threshold from capacity. Then compare with [the case study](/case-studies/news-feed).
+2. Run a 45-minute Mock of [ticket booking](/interview/ticket-booking). During the Estimation step, write down which three patterns you expect before any deep-dive question arrives; score yourself on whether they did.
+3. In [Design Studio](/studio), open the [notification system](/case-studies/notification-system) starter and press Run at the campaign peak. Find the component that saturates first, then compare your fix with the case study's separate lanes and provider quotas.

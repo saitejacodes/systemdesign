@@ -1,0 +1,32 @@
+[
+  {
+    "id": "hello-interview-hurry",
+    "title": "System Design in a Hurry",
+    "author": "Hello Interview",
+    "kind": "blog",
+    "url": "https://www.hellointerview.com/learn/system-design/in-a-hurry/introduction",
+    "why": "A free guide to the interview format and delivery, useful for comparing your step timing and the way you present each step with another source.",
+    "topicIds": ["interview-mode", "peer-mock"],
+    "free": true
+  },
+  {
+    "id": "system-design-primer",
+    "title": "The System Design Primer",
+    "author": "Donne Martin",
+    "kind": "repo",
+    "url": "https://github.com/donnemartin/system-design-primer",
+    "why": "Additional practice prompts with worked answers once you have mocked the six cases here; good material for peer mocks where the interviewer has a reference to hand.",
+    "topicIds": ["peer-mock", "case-selection"],
+    "free": true
+  },
+  {
+    "id": "bytebytego",
+    "title": "ByteByteGo",
+    "author": "Alex Xu",
+    "kind": "blog",
+    "url": "https://bytebytego.com/",
+    "why": "Further worked designs to cross-check your reference comparisons and widen the set of cases for second-round mocks.",
+    "topicIds": ["self-review", "case-selection"],
+    "free": false
+  }
+]
