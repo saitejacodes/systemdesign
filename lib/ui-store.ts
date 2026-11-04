@@ -58,3 +58,6 @@ export function readTheme(): ThemeChoice {
 export interface HudState { live: string; items?: { k?: string; v: string; tone?: "ok" | "hot" | "over" }[]; right?: string }
 /** Per-page HudBar content; pages set it with <SetHud />. */
 export const useHud = create<{ hud: HudState | null; setHud: (h: HudState | null) => void }>()((set) => ({ hud: null, setHud: (hud) => set({ hud }) }));
+
+/** Lesson topics for the AI Tutor's context; lesson pages set them with <SetTutorTopics />. */
+export const useTutorTopics = create<{ topics: string[]; setTopics: (t: string[]) => void }>()((set) => ({ topics: [], setTopics: (topics) => set({ topics }) }));

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DepthStamp, FigureCaption, SpecLabel } from "@/components/brand";
-import { SetHud } from "@/components/layout/SetHud";
+import { SetHud, SetTutorTopics } from "@/components/layout/SetHud";
 import { LabLinks } from "@/components/labs/LabLinks";
 import { LessonRenderer, lessonHeadings } from "@/components/learn/LessonRenderer";
 import { getAllSections, getSection, sectionHref } from "@/lib/content";
@@ -37,6 +37,7 @@ export default async function Page({ params }: PageProps<"/phase/[phase]/[sectio
 
   return (
     <article className="px-4 pb-16 pt-8 sm:px-8">
+      <SetTutorTopics topics={meta.topics.map((t) => t.title)} />
       <SetHud live={`Week ${String(meta.week).padStart(2, "0")} · ${phase.short}`} items={[{ k: "READ", v: `${readMin} min` }, { k: "EST", v: `${meta.estimatedMinutes} min` }]} right={num} />
       <header className="grid max-w-[68ch] gap-5 pb-8">
         <div className="flex flex-wrap items-center gap-3">

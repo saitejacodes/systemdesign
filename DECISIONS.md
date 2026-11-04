@@ -211,3 +211,13 @@
 - **Interview-day checklist.** `final-review` links `/reference/interview-day-checklist`; Prompt 22 must create the cheat sheet with that slug.
 - **No company rubrics.** Level expectations describe general patterns and say plainly that they vary by company and interviewer.
 - **Week 16 deliverable** asked for "3+ on every rubric row" on a 0–2 scale; it now asks for 80% or more with no row scored 0.
+
+## Prompt 21
+- **Browser access.** Anthropic accepts direct browser calls when the client opts in; the official SDK does this with `dangerouslyAllowBrowser: true` (it sends `anthropic-dangerous-direct-browser-access: true`). SDK 1.x sends the key as `Authorization: Bearer`. OpenAI-compatible endpoints vary on CORS, so they go through plain `fetch`, and the network error points to `scripts/ai-proxy`.
+- **Retries.** The SDK's own retries are off; `lib/ai/client.ts` retries once after 1.5 s on rate limit, overload, network and timeout, and only if no text has streamed, so a retry never duplicates visible output.
+- **Model and effort.** Default model `claude-opus-5-5`. Effort is sent only to models that accept it: low for chat (tutor, interviewer answers), medium for follow-ups and Explain, high for grading. The server-side refusal fallback (`fallbacks: "default"`) is on for models that support it. Unknown models (every OpenAI-compatible one) get token counts but no cost estimate, rather than a guessed price.
+- **Prices** are Anthropic list prices per million tokens (Opus 5.5: $4 in, $20 out). Cost is an estimate; the provider's bill is the real number.
+- **Tutor context** is the page's `<main>` text (capped at 12,000 characters) plus the lesson topics set by the lesson page, so it works on every page, not only lessons. The last 12 turns are resent; older turns stay stored.
+- **AI grading** asks for JSON in a fenced block (works on every provider) and validates it with zod, keeping only known, unique criterion ids. A malformed reply is reported, not guessed at.
+- **AI interviewer state** lives in the session (`ai`: asks, follow-ups, feedback), optional so older drafts and attempts still parse. AI asks cost no points in Mock.
+

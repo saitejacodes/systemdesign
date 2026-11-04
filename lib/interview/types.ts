@@ -60,6 +60,19 @@ export interface InterviewSession {
   submittedAt?: string;
   /** Total elapsed ms at submit. */
   elapsedAtSubmit?: number;
+  /** AI interviewer (optional, Prompt 21): present when chosen at start. */
+  ai?: AiInterview;
 }
+
+/** What the AI interviewer added to an attempt. Feedback never replaces self-scores; it is shown beside them. */
+export interface AiInterview {
+  on: boolean;
+  /** Free-text clarifying questions and the interviewer's in-character answers. */
+  asks: { q: string; a: string }[];
+  /** Deep-dive questions generated from the learner's design, with the learner's answers. */
+  followUps: { q: string; a: string }[];
+  feedback?: AiScoring;
+}
+export interface AiScoring { scores: { id: string; score: number; justification: string }[]; improvements: string[]; model: string }
 
 export const zeroSteps = (): Record<Step, number> => Object.fromEntries(STEPS.map((s) => [s, 0])) as Record<Step, number>;

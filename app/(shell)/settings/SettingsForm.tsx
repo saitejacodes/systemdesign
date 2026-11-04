@@ -4,6 +4,7 @@ import { getAdapter } from "@/lib/db/adapter";
 import { backupCounts, exportData, importData, parseBackup, resetProgress, type Backup } from "@/lib/db/backup";
 import { saveSettings, useSettings } from "@/lib/db/hooks";
 import { dayKey } from "@/lib/learning/plan";
+import { AiSettings } from "./AiSettings";
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -61,6 +62,8 @@ export function SettingsForm() {
           </div>
         </div>
       </Group>
+
+      <AiSettings />
 
       <Group title="Your data">
         <p className="text-ink-muted">Everything lives in this browser. Export a backup before clearing site data or switching machines.</p>

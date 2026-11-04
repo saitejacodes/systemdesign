@@ -243,3 +243,14 @@
 - 19 new glossary terms. Sidebar and plan now show Phase 7 with real sections; no week has "Coming soon" items left.
 - Fix: the dashboard trend and the saved-attempt list now apply the Mock hint penalty, so they match the save screen.
 - Verify: open /phase/7/interview-framework and /plan (week 14); save a Mock attempt with a hint and check /dashboard shows the same % as the save screen. `pnpm test`, `pnpm test:e2e` (Phase 7 routes added).
+
+## Prompt 21 · AI features (optional)
+- Settings → AI: provider (Anthropic, or any OpenAI-compatible endpoint with a base URL), API key with a plain warning about browser storage, model (default claude-opus-5-5), Test connection, Remove key, and this month's requests, tokens and estimated cost.
+- `lib/ai`: one client for both providers with streaming, a 60 s timeout, one retry with backoff (only before any text has streamed) and readable errors (invalid key, rate limit, overloaded, network/CORS, timeout, not found, refused). Anthropic goes through the official SDK with browser access enabled; OpenAI-compatible endpoints through fetch and server-sent events. `scripts/ai-proxy` is a tiny local CORS proxy for endpoints that block browsers.
+- AI Tutor (right panel, `]`): chat grounded in the page title, lesson topics and the page's text (capped at 12,000 characters), with four modes (Explain simpler, Give me an example, Quiz me on this page, Check my understanding). Streams Markdown; each page's conversation is stored in `tutorConversations`.
+- AI interviewer (Interview Mode, opt-in at start): answers free-text clarifying questions in character from the case's clarifying answers, asks follow-up deep dives about your own design and panels, and after submission grades every rubric criterion with a reason plus 3 improvements. AI scores sit under your own scores and never replace them; the feedback is saved in `InterviewAttempt.aiFeedback`.
+- Explain my design (Design Studio toolbar): bottlenecks, single points of failure and missing pieces, citing the design's Run Mode numbers at average and peak.
+- Every AI answer is labelled "AI-generated: may contain mistakes" and shows its tokens and estimated cost; monthly totals go to `aiUsage`.
+- With no key, every entry point says "Add an API key in Settings" and nothing is sent anywhere.
+- Verify: `pnpm test` (lib/ai/ai.test.ts: serializer, prompt builders, client, usage, export without the key) and `pnpm test:e2e` (tests/e2e/ai.spec.ts mocks the provider). By hand: add a key in Settings, Test connection, open a lesson, press `]` → AI Tutor.
+

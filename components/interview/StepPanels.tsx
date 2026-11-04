@@ -5,6 +5,7 @@ import { miniEstimate } from "@/lib/interview/estimate";
 import { stepHints } from "@/lib/interview/hints";
 import { formatClock, revealSchedule, revealedCount } from "@/lib/interview/timing";
 import { DB_CHOICES, HTTP_METHODS, KEY_ROLES, type Endpoint, type Entity, type InterviewSession, type Step } from "@/lib/interview/types";
+import { AiFollowUps, AskInterviewer } from "./AiInterviewer";
 import { ListEditor, NumberField, Select, SubHead, TextArea } from "./fields";
 
 export type Update = (fn: (s: InterviewSession) => InterviewSession) => void;
@@ -81,6 +82,7 @@ function Requirements({ meta, s, set, readOnly }: PanelProps) {
           })}
         </ul>
       </section>
+      {s.ai?.on && <AskInterviewer meta={meta} s={s} set={set} readOnly={readOnly} />}
       <ListEditor label="Functional requirements" items={r.functional} readOnly={readOnly} onChange={(v) => put({ functional: v })} placeholder="Users can …" />
       <ListEditor label="Non-functional requirements" items={r.nonFunctional} readOnly={readOnly} onChange={(v) => put({ nonFunctional: v })} placeholder="p99 under … ms" />
     </>
@@ -217,6 +219,7 @@ function DeepDives({ meta, s, set, elapsed, readOnly }: PanelProps) {
           {s.mode === "practice" && <button type="button" className="fm-btn fm-btn--tool justify-self-start" onClick={() => set((x) => ({ ...x, deepDivesRequested: Math.max(x.deepDivesRequested, shown) + 1 }))}>Ask the next question now</button>}
         </div>
       )}
+      {s.ai?.on && <AiFollowUps meta={meta} s={s} set={set} readOnly={readOnly} elapsed={elapsed} />}
     </>
   );
 }

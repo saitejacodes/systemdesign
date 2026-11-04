@@ -9,7 +9,7 @@ import {
   applyEdgeChanges, applyNodeChanges, Background, BackgroundVariant, ConnectionMode, Controls, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow,
   type Connection, type EdgeChange, type NodeChange,
 } from "@xyflow/react";
-import { PanelLeft, PanelRight, Pencil, Play, Redo2, Undo2, X } from "lucide-react";
+import { PanelLeft, PanelRight, Pencil, Play, Redo2, Sparkles, Undo2, X } from "lucide-react";
 import { SetHud } from "@/components/layout/SetHud";
 import { getAdapter } from "@/lib/db/adapter";
 import type { Design, DesignVersion } from "@/lib/db/types";
@@ -30,6 +30,7 @@ import { PropertiesPanel, type Lessons } from "./PropertiesPanel";
 import { fmtMs, fmtPct, fmtQps, savedProfile, STATUS_TEXT, type CaseRuns } from "./run/config";
 import { RunViewContext, type RunView } from "./run/context";
 import { RunInfo } from "./run/RunInfo";
+import { ExplainDesign } from "./ExplainDesign";
 import { RunPanel } from "./run/RunPanel";
 import { fmtClock, RunStrip } from "./run/RunStrip";
 import { useRun } from "./run/useRun";
@@ -122,6 +123,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
   const modeRef = useRef(mode);
   useEffect(() => { modeRef.current = mode; }, [mode]);
   const [runInfo, setRunInfo] = useState(false);
+  const [explain, setExplain] = useState(false);
   const [savedRun, setSavedRun] = useState<TrafficProfile | null>(() => savedProfile(design.panels));
 
   const [save, setSave] = useState<{ state: "saved" | "saving" | "error"; at?: Date; error?: string }>({ state: "saved" });
@@ -358,6 +360,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
           <button type="button" className="fm-btn fm-btn--tool !px-2" onClick={doUndo} disabled={running || !canUndo(hist)} aria-label="Undo" title="Undo (Ctrl/⌘+Z)"><Undo2 size={14} aria-hidden /></button>
           <button type="button" className="fm-btn fm-btn--tool !px-2" onClick={doRedo} disabled={running || !canRedo(hist)} aria-label="Redo" title="Redo (Ctrl/⌘+Shift+Z)"><Redo2 size={14} aria-hidden /></button>
           <button type="button" className="fm-btn fm-btn--tool max-sm:hidden" onClick={() => { void flush(true); setAnnounce("Version saved"); }}>Save version</button>
+          <button type="button" className="fm-btn fm-btn--tool" onClick={() => setExplain(true)}><Sparkles size={14} aria-hidden /> Explain</button>
           <ExportMenu onExport={(k) => void doExport(k)} />
           <button type="button" className="fm-btn fm-btn--tool lg:hidden" aria-expanded={sheet === "panel"} onClick={() => setSheet(sheet === "panel" ? null : "panel")}>
             <PanelRight size={14} aria-hidden /> Panel
@@ -369,6 +372,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
       </div>
       {running && <RunStrip run={run} onInfo={() => setRunInfo(true)} />}
       <RunInfo open={runInfo} onOpenChange={setRunInfo} />
+      <ExplainDesign open={explain} onOpenChange={setExplain} graph={graph} profile={profile} title={title} />
 
       <div className="relative flex min-h-0 flex-1">
         {sheet && <button type="button" aria-label="Close drawer" className="fixed inset-0 z-30 bg-ink/20 lg:hidden" onClick={() => setSheet(null)} />}

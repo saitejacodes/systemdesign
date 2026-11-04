@@ -3,6 +3,7 @@ import { useEffect, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { HudBar } from "@/components/brand";
 import { useHud, useUi } from "@/lib/ui-store";
+import { TutorPanel } from "@/components/ai/TutorPanel";
 import { NotesPanel } from "./NotesPanel";
 import { SearchBootstrap } from "./SearchBootstrap";
 import { CommandPalette } from "./CommandPalette";
@@ -43,7 +44,7 @@ export function AppShell({ children, sections }: { children: ReactNode; sections
           <TopBar />
           <div className="flex min-h-0 flex-1">
             <main id="main" className="min-w-0 flex-1 overflow-y-auto">{children}</main>
-            <RightPanel notes={<NotesPanel />} />
+            <RightPanel notes={<NotesPanel />} tutor={<TutorPanel />} />
           </div>
         </div>
       </div>

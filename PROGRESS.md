@@ -24,7 +24,7 @@
 - [x] 20b Case Studies 6–10
 - [x] 20c Case Studies 11–15
 - [x] 20d Phase 7 Interview Mastery
-- [ ] 21 AI Features
+- [x] 21 AI Features
 - [ ] 22 Reference Library & Capstone
 - [ ] 23 Polish & QA
 - [ ] 24 Deploy

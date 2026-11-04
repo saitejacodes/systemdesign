@@ -15,7 +15,10 @@ import { discardDraft, loadDraft, readDesign, saveAttempt, saveDraft, startAttem
 import { elapsedMs, fmtMinutes, formatClock, minuteMark, pause, resume, splitTime, stepElapsed, switchStep } from "@/lib/interview/timing";
 import { DURATIONS, STEPS, type DurationMin, type InterviewSession, type Mode, type Step } from "@/lib/interview/types";
 import type { StudioGraph } from "@/lib/studio/types";
+import { AiCriterionScore, AiGrader } from "./AiInterviewer";
 import { StepPanel } from "./StepPanels";
+import { useAiConfig } from "@/components/ai/useAi";
+import { AddKeyNotice } from "@/components/ai/AiParts";
 
 export interface InterviewCase { meta: CaseStudyMeta; rubric: Rubric; reference: StudioGraph | null }
 
@@ -44,13 +47,15 @@ function StartScreen({ c, onStart }: { c: InterviewCase; onStart: (s: InterviewS
   const [mode, setMode] = useState<Mode>("mock");
   const [duration, setDuration] = useState<DurationMin>(45);
   const [hintsOn, setHintsOn] = useState(true);
+  const [aiOn, setAiOn] = useState(false);
+  const aiCfg = useAiConfig();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const split = splitTime(duration);
   const go = async () => {
     setBusy(true);
     try {
-      onStart(await startAttempt({ caseStudyId: c.meta.id, caseTitle: c.meta.title, interviewerPrompt: c.meta.interviewerPrompt, mode, durationMin: duration, hintsOn }));
+      onStart(await startAttempt({ caseStudyId: c.meta.id, caseTitle: c.meta.title, interviewerPrompt: c.meta.interviewerPrompt, mode, durationMin: duration, hintsOn, aiOn: aiOn && !!aiCfg }));
     } catch (e) {
       setError(`Could not start: ${(e as Error).message}`);
       setBusy(false);
@@ -85,6 +90,9 @@ function StartScreen({ c, onStart }: { c: InterviewCase; onStart: (s: InterviewS
         <p className="fm-help">Suggested split: {STEPS.map((s) => `${s} ${split[s]}`).join(" · ")} min.</p>
       </fieldset>
       <label className="flex items-center gap-2"><input type="checkbox" checked={hintsOn} onChange={(e) => setHintsOn(e.target.checked)} /> Show hint buttons (up to 2 per step)</label>
+      {aiCfg
+        ? <label className="flex items-start gap-2"><input type="checkbox" className="mt-1.5" checked={aiOn} onChange={(e) => setAiOn(e.target.checked)} /><span>AI interviewer: ask it anything in Requirements, and get follow-up questions on your own design in Deep Dives. Uses your API key.</span></label>
+        : <AddKeyNotice feature="The AI interviewer" />}
       {error && <p role="alert" className="text-status-over">{error}</p>}
       <button type="button" className="fm-btn fm-btn--primary justify-self-start" disabled={busy} onClick={go}><Play size={14} aria-hidden /> Start</button>
       <p className="fm-help">Your canvas opens from the case&apos;s Design Studio starter. Work is saved in this browser as you go.</p>
@@ -258,11 +266,14 @@ function Review({ c, s, set, elapsed, solution, onSaved }: {
                     );
                   })}
                 </div>
+                <AiCriterionScore s={s} id={cr.id} />
               </div>
             ))}
           </fieldset>
         ))}
       </section>
+
+      <AiGrader meta={c.meta} rubric={c.rubric} s={s} set={set} mine={mine} />
 
       <section aria-labelledby="cmp-h" className="grid gap-3">
         <h3 id="cmp-h" className="fm-cap border-b border-ink pb-1">Your design vs the reference</h3>

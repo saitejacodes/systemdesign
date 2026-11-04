@@ -26,8 +26,11 @@ export interface Settings {
   key: "settings";
   theme: "paper" | "blueprint" | "system";
   apiKey?: string;
+  /** "anthropic" | "openai-compatible" (lib/ai/types.ts). */
   aiProvider?: string;
   aiModel?: string;
+  /** OpenAI-compatible endpoints only: the API root, e.g. https://api.openai.com/v1. */
+  aiBaseUrl?: string;
   reducedMotion: boolean;
   newCardsPerDay: number;
   planStart?: string;

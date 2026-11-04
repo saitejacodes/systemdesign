@@ -23,7 +23,7 @@ export const discardDraft = (caseStudyId: string, db: StorageAdapter = getAdapte
 
 /** Creates the attempt's design (from the case's Studio template if there is one, else blank) and the session. */
 export async function startAttempt(
-  o: { caseStudyId: string; caseTitle: string; interviewerPrompt: string; mode: Mode; durationMin: DurationMin; hintsOn: boolean },
+  o: { caseStudyId: string; caseTitle: string; interviewerPrompt: string; mode: Mode; durationMin: DurationMin; hintsOn: boolean; aiOn?: boolean },
   db: StorageAdapter = getAdapter(),
   now = new Date(),
 ): Promise<InterviewSession> {
@@ -41,7 +41,7 @@ export async function startAttempt(
     updatedAt: at,
   };
   await db.put("designs", design);
-  const s = newSession({ caseStudyId: o.caseStudyId, designId: design.id, mode: o.mode, durationMin: o.durationMin, hintsOn: o.hintsOn }, now.getTime());
+  const s = newSession({ caseStudyId: o.caseStudyId, designId: design.id, mode: o.mode, durationMin: o.durationMin, hintsOn: o.hintsOn, aiOn: o.aiOn }, now.getTime());
   await saveDraft(s, db, now);
   return s;
 }

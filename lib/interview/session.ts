@@ -39,6 +39,16 @@ export const SessionSchema = z.object({
   mistakesChecked: z.array(z.number().int().min(0)),
   submittedAt: z.string().optional(),
   elapsedAtSubmit: nn.optional(),
+  ai: z.object({
+    on: z.boolean(),
+    asks: z.array(z.object({ q: z.string(), a: z.string() })),
+    followUps: z.array(z.object({ q: z.string(), a: z.string() })),
+    feedback: z.object({
+      scores: z.array(z.object({ id: z.string(), score: z.number().int().min(0).max(2), justification: z.string() })),
+      improvements: z.array(z.string()),
+      model: z.string(),
+    }).optional(),
+  }).optional(),
 });
 
 export function parseSession(v: unknown): InterviewSession | null {
@@ -46,10 +56,12 @@ export function parseSession(v: unknown): InterviewSession | null {
   return r.success ? (r.data as unknown as InterviewSession) : null;
 }
 
-export function newSession(o: { caseStudyId: string; designId: string; mode: Mode; durationMin: DurationMin; hintsOn: boolean }, now = Date.now()): InterviewSession {
+export function newSession(o: { caseStudyId: string; designId: string; mode: Mode; durationMin: DurationMin; hintsOn: boolean; aiOn?: boolean }, now = Date.now()): InterviewSession {
+  const { aiOn, ...rest } = o;
   return {
     version: 1,
-    ...o,
+    ...rest,
+    ...(aiOn ? { ai: { on: true, asks: [], followUps: [] } } : {}),
     phase: "session",
     startedAt: new Date(now).toISOString(),
     activeStep: "Requirements",
@@ -85,6 +97,7 @@ export function toAttempt(s: InterviewSession, design: { graph: unknown; notes: 
     durationSec: Math.round((s.elapsedAtSubmit ?? STEPS.reduce((a, k) => a + s.stepMs[k], 0)) / 1000),
     panels: { session: JSON.stringify(s), graph: JSON.stringify(design.graph), notes: design.notes, mode: s.mode },
     selfScores: { ...s.selfScores },
+    ...(s.ai?.feedback ? { aiFeedback: JSON.stringify(s.ai.feedback) } : {}),
     createdAt: now.toISOString(),
   };
 }
