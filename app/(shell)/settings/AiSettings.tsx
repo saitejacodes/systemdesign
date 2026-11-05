@@ -7,6 +7,7 @@ import { useAiConfig, useAiRequest } from "@/components/ai/useAi";
 import { RequestCost } from "@/components/ai/AiParts";
 import { formatCost } from "@/lib/ai/pricing";
 import { listModels } from "@/lib/ai/client";
+import { connectAllowed } from "@/lib/security/csp";
 import { DEFAULT_MODEL, PRESETS, PROVIDERS, PROVIDER_LABEL, describeError, isProvider, type Provider } from "@/lib/ai/types";
 import { monthKey } from "@/lib/ai/usage";
 
@@ -83,6 +84,9 @@ export function AiSettings() {
             <label htmlFor="ai-base">Base URL</label>
             <input id="ai-base" className="fm-input fm-input--mono" value={s.aiBaseUrl ?? ""} placeholder="http://localhost:11434/v1" onChange={(e) => { setOk(false); saveSettings({ aiBaseUrl: e.target.value }); }} autoComplete="off" spellCheck={false} />
             <span className="fm-help">The root that /chat/completions hangs off. Some endpoints refuse requests from a web page (CORS). If the test says it can&apos;t reach the endpoint, run the tiny local proxy in <code>scripts/ai-proxy</code> and put <code>http://127.0.0.1:8787</code> here.</span>
+            {/^https?:\/\/./.test((s.aiBaseUrl ?? "").trim()) && !connectAllowed((s.aiBaseUrl ?? "").trim()) && (
+              <span role="alert" className="fm-help is-error">This site&apos;s security policy only allows the listed providers and localhost, so requests to {hostOf(s.aiBaseUrl ?? "")} will be blocked. Use the local proxy above.</span>
+            )}
           </div>
         )}
         {provider === "anthropic" && <p className="fm-help">Anthropic allows browser requests when the client opts in, which this site does, so no proxy is needed.</p>}
@@ -109,3 +113,5 @@ export function AiSettings() {
     </section>
   );
 }
+
+const hostOf = (url: string) => { try { return new URL(url.trim()).host; } catch { return url; } };

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 export const LabMeta = z.object({
   id: z.string().regex(/^[a-z0-9-]+$/),

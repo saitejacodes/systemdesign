@@ -167,7 +167,8 @@ streamed. Token usage and an estimated cost are recorded per month (`lib/ai/usag
 - All data is local to one browser. There are no accounts and no sync; clearing site data deletes progress. Use
   Settings → export to move or back up progress.
 - AI features need your own API key, and requests are billed by your provider. Some OpenAI-compatible endpoints need
-  the local proxy because they block browser calls.
+  the local proxy because they block browser calls; on the deployed site, custom endpoints must go through the
+  proxy because the CSP allows only the listed providers and localhost.
 - The capstone runs on your machine, not in the browser: it needs Docker with Compose v2, Node.js 22, about 2 GB of
   disk for model files and 4–6 GB of free RAM for the later stages (k6 for stage 10).
 - Python code labs load Pyodide from the jsDelivr CDN on first use, so they need a network connection the first
@@ -177,4 +178,39 @@ streamed. Token usage and an estimated cost are recorded per month (`lib/ai/usag
 
 ## Deployment
 
-Deployment: Vercel (see Prompt 24).
+The site deploys to **Vercel** (Next.js on Vercel's runtime; no static export). The site itself needs **no
+environment variables or secrets**: there is no backend, and AI keys are entered by each learner in Settings.
+
+**How deploys happen.** `.github/workflows/ci.yml` runs on every push and pull request: install, typecheck, lint,
+unit tests, build, then the Playwright suite against `next start` (the production build). On a push to `main`,
+a second job deploys to Vercel production only if all of that passed. `vercel.json` turns off Vercel's own
+automatic deploys of `main`, so an untested commit never reaches production. Other branches still get Vercel
+preview deploys.
+
+**First-time setup**
+
+1. Push the repository to GitHub.
+2. In Vercel: **Add New → Project**, import the repository. Framework, install and build commands come from
+   `vercel.json` (pnpm, `pnpm build`). Leave environment variables empty and deploy once.
+3. Create a token at vercel.com/account/tokens. Find the **Project ID** (Project → Settings → General) and the
+   **Team/Org ID** (Team → Settings → General, or `.vercel/project.json` after `vercel link`).
+4. In GitHub: **Settings → Secrets and variables → Actions**, add `VERCEL_TOKEN`, `VERCEL_ORG_ID` and
+   `VERCEL_PROJECT_ID`. From then on, every green push to `main` deploys to production.
+
+Without those three secrets the deploy job skips itself. To let Vercel deploy `main` on its own instead (no CI
+gate), delete the `git` block from `vercel.json`.
+
+**Test the deployed site**
+
+```bash
+PLAYWRIGHT_BASE_URL=https://<your-project>.vercel.app pnpm test:e2e
+```
+
+With `PLAYWRIGHT_BASE_URL` set, Playwright starts no local server. Tests that need the test-only fixture case
+study skip themselves.
+
+**Headers.** `next.config.ts` sends a Content Security Policy and security headers, built in
+`lib/security/csp.ts`. Pages may call only this site, the listed AI providers, the jsDelivr/unpkg CDNs and
+localhost. A custom OpenAI-compatible endpoint on another host is blocked: Settings says so and points to the
+local proxy (`scripts/ai-proxy`). The code-lab workers in `/labs` alone get `'unsafe-eval'` to run learner code.
+No cross-origin isolation headers are set, because nothing uses SharedArrayBuffer.

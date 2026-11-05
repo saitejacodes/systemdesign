@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 /** Every component the palette offers, plus a text note. "frame" is the Region/AZ (or any labelled group) box. */
 export const COMPONENT_KINDS = [

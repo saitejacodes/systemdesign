@@ -2,7 +2,7 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 import { ContentError, parseContent } from "./parse";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { StudioGraph } from "@/lib/studio/types";
 import * as S from "./schemas";
 import { parseCheatSheet, validateCheatSheets, type CheatSheet } from "./cheatsheets";

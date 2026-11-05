@@ -15,8 +15,8 @@ async function waitUntilCached(page: Page) {
   }, undefined, { timeout: 20_000 });
   await expect
     .poll(async () => page.evaluate(async () => {
-      const pages = await caches.open("sdl-pages");
-      const statics = await caches.open("sdl-static");
+      const pages = await caches.open("sdl-pages-v2");
+      const statics = await caches.open("sdl-static-v2");
       const want = performance.getEntriesByType("resource").map((e) => new URL(e.name)).filter((u) => u.origin === location.origin && u.pathname.startsWith("/_next/static/") && /\.(js|css)$/.test(u.pathname));
       const have = await Promise.all(want.map((u) => statics.match(u.pathname).then((r) => !!r || caches.match(u.pathname).then((p) => !!p))));
       return !!(await pages.match(location.pathname)) && have.every(Boolean);

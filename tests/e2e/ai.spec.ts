@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { REMOTE } from "./routes";
 
 // AI features (Prompt 21). No real provider is ever called: without a key every entry point shows the "add a key"
 // message, and the streaming test answers Anthropic's endpoint from a route handler.
@@ -34,7 +35,7 @@ test("without a key every AI entry point says to add one, and nothing calls a pr
   await openTutor(page);
   await expect(page.getByTestId("ai-no-key")).toContainText("Add an API key in Settings");
 
-  await page.goto("/interview/fixture-kv-store");
+  await page.goto("/interview/url-shortener");
   await expect(page.getByTestId("ai-no-key").filter({ hasText: "The AI interviewer" })).toContainText("Add an API key in Settings");
 
   await page.goto("/studio");
@@ -93,6 +94,7 @@ test("tutor streams a labelled answer with its cost, keeps the chat per page and
 });
 
 test("AI interviewer answers in character, asks a follow-up on the design, and grades beside the self-scores", async ({ page }, info) => {
+  test.skip(REMOTE, "uses the fixture case, which is not deployed");
   test.skip(info.project.name === "mobile", "desktop flow");
   const errors = watchErrors(page);
   page.on("dialog", (d) => d.accept());

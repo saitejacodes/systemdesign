@@ -281,3 +281,23 @@
 - **Two kinds of arrow, one tool.** A drag that starts and ends on components makes a connection, because connections carry meaning (traffic, SPOF analysis); every other drag makes a free arrow stored in `graph.arrows`. Free arrows are drawings, so the simulator ignores them.
 - **No binding.** A free arrow keeps absolute canvas points and does not follow a component when it moves (Excalidraw binds). Binding would need anchor maths on every node move; a connection already gives a following arrow.
 - **Curves are one bend point.** A quadratic curve through the dragged middle point (control = 2·mid − average of the ends): one handle, predictable, and it exports to SVG as a single path. Multi-point polylines are left out.
+
+## Prompt 24 · Deploy (2026-11-05)
+- **Vercel, not a static export.** The owner's choice. It also fits the code: `/case-studies/[id]`, `/interview/[caseId]` and `/studio/[designId]` render on demand, and the service worker is served from a route handler. `vercel.json` only sets framework, pnpm install and `pnpm build`, and turns off Vercel's own Git deploys of `main` (headers live in `next.config.ts`).
+- **Deploys go through CI.** The GitHub Actions `deploy` job runs after the `CI` job passes on a push to `main` (`vercel pull` / `vercel build --prod` / `vercel deploy --prebuilt --prod`, with `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`). We chose this over the Git integration plus a required check because only this gives a hard guarantee that a red commit never reaches production. Without the secrets the job skips itself; deleting the `git` block in `vercel.json` hands deploys back to Vercel.
+- **No COOP/COEP.** Nothing uses SharedArrayBuffer. PGlite runs single-threaded in the page, Pyodide runs in a plain worker without an interrupt buffer, and nothing reads `crossOriginIsolated`. Isolation headers would only put the CDN loads (Pyodide, Monaco, TypeScript) at risk. The e2e suite asserts the header is absent.
+- **CSP** (`lib/security/csp.ts`, one source for the header and for the client check):
+  - Pages: `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'` plus the two CDNs. 'unsafe-inline' is there because Next inlines its bootstrap into static HTML, and nonces would make every page dynamic. There is no 'unsafe-eval' on pages.
+  - `connect-src`: self, the five AI providers, the CDNs, and `http://localhost:*` / `http://127.0.0.1:*` for the local proxy.
+  - `style-src` keeps 'unsafe-inline' (React Flow, Mermaid, Monaco). `worker-src` is self and blob:.
+  - Also set: `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`.
+  - The `/labs/*` worker scripts get their own CSP with 'unsafe-eval', because they run learner code with `new Function` and Pyodide. A worker's CSP comes from its own script response, so pages stay eval-free.
+- **Custom OpenAI-compatible hosts are blocked by the CSP.** We chose the simplest safe option: no `https:` wildcard in connect-src, which would let any injected script send data anywhere. The AI client checks the base URL before fetching and throws a `blocked` error that names the host and points to `scripts/ai-proxy`. Settings shows the same warning under the Base URL field as soon as you type a host that isn't allowed.
+- **Service worker.**
+  - Runtime caches are named `sdl-<name>-v2`. On activate the worker deletes every `sdl-` cache from another version, and Serwist's `cleanupOutdatedCaches` removes old precaches.
+  - Bump `CACHE_VERSION` only when a cache's contents or strategy change. Normal deploys are handled by the precache revisions.
+  - `/serwist/sw.js` is sent `no-store`, so a deploy is picked up on the next visit.
+  - The limits from Prompt 23 stay as they are: static 400 entries / 60 days, CDN 80 / 30 days, pages 200, RSC 150, assets 60.
+- **Lessons are not precached on install.** The 98 lesson pages weigh 22 MB of HTML (4.5 MB gzipped). Each deploy changes every page, so precaching would re-download them all for every learner on every deploy. A lesson is cached when first opened, and so are the JS files it used, so it then reloads offline. The app shell and `/offline` are precached.
+- **Tracing.** `lib/content` reads folders by computed path, so Next traces the whole project into server functions (about 43 MB). `outputFileTracingExcludes` drops `design/`, `prompts/`, the e2e specs and Markdown files.
+- **Remote e2e.** With `PLAYWRIGHT_BASE_URL` set, no web server is started and tests that need the fixture case study (`SDL_FIXTURE_CASES`) skip themselves. The no-key AI check uses a real case.

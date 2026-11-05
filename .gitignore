@@ -46,3 +46,10 @@ next-env.d.ts
 
 # agent worktrees
 /.claude/worktrees/
+
+# local tooling and review screenshots
+/.claude/
+/design/screenshots/revision/
+/test-results/
+/playwright-report/
+/.vercel/

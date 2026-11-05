@@ -1,8 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
+import { REMOTE } from "./routes";
 
 // Interview Mode end to end on the fixture case (tests/fixtures/case-studies, loaded because playwright.config.ts sets
 // SDL_FIXTURE_CASES=1 for the web server).
 const CASE = "/interview/fixture-kv-store";
+
+test.skip(REMOTE, "the fixture case is not deployed");
 
 function watchErrors(page: Page) {
   const errors: string[] = [];

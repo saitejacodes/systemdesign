@@ -73,7 +73,7 @@ export interface ChatResult {
   model: string;
 }
 
-export type AiErrorKind = "invalid-key" | "rate-limit" | "overloaded" | "network" | "timeout" | "not-found" | "bad-request" | "refused" | "aborted" | "unknown";
+export type AiErrorKind = "invalid-key" | "rate-limit" | "overloaded" | "network" | "timeout" | "not-found" | "bad-request" | "refused" | "aborted" | "blocked" | "unknown";
 
 const RETRYABLE: ReadonlySet<AiErrorKind> = new Set(["rate-limit", "overloaded", "network", "timeout"]);
 
@@ -96,6 +96,7 @@ export function describeError(e: unknown, provider?: Provider): string {
     case "network": return provider === "openai-compatible"
       ? "Could not reach the endpoint. It may block browser requests (CORS): run the local proxy in scripts/ai-proxy and point the base URL at it."
       : "Could not reach the provider. Check your connection.";
+    case "blocked": return `This site's security policy doesn't allow requests to ${e.message}. Run the local proxy in scripts/ai-proxy and point the base URL at it (http://localhost:…), or pick a listed provider.`;
     case "not-found": return `Not found: ${e.message}. Check the model name (and base URL) in Settings → AI.`;
     case "refused": return "The model declined this request.";
     case "aborted": return "Stopped.";

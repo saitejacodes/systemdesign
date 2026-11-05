@@ -304,3 +304,30 @@
 - In the Select tool a free arrow can be clicked, moved by its line, have each end dragged, and be **curved by dragging its middle dot** (drag it back to the middle, or press Straighten, to make it straight again). The Properties panel gives it a label, arrowheads (end, both, none) and Reverse.
 - Free arrows are saved with the design (`graph.arrows`, optional, so older designs and exports still load), and go through undo/redo, Delete, arrow-key nudge, copy/paste, JSON import/export and the SVG/PNG export.
 - Verify: /studio/new, press A, drag on empty canvas; press V, drag the middle dot. `pnpm test lib/studio/arrows.test.ts`, `pnpm test:e2e tests/e2e/studio.spec.ts`.
+
+## Prompt 24 · Deploy (Vercel)
+- **Vercel deploy through CI.**
+  - `.github/workflows/ci.yml` runs on every push and pull request: frozen install, typecheck, lint, unit tests, build, then the full Playwright suite against `next start`. The pnpm store and Playwright browsers are cached.
+  - On `main`, a deploy job ships to Vercel production only after all of that passes. It uses the `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` secrets and skips itself without them.
+  - `vercel.json` sets pnpm and Next and turns off Vercel's own deploys of `main`.
+- **Security headers** on every response, built in `lib/security/csp.ts`:
+  - A CSP with no `eval` on pages. `connect-src` allows only this site, Anthropic, Gemini, Groq, OpenRouter, OpenAI, the jsDelivr/unpkg CDNs and localhost.
+  - Also set: `frame-ancestors 'none'`, `nosniff`, `strict-origin-when-cross-origin`, and a Permissions-Policy that turns off camera, mic and geolocation. The `X-Powered-By` header is gone.
+  - Code-lab workers get their own policy that allows `eval` for learner code.
+  - No cross-origin isolation headers, because nothing needs SharedArrayBuffer.
+- **Zod runs jitless.** Its `new Function` speed check was the one CSP violation on every page. Every schema now imports `z` from `lib/zod.ts`.
+- **Custom AI endpoints under the CSP.** A custom OpenAI-compatible base URL on a host that isn't allowed fails with a clear message before any request, and Settings warns as you type it. Both point to the local proxy.
+- **Service worker.** Runtime caches carry a version (`sdl-*-v2`), and old versions and outdated precaches are deleted on activate. `/serwist/sw.js` is served `no-store`.
+- **/about** now says what the site is, that data stays in the browser, how to back up and restore, that AI uses your own key (never exported), and how offline works.
+- **Tests.**
+  - `csp.spec.ts`: headers present and zero CSP violations on every route.
+  - `deploy.spec.ts`: a PGlite SQL query and the AI Settings error paths.
+  - Setting `PLAYWRIGHT_BASE_URL` runs the suite against a deployed URL; tests that need fixtures skip themselves.
+  - Build tracing excludes `design/`, `prompts/`, specs and Markdown.
+- **Results (production build):**
+  - typecheck and lint clean.
+  - Unit: 982/982.
+  - E2E: 2,440 passed, 0 failed, 658 skipped (viewport-specific), plus the 2 checks in `deploy.spec.ts`.
+  - Zero CSP violations on all routes.
+  - SQL query, Python lab (Pyodide), simulator challenge and offline reload of a lesson all pass.
+- Verify: `pnpm build && pnpm start`, then `pnpm test:e2e`. After deploying: `PLAYWRIGHT_BASE_URL=https://<url> pnpm test:e2e`. Setup steps: README → Deployment.

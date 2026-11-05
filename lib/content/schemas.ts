@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { FRAMEWORK_HEADINGS } from "@/lib/studio/notes";
 import { RunChallenge, TrafficProfile } from "@/lib/studio/sim/types";
 

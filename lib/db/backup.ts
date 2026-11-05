@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { StorageAdapter } from "./adapter";
 import { SCHEMA } from "./adapter";
 import type { Settings, TableName, Tables } from "./types";

@@ -1,5 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
-import { z as zod } from "zod";
+import { z as zod } from "@/lib/zod";
 import { CATALOG } from "./catalog";
 import { StudioGraph, type EdgeKind, type FreeArrow, type NodeKind, type PropValue, type StudioEdge, type StudioNode } from "./types";
 

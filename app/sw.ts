@@ -12,6 +12,14 @@ declare const self: ServiceWorkerGlobalScope;
 
 const DAY = 24 * 60 * 60;
 
+/**
+ * Bump when a runtime cache's contents or strategy change incompatibly. Every runtime cache name ends in it,
+ * and on activate the worker deletes any "sdl-" cache from another version. The precache is versioned per
+ * build by Serwist's revisions, so a normal deploy does not need a bump.
+ */
+const CACHE_VERSION = "v2";
+const cache = (name: string) => `sdl-${name}-${CACHE_VERSION}`;
+
 /** Cross-origin hosts whose files are versioned in the URL (Pyodide, the TypeScript compiler for JS labs). */
 const CDN_HOSTS = new Set(["cdn.jsdelivr.net", "unpkg.com"]);
 
@@ -30,6 +38,7 @@ const serwist = new Serwist({
   // Small app shell only: CSS, self-hosted fonts, icons and /offline. JS chunks (26 MB with Monaco, Mermaid
   // and PGlite) are cached on first use instead, so installing the worker stays light.
   precacheEntries: self.__SW_MANIFEST,
+  precacheOptions: { cleanupOutdatedCaches: true },
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: false,
@@ -39,7 +48,7 @@ const serwist = new Serwist({
       // Hashed build output, including PGlite's WASM and data: immutable, so cache-first.
       matcher: ({ url, request, sameOrigin }) => sameOrigin && !neverCache(url, request) && url.pathname.startsWith("/_next/static/"),
       handler: new CacheFirst({
-        cacheName: "sdl-static",
+        cacheName: cache("static"),
         plugins: [new CacheableResponsePlugin({ statuses: [200] }), new ExpirationPlugin({ maxEntries: 400, maxAgeSeconds: 60 * DAY, purgeOnQuotaError: true })],
       }),
     },
@@ -47,7 +56,7 @@ const serwist = new Serwist({
       // Pyodide and other pinned CDN files, fetched by the code-lab workers on first run.
       matcher: ({ url, request }) => CDN_HOSTS.has(url.hostname) && !neverCache(url, request),
       handler: new CacheFirst({
-        cacheName: "sdl-cdn",
+        cacheName: cache("cdn"),
         plugins: [new CacheableResponsePlugin({ statuses: [0, 200] }), new ExpirationPlugin({ maxEntries: 80, maxAgeSeconds: 30 * DAY, purgeOnQuotaError: true })],
       }),
     },
@@ -55,7 +64,7 @@ const serwist = new Serwist({
       // Client-side navigations fetch RSC payloads; keep the last few so visited pages also work via links.
       matcher: ({ url, request, sameOrigin }) => sameOrigin && !neverCache(url, request) && request.headers.get("RSC") === "1",
       handler: new NetworkFirst({
-        cacheName: "sdl-rsc",
+        cacheName: cache("rsc"),
         networkTimeoutSeconds: 4,
         plugins: [new CacheableResponsePlugin({ statuses: [200] }), new ExpirationPlugin({ maxEntries: 150, maxAgeSeconds: 30 * DAY, purgeOnQuotaError: true })],
       }),
@@ -64,7 +73,7 @@ const serwist = new Serwist({
       // Full page loads: network first, the cached copy when offline, /offline when never visited.
       matcher: ({ url, request, sameOrigin }) => sameOrigin && !neverCache(url, request) && isPage(request),
       handler: new NetworkFirst({
-        cacheName: "sdl-pages",
+        cacheName: cache("pages"),
         networkTimeoutSeconds: 4,
         plugins: [new CacheableResponsePlugin({ statuses: [200] }), new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 30 * DAY, purgeOnQuotaError: true })],
       }),
@@ -73,7 +82,7 @@ const serwist = new Serwist({
       // Unhashed same-origin files: lab workers in /labs, icons, the manifest, the search index.
       matcher: ({ url, request, sameOrigin }) => sameOrigin && !neverCache(url, request) && !url.pathname.startsWith("/serwist/"),
       handler: new StaleWhileRevalidate({
-        cacheName: "sdl-assets",
+        cacheName: cache("assets"),
         plugins: [new CacheableResponsePlugin({ statuses: [200] }), new ExpirationPlugin({ maxEntries: 60, maxAgeSeconds: 30 * DAY, purgeOnQuotaError: true })],
       }),
     },
@@ -81,6 +90,10 @@ const serwist = new Serwist({
   fallbacks: {
     entries: [{ url: "/offline", matcher: ({ request }) => request.destination === "document" }],
   },
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith("sdl-") && !k.endsWith(`-${CACHE_VERSION}`)).map((k) => caches.delete(k)))));
 });
 
 serwist.addEventListeners();

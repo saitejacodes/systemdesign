@@ -125,7 +125,7 @@ describe("parseFeedback", () => {
 });
 
 describe("client", () => {
-  const cfg: AiConfig = { provider: "openai-compatible", apiKey: "k", model: "m", baseUrl: "http://x.test/v1/" };
+  const cfg: AiConfig = { provider: "openai-compatible", apiKey: "k", model: "m", baseUrl: "http://localhost:8787/v1/" };
   const sse = (lines: string[]) => new Response(lines.map((l) => `data: ${l}\n\n`).join(""), { status: 200 });
 
   it("maps HTTP statuses to readable error kinds", () => {
@@ -154,7 +154,7 @@ describe("client", () => {
     expect(r).toMatchObject({ text: "Hello", inputTokens: 12, outputTokens: 2, estimatedTokens: false });
     expect(deltas).toEqual(["Hel", "lo"]);
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("http://x.test/v1/chat/completions");
+    expect(url).toBe("http://localhost:8787/v1/chat/completions");
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer k");
     expect(JSON.parse(init.body as string).messages[0]).toEqual({ role: "system", content: "sys" });
     vi.unstubAllGlobals();

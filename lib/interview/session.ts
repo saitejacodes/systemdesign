@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { InterviewAttempt } from "@/lib/db/types";
 import { StudioGraph } from "@/lib/studio/types";
 import { DB_CHOICES, DEFAULT_ESTIMATION, DURATIONS, HTTP_METHODS, KEY_ROLES, STEPS, zeroSteps, type DurationMin, type InterviewSession, type Mode } from "./types";

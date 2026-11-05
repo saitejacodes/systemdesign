@@ -27,4 +27,4 @@
 - [x] 21 AI Features
 - [x] 22 Reference Library & Capstone
 - [x] 23 Polish & QA
-- [ ] 24 Deploy
+- [x] 24 Deploy

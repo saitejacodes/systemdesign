@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { connectAllowed } from "@/lib/security/csp";
 import { estimateTokens, modelInfo } from "./pricing";
 import { AiError, baseUrlFor, type AiConfig, type ChatRequest, type ChatResult } from "./types";
 
@@ -99,6 +100,7 @@ async function anthropicChat(cfg: AiConfig, req: ChatRequest, signal: AbortSigna
 function apiBase(cfg: Pick<AiConfig, "provider" | "baseUrl">) {
   const base = baseUrlFor(cfg);
   if (!/^https?:\/\//.test(base)) throw new AiError("bad-request", "Set a base URL (http or https) for the OpenAI-compatible endpoint");
+  if (!connectAllowed(base)) throw new AiError("blocked", new URL(base).host);
   return base;
 }
 

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 const sectionId = z.string().regex(/^p[1-7]-[a-z0-9-]+$/, "a section id such as p6-llm-serving");
 

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { CaseStudyMeta, Rubric } from "@/lib/content/schemas";
 import type { InterviewSession } from "@/lib/interview/types";
 import type { TrafficProfile } from "@/lib/studio/sim";
