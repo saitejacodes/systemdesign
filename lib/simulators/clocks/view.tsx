@@ -63,7 +63,7 @@ export function ClocksView({ state: s, config: c, act }: ViewProps<ClocksConfig,
 
       <figure className="grid gap-1">
         <figcaption className="fm-cap">Space-time diagram · time runs right · number under each event = Lamport L · click or Tab+Enter to pick events{focus ? ` · ${focus.name}: blue = its causal past, coral = its future, plain = concurrent` : ""}</figcaption>
-        <div className="overflow-x-auto border border-ink" style={{ borderRadius: 2 }}>
+        <div className="overflow-x-auto border border-ink" tabIndex={0} style={{ borderRadius: 2 }}>
           <svg viewBox={`0 0 ${W} 210`} className="h-auto w-full max-sm:min-w-[620px]" role="group" aria-label={`Space-time diagram with ${s.events.length} events and ${flying.length} messages in flight`}>
             {Array.from({ length: N }, (_, p) => (
               <g key={p}>
@@ -88,8 +88,8 @@ export function ClocksView({ state: s, config: c, act }: ViewProps<ClocksConfig,
               const picked = s.picked.includes(e.id);
               const col = tone(e);
               return (
-                <g key={e.id} role="button" tabIndex={0} aria-pressed={picked} aria-label={`${e.name}, ${e.kind}, L ${e.L}, vector ${e.V.join(" ")}, wall ${e.wall} ms`} className="cursor-pointer"
-                  onClick={() => pickEv(e.id)} onKeyDown={(k) => { if (k.key === "Enter" || k.key === " ") { k.preventDefault(); pickEv(e.id); } }}>
+                <g aria-hidden key={e.id} className="cursor-pointer"
+                  onClick={() => pickEv(e.id)}>
                   <circle cx={xOf(e.id)} cy={laneY(e.p)} r={picked ? 8 : 6} fill={col ?? (e.kind === "local" ? "var(--surface)" : "var(--ink)")} stroke={picked ? "var(--status-hot)" : "var(--ink)"} strokeWidth={picked ? 3 : 1} />
                   <text x={xOf(e.id)} y={laneY(e.p) - 12} textAnchor="middle" className="sim-sub" fill="var(--ink)">{e.name}</text>
                   <text x={xOf(e.id)} y={laneY(e.p) + 20} textAnchor="middle" className="sim-sub" fill="var(--ink-muted)">{e.L}</text>

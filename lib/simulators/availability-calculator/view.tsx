@@ -27,7 +27,7 @@ export function AvailView({ state: s, act }: ViewProps<AvailConfig, AvailState>)
         <p className="break-words font-mono text-[12px] text-ink-muted">A = {formula(s)} = {fmtPct(a)}</p>
       </section>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <div className="min-w-max p-1"><BlockView id={s.root} s={s} act={act} weak={weak} root /></div>
       </div>
 

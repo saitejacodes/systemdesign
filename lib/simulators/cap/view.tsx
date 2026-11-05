@@ -1,5 +1,4 @@
 "use client";
-import type { KeyboardEvent } from "react";
 import { Dot, lerp, type Tone } from "@/components/sim/draw";
 import type { ViewProps } from "@/lib/sim/definition";
 import { KEYS, cutCount, hasQuorum, majority, type CapConfig, type CapState, type Version } from "./model";
@@ -27,12 +26,11 @@ export function CapView({ state: s, config: c, t, reducedMotion, act }: ViewProp
   const cuts = cutCount(s);
   const cp = c.mode === "cp";
   const toggle = (a: number, b: number) => act("toggleLink", { a, b });
-  const onKey = (a: number, b: number) => (e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(a, b); } };
   const dots = reducedMotion ? [] : s.msgs.filter((m) => m.sent <= t && m.from < n && m.to < n).slice(-MAX_DOTS);
   const calm = (m: "cp" | "ap") => (s.calm[m].n ? `${(s.calm[m].sum / s.calm[m].n).toFixed(m === "ap" ? 1 : 0)} ms over ${s.calm[m].n} writes` : "not measured yet");
   return (
     <div className="grid gap-3 [&>*]:min-w-0">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg viewBox="0 0 720 400" className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`${n} replicas in ${cp ? "CP" : "AP"} mode, ${cuts} link${cuts === 1 ? "" : "s"} cut`}>
           {links.map(([a, b]) => {
             const cut = s.cut[a][b];
@@ -42,7 +40,7 @@ export function CapView({ state: s, config: c, t, reducedMotion, act }: ViewProp
               <g key={`${a}-${b}`}>
                 <line x1={P[a][0]} y1={P[a][1]} x2={P[b][0]} y2={P[b][1]} stroke={cut ? "var(--status-over)" : "var(--ink)"} strokeWidth={cut ? 2 : 1} strokeDasharray={cut ? "6 4" : "4 3"} />
                 <line x1={P[a][0]} y1={P[a][1]} x2={P[b][0]} y2={P[b][1]} stroke="transparent" strokeWidth={14} className="cursor-pointer" onClick={() => toggle(a, b)} />
-                <g role="button" tabIndex={0} aria-label={`${cut ? "Restore" : "Cut"} link N${a + 1} to N${b + 1}`} aria-pressed={cut} className="cursor-pointer" onClick={() => toggle(a, b)} onKeyDown={onKey(a, b)}>
+                <g aria-hidden className="cursor-pointer" onClick={() => toggle(a, b)}>
                   <circle cx={mx} cy={my} r={10} fill={cut ? "var(--status-over-fill)" : "var(--surface)"} stroke={cut ? "var(--status-over)" : "var(--ink)"} strokeWidth={1.5} />
                   <text x={mx} y={my + 4} textAnchor="middle" className="sim-sub" fill={cut ? "var(--status-over)" : "var(--ink)"}>{cut ? "✕" : "✂"}</text>
                 </g>

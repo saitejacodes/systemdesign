@@ -50,7 +50,7 @@ function ReleaseView({ state: s, config: c, t, reducedMotion, act }: ViewProps<D
         <span className="fm-cap" style={{ color: health.tone ? `var(--status-${health.tone})` : undefined }}>{health.text}</span>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg viewBox="0 0 700 330" className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`${s.pods.length} pods: ${lanes[0].length} on v1, ${lanes[1].length} on v2. ${Math.round(sh[1] * 100)}% of traffic on v2.`}>
           {([1, 2] as const).map((v) => (
             <g key={v}>
@@ -153,7 +153,7 @@ function MigView({ mig: m, act, t }: { mig: Mig; act: Act; t: number }) {
         </p>
         <p className="font-mono text-[12px]">users.name: {colState("name")} · users.full_name: {colState("full")}</p>
         <figure className="grid gap-1">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" tabIndex={0}>
             <svg viewBox={`0 0 ${20 * CELL} ${10 * 16 + 4}`} className="h-auto w-full max-sm:min-w-[340px]" role="img" aria-label={`${ROWS} rows. Left half name, right half full_name. Green holds the current value, red is NULL or stale, empty is no column.`}>
               {Array.from(m.rows, (v, i) => {
                 const x = (i % 20) * CELL + 1, y = Math.floor(i / 20) * 16 + 2;

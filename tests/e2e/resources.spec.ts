@@ -37,10 +37,10 @@ test("phase filter survives a reload and clear filters resets", async ({ page })
   await page.goto("/resources");
   const status = page.getByText(/^\d+ of \d+ resources$/);
   const total = (await status.textContent())!;
-  await page.getByRole("button", { name: /^Phase 6:/ }).click();
+  await page.getByRole("button", { name: /^Phase 6\b/ }).click();
   await expect(page).toHaveURL(/phase=6/);
   await page.reload();
-  await expect(page.getByRole("button", { name: /^Phase 6:/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^Phase 6\b/ })).toHaveAttribute("aria-pressed", "true");
   await expect(status).not.toHaveText(total);
   await page.getByRole("button", { name: "Clear filters" }).first().click();
   await expect(page).not.toHaveURL(/phase=/);

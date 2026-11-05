@@ -93,8 +93,8 @@ export function InstallButton() {
   const dismiss = () => { try { localStorage.setItem(DISMISS_KEY, "1"); } catch { /* storage blocked: hide for this page only */ } deferred = null; emit(); };
   return (
     <span className="inline-flex" data-testid="install-app">
-      <button type="button" className="fm-btn fm-btn--tool" onClick={install} aria-label="Install SysDesign Lab as an app">
-        <Download size={14} aria-hidden /><span className="hidden sm:inline">Install app</span>
+      <button type="button" className="fm-btn fm-btn--tool" onClick={install} title="Install SysDesign Lab as an app">
+        <Download size={14} aria-hidden /><span className="sr-only sm:not-sr-only">Install app</span>
       </button>
       <button type="button" className="fm-btn fm-btn--tool -ml-px" onClick={dismiss} aria-label="Dismiss install prompt">
         <X size={12} aria-hidden />

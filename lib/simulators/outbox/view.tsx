@@ -37,7 +37,7 @@ export function OutboxView({ state: s, config: c, t, reducedMotion }: ViewProps<
   ];
   return (
     <div className="grid gap-3 [&>*]:min-w-0">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg viewBox="0 0 700 290" className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`${MODES.find((m) => m.value === c.mode)!.label}. ${s.committed} orders saved, ${s.consumed} events processed, ${n} inconsistencies, ${s.outbox.length} outbox rows waiting.`}>
           <g opacity={ob ? 0.25 : 1}><Wire from={P.svc} to={P.broker} /></g>
           <Wire from={P.svc} to={P.db} />

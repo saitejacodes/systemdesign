@@ -38,7 +38,7 @@ export function SagaView({ state: s, config: c, t, reducedMotion, act }: ViewPro
   const bad = s.inconsistent > 0;
   return (
     <div className="grid gap-3 [&>*]:min-w-0">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg viewBox="0 0 700 290" className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`${MODES.find((m) => m.value === c.mode)!.label}. ${s.completed} completed, ${s.compensated} ${two ? "aborted" : "compensated"}, ${s.stuck + s.doubt.length} stuck, ${s.inconsistent} inconsistent.${two ? ` ${s.locks} locks held, ${s.hot.queue.length} transactions blocked on the stock row.` : ""}`}>
           {SVCS.map((v) => <Wire key={v} from={HUB} to={P[v]} />)}
           {flights.map((f, i) => {

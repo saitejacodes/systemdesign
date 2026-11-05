@@ -20,7 +20,7 @@ export function CacheView({ state: s, config: c, t, reducedMotion }: ViewProps<C
   const phase = (k: number) => ((t / 600 + k * 0.29) % 1);
   return (
     <div className="grid gap-3 [&>*]:min-w-0">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg viewBox="0 0 700 340" className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`${s.cache.size} keys cached, hit rate ${Math.round((last && last.reads ? last.hits / last.reads : 0) * 100)}%, database at ${Math.round(dbU * 100)}% of capacity`}>
           {Array.from({ length: APP_SERVERS }, (_, i) => Array.from({ length: NODES }, (_, j) => <Wire key={`a${i}${j}`} from={[AX + 110, rowY(i, APP_SERVERS) + 14]} to={[CX, rowY(j, NODES) + 14]} />))}
           {Array.from({ length: NODES }, (_, j) => <g key={`d${j}`} opacity={s.down[j] ? 0.3 : 1}><Wire from={[CX + 120, rowY(j, NODES) + 14]} to={DB} /></g>)}
@@ -87,7 +87,7 @@ function RaceDemo() {
       <ol className="grid gap-1 font-mono text-[12px]">
         {steps.slice(0, step + 1).map((x, i) => (
           <li key={i} className="border px-2 py-1" style={{ borderRadius: 2, borderColor: x.bad ? "var(--status-over)" : "var(--line)" }}>
-            <span className="opacity-70">{i + 1}. </span>{x.text}
+            <span className="text-ink-muted">{i + 1}. </span>{x.text}
             <span className="block opacity-80">DB {x.db} · CACHE {x.cache}{x.bad ? " · STALE" : ""}</span>
           </li>
         ))}

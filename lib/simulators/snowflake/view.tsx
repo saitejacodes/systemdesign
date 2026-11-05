@@ -55,7 +55,7 @@ export function SnowView({ state: s, config: c }: ViewProps<SnowConfig, SnowStat
         <Bits l={l} id={newest ? compose(l, newest.ts, newest.mid, newest.to) : undefined} />
         <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {stats.map(([k, v, sub]) => (
-            <div key={k} className="fm-card p-2"><dt className="fm-cap">{k}</dt><dd className="font-mono text-[18px] font-semibold">{v}</dd><dd className="fm-cap opacity-70">{sub}</dd></div>
+            <div key={k} className="fm-card p-2"><dt className="fm-cap">{k}</dt><dd className="font-mono text-[18px] font-semibold">{v}</dd><dd className="fm-cap">{sub}</dd></div>
           ))}
         </dl>
         <p className="fm-cap">Compare: {REFS.map((r) => { const x = layoutOf({ tsBits: r.ts, dcBits: r.dc, workerBits: r.worker }); return `${r.name} ${r.ts}|${r.dc + r.worker}|${x.seq} → ${lifetimeYears(x).toFixed(1)} y, ${fmt(maxMachines(x))} machines, ${fmt(perMs(x))}/ms`; }).join(" · ")}</p>
@@ -78,7 +78,7 @@ export function SnowView({ state: s, config: c }: ViewProps<SnowConfig, SnowStat
 
       <figure className="grid gap-1">
         <figcaption className="fm-cap">Latest batches sorted by ID · one row = one machine-millisecond · true ms shows k-sortability{s.dups ? ` · ${s.dups.toLocaleString()} duplicates so far` : ""}</figcaption>
-        <div className="overflow-x-auto border border-ink" style={{ borderRadius: 2 }}>
+        <div className="overflow-x-auto border border-ink" tabIndex={0} style={{ borderRadius: 2 }}>
           <table className="w-full font-mono text-[12px]">
             <thead><tr>{["First ID (decimal)", "M", "ts", "seq", "True ms", ""].map((h, i) => <th key={i} className="whitespace-nowrap border-b border-ink px-2 py-1 text-left">{h}</th>)}</tr></thead>
             <tbody>

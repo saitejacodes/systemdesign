@@ -52,7 +52,7 @@ export function MqView({ state: s, config: c, t, reducedMotion, act }: ViewProps
   ];
   return (
     <div className="grid gap-3 [&>*]:min-w-0">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg viewBox="0 0 700 350" className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`${log ? `Topic with ${lanes} partitions` : "One queue"}, ${g.consumers.length} consumers in group A, lag ${totalLag(s)}, ${s.dlqCount} in the DLQ`}>
           {laneY.map((y, i) => <Wire key={`p${i}`} from={PROD} to={[SX - 4, y]} />)}
           {log

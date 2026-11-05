@@ -1,7 +1,10 @@
 "use client";
+import { memo } from "react";
 import { Leader } from "@/components/sim/draw";
 import type { ViewProps } from "@/lib/sim/definition";
 import { ASSUME, CELL, CTX, GPUS, GRID_STEPS, MODELS, SHOW_SLOTS, WBYTES, expectedTokens, stepCost, tpOf, type LlmConfig, type LlmState, type Replica, type Seq } from "./model";
+
+type Col = Replica["grid"][number];
 
 const GB = (b: number) => `${(b / 1e9).toFixed(b >= 1e10 ? 0 : 1)} GB`;
 const n0 = (v: number) => Math.round(v).toLocaleString("en-US");
@@ -37,7 +40,7 @@ function MemoryBars({ s, c, act, reducedMotion }: { s: LlmState; c: LlmConfig; a
   const focus = s.reps[s.focus];
   return (
     <figure className="grid gap-1">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg viewBox="0 0 700 270" className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`${s.reps.length} replica${s.reps.length === 1 ? "" : "s"} of TP${tp}. ${s.L.fits ? `Each holds ${GB(s.L.perGpuWeights)} of weights per GPU and ${n0(s.L.blocks * ASSUME.block)} tokens of KV cache.` : "The model does not fit."}`}>
           <defs>
             <pattern id="llm-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--status-hot-fill)" /><line x1="0" y1="0" x2="0" y2="6" stroke="var(--status-hot)" strokeWidth="2" /></pattern>
@@ -118,38 +121,49 @@ function cellOf(code: number, gamma: number): { f: string; t: string; ink: strin
   }
 }
 
+// A column never changes after its step is recorded, so each one renders once and then only moves.
+const colKeys = new WeakMap<Col, number>();
+let nextColKey = 0;
+const colKey = (col: Col) => { let k = colKeys.get(col); if (k === undefined) colKeys.set(col, (k = nextColKey++)); return k; };
+const CELL_W = 26, CELL_H = 16, GRID_Y0 = 18;
+
+const GridColumn = memo(function GridColumn({ col, rows, gamma, sloTpot, h }: { col: Col; rows: number; gamma: number; sloTpot: number; h: number }) {
+  return (
+    <>
+        {col.codes.slice(0, rows).map((code, k) => {
+          const cl = cellOf(code, gamma);
+          if (code === CELL.empty) return <rect key={k} y={GRID_Y0 + k * CELL_H} width={CELL_W - 2} height={CELL_H - 2} fill="none" stroke="var(--line)" strokeWidth={0.5} />;
+          return (
+            <g key={k}>
+              <rect y={GRID_Y0 + k * CELL_H} width={CELL_W - 2} height={CELL_H - 2} fill={cl.f} stroke="var(--ink)" strokeWidth={0.5}><title>{cl.label}</title></rect>
+              {cl.rej && <rect y={GRID_Y0 + k * CELL_H + CELL_H - 5} width={CELL_W - 2} height={3} fill="var(--status-over)" />}
+              <text x={(CELL_W - 2) / 2} y={GRID_Y0 + k * CELL_H + 11} textAnchor="middle" fontSize={9.5} fontFamily="var(--font-mono)" fill={cl.ink}>{cl.t}</text>
+            </g>
+          );
+        })}
+        <text x={(CELL_W - 2) / 2} y={h - 6} textAnchor="middle" fontSize={9} fontFamily="var(--font-mono)" fill={col.dur >= sloTpot ? "var(--status-over)" : "var(--ink-muted)"}>{Math.round(col.dur)}</text>
+    </>
+  );
+});
+
 function BatchGrid({ r, c }: { r: Replica; c: LlmConfig }) {
   const rows = Math.max(1, Math.min(SHOW_SLOTS, c.maxBatch));
-  const CW = 26, CH = 16, X0 = 40, Y0 = 18;
+  const X0 = 40;
   const cols = r.grid;
-  const h = Y0 + rows * CH + 22;
+  const h = GRID_Y0 + rows * CELL_H + 22;
   const last = cols.at(-1);
   return (
     <figure className="grid gap-1">
-      <div className="overflow-x-auto">
-        <svg viewBox={`0 0 ${X0 + GRID_STEPS * CW + 8} ${h}`} className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`Replica ${r.id + 1}: last ${cols.length} steps for the first ${rows} batch slots. ${last ? `Last step ${ms1(last.dur)}, ${last.prefillTok} prefill and ${last.decodeTok} decode tokens.` : ""}`}>
+      <div className="overflow-x-auto" tabIndex={0}>
+        <svg viewBox={`0 0 ${X0 + GRID_STEPS * CELL_W + 8} ${h}`} className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`Replica ${r.id + 1}: last ${cols.length} steps for the first ${rows} batch slots. ${last ? `Last step ${ms1(last.dur)}, ${last.prefillTok} prefill and ${last.decodeTok} decode tokens.` : ""}`}>
           <text x={0} y={12} className="sim-sub" fill="var(--ink-muted)">SLOT</text>
           <text x={X0} y={12} className="sim-sub" fill="var(--ink-muted)">← OLDER · ONE COLUMN PER FORWARD PASS · NEWER →</text>
-          {Array.from({ length: rows }, (_, k) => <text key={k} x={4} y={Y0 + k * CH + 12} className="sim-sub" fill="var(--ink-muted)">{k + 1}</text>)}
-          {cols.map((col, j) => {
-            const x = X0 + (GRID_STEPS - cols.length + j) * CW;
-            return (
-              <g key={j}>
-                {col.codes.slice(0, rows).map((code, k) => {
-                  const cl = cellOf(code, c.gamma);
-                  if (code === CELL.empty) return <rect key={k} x={x} y={Y0 + k * CH} width={CW - 2} height={CH - 2} fill="none" stroke="var(--line)" strokeWidth={0.5} />;
-                  return (
-                    <g key={k}>
-                      <rect x={x} y={Y0 + k * CH} width={CW - 2} height={CH - 2} fill={cl.f} stroke="var(--ink)" strokeWidth={0.5}><title>{cl.label}</title></rect>
-                      {cl.rej && <rect x={x} y={Y0 + k * CH + CH - 5} width={CW - 2} height={3} fill="var(--status-over)" />}
-                      <text x={x + (CW - 2) / 2} y={Y0 + k * CH + 11} textAnchor="middle" fontSize={9.5} fontFamily="var(--font-mono)" fill={cl.ink}>{cl.t}</text>
-                    </g>
-                  );
-                })}
-                <text x={x + (CW - 2) / 2} y={h - 6} textAnchor="middle" fontSize={9} fontFamily="var(--font-mono)" fill={col.dur >= c.sloTpot ? "var(--status-over)" : "var(--ink-muted)"}>{Math.round(col.dur)}</text>
-              </g>
-            );
-          })}
+          {Array.from({ length: rows }, (_, k) => <text key={k} x={4} y={GRID_Y0 + k * CELL_H + 12} className="sim-sub" fill="var(--ink-muted)">{k + 1}</text>)}
+          {cols.map((col, j) => (
+            <g key={colKey(col)} transform={`translate(${X0 + (GRID_STEPS - cols.length + j) * CELL_W} 0)`}>
+              <GridColumn col={col} rows={rows} gamma={c.gamma} sloTpot={c.sloTpot} h={h} />
+            </g>
+          ))}
         </svg>
       </div>
       <figcaption className="fm-cap">
@@ -277,7 +291,7 @@ function Arithmetic({ s, c, r }: { s: LlmState; c: LlmConfig; r?: Replica }) {
       <h3 className="fm-cap !text-ink">THE ARITHMETIC · R{(r?.id ?? 0) + 1}</h3>
       <dl className="grid gap-1 font-mono text-[12px]">
         {lines.map(([k, v]) => (
-          <div key={k} className="grid grid-cols-[6.5rem_1fr] gap-2"><dt className="opacity-70">{k}</dt><dd className="min-w-0 break-words">{v}</dd></div>
+          <div key={k} className="grid grid-cols-[6.5rem_1fr] gap-2"><dt className="text-ink-muted">{k}</dt><dd className="min-w-0 break-words">{v}</dd></div>
         ))}
       </dl>
       <p className="text-[12px] opacity-80">GPU numbers are illustrative, roughly current datacenter-class. Step time = max(bytes ÷ bandwidth, FLOPs ÷ (peak × MFU)) + all-reduce + overhead.</p>

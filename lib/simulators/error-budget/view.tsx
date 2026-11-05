@@ -58,7 +58,7 @@ export function EbView({ state: s, act }: ViewProps<EbConfig, EbState>) {
 
       <figure className="grid gap-1">
         <figcaption className="fm-cap">Burn rate per {bm >= 60 ? `${bm / 60} h` : `${bm} min`} (log) · budget left · alert lanes · day 0–{days}</figcaption>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0}>
           <svg viewBox={`0 0 ${W} 300`} className="h-auto w-full max-sm:min-w-[600px]" role="img" aria-label={`Budget ${pct(left)} left at ${fmtMinute(s.minute)}; ${s.pages} pages, ${s.tickets} tickets so far`}>
             {[1, 10, 100].map((b) => <g key={b}><line x1={X0} x2={X1} y1={by(b)} y2={by(b)} stroke="var(--line)" /><text x={X0 - 6} y={by(b) + 4} textAnchor="end" className="sim-sub" fill="var(--ink-muted)">{b}×</text></g>)}
             {/* The three thresholds sit close on the log axis, so their labels are staggered. */}
@@ -108,7 +108,7 @@ function Rules({ s }: { s: EbState }) {
   return (
     <figure className="grid gap-1">
       <figcaption className="fm-cap">Multiwindow, multi-burn-rate alerts (SRE workbook, ch. 5) · fires when BOTH windows burn ≥ threshold</figcaption>
-      <div className="overflow-x-auto border border-ink" style={{ borderRadius: 2 }}>
+      <div className="overflow-x-auto border border-ink" tabIndex={0} style={{ borderRadius: 2 }}>
         <table className="w-full font-mono text-[12px]">
           <thead><tr>{["Rule", "Long window", "Short window", "Threshold", "Budget spent if sustained", "Status"].map((h) => <th key={h} className="whitespace-nowrap border-b border-ink px-2 py-1 text-left">{h}</th>)}</tr></thead>
           <tbody>
@@ -165,7 +165,7 @@ function Incidents({ s }: { s: EbState }) {
   return (
     <figure className="grid gap-1">
       <figcaption className="fm-cap">Incidents so far · budget cost · first alert and how long it took</figcaption>
-      <div className="overflow-x-auto border border-ink" style={{ borderRadius: 2 }}>
+      <div className="overflow-x-auto border border-ink" tabIndex={0} style={{ borderRadius: 2 }}>
         <table className="w-full font-mono text-[12px]">
           <thead><tr>{["Start", "Length", "Errors", "Burn", "Budget", "First alert", "Source"].map((h) => <th key={h} className="whitespace-nowrap border-b border-ink px-2 py-1 text-left">{h}</th>)}</tr></thead>
           <tbody>

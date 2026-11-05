@@ -2,6 +2,7 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { LabLang } from "@/lib/labs/schema";
+import { DARK_THEME, defineThemes } from "./monaco-theme";
 
 // Paper → light, Blueprint → dark. data-theme is already resolved for "System", but the OS can flip while on System.
 const subscribeTheme = (cb: () => void) => {
@@ -68,7 +69,7 @@ export function CodeEditor({ lang, value, onChange, onSubmit, readOnly = false, 
           <Editor
             height={height}
             language={lang}
-            theme={dark ? "vs-dark" : "light"}
+            theme={dark ? DARK_THEME : "light"} beforeMount={defineThemes}
             value={value}
             onChange={(v) => onChange?.(v ?? "")}
             onMount={onMount}

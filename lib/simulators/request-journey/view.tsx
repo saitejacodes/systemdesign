@@ -48,7 +48,7 @@ export function RjView({ state, config, reducedMotion, act }: ViewProps<RjConfig
   const assets = assetsMs(config);
   return (
     <div className="grid gap-4">
-      <div className="min-w-0 overflow-x-auto">
+      <div className="min-w-0 overflow-x-auto" tabIndex={0}>
       <svg viewBox="0 0 640 195" className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`Request journey: ${steps.filter((s) => !s.skipped).map((s) => s.label).join(", ")}. Time to first byte ${Math.round(total)} ms.`}>
         <Wire from={NODE.browser} to={NODE.resolver} />
         {(["root", "tld", "auth"] as const).map((k) => <Wire key={k} from={NODE.resolver} to={NODE[k]} />)}

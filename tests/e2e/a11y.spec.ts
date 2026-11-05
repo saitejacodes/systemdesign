@@ -11,7 +11,10 @@ for (const theme of ["paper", "blueprint"] as const) {
     test(`${route} has no serious axe violations in ${theme}`, async ({ page }) => {
       await page.addInitScript((t) => localStorage.setItem("sdl-theme", t), theme);
       await page.goto(route);
+      // /studio/new replaces its URL with the new design's id; check the page it lands on, not the navigation in between.
+      if (route === "/studio/new") await page.waitForURL((u) => !u.pathname.endsWith("/new"));
       await expect(page.locator("h1").first()).toBeVisible();
+      await expect(page).toHaveTitle(/\S/);
       const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).exclude("nextjs-portal").analyze();
       const bad = violations
         .filter((v) => v.impact === "serious" || v.impact === "critical")

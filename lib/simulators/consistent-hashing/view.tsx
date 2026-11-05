@@ -31,7 +31,7 @@ export function ChView({ state, t, reducedMotion, act }: ViewProps<ChConfig, ChS
         <button type="button" className="fm-btn fm-btn--tool !h-8" disabled={state.ids.length <= MIN_NODES} onClick={() => act("remove")}>− Remove node</button>
         <span className="fm-cap">{state.ids.length} nodes · {state.v} virtual each · {state.k.toLocaleString()} keys</span>
       </div>
-      <div className="min-w-0 overflow-x-auto">
+      <div className="min-w-0 overflow-x-auto" tabIndex={0}>
       <svg viewBox="0 0 640 370" className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`Hash ring with ${state.ids.length} nodes and ${state.v} virtual nodes each; keys per node from ${Math.min(...c)} to ${Math.max(...c)}`}>
         <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--ink)" strokeWidth={1.5} />
         <text x={CX} y={CY - R - 10} textAnchor="middle" className="sim-sub" fill="var(--ink-muted)">0 · 2³²</text>

@@ -107,7 +107,7 @@ export function VsView({ state: s, config: c, act }: ViewProps<VsConfig, VsState
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] [&>*]:min-w-0">
         <figure className="fm-card grid gap-2 p-3">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" tabIndex={0}>
             <svg viewBox={`0 0 ${W} ${W}`} className="h-auto w-full max-w-[560px]" role="img" aria-label={`2-D PCA map of ${corpus.n} items coloured by topic. ${r ? `${sysName} returned ${r.hits.length} results, ${found} of them in the exact top ${r.exact.length}, using ${r.comps} distance computations.` : "Index still building."}`}>
               <rect x={0.5} y={0.5} width={W - 1} height={W - 1} fill="none" stroke="var(--line)" />
               <line x1={W / 2} y1={0} x2={W / 2} y2={W} stroke="var(--line)" strokeDasharray="2 4" />
@@ -181,7 +181,7 @@ export function VsView({ state: s, config: c, act }: ViewProps<VsConfig, VsState
               <span style={{ color: tone(L.recall >= 0.95) }}>{L.recall >= 0.95 ? "OK" : "LOW"} recall {L.recall.toFixed(3)}</span> · <span style={{ color: tone(L.pct < 20) }}>{L.pct < 20 ? "OK" : "COSTLY"} {Math.round(L.comps)}/query = {pct(L.pct)} of brute force</span>{L.short ? <span style={{ color: "var(--status-over)" }}> · {L.short} queries short of 10</span> : null}
             </p>
           ) : <p className="font-mono text-[12px]">Runs automatically once the index is built, and again whenever a setting changes.</p>}
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" tabIndex={0}>
             <table className="w-full font-mono text-[11px]">
               <thead><tr className="text-left"><th>M</th><th>efC</th><th>efS</th><th>filter</th><th>recall</th><th>% brute</th><th>avg ret.</th></tr></thead>
               <tbody>

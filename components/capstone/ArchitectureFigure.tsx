@@ -30,7 +30,7 @@ const dash = { ...line, strokeDasharray: "4 4" } as const;
 export function ArchitectureFigure() {
   return (
     <figure className="grid gap-3">
-      <div className="overflow-x-auto border border-ink" style={{ background: "var(--surface)" }}>
+      <div className="overflow-x-auto border border-ink" tabIndex={0} style={{ background: "var(--surface)" }}>
         <svg
           viewBox="0 0 960 460"
           role="img"

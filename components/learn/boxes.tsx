@@ -8,8 +8,8 @@ export function TradeoffBox({ title, items }: { title?: string; items: { gain: s
     <div className="fm-box my-8">
       <div className="fm-box__head"><span className="fm-box__glyph" aria-hidden="true">⇄</span>Tradeoff{title && ` · ${title}`}</div>
       <div className="fm-tradeoff max-sm:!grid-cols-1">
-        <div className="gain"><h5>+ Gain</h5><ul className="m-0 grid gap-1.5 pl-[18px]">{items.map((i) => <li key={i.gain}>{i.gain}</li>)}</ul></div>
-        <div className="cost max-sm:!border-l-0 max-sm:border-t max-sm:border-ink"><h5>− Cost</h5><ul className="m-0 grid gap-1.5 pl-[18px]">{items.map((i) => <li key={i.cost}>{i.cost}</li>)}</ul></div>
+        <div className="gain"><p className="k">+ Gain</p><ul className="m-0 grid gap-1.5 pl-[18px]">{items.map((i) => <li key={i.gain}>{i.gain}</li>)}</ul></div>
+        <div className="cost max-sm:!border-l-0 max-sm:border-t max-sm:border-ink"><p className="k">− Cost</p><ul className="m-0 grid gap-1.5 pl-[18px]">{items.map((i) => <li key={i.cost}>{i.cost}</li>)}</ul></div>
       </div>
     </div>
   );

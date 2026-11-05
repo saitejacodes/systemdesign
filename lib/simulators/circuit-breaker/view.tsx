@@ -42,7 +42,7 @@ export function CbView({ state: s, config: c, t, reducedMotion }: ViewProps<CbCo
 
   return (
     <div className="grid gap-3 [&>*]:min-w-0">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg viewBox="0 0 700 370" className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`Service A calls B through a circuit breaker. ${stText}. B is ${bText}.`}>
           <defs>
             <marker id="cb-arrow" viewBox="0 0 10 10" refX={9} refY={5} markerWidth={7} markerHeight={7} orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--ink)" /></marker>

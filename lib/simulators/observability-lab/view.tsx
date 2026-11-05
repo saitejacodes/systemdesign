@@ -104,7 +104,7 @@ function Dashboard({ state: s, onPick }: { state: ObsState; onPick(c: Comp): voi
   return (
     <figure className="grid gap-1">
       <figcaption className="fm-cap">RED per component · last 1 s · rate (req/s), errors (5xx or failed call), duration p50/p99 · sparklines = last 60 s · services above the line, dependencies below (measured by their callers)</figcaption>
-      <div className="overflow-x-auto border border-ink" style={{ borderRadius: 2 }}>
+      <div className="overflow-x-auto border border-ink" tabIndex={0} style={{ borderRadius: 2 }}>
         <table className="w-full min-w-[640px] font-mono text-[12px]">
           <thead><tr>{["component", "status", "rate", "errors", "p50", "p99", "p99 · 60 s", "err · 60 s", "saturation"].map((h) => <th key={h} className="whitespace-nowrap border-b border-ink px-2 py-1 text-left">{h}</th>)}</tr></thead>
           <tbody>
@@ -158,7 +158,7 @@ function Logs({ state: s, comp, setComp, level, setLevel, q, setQ, onTrace }: {
       <ol className="max-h-[320px] overflow-auto border border-ink font-mono text-[12px]" style={{ borderRadius: 2 }}>
         {shown.map((l) => (
           <li key={l.n} className="grid grid-cols-[auto_auto_auto_1fr] gap-x-2 border-b border-line px-2 py-0.5" style={{ borderLeft: `4px solid ${LEVEL_C[l.level]}` }}>
-            <span className="opacity-70">{clock(l.t)}</span>
+            <span className="text-ink-muted">{clock(l.t)}</span>
             <span style={{ color: l.level === "info" ? undefined : LEVEL_C[l.level] }}>{l.level.toUpperCase()}</span>
             <span>{l.comp}</span>
             <span className="min-w-0 whitespace-pre-wrap break-words">
@@ -167,7 +167,7 @@ function Logs({ state: s, comp, setComp, level, setLevel, q, setQ, onTrace }: {
             </span>
           </li>
         ))}
-        {!shown.length && <li className="px-2 py-1 opacity-70">No lines match.</li>}
+        {!shown.length && <li className="px-2 py-1 text-ink-muted">No lines match.</li>}
       </ol>
     </section>
   );
@@ -191,7 +191,7 @@ function Traces({ state: s, sel, onSel }: { state: ObsState; sel?: string; onSel
             </button>
           </li>
         ))}
-        {!list.length && <li className="opacity-70">No kept traces yet.</li>}
+        {!list.length && <li className="text-ink-muted">No kept traces yet.</li>}
       </ul>
       {sel && !tr && <p className="fm-cap" style={{ color: TONE.hot }}>Trace {sel.slice(0, 8)} was not kept: the sampler dropped it (or it aged out). Only its logs remain.</p>}
       {tr && <Waterfall tr={tr} />}
@@ -223,7 +223,7 @@ function Waterfall({ tr }: { tr: Trace }) {
   return (
     <figure className="grid gap-1">
       <figcaption className="fm-cap break-all">{tr.route} · {tr.status} · {fmtMs(tr.dur)} · traceparent: 00-{tr.id}-{root.id}-{tr.sampled ? "01" : "00"}{tr.sampled ? "" : " (kept by tail sampling after it finished)"}</figcaption>
-      <div className="overflow-x-auto border border-ink" style={{ borderRadius: 2 }}>
+      <div className="overflow-x-auto border border-ink" tabIndex={0} style={{ borderRadius: 2 }}>
         <div className="min-w-[560px] font-mono text-[12px]">
           {rows.map(({ sp, depth, self }) => (
             <div key={sp.id} className="border-b border-line">
@@ -236,10 +236,10 @@ function Waterfall({ tr }: { tr: Trace }) {
               </button>
               {open === sp.id && (
                 <dl className="grid grid-cols-[auto_1fr] gap-x-3 px-2 pb-1 pl-6">
-                  <dt className="opacity-70">span id</dt><dd className="break-all">{sp.id}</dd>
-                  <dt className="opacity-70">start</dt><dd>+{fmtMs(sp.start)}</dd>
-                  {sp.err && <><dt className="opacity-70">error</dt><dd style={{ color: TONE.over }}>{sp.err}</dd></>}
-                  {Object.entries(sp.attrs ?? {}).map(([k, v]) => <Fragment key={k}><dt className="opacity-70">{k}</dt><dd className="break-all">{String(v)}</dd></Fragment>)}
+                  <dt className="text-ink-muted">span id</dt><dd className="break-all">{sp.id}</dd>
+                  <dt className="text-ink-muted">start</dt><dd>+{fmtMs(sp.start)}</dd>
+                  {sp.err && <><dt className="text-ink-muted">error</dt><dd style={{ color: TONE.over }}>{sp.err}</dd></>}
+                  {Object.entries(sp.attrs ?? {}).map(([k, v]) => <Fragment key={k}><dt className="text-ink-muted">{k}</dt><dd className="break-all">{String(v)}</dd></Fragment>)}
                 </dl>
               )}
             </div>

@@ -38,7 +38,7 @@ export default async function Page({ params }: PageProps<"/simulators/code-labs/
       <div className="grid gap-10 px-4 py-8 sm:px-8">
         <div className="grid gap-8 xl:grid-cols-[minmax(0,68ch)_minmax(0,1fr)]">
           <LabExplanation source={lab.explanation} />
-          <div className="self-start overflow-x-auto">
+          <div className="self-start overflow-x-auto" tabIndex={0}>
             <table className="fm-parts">
               <caption>Complexity targets</caption>
               <thead><tr><th scope="col">Operation</th><th scope="col">Time</th><th scope="col">Space</th></tr></thead>

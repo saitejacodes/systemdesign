@@ -38,7 +38,7 @@ export function ReplView({ state: s, config: c, t, reducedMotion }: ViewProps<Re
   const cap = (p: number) => (s.partitioned ? Math.min(p, 0.45) : p);
   return (
     <div className="grid gap-3">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg viewBox="0 0 700 350" className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`Leader N${s.leader + 1} at entry ${head}, ${mode} replication to ${fol.length} followers${s.partitioned ? ", partitioned" : ""}`}>
           {fol.map((i, k) => <g key={`w${i}`} opacity={s.nodes[i].down ? 0.3 : 1}><Wire from={L} to={[FX, ys[k]]} /></g>)}
           {s.partitioned && (

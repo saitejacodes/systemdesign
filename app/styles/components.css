@@ -80,8 +80,6 @@ button.fm-num:hover { background: var(--ink); color: var(--paper); }
 .fm-btn--tool { height: 28px; padding: 0 10px; gap: 6px; border-width: 1px; font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; }
 .fm-btn--tool:hover, .fm-btn--tool.is-hover { box-shadow: none; transform: none; background: var(--ink); color: var(--paper); }
 .fm-btn--tool.is-on { background: var(--cobalt); border-color: var(--cobalt); color: var(--on-cobalt); }
-/* Below the desktop layout, tool buttons are touch targets: at least 44×44 px (WCAG 2.5.5). */
-@media (max-width: 1023.98px) { .fm-btn--tool { min-height: 44px; min-width: 44px; } .fm-check { min-height: 44px; padding-block: 11px; } }
 .fm-btn--danger { border-color: var(--status-over); color: var(--status-over); }
 
 /* ---------- 9. Card ---------- */
@@ -191,8 +189,8 @@ a.fm-card:hover { transform: translate(-2px,-2px); box-shadow: var(--shadow-hard
 .fm-tradeoff { display: grid; grid-template-columns: 1fr 1fr; }
 .fm-tradeoff > div { padding: 14px; }
 .fm-tradeoff > div + div { border-left: 1px solid var(--ink); }
-.fm-tradeoff h5 { margin: 0 0 8px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; }
-.fm-tradeoff .gain h5 { color: var(--status-ok); } .fm-tradeoff .cost h5 { color: var(--status-over); }
+.fm-tradeoff .k { margin: 0 0 8px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; }
+.fm-tradeoff .gain .k { color: var(--status-ok); } .fm-tradeoff .cost .k { color: var(--status-over); }
 .fm-box--notwhen .fm-box__head { background: var(--ink); color: var(--paper); }
 .fm-box--notwhen .fm-box__glyph { border-color: var(--paper); }
 .fm-mis { display: grid; gap: 10px; }
@@ -270,4 +268,13 @@ a.fm-card:hover { transform: translate(-2px,-2px); box-shadow: var(--shadow-hard
   .fm-flash.is-flipped .fm-flash__face--front { visibility: hidden; }
   .fm-flash.is-flipped .fm-flash__face--back { transform: none; }
 }
+}
+
+/* Below the desktop layout, controls are touch targets: at least 44×44 px (WCAG 2.5.5). */
+@media (max-width: 1023.98px) {
+  .fm-btn--tool { min-height: 44px; min-width: 44px; }
+  .fm-check, .fm-toggle { min-height: 44px; }
+  .fm-check { padding-block: 11px; }
+  .fm-input { min-height: 44px; }
+  .fm-slider input[type=range] { height: 44px; }
 }

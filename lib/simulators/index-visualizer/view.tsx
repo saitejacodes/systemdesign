@@ -33,12 +33,12 @@ export function IvView({ state, config, reducedMotion, act }: ViewProps<IvConfig
 
       <section aria-label="B-tree" className="grid gap-1">
         <h3 className="fm-cap !text-ink">B-tree · order {state.tree.order} · height {btLevels(state.tree).length} · {btWA(state).toFixed(1)}× write amplification</h3>
-        <div className="overflow-x-auto"><BTreeSvg state={state} anim={!reducedMotion} /></div>
+        <div className="overflow-x-auto" tabIndex={0}><BTreeSvg state={state} anim={!reducedMotion} /></div>
       </section>
 
       <section aria-label="LSM tree" className="grid gap-1">
         <h3 className="fm-cap !text-ink">LSM tree · memtable {config.batch} · {state.lsm.files.length} SSTables · {lsmWA(state).toFixed(1)}× write amplification</h3>
-        <div className="overflow-x-auto"><LsmSvg state={state} config={config} anim={!reducedMotion} /></div>
+        <div className="overflow-x-auto" tabIndex={0}><LsmSvg state={state} config={config} anim={!reducedMotion} /></div>
       </section>
 
       <section aria-label="Write cost question" className="fm-card grid gap-2 p-3">

@@ -77,7 +77,7 @@ function Pane({ s, state, act }: { s: 1 | 2; state: IsoState; act: ViewProps<Iso
         {sess.lines.map((l, i) => <Stmt key={i} l={l} />)}
         {upcoming.map(({ st, i }) => (
           <li key={`u${i}`} className="border border-dashed border-line px-2 py-1 opacity-60" style={{ borderRadius: 2 }}>
-            <span className="opacity-70">{i + 1}. </span>{sqlOf(st, sess.mem)}
+            <span>{i + 1}. </span>{sqlOf(st, sess.mem)}
           </li>
         ))}
       </ol>
@@ -88,7 +88,7 @@ function Pane({ s, state, act }: { s: 1 | 2; state: IsoState; act: ViewProps<Iso
 function Stmt({ l }: { l: Line }) {
   return (
     <li className="border border-ink px-2 py-1" style={{ borderRadius: 2, borderLeft: `4px solid ${KIND[l.kind]}` }}>
-      <span className="opacity-70">{l.step + 1}. </span>{l.sql}
+      <span>{l.step + 1}. </span>{l.sql}
       <span className="block" style={{ color: l.kind === "info" ? undefined : KIND[l.kind] }}>{TAG[l.kind] && `${TAG[l.kind]} · `}{l.result.replace(/^ERROR /, "")}</span>
     </li>
   );
@@ -100,7 +100,7 @@ function Versions({ state }: { state: IsoState }) {
   return (
     <figure className="grid gap-1">
       <figcaption className="fm-cap">Row versions in {state.table} · xmin created it, xmax replaced it · ● visible to that session now</figcaption>
-      <div className="overflow-x-auto border border-ink" style={{ borderRadius: 2 }}>
+      <div className="overflow-x-auto border border-ink" tabIndex={0} style={{ borderRadius: 2 }}>
         <table className="w-full font-mono text-[12px]">
           <thead><tr>{[...fields, "xmin", "xmax", "T1", "T2"].map((f) => <th key={f} className="whitespace-nowrap border-b border-ink px-2 py-1 text-left">{f}</th>)}</tr></thead>
           <tbody>

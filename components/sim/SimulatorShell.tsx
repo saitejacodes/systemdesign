@@ -81,7 +81,9 @@ const Cards = memo(function Cards({ cards, m, wide = false }: { cards: MetricCar
 });
 
 const tick = { fontFamily: "var(--font-mono)", fontSize: 10, fill: "var(--ink-muted)" };
-const Charts = memo(function Charts({ charts, history }: { charts: ChartDef[]; history: MetricHistory; samples: number }) {
+// Reads the history itself so the copy is made only when a new sample (every SAMPLE_MS of sim time) re-renders it, not on every frame.
+const Charts = memo(function Charts({ charts, metrics }: { charts: ChartDef[]; metrics: { history(): MetricHistory }; samples: number }) {
+  const history = metrics.history();
   return (
     <>
       {charts.map((c) => {
@@ -277,7 +279,7 @@ export function SimulatorShell({ entry, def, compact = false }: { entry: SimEntr
   );
 
   const canvas = (
-    <div data-tour="canvas" className="fm-grid fm-grid--fine relative overflow-x-auto border border-ink p-3 sm:p-6" style={{ borderRadius: 2 }}>
+    <div data-tour="canvas" className="fm-grid fm-grid--fine relative overflow-x-auto border border-ink p-3 sm:p-6" tabIndex={0} style={{ borderRadius: 2 }}>
       <span className="fm-cross tl" /><span className="fm-cross tr" /><span className="fm-cross bl" /><span className="fm-cross br" />
       {/* Views give their SVG drawings a min width; narrow screens scroll those sideways instead of shrinking labels to nothing. */}
       <div><def.View state={sim.state} config={sim.config} t={sim.clock.t} reducedMotion={reduced} act={s.act} /></div>
@@ -297,7 +299,7 @@ export function SimulatorShell({ entry, def, compact = false }: { entry: SimEntr
     <Panel title="Live metrics" tour="metrics">
       <div className="grid gap-4">
         <Cards cards={def.cards} m={m} />
-        <Charts charts={def.charts} history={sim.metrics.history()} samples={sim.samples} />
+        <Charts charts={def.charts} metrics={sim.metrics} samples={sim.samples} />
       </div>
     </Panel>
   );

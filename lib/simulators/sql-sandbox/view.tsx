@@ -3,6 +3,7 @@ import Editor, { type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ViewProps } from "@/lib/sim/definition";
 import { EXERCISES, planNodes, probeWith, runSql, seed, selfCost, type Db, type Exercise, type QueryResult, type SqlConfig, type SqlState, type Verdict } from "./model";
+import { DARK_THEME, defineThemes } from "@/components/labs/monaco-theme";
 
 type Status = { kind: "loading"; msg: string } | { kind: "ready" } | { kind: "error"; msg: string };
 interface Schema { tables: string[]; columns: string[] }
@@ -135,7 +136,7 @@ export function SqlView({ state, config, act }: ViewProps<SqlConfig, SqlState>) 
           <textarea aria-label="SQL" className="fm-input fm-input--mono min-h-40 !text-[13px]" value={sql} onChange={(e) => setSql(e.target.value)} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); const t = e.currentTarget; void run(t.selectionStart !== t.selectionEnd ? t.value.slice(t.selectionStart, t.selectionEnd) : t.value); } }} />
         ) : (
           <div className="border border-ink" style={{ borderRadius: 2 }}>
-            <Editor height="180px" language="sql" theme={dark ? "vs-dark" : "light"} value={sql} onChange={(v) => setSql(v ?? "")} onMount={onMount}
+            <Editor height="180px" language="sql" theme={dark ? DARK_THEME : "light"} beforeMount={defineThemes} value={sql} onChange={(v) => setSql(v ?? "")} onMount={onMount}
               loading={<span className="fm-cap">Loading editor…</span>}
               options={{ minimap: { enabled: false }, fontSize: 13, scrollBeyondLastLine: false, wordWrap: "on", lineNumbers: "on", automaticLayout: true, tabSize: 2 }} />
           </div>

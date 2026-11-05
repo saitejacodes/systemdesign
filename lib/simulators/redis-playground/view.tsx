@@ -103,10 +103,10 @@ function Terminal({ state, reducedMotion, act }: { state: RedisState; reducedMot
         <button type="button" className="fm-btn fm-btn--tool !h-8" onClick={() => act("clear")}>Clear screen</button>
       </div>
       <div ref={out} role="log" aria-live="polite" aria-label="Terminal output" className="h-80 overflow-auto border border-ink p-2 font-mono text-[12.5px] leading-snug" style={{ borderRadius: 2 }}>
-        {state.lines.length === 0 && <p className="opacity-70">Try: SET greeting &quot;hello world&quot; · GET greeting · PING</p>}
+        {state.lines.length === 0 && <p className="text-ink-muted">Try: SET greeting &quot;hello world&quot; · GET greeting · PING</p>}
         {state.lines.map((l, i) => (
           <div key={i} className="mb-1">
-            <div className="break-all"><span className="opacity-70">&gt; </span>{l.input}</div>
+            <div className="break-all"><span className="text-ink-muted">&gt; </span>{l.input}</div>
             {l.out.map((o, j) => <div key={j} className="whitespace-pre-wrap break-all" style={{ color: o.startsWith("(error)") ? "var(--status-over)" : undefined }}>{o}</div>)}
             {l.note && <div style={{ color: "var(--status-hot)" }}>WARNING: {l.note}</div>}
           </div>

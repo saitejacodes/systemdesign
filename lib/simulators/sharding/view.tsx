@@ -33,7 +33,7 @@ export function ShView({ state: s, reducedMotion, act }: ViewProps<ShConfig, ShS
               <div className="h-1.5 w-full border border-ink" style={{ borderRadius: 2 }}>
                 <div className="h-full" style={{ width: `${Math.min(100, (live / CAPACITY) * 100)}%`, background: `var(--status-${st})`, transition: reducedMotion ? "none" : "width 200ms" }} />
               </div>
-              <div className="fm-cap">{s.users[i].toLocaleString()} users</div>
+              <div className="fm-cap" style={{ color: "var(--ink)" }}>{s.users[i].toLocaleString()} users</div>
             </li>
           );
         })}

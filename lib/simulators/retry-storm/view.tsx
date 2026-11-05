@@ -46,7 +46,7 @@ export function RetryView({ state: s, config: c, t, reducedMotion }: ViewProps<R
 
   return (
     <div className="grid gap-3 [&>*]:min-w-0">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg viewBox="0 0 700 250" className="h-auto w-full max-sm:min-w-[560px]" role="img" aria-label={`${c.clients} clients send ${Math.round(offered)} attempts a second (${amp.toFixed(2)}× the ${Math.round(first)} new requests) to a service with capacity ${Math.round(s.capEff)}. Queue ${ql}, ${dead} abandoned. ${status}.`}>
           <Wire from={CL} to={[QX, 120]} />
           <Wire from={[QX + QW, 120]} to={SV} />
@@ -84,7 +84,7 @@ export function RetryView({ state: s, config: c, t, reducedMotion }: ViewProps<R
 
       <section aria-label="Attempts sent per 50 ms" className="fm-card grid gap-1 p-3">
         <h3 className="fm-cap">Attempts per {BIN_MS} ms · last {(BINS * BIN_MS) / 1000} s · <span style={{ color: "var(--cobalt)" }}>new</span> · <span style={{ color: "var(--status-hot)" }}>retries</span> · dashed = capacity</h3>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0}>
           <svg viewBox="0 0 640 130" className="h-auto w-full max-sm:min-w-[480px]" role="img" aria-label={`Peak ${Math.max(...b.map((x) => x.all))} attempts in one ${BIN_MS} ms bin; capacity is ${Math.round((s.capEff * BIN_MS) / 1000)} per bin`}>
             {b.map((x, k) => {
               const w = 640 / b.length;

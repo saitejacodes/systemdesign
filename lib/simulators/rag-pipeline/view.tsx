@@ -252,7 +252,7 @@ function CandTable({ state, tr, cols }: { state: RagState; tr: Trace; cols: "ret
   const isGold = (c: number) => gold.some((g) => ix.chunks[c].doc === g.doc && ix.chunks[c].start < g.end && ix.chunks[c].end > g.start);
   const head = cols === "retrieval" ? ["#", "Chunk", "Vector", "BM25", "RRF"] : ["#", "Chunk", "sim", "cov", "prox", "score"];
   return (
-    <div className="overflow-x-auto border border-ink" style={{ borderRadius: 2 }}>
+    <div className="overflow-x-auto border border-ink" tabIndex={0} style={{ borderRadius: 2 }}>
       <table className="w-full font-mono text-[11px]">
         <thead><tr>{head.map((h) => <th key={h} className="whitespace-nowrap border-b border-ink px-1.5 py-1 text-left">{h}</th>)}</tr></thead>
         <tbody>
@@ -289,7 +289,7 @@ function ChunkMap({ state, tr }: { state: RagState; tr: Trace }) {
   return (
     <figure className="grid gap-1">
       <figcaption className="fm-cap">Chunk boundaries (┃) around the gold passage (highlighted) · {inside ? "it lies whole inside at least one chunk" : <span style={{ color: HOT }}>SPLIT: no single chunk holds all of it</span>}</figcaption>
-      <p className="max-h-48 overflow-auto whitespace-pre-wrap border border-line bg-surface-sunk p-2 font-mono text-[11px]" style={{ borderRadius: 2 }}>
+      <p tabIndex={0} className="max-h-48 overflow-auto whitespace-pre-wrap border border-line bg-surface-sunk p-2 font-mono text-[11px]" style={{ borderRadius: 2 }}>
         {from > 0 && "…"}
         {marks.slice(0, -1).map((a, i) => {
           const b = marks[i + 1];
@@ -338,7 +338,7 @@ function EvalTable({ state, act, m }: { state: RagState; act: Act; m: ReturnType
       <h3 className="fm-cap !text-ink">Eval · 20 questions · hit = gold passage inside the assembled context · {m.hits}/20 ({Math.round(m.hitRate)}%) · {m.reasons.split} split · {m.reasons.budget} budget · {m.reasons.missed} not retrieved{m.reasons.stale ? ` · ${m.reasons.stale} stale` : ""}</h3>
       <div className="grid grid-cols-4 gap-1 sm:grid-cols-10">
         {state.traces.map((t, i) => (
-          <button key={i} type="button" onClick={() => act("select", { qi: i })} aria-pressed={!state.custom && state.qi === i} aria-label={`${state.data!.questions[i].id}: ${REASON_TEXT[t.reason!]}`}
+          <button key={i} type="button" onClick={() => act("select", { qi: i })} aria-pressed={!state.custom && state.qi === i} aria-label={t.reason === "hit" ? `Q${i + 1} HIT` : `Q${i + 1} MISS: ${REASON_TEXT[t.reason!].replace("MISS · ", "")}`}
             className={`fm-btn fm-btn--tool !h-8 !px-1 !text-[11px] ${!state.custom && state.qi === i ? "is-on" : ""}`} style={{ borderLeft: `4px solid ${toneOf(t.reason)}` }}>
             Q{i + 1} {t.reason === "hit" ? "HIT" : "MISS"}
           </button>

@@ -115,13 +115,13 @@ function Decoded({ s, onApply }: { s: JwtState; onApply(p: Json, resign: boolean
     <div className="grid gap-3 md:grid-cols-2 [&>*]:min-w-0">
       <figure className="grid content-start gap-1">
         <figcaption className="fm-cap">Decoded claims</figcaption>
-        <div className="overflow-x-auto border border-ink" style={{ borderRadius: 2 }}>
+        <div className="overflow-x-auto border border-ink" tabIndex={0} style={{ borderRadius: 2 }}>
           <table className="w-full text-[13px]">
             <tbody>
               {rows.map(([where, k, v]) => (
                 <tr key={`${where}${k}`} className="align-top">
                   <td className="whitespace-nowrap border-b border-line px-2 py-1 font-mono text-[12px]" style={{ color: where === "header" ? PART[0] : PART[1] }}>{k}</td>
-                  <td className="border-b border-line px-2 py-1 font-mono text-[12px] break-all">{JSON.stringify(v)}{TIME.has(k) && typeof v === "number" && <span className="block opacity-70">{new Date(v * 1000).toISOString().replace(".000", "")} · {rel(v - s.now)}</span>}</td>
+                  <td className="border-b border-line px-2 py-1 font-mono text-[12px] break-all">{JSON.stringify(v)}{TIME.has(k) && typeof v === "number" && <span className="block text-ink-muted">{new Date(v * 1000).toISOString().replace(".000", "")} · {rel(v - s.now)}</span>}</td>
                   <td className="border-b border-line px-2 py-1">{DOCS[k] ?? "Private claim: readable by anyone holding the token."}</td>
                 </tr>
               ))}
@@ -198,7 +198,7 @@ function Timeline({ s, act }: { s: JwtState; act: Act }) {
         <button type="button" className="fm-btn fm-btn--tool !h-8" onClick={() => act("restart")}>Restart timeline</button>
         <span className="fm-cap">t = {fmt(r.sec)} · logout at {fmt(r.logoutAt)}{r.loggedOut ? " · LOGGED OUT" : ""} · Play runs it</span>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg viewBox={`0 0 700 ${24 + LANES.length * LH + 20}`} className="h-auto w-full max-sm:min-w-[600px]" role="img" aria-label={`Timeline at ${fmt(r.sec)}: stolen token worked ${LANES.map((l) => `${fmt(exposure(r, l.id))} with ${l.label}`).join(", ")}`}>
           {LANES.map((ln, k) => {
             const l = r.lanes[ln.id];

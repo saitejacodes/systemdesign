@@ -29,15 +29,15 @@ export function QuorumView({ state: s, config: c, act }: ViewProps<QuorumConfig,
         </p>
       </section>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg viewBox={`0 0 ${X0 * 2 + n * COL} 300`} className="h-auto w-full max-sm:min-w-[480px]" role="group" aria-label={`${n} replicas, ${live} up. Version table of ${KEYS} keys; cells behind the latest acknowledged version are marked.`}>
           {s.nodes.slice(0, n).map((nd, i) => {
             const x = X0 + i * COL;
             const inW = s.lastWrite?.replies.slice(0, s.lastWrite.need).some((p) => p.node === i);
             const inR = s.lastRead?.replies.slice(0, s.lastRead.need).some((p) => p.node === i);
             return (
-              <g key={i} role="button" tabIndex={0} aria-pressed={nd.down} aria-label={`${nd.down ? "Restart" : "Crash"} N${i + 1}`} className="cursor-pointer"
-                onClick={() => act("toggle", i)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act("toggle", i); } }}>
+              <g aria-hidden key={i} className="cursor-pointer"
+                onClick={() => act("toggle", i)}>
                 <IsoBlock x={x} y={22} w={COL - 24} h={44} d={8} tone={nd.down ? "over" : nd.slow > 1 ? "hot" : "idle"} label={`N${i + 1}`} sub={nd.down ? "DOWN" : `${DIST[i] * nd.slow * c.latency} ms`} />
                 <text x={x} y={84} className="sim-sub" fill="var(--ink)">{inW ? "W " : ""}{inR ? "R" : ""}</text>
                 {Array.from({ length: KEYS }, (_, k) => {
@@ -90,7 +90,7 @@ function Timing({ op, title }: { op: Op | null; title: string }) {
         {op.status === "ok" ? "OK" : op.status === "stale" ? "STALE READ" : op.status === "timeout" ? `TIMED OUT (${TIMEOUT_MS} ms)` : op.status === "unavailable" ? "UNAVAILABLE · too few replicas up" : "WAITING"}
         {done && ` · ${(op.doneAt - op.start).toFixed(1)} ms = ${ord(op.need)} fastest of ${reps.length}`}
       </p>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg viewBox={`0 0 340 ${16 + reps.length * 20}`} className="h-auto w-full" role="img" aria-label={`Reply times: ${reps.map((p) => `N${p.node + 1} ${p.at.toFixed(1)} ms${op.kind === "read" ? ` v${p.ver}` : ""}`).join(", ")}`}>
           {reps.map((p, k) => {
             const counted = k < op.need;

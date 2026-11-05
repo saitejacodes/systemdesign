@@ -318,7 +318,7 @@ function RunCompare({ mine, ref_, c }: { mine: RunResult | null; ref_: RunResult
   return (
     <div className="grid gap-2" data-testid="run-compare">
       <p className="text-[15px]">Both designs run headlessly at the case&apos;s peak traffic ({Math.round(tp.qps * tp.peakMultiplier).toLocaleString("en-US")} QPS). Challenge: <span className="font-medium">{c.meta.runChallenge.title}</span>.</p>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <table className="fm-parts">
           <thead><tr><th scope="col">Metric at peak</th><th scope="col">Yours</th><th scope="col">Reference</th></tr></thead>
           <tbody>

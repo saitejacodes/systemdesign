@@ -131,7 +131,7 @@ export function RaftView({ state: s, t, reducedMotion, act }: ViewProps<RaftConf
   };
   return (
     <div className="grid gap-3 [&>*]:min-w-0">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <svg ref={svg} viewBox={`0 0 ${W} ${H}`} className="h-auto w-full max-sm:min-w-[560px] select-none" role="img"
           aria-label={`${L >= 0 ? `Leader N${L + 1} in term ${s.nodes[L].term}` : "No leader"}. ${s.nodes.map((n, i) => `N${i + 1} ${n.down ? "down" : n.role} term ${n.term} side ${n.group ? "B" : "A"}`).join(", ")}.`}
           onPointerMove={(e) => drag && setDrag({ i: drag.i, ...pt(e) })}
@@ -164,7 +164,7 @@ export function RaftView({ state: s, t, reducedMotion, act }: ViewProps<RaftConf
         <button type="button" className="fm-btn fm-btn--tool !h-8" disabled={!part} onClick={() => act("heal")}>Heal partition</button>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0}>
         <table className="w-full font-mono text-[12px]">
           <caption className="fm-cap mb-1 text-left">Nodes · drag a node across the line, or use Side</caption>
           <thead><tr>{["Node", "Role", "Term", "Log / commit", "", "", ""].map((h, k) => <th key={k} className="border-b border-ink px-2 py-1 text-left whitespace-nowrap">{h}</th>)}</tr></thead>
@@ -177,7 +177,7 @@ export function RaftView({ state: s, t, reducedMotion, act }: ViewProps<RaftConf
                 <td className="border-b border-line px-2 py-0.5">{n.log.length} / {n.commit}</td>
                 <td className="border-b border-line px-1 py-0.5"><button type="button" className="fm-btn fm-btn--tool !h-7" onClick={() => act("toggleCrash", { node: i })}>{n.down ? "Restart" : "Crash"}</button></td>
                 <td className="border-b border-line px-1 py-0.5"><button type="button" className="fm-btn fm-btn--tool !h-7" aria-pressed={n.slow} onClick={() => act("toggleSlow", { node: i })}>{n.slow ? "Slow ×6" : "Slow"}</button></td>
-                <td className="border-b border-line px-1 py-0.5"><button type="button" className="fm-btn fm-btn--tool !h-7" aria-label={`Move N${i + 1} to side ${n.group ? "A" : "B"}`} onClick={() => act("move", { node: i, group: n.group ? 0 : 1 })}>Side {n.group ? "B → A" : "A → B"}</button></td>
+                <td className="border-b border-line px-1 py-0.5"><button type="button" className="fm-btn fm-btn--tool !h-7" aria-label={`Side ${n.group ? "B → A" : "A → B"} for N${i + 1}`} onClick={() => act("move", { node: i, group: n.group ? 0 : 1 })}>Side {n.group ? "B → A" : "A → B"}</button></td>
               </tr>
             ))}
           </tbody>
@@ -186,7 +186,7 @@ export function RaftView({ state: s, t, reducedMotion, act }: ViewProps<RaftConf
 
       <figure className="grid gap-1">
         <figcaption className="fm-cap">Logs by index · solid = committed, dashed outline = not yet · T = term, ∅ = leader no-op · bar = commit index</figcaption>
-        <div className="overflow-x-auto"><LogTable s={s} /></div>
+        <div className="overflow-x-auto" tabIndex={0}><LogTable s={s} /></div>
       </figure>
     </div>
   );
