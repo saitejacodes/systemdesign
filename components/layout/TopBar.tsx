@@ -5,6 +5,7 @@ import { Menu, PanelLeft, PanelRight, Search } from "lucide-react";
 import { SEGMENT_LABELS } from "@/lib/nav";
 import { PHASES } from "@/lib/curriculum";
 import { useUi } from "@/lib/ui-store";
+import { InstallButton, OfflineBadge } from "./Pwa";
 import { ThemeToggle } from "./ThemeToggle";
 
 // Path prefixes that have no page of their own; their crumbs are plain text, not links.
@@ -44,6 +45,8 @@ export function TopBar() {
           ))}
         </ol>
       </nav>
+      <OfflineBadge />
+      <InstallButton />
       <button type="button" className="fm-btn fm-btn--tool" onClick={() => set({ paletteOpen: true })} aria-keyshortcuts="Control+K Meta+K">
         <Search size={14} aria-hidden /><span className="sr-only sm:not-sr-only">Search</span><kbd className="hidden md:inline opacity-70" aria-hidden>⌘K</kbd>
       </button>

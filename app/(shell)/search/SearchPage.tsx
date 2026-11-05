@@ -41,6 +41,17 @@ export function SearchPage() {
         />
         <p className="fm-help" aria-live="polite">{q.trim() ? `${hits.length} result${hits.length === 1 ? "" : "s"}` : "Lessons, glossary, flashcards, case studies and resources."}</p>
       </div>
+      {q.trim() && hits.length === 0 && (
+        <div className="fm-card grid gap-2 p-6" data-testid="search-empty">
+          <p className="fm-h4 m-0">Nothing matches “{q.trim()}”.</p>
+          <p className="m-0 text-ink-muted">Try a shorter or more general word (“cache” rather than “write-behind cache”), or browse instead.</p>
+          <p className="m-0 flex flex-wrap gap-2">
+            <button type="button" className="fm-btn fm-btn--tool" onClick={() => setQ("")}>Clear search</button>
+            <Link href="/glossary" className="fm-btn fm-btn--tool no-underline">Glossary</Link>
+            <Link href="/plan" className="fm-btn fm-btn--tool no-underline">Study plan</Link>
+          </p>
+        </div>
+      )}
       {groups.map(([group, items]) => (
         <section key={group} aria-label={group}>
           <h2 className="fm-cap mb-2 border-b border-ink pb-1">{group} · {items!.length}</h2>
