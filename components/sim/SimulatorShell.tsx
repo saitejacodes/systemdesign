@@ -326,7 +326,7 @@ export function SimulatorShell({ entry, def, compact = false }: { entry: SimEntr
         <div className="grid gap-4">
           {canvas}
           <Cards cards={def.cards} m={m} wide />
-          <details className="fm-card"><summary className="fm-card__head cursor-pointer">Controls and challenges</summary><div className="grid gap-4 p-4">{controls}<ChallengesPanel simId={entry.id} def={def} run={run} onStart={s.startChallenge} onStop={s.stopChallenge} /></div></details>
+          <details className="fm-card"><summary className="fm-card__head min-h-11 cursor-pointer">Controls and challenges</summary><div className="grid gap-4 p-4">{controls}<ChallengesPanel simId={entry.id} def={def} run={run} onStart={s.startChallenge} onStop={s.stopChallenge} /></div></details>
         </div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_280px]">

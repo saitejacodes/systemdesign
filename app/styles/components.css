@@ -143,7 +143,7 @@ a.fm-card:hover { border-color: var(--cobalt); }
 .fm-check input::after { content: ""; width: 9px; height: 5px; border-left: 2px solid var(--paper); border-bottom: 2px solid var(--paper); transform: rotate(-45deg) translate(1px,-1px); opacity: 0; }
 .fm-check input:checked { background: var(--ink); }
 .fm-check input:checked::after { opacity: 1; }
-.fm-check input:checked + span { text-decoration: line-through; text-decoration-color: var(--ink-muted); color: var(--ink-muted); }
+.fm-check input[type=checkbox]:checked + span { text-decoration: line-through; text-decoration-color: var(--ink-muted); color: var(--ink-muted); }
 .fm-check input:disabled { border-style: dashed; }
 
 /* ---------- Quiz option ---------- */

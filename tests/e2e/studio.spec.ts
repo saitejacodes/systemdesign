@@ -145,3 +145,54 @@ test("375px: drawers for palette and panel, no horizontal scroll", async ({ page
   expect(overflow).toBeLessThanOrEqual(1);
   expect(errors).toEqual([]);
 });
+
+test("tools: the Arrow tool draws an arrow, Hand pans, Focus fills the window", async ({ page }, info) => {
+  test.skip(info.project.name === "mobile", "pointer tools are desktop; touch pans by default");
+  const errors = watchErrors(page);
+  await page.goto("/studio/new");
+  await expect(page).toHaveURL(/\/studio\/d-/);
+  for (const name of ["Client", "Load Balancer"]) await page.getByRole("button", { name: `Add ${name}`, exact: true }).click();
+  await expect(summary(page)).toHaveText("2 components, 0 connections");
+
+  // Arrow tool: click the start component, then the target
+  await page.getByRole("button", { name: "Arrow", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Arrow", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await node(page, "Client").click();
+  await expect(page.getByText("From Client: click where the arrow goes")).toBeVisible();
+  await node(page, "Load Balancer").click();
+  await expect(summary(page)).toHaveText("2 components, 1 connection");
+  await expect(page.locator(".react-flow__edge")).toHaveCount(1);
+  await expect(page.getByRole("tabpanel").getByText("Client → Load Balancer")).toBeVisible();
+
+  // Esc cancels a half-drawn arrow; V returns to Select
+  await node(page, "Load Balancer").click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Arrow: click the component it starts from")).toBeVisible();
+  await page.keyboard.press("v");
+  await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  // Hand tool: dragging empty canvas moves the view, not the components
+  await page.keyboard.press("h");
+  const viewport = page.locator(".react-flow__viewport");
+  const before = await viewport.getAttribute("style");
+  const pane = await page.locator(".react-flow__pane").boundingBox();
+  // Start on empty canvas near the top left (the zoom controls and minimap sit at the bottom corners).
+  await page.mouse.move(pane!.x + 60, pane!.y + 60);
+  await page.mouse.down();
+  await page.mouse.move(pane!.x + 200, pane!.y + 140, { steps: 6 });
+  await page.mouse.up();
+  await expect(viewport).not.toHaveAttribute("style", before!);
+  await expect(summary(page)).toHaveText("2 components, 1 connection");
+
+  // Focus mode hides the app chrome; F toggles it back
+  await expect(page.getByRole("complementary", { name: "Sidebar" })).toBeVisible();
+  await page.getByRole("button", { name: "Focus", exact: true }).click();
+  await expect(page.locator("[data-focus]")).toBeVisible();
+  const box = await page.locator("[data-focus]").boundingBox();
+  const vp = page.viewportSize()!;
+  expect(Math.round(box!.width)).toBe(vp.width);
+  expect(Math.round(box!.height)).toBe(vp.height);
+  await page.keyboard.press("f");
+  await expect(page.locator("[data-focus]")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

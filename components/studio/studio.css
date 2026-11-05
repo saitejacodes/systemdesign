@@ -50,7 +50,7 @@
 
 /* Component card */
 .sdl-node { position: relative; display: grid; grid-template-columns: 40px 1fr; gap: 8px; align-items: start; width: 192px; height: 80px; padding: 8px 10px 8px 8px; box-sizing: border-box; background: var(--surface); border: 1.5px solid var(--ink); border-radius: 2px; color: var(--ink); }
-.sdl-node.is-selected { border: 2px solid var(--cobalt); padding: 7.5px 9.5px 7.5px 7.5px; box-shadow: 3px 3px 0 0 var(--cobalt); }
+.sdl-node.is-selected { border: 2px solid var(--cobalt); padding: 7.5px 9.5px 7.5px 7.5px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--cobalt) 22%, transparent); }
 .sdl-node__text { min-width: 0; display: grid; gap: 1px; }
 .sdl-node__label { font-size: 14px; font-weight: 600; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sdl-node__prop { font-family: var(--font-mono); font-size: 10.5px; line-height: 14px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
@@ -58,7 +58,7 @@
 .sdl-node__icon { display: block; }
 
 /* Handles: small squares on all four sides, visible on hover/selection or while connecting */
-.sdl-flow .sdl-handle { width: 9px; height: 9px; min-width: 0; min-height: 0; border-radius: 0; border: 1.5px solid var(--ink); background: var(--surface); opacity: 0; transition: opacity .15s ease; }
+.sdl-flow .sdl-handle { width: 11px; height: 11px; min-width: 0; min-height: 0; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--surface); opacity: 0; transition: opacity .15s ease; }
 .sdl-flow .react-flow__node:hover .sdl-handle, .sdl-flow .react-flow__node.selected .sdl-handle, .sdl-flow .react-flow__node:focus-visible .sdl-handle, .sdl-flow.is-connecting .sdl-handle { opacity: 1; }
 .sdl-flow .sdl-handle:hover, .sdl-flow .sdl-handle.connectingto { background: var(--cobalt); border-color: var(--cobalt); }
 
@@ -108,7 +108,7 @@
 .sdl-node.is-run.is-overloaded { --st: var(--status-over); --st-fill: var(--status-over-fill); border-width: 2px; padding: 7.5px 9.5px 7.5px 7.5px; }
 .sdl-node.is-run.is-down { --st: var(--ink-muted); border-style: dashed; background: var(--surface-sunk); }
 .sdl-node.is-run.is-down .sdl-node__icon, .sdl-node.is-run.is-down .sdl-node__metric { opacity: .55; }
-.sdl-node.is-run.is-selected { border-color: var(--cobalt); box-shadow: 3px 3px 0 0 var(--cobalt); }
+.sdl-node.is-run.is-selected { border-color: var(--cobalt); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cobalt) 22%, transparent); }
 .sdl-node__metric { color: var(--ink); }
 .sdl-node__status { color: var(--ink); }
 .sdl-node.is-ok .sdl-node__status > span { color: var(--status-ok); }
@@ -141,3 +141,10 @@
 .sdl-row-btn { display: flex; width: 100%; align-items: center; gap: 8px; padding: 4px 6px; border: 1px solid transparent; border-radius: 2px; background: none; color: var(--ink); text-align: left; font-size: 14px; cursor: pointer; }
 .sdl-row-btn:hover { border-color: var(--ink); background: var(--surface); }
 .sdl-row-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* Tools: Hand drags the canvas; Arrow clicks two components, so components show a crosshair and don't move. */
+.sdl-flow.is-tool-hand .react-flow__pane, .sdl-flow.is-tool-hand .react-flow__node { cursor: grab; }
+.sdl-flow.is-tool-hand .react-flow__pane.dragging { cursor: grabbing; }
+.sdl-flow.is-tool-arrow .react-flow__node { cursor: crosshair; }
+.sdl-flow.is-tool-arrow .react-flow__pane { cursor: grab; }
+.sdl-flow.is-tool-arrow .react-flow__node:hover .sdl-node { border-color: var(--cobalt); }

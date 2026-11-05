@@ -9,7 +9,7 @@ import {
   applyEdgeChanges, applyNodeChanges, Background, BackgroundVariant, ConnectionMode, Controls, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow,
   type Connection, type EdgeChange, type NodeChange,
 } from "@xyflow/react";
-import { PanelLeft, PanelRight, Pencil, Play, Redo2, Sparkles, Undo2, X } from "lucide-react";
+import { Hand, Maximize2, Minimize2, MousePointer2, MoveUpRight, PanelLeft, PanelRight, Pencil, Play, Redo2, Sparkles, Undo2, X } from "lucide-react";
 import { SetHud } from "@/components/layout/SetHud";
 import { getAdapter } from "@/lib/db/adapter";
 import type { Design, DesignVersion } from "@/lib/db/types";
@@ -108,6 +108,12 @@ export function DesignEditor({ designId, lessons, caseRuns = {} }: { designId: s
   );
 }
 
+/** A component's display name, for the arrow tool's prompts. */
+function nodeLabel(graph: StudioGraph, id: string) {
+  const n = graph.nodes.find((x) => x.id === id);
+  return n ? n.label || CATALOG[n.kind as keyof typeof CATALOG]?.title || "component" : "component";
+}
+
 function Editor({ design, initial, lessons, caseRuns }: { design: Design; initial: StudioGraph; lessons: Lessons; caseRuns: CaseRuns }) {
   const rf = useReactFlow<FlowNode, FlowEdge>();
   const coarse = useSyncExternalStore(subscribeCoarse, () => coarseQuery().matches, () => false);
@@ -132,6 +138,34 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
   const [sheet, setSheet] = useState<"palette" | "panel" | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [announce, setAnnounce] = useState("");
+  // Canvas tool, as in diagram tools: Select (box-select on empty drag), Hand (drag pans), Arrow (click two components).
+  const [tool, setToolState] = useState<"select" | "hand" | "arrow">("select");
+  const [arrowFrom, setArrowFrom] = useState<string | null>(null);
+  const setTool = useCallback((t: "select" | "hand" | "arrow") => {
+    setToolState(t);
+    setArrowFrom(null);
+    setAnnounce(t === "arrow" ? "Arrow tool. Click the component the arrow starts from." : t === "hand" ? "Hand tool. Drag to move the canvas." : "Select tool");
+  }, []);
+  const [paletteOpen, setPaletteOpen] = useState(true);
+  // Focus mode: the editor fills the window (and the screen, where the browser allows it), with the app chrome hidden.
+  const [focus, setFocusState] = useState(false);
+  const setFocus = useCallback((on: boolean) => {
+    setFocusState(on);
+    try {
+      if (on && !document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => {});
+      if (!on && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    } catch { /* fullscreen not allowed here: the in-window focus layout still applies */ }
+  }, []);
+  useEffect(() => {
+    // Leaving browser full screen (Esc) leaves focus mode too.
+    const onChange = () => { if (!document.fullscreenElement) setFocusState(false); };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const focusRef = useRef(focus);
+  useEffect(() => { focusRef.current = focus; }, [focus]);
+  const arrowFromRef = useRef(arrowFrom);
+  useEffect(() => { arrowFromRef.current = arrowFrom; }, [arrowFrom]);
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -236,6 +270,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
       if (typing(t) || document.querySelector("[role=dialog]")) return;
       const mod = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
+      if (!mod && !e.altKey && k === "f") { e.preventDefault(); setFocus(!focusRef.current); return; }
       if (modeRef.current === "run") {
         // Run mode is read-only: selection keys only, so arrows and Delete can't move or remove anything.
         if (k === "escape") selectAll(false);
@@ -251,7 +286,8 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
       if (mod && k === "a") { e.preventDefault(); selectAll(true); return; }
       if (mod || e.altKey) return;
       if (k === "delete" || k === "backspace") { if (selectedIds().length) { e.preventDefault(); doDelete(); } return; }
-      if (k === "escape") { selectAll(false); return; }
+      if (k === "escape") { if (arrowFromRef.current) { setArrowFrom(null); setAnnounce("Arrow cancelled"); } else selectAll(false); return; }
+      if (k === "v" || k === "h" || k === "a") { e.preventDefault(); setTool(k === "v" ? "select" : k === "h" ? "hand" : "arrow"); return; }
       const dir = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] }[k];
       if (dir) {
         const ids = flowRef.current.nodes.filter((n) => n.selected).map((n) => n.id);
@@ -264,7 +300,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [apply, doCopy, doDelete, doDuplicate, doPaste, doRedo, doUndo, selectAll, selectedIds]);
+  }, [apply, doCopy, doDelete, doDuplicate, doPaste, doRedo, doUndo, selectAll, selectedIds, setFocus, setTool]);
 
   // ---- React Flow callbacks ----
   const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => {
@@ -284,6 +320,15 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
     const r = connect(histRef.current.present, c.source, c.target, "sync");
     if (r) { apply(r.graph, undefined, [r.id]); setAnnounce("Connected"); }
   }, [apply]);
+  const onNodeClick = useCallback((_: unknown, node: FlowNode) => {
+    if (tool !== "arrow" || modeRef.current === "run") return;
+    if (!arrowFrom) { setArrowFrom(node.id); setAnnounce(`Arrow from ${nodeLabel(histRef.current.present, node.id)}. Click where it goes.`); return; }
+    if (node.id === arrowFrom) { setArrowFrom(null); setAnnounce("Arrow cancelled"); return; }
+    const r = connect(histRef.current.present, arrowFrom, node.id, "sync");
+    setArrowFrom(null);
+    if (r) { apply(r.graph, undefined, [r.id]); setAnnounce(`Arrow added: ${nodeLabel(histRef.current.present, arrowFrom)} to ${nodeLabel(histRef.current.present, node.id)}`); }
+    else setAnnounce("Those two are already connected");
+  }, [tool, arrowFrom, apply]);
   const nodeEvents = useMemo(() => ({ resized: () => setTimeout(() => commitFromFlow(), 0) }), [commitFromFlow]);
 
   // ---- export ----
@@ -323,7 +368,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
   const runView = useMemo<RunView>(() => ({ on: running, state: run.state, faults: run.faults }), [running, run.state, run.faults]);
   const setProfile = (p: TrafficProfile) => { setSavedRun(p); latest.current.run = JSON.stringify(p); scheduleSave(); };
   const resetProfile = () => { setSavedRun(null); latest.current.run = undefined; scheduleSave(); setAnnounce("Traffic reset to the default"); };
-  const enterRun = () => { setMode("run"); run.reset(); setSheet(null); setConnecting(false); setAnnounce("Run mode. Editing is paused. Press Play to send traffic."); };
+  const enterRun = () => { setMode("run"); run.reset(); setSheet(null); setConnecting(false); setArrowFrom(null); setAnnounce("Run mode. Editing is paused. Press Play to send traffic."); };
   const exitRun = () => { setMode("edit"); run.stop(); setSheet(null); setAnnounce("Edit mode"); };
   const selection = useMemo(() => [...flow.nodes.filter((n) => n.selected).map((n) => n.id), ...flow.edges.filter((e) => e.selected).map((e) => e.id)], [flow]);
   const summary = summaryText(graph);
@@ -334,7 +379,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
   const drawer = "max-lg:fixed max-lg:inset-y-0 max-lg:z-40 max-lg:w-[min(340px,88vw)] max-lg:bg-paper max-lg:shadow-[var(--shadow-hard-lg)]";
 
   return (
-    <div ref={rootRef} className="flex h-full min-h-[560px] flex-col">
+    <div ref={rootRef} className={`flex flex-col ${focus ? "fixed inset-0 z-[45] bg-paper" : "h-full min-h-[560px]"}`} data-focus={focus || undefined}>
       {running ? (
         <SetHud live={`Studio · ${title} · Run · ${run.playing ? "running" : "paused"}`} right={`${run.speed}×`} items={[
           { k: "T", v: fmtClock(run.state?.t ?? 0) },
@@ -357,6 +402,16 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
             <button type="button" aria-pressed={!running} className={`fm-btn fm-btn--tool !rounded-r-none ${!running ? "is-on" : ""}`} onClick={() => running && exitRun()}><Pencil size={14} aria-hidden /> Edit</button>
             <button type="button" aria-pressed={running} className={`fm-btn fm-btn--tool -ml-px !rounded-l-none ${running ? "is-on" : ""}`} onClick={() => !running && enterRun()}><Play size={14} aria-hidden /> Run</button>
           </div>
+          {!running && (
+            <div role="group" aria-label="Canvas tool" className="flex">
+              {([["select", "Select", "V", MousePointer2], ["hand", "Hand", "H", Hand], ["arrow", "Arrow", "A", MoveUpRight]] as const).map(([id, name, key, Icon], i) => (
+                <button key={id} type="button" aria-pressed={tool === id} title={`${name} (${key})`} aria-keyshortcuts={key}
+                  className={`fm-btn fm-btn--tool !px-2 ${i > 0 ? "-ml-px !rounded-l-none" : ""} ${i < 2 ? "!rounded-r-none" : ""} ${tool === id ? "is-on" : ""}`} onClick={() => setTool(id)}>
+                  <Icon size={14} aria-hidden /><span className="max-xl:sr-only">{name}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <button type="button" className="fm-btn fm-btn--tool !px-2" onClick={doUndo} disabled={running || !canUndo(hist)} aria-label="Undo" title="Undo (Ctrl/⌘+Z)"><Undo2 size={14} aria-hidden /></button>
           <button type="button" className="fm-btn fm-btn--tool !px-2" onClick={doRedo} disabled={running || !canRedo(hist)} aria-label="Redo" title="Redo (Ctrl/⌘+Shift+Z)"><Redo2 size={14} aria-hidden /></button>
           <button type="button" className="fm-btn fm-btn--tool max-sm:hidden" onClick={() => { void flush(true); setAnnounce("Version saved"); }}>Save version</button>
@@ -365,8 +420,14 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
           <button type="button" className="fm-btn fm-btn--tool lg:hidden" aria-expanded={sheet === "panel"} onClick={() => setSheet(sheet === "panel" ? null : "panel")}>
             <PanelRight size={14} aria-hidden /> Panel
           </button>
+          <button type="button" className={`fm-btn fm-btn--tool max-lg:hidden ${running ? "hidden" : ""}`} aria-expanded={paletteOpen} aria-controls="sdl-palette" onClick={() => setPaletteOpen((o) => !o)}>
+            <PanelLeft size={14} aria-hidden /> {paletteOpen ? "Hide palette" : "Show palette"}
+          </button>
           <button type="button" className="fm-btn fm-btn--tool max-lg:hidden" aria-expanded={panelOpen} aria-controls="sdl-right" onClick={() => setPanelOpen((o) => !o)}>
             <PanelRight size={14} aria-hidden /> {panelOpen ? "Hide panel" : "Show panel"}
+          </button>
+          <button type="button" className={`fm-btn fm-btn--tool ${focus ? "is-on" : ""}`} aria-pressed={focus} title="Focus mode (F)" aria-keyshortcuts="F" onClick={() => setFocus(!focus)}>
+            {focus ? <Minimize2 size={14} aria-hidden /> : <Maximize2 size={14} aria-hidden />}<span className="max-sm:sr-only">{focus ? "Exit focus" : "Focus"}</span>
           </button>
         </div>
       </div>
@@ -376,7 +437,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
 
       <div className="relative flex min-h-0 flex-1">
         {sheet && <button type="button" aria-label="Close drawer" className="fixed inset-0 z-30 bg-ink/20 lg:hidden" onClick={() => setSheet(null)} />}
-        <aside aria-label="Component palette" className={`flex w-[248px] shrink-0 flex-col border-r border-ink ${drawer} max-lg:left-0 ${sheet === "palette" ? "" : "max-lg:hidden"} ${running ? "!hidden" : ""}`}>
+        <aside id="sdl-palette" aria-label="Component palette" className={`flex w-[248px] shrink-0 flex-col border-r border-ink ${drawer} max-lg:left-0 ${paletteOpen ? "" : "lg:hidden"} ${sheet === "palette" ? "" : "max-lg:hidden"} ${running ? "!hidden" : ""}`}>
           <div className="flex justify-end p-1 lg:hidden"><button type="button" className="fm-btn fm-btn--tool !px-2" aria-label="Close palette" onClick={() => setSheet(null)}><X size={14} aria-hidden /></button></div>
           <Palette onAdd={(k) => addKind(k)} />
         </aside>
@@ -395,13 +456,13 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
           }}
         >
           <p id="sdl-canvas-help" className="sr-only">
-            Diagram canvas. Add components from the palette with Enter. Tab moves between components; Enter selects one; arrow keys nudge the selection (Shift for 10 pixels); Delete removes it. Edit and connect the selection in the Properties panel.
+            Diagram canvas. Add components from the palette with Enter. Press V, H or A for the Select, Hand and Arrow tools, and F for focus mode. Tab moves between components; Enter selects one; arrow keys nudge the selection (Shift for 10 pixels); Delete removes it. Edit and connect the selection in the Properties panel.
           </p>
           <EdgeMarkers />
           <RunViewContext.Provider value={runView}>
           <NodeEvents.Provider value={nodeEvents}>
             <ReactFlow<FlowNode, FlowEdge>
-              className={`sdl-flow${connecting ? " is-connecting" : ""}${running ? ` is-run${run.playing ? "" : " is-paused"}` : ""}`}
+              className={`sdl-flow is-tool-${running ? "select" : tool}${connecting || tool === "arrow" ? " is-connecting" : ""}${running ? ` is-run${run.playing ? "" : " is-paused"}` : ""}`}
               nodes={flow.nodes}
               edges={flow.edges}
               nodeTypes={nodeTypes}
@@ -412,7 +473,8 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
               onConnectStart={() => setConnecting(true)}
               onConnectEnd={() => setConnecting(false)}
               onNodeDragStop={(_, __, dragged) => { if (!running) commitFromFlow(dragged.map((n) => n.id)); }}
-              nodesDraggable={!running}
+              onNodeClick={onNodeClick}
+              nodesDraggable={!running && tool === "select"}
               nodesConnectable={!running}
               connectionMode={ConnectionMode.Loose}
               snapToGrid
@@ -421,8 +483,8 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
               selectionKeyCode="Shift"
               multiSelectionKeyCode={["Shift", "Meta", "Control"]}
               panActivationKeyCode="Space"
-              selectionOnDrag={!coarse}
-              panOnDrag={coarse ? true : [1, 2]}
+              selectionOnDrag={!coarse && (running || tool === "select")}
+              panOnDrag={coarse || (!running && tool !== "select") ? true : [1, 2]}
               panOnScroll={!coarse}
               zoomOnDoubleClick={false}
               minZoom={0.15}
@@ -441,11 +503,17 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
             <div className="pointer-events-none absolute inset-0 grid place-items-center p-6 text-center">
               <div className="grid gap-2">
                 <p className="fm-h4">Empty canvas</p>
-                <p className="fm-help">Add a component from the palette: drag it here, or select it and press Enter.</p>
+                <p className="fm-help">Add a component from the palette: drag it here, or select it and press Enter. Then press A and click two components to draw an arrow.</p>
               </div>
             </div>
           )}
           <p className="fm-cap pointer-events-none absolute left-3 top-2 bg-paper/80 px-1" data-testid="canvas-summary">{summary}</p>
+          {!running && tool === "arrow" && (
+            <p className="fm-cap pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-[3px] bg-ink px-2.5 py-1 !text-paper">
+              {arrowFrom ? `From ${nodeLabel(hist.present, arrowFrom)}: click where the arrow goes · Esc cancels` : "Arrow: click the component it starts from"}
+            </p>
+          )}
+          {arrowFrom && <style>{`.sdl-flow .react-flow__node[data-id="${arrowFrom.replace(/["\\]/g, "")}"] .sdl-node { border-color: var(--cobalt); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cobalt) 25%, transparent); }`}</style>}
           <p className="sr-only" role="status" aria-live="polite">{announce}</p>
           {running && <p className="sr-only" aria-live="polite" data-testid="run-summary">{runSummary(run.state, run.playing)}</p>}
         </section>

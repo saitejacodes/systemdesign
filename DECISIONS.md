@@ -271,3 +271,8 @@
 - **Callout boxes** are a coloured left rule with a bold sans head instead of a fully bordered box with an inverted header bar.
 - **Figure captions** in content were all caps; they are now sentence case ("Figure 2.1 · Cache-aside · The application fills the cache on a miss"), converted once by script with acronyms and product names kept (API, DNS, mTLS, Kafka, Interview Mode …).
 - **Brand mark and favicon.** The tab showed the default Next.js "N". The new mark is one request node fanning out to two servers on a rounded ink tile; it reads at 16 px. `scripts/make-icons.mjs` draws `app/icon.svg`, `app/favicon.ico` (16/32/48 PNG entries) and the PWA icons from the same geometry as `components/brand` `MARK_PATHS`.
+
+## Design Studio tools (2026-11-05, user request)
+- **Arrows by clicking.** Dragging from a hover-only edge square was the only pointer way to connect, and the user could not find it. The Arrow tool connects by click, click (sync request, arrow at the target); the edge dots and "Connect to" still work.
+- **Hand tool instead of changing the default.** Drag on empty canvas stays box-select in the Select tool (as in Figma and Excalidraw); Hand makes left-drag pan, and scroll or Space + drag pan in any tool. Touch screens pan on drag as before.
+- **Focus mode** is a fixed full-window layout over the app shell plus a Fullscreen API request; dialogs still open above it (they portal to the body at a higher z-index). Where the browser refuses full screen, the in-window layout still applies.

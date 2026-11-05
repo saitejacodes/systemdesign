@@ -52,9 +52,12 @@ function DeleteButton({ onDelete, what }: { onDelete: () => void; what: string }
 
 function NothingSelected({ graph }: { graph: StudioGraph }) {
   const rows: [string, string][] = [
+    ["V · H · A", "Select · Hand · Arrow tool"],
+    ["Arrow tool", "Click a component, then another"],
+    ["Hand tool, scroll or Space + drag", "Move the canvas"],
+    ["F", "Focus mode (full screen)"],
     ["Click / Shift+click", "Select, add to selection"],
-    ["Drag on empty canvas", "Box-select"],
-    ["Space + drag", "Pan"],
+    ["Drag on empty canvas", "Box-select (Select tool)"],
     ["Delete", "Delete selection"],
     ["⌘/Ctrl C · V · D", "Copy · paste · duplicate"],
     ["⌘/Ctrl Z · Shift+Z", "Undo · redo (also Ctrl+Y)"],
@@ -65,7 +68,7 @@ function NothingSelected({ graph }: { graph: StudioGraph }) {
     <div>
       <Section title="Design">
         <p className="text-[15px]">{summaryText(graph)}.</p>
-        <p className="fm-help">Select a component or connection to edit it. Connect two components by dragging from one card&apos;s edge square to another, or with “Connect to” after selecting one.</p>
+        <p className="fm-help">Select a component or connection to edit it. Draw an arrow with the Arrow tool (A): click one component, then another. You can also drag from the dot on a card&apos;s edge, or use “Connect to” after selecting one.</p>
       </Section>
       <Section title="Keyboard">
         <table className="fm-parts !text-[11px]">

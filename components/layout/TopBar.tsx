@@ -36,7 +36,7 @@ export function TopBar() {
       </button>
       <nav aria-label="Breadcrumb" className="fm-mono min-w-0 flex-1 truncate">
         <ol className="flex items-center gap-2">
-          <li><Link href="/" className="no-underline max-lg:inline-flex max-lg:min-h-11 max-lg:items-center" style={{ color: "var(--ink-muted)" }}>Lab</Link></li>
+          <li><Link href="/" className="no-underline max-lg:inline-flex max-lg:min-h-11 max-lg:min-w-11 max-lg:items-center" style={{ color: "var(--ink-muted)" }}>Lab</Link></li>
           {list.map((c, i) => (
             <li key={c.href} className={`flex items-center gap-2 truncate ${i < list.length - 1 ? "max-sm:hidden" : ""}`}>
               <span aria-hidden style={{ color: "var(--ink-muted)" }}>/</span>

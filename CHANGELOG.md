@@ -291,3 +291,10 @@
 - New brand mark and real favicon (the tab showed the default Next.js "N"): one node fanning out to two servers on an ink tile. `node scripts/make-icons.mjs` writes `app/icon.svg`, `app/favicon.ico` and the PWA icons.
 - CLAUDE.md §5 and DECISIONS record the new rules.
 - Verify: open / and a lesson in Paper and Blueprint, hover a link inside a lesson, and check the browser tab icon.
+
+## Design Studio tools · arrows, hand, focus mode
+- A tool group in the studio toolbar, as in diagram tools: **Select (V)** (drag on empty canvas box-selects), **Hand (H)** (drag anywhere moves the canvas), **Arrow (A)** (click a component, then another, to draw an arrow; Esc cancels). A hint on the canvas says what to click next, and the start component is highlighted.
+- **Focus mode (F)**: the editor fills the window with the app sidebar, top bar and status bar hidden, and asks the browser for full screen; Esc or F leaves it. **Hide palette** joins Hide panel, so the canvas can take the whole screen.
+- Connection dots on component edges are larger and round; a selected component shows a cobalt glow instead of an offset shadow. The panel's keyboard list and the empty-canvas hint mention the new tools.
+- Fixes: a checked radio button was struck through (the checklist style applied to radios); the "Lab" breadcrumb and two simulator disclosure toggles are 44 px touch targets again after the type change.
+- Verify: open /studio/new, add two components, press A and click both; press H and drag; press F. `pnpm test:e2e tests/e2e/studio.spec.ts`.

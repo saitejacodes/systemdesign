@@ -144,7 +144,7 @@ export function SqlView({ state, config, act }: ViewProps<SqlConfig, SqlState>) 
       </div>
       <Results r={result} />
       {history.length > 0 && (
-        <details className="fm-card"><summary className="fm-card__head cursor-pointer">Recent runs · timings</summary>
+        <details className="fm-card"><summary className="fm-card__head min-h-11 cursor-pointer">Recent runs · timings</summary>
           <ol className="grid gap-1 p-3 font-mono text-[12px]">{history.map((h, i) => <li key={i} className="flex justify-between gap-3"><span className="truncate">{h.ok ? "✓" : "✗"} {h.sql}</span><span className="tabular-nums">{h.ms.toFixed(1)} ms</span></li>)}</ol>
         </details>
       )}
