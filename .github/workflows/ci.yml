@@ -81,4 +81,5 @@ jobs:
       - if: steps.gate.outputs.ok == 'true'
         run: pnpm dlx vercel@latest build --prod --token="$VERCEL_TOKEN"
       - if: steps.gate.outputs.ok == 'true'
-        run: pnpm dlx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        # One archive instead of one request per file: the Hobby plan caps uploads at 5,000 files a day.
+        run: pnpm dlx vercel@latest deploy --prebuilt --prod --archive=tgz --token="$VERCEL_TOKEN"
