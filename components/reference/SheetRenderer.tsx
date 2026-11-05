@@ -1,7 +1,7 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { compileMDX } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
-import { Callout } from "@/components/learn/boxes";
+import { Callout, ScrollTable } from "@/components/learn/boxes";
 import { CodeBlock } from "@/components/learn/CodeBlock";
 import { slugify, Term } from "@/components/learn/LessonRenderer";
 
@@ -26,7 +26,9 @@ export async function SheetRenderer({ source }: { source: string }) {
         const lang = el.props.className?.replace("language-", "") ?? "text";
         return <CodeBlock code={String(el.props.children ?? "").replace(/\n$/, "")} lang={lang} />;
       },
-      table: ({ children }) => <div className="sheet-table my-4 overflow-x-auto"><table className="fm-parts">{children}</table></div>,
+      table: ({ children }) => <ScrollTable className="sheet-table my-4">{children}</ScrollTable>,
+      // GFM task boxes are something to tick on paper, not form controls.
+      input: (p) => (p.type === "checkbox" ? <span className="sheet-check" aria-hidden /> : <input {...p} />),
       Callout,
       Term,
     },

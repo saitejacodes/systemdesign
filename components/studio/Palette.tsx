@@ -53,13 +53,12 @@ export function Palette({ onAdd }: { onAdd: (kind: NodeKind) => void }) {
                       draggable
                       onDragStart={(e) => { e.dataTransfer.setData(DRAG_MIME, k); e.dataTransfer.effectAllowed = "copy"; }}
                       onClick={() => onAdd(k)}
-                      aria-label={`Add ${i.title}`}
                       title={i.blurb}
                     >
                       <ComponentIcon kind={k} size={32} />
                       <span className="min-w-0">
-                        <span className="t">{i.title}</span>
-                        <span className="b">{i.blurb}</span>
+                        <span className="t"><span className="sr-only">Add </span>{i.title}</span>
+                        <span className="b" aria-hidden>{i.blurb}</span>
                       </span>
                     </button>
                   </li>

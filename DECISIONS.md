@@ -237,3 +237,16 @@
 - **Cheat sheets.** The slug is the file name, and a required `group` drives the index. Codes R-01 to R-11 come from `order`. Unknown slugs return 404 (`dynamicParams = false`). Print rules apply only to `[data-print-sheet]` pages.
 - **Resource library.** Duplicates by id are merged, with topicIds unioned. Ids that share a URL are merged into the first one. A resource's phases come from the sections that list it and the sections that teach its topics. Search is a plain word filter, because the list is small enough. Two section links moved to https, and the second `grpc-deadlines` id became `grpc-deadlines-guide`.
 - **Classics behind bot blocks.** Amazon, Netflix and Uber refuse automated requests. SDI links point to the ByteByteGo chapter pages, and the Netflix and Uber blogs to their homepages.
+
+## Prompt 23
+- **Counts come from data.** `PHASES` section and simulator counts and `CASE_STUDY_COUNT` are checked against content and the simulator registry by `lib/curriculum.test.ts`. The landing page and the PhasePath drawing (whose generated markup carried the counts from when it was drawn) read them, so they cannot go stale again.
+- **axe scope.** Every route in `tests/e2e/routes.ts`, both themes, 1440 and 375 px, WCAG 2.1 A/AA tags; serious and critical violations fail. The check runs with reduced motion so colours are read at rest, not mid-transition.
+- **Accessible names match visible text** (WCAG 2.5.3): sidebar lessons, the search button, flashcards, deck buttons, studio palette items and resource phase filters lost `aria-label`s that replaced their visible text; extra words go in `sr-only` spans.
+- **Code colours.** Light code blocks use `github-light-high-contrast`; comment greys in both themes are replaced so every token reaches 4.5:1 on the code background.
+- **Cheat-sheet task boxes** render as drawn boxes, not disabled form controls: they are for ticking on paper.
+- **Scrollable tables and figures** are focusable regions so keyboard users can scroll them (axe `scrollable-region-focusable`).
+- **Closed mobile drawer** is `visibility: hidden` below 1024 px, so its links leave the tab order and the accessibility tree when it is off-screen.
+- **Touch targets.** Controls are at least 44×44 px at 375 and 768 px, or have no other target within a 44 px circle (the WCAG 2.5.8 spacing exception). Links inside running text are exempt.
+- **Simulator shell is lazy.** Lesson pages load the shell and its chart library only when an embedded simulator mounts.
+- **Break-it menu** follows the WAI-ARIA menu pattern: focus moves into it, arrows and Home/End move, Escape closes it and returns focus.
+- **First-visit tour** is marked seen when it opens, not when the effect runs, so React Strict Mode's re-run in dev no longer hides it.

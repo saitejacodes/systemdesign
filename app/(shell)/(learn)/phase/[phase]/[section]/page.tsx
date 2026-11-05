@@ -5,6 +5,7 @@ import { DepthStamp, FigureCaption, SpecLabel } from "@/components/brand";
 import { SetHud, SetTutorTopics } from "@/components/layout/SetHud";
 import { LabLinks } from "@/components/labs/LabLinks";
 import { LessonRenderer, lessonHeadings } from "@/components/learn/LessonRenderer";
+import { PracticeLinks } from "@/components/learn/PracticeLinks";
 import { getAllSections, getSection, sectionHref } from "@/lib/content";
 import { PHASES } from "@/lib/curriculum";
 
@@ -54,7 +55,7 @@ export default async function Page({ params }: PageProps<"/phase/[phase]/[sectio
       </header>
 
       <div className="flex gap-12">
-        <div className="min-w-0 flex-1"><LessonRenderer section={section} /><LabLinks sectionId={meta.id} /></div>
+        <div className="min-w-0 flex-1"><LessonRenderer section={section} /><LabLinks sectionId={meta.id} /><PracticeLinks caseIds={meta.practiceCaseStudyIds} /></div>
         <nav aria-label="On this page" className="sticky top-6 hidden w-56 shrink-0 self-start xl:block">
           <div className="fm-cap mb-2 border-b border-ink pb-1">On this page</div>
           <ol className="grid gap-1.5 text-[14px]">

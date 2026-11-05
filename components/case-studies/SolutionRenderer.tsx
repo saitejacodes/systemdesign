@@ -3,7 +3,7 @@ import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { compileMDX } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
 import { DepthStamp } from "@/components/brand";
-import { Callout, Figure, InterviewAngle, Misconception, NotWhenBox, TradeoffBox } from "@/components/learn/boxes";
+import { Callout, Figure, InterviewAngle, Misconception, NotWhenBox, ScrollTable, TradeoffBox } from "@/components/learn/boxes";
 import { CodeBlock } from "@/components/learn/CodeBlock";
 import { Diagram } from "@/components/learn/Diagram";
 import { slugify } from "@/components/learn/LessonRenderer";
@@ -44,7 +44,7 @@ export async function SolutionRenderer({ source, idPrefix = "" }: { source: stri
         if (lang === "mermaid") return <Diagram chart={code} label="Reference design diagram" />;
         return <CodeBlock code={code} lang={lang} />;
       },
-      table: ({ children }) => <div className="my-6 overflow-x-auto"><table className="fm-parts">{children}</table></div>,
+      table: ({ children }) => <ScrollTable>{children}</ScrollTable>,
       DepthStamp,
       Figure,
       Callout,

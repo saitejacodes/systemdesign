@@ -80,7 +80,7 @@ export default function Page() {
         <section aria-labelledby="coverage-h" className="grid gap-4">
           <h2 id="coverage-h" className="fm-h2 max-sm:text-[30px]">Which phases each stage uses</h2>
           <p className="max-w-[68ch]">Numbers are how many lessons from that phase a stage puts to work. Every phase is used by at least two stages; open a stage to see each link and what it applies.</p>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Coverage matrix, scrolls sideways">
             <table className="fm-parts" aria-label="Coverage matrix: stages by phases">
               <thead>
                 <tr>
@@ -126,7 +126,7 @@ export default function Page() {
                   <h3 className="fm-h4">{b.title}</h3>
                 </div>
                 <details>
-                  <summary className="cursor-pointer fm-cap">Steps, what to observe, how to fix</summary>
+                  <summary className="cursor-pointer fm-cap py-3.5">Steps, what to observe, how to fix</summary>
                   <div className="mt-3 grid max-w-[68ch] gap-3">
                     <ol className="grid list-decimal gap-2 pl-6">
                       {b.steps.map((s, i) => (

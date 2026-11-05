@@ -80,6 +80,8 @@ button.fm-num:hover { background: var(--ink); color: var(--paper); }
 .fm-btn--tool { height: 28px; padding: 0 10px; gap: 6px; border-width: 1px; font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; }
 .fm-btn--tool:hover, .fm-btn--tool.is-hover { box-shadow: none; transform: none; background: var(--ink); color: var(--paper); }
 .fm-btn--tool.is-on { background: var(--cobalt); border-color: var(--cobalt); color: var(--on-cobalt); }
+/* Below the desktop layout, tool buttons are touch targets: at least 44×44 px (WCAG 2.5.5). */
+@media (max-width: 1023.98px) { .fm-btn--tool { min-height: 44px; min-width: 44px; } .fm-check { min-height: 44px; padding-block: 11px; } }
 .fm-btn--danger { border-color: var(--status-over); color: var(--status-over); }
 
 /* ---------- 9. Card ---------- */

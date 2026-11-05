@@ -167,6 +167,12 @@ List the main queries first, then choose. Say what each choice gives up: "Cassan
 2. Your product catalogue has 40 categories with different attributes. Argue for a document store, then for Postgres with `jsonb`. Which would you choose?
 3. A ride-sharing app stores every GPS ping (4 per second per active driver, 500,000 active drivers). How many writes a second is that, and which store fits?
 
+## Try it
+
+The SQL sandbox is a real PostgreSQL running in your browser, loaded with users, posts, follows and orders. Write a query that joins users, follows and posts to build a feed, then ask which parts of it a key-value or wide-column store could serve without a join, and what you would have to denormalise to get there.
+
+<Simulator id="sql-sandbox" />
+
 <CheckpointList />
 
 <QuizPlayer />

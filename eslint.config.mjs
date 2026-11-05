@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "content/labs/**",
     // Capstone project code (its own package.json and tsconfig); parsed by lib/capstone/capstone.test.ts instead.
     "content/capstone/**",
+    // Agent worktrees are other checkouts of this repo.
+    ".claude/**",
   ]),
 ]);
 

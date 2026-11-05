@@ -2,14 +2,20 @@ import Link from "next/link";
 import { PhasePath } from "@/components/brand";
 import { LB_PREVIEW_MARKUP } from "@/components/landing/lb-preview-markup";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
-import { PHASES, weekLabel } from "@/lib/curriculum";
+import { CASE_STUDY_COUNT, PHASES, weekLabel } from "@/lib/curriculum";
+import { REGISTRY } from "@/lib/simulators/registry";
 
 // Rebuilt from design/landing/landing.html (direction A). Layout classes live in app/styles/landing.css.
+// Counts come from PHASES and the registry, which curriculum.test.ts checks against content.
+const SECTIONS = PHASES.reduce((n, p) => n + p.sections, 0);
+const SIMS = REGISTRY.length;
+const CASES = CASE_STUDY_COUNT;
+
 const STEPS = [
   ["Learn", "Read a lesson written for engineers: one idea per section, worked numbers, the tradeoff stated plainly.", "Lessons · quizzes · flashcards"],
-  ["Simulate", "Change the load, kill a node, add jitter. Watch latency, errors and queues answer back in real time.", "29 simulators"],
+  ["Simulate", "Change the load, kill a node, add jitter. Watch latency, errors and queues answer back in real time.", `${SIMS} simulators`],
   ["Design", "Draw your system on the canvas, then run traffic through it. Bottlenecks and single points of failure light up.", "Design Studio · Run mode"],
-  ["Defend", "A 45-minute mock interview with a rubric, a timer and follow-up questions that push where you're weakest.", "15 case studies"],
+  ["Defend", "A 45-minute mock interview with a rubric, a timer and follow-up questions that push where you're weakest.", `${CASES} case studies`],
 ];
 
 const h2 = { margin: 0, fontSize: 80, lineHeight: 0.95, fontWeight: 800, letterSpacing: "-.045em" } as const;
@@ -45,7 +51,7 @@ export default function Landing() {
             <div style={{ gridColumn: "1/8", gridRow: 1, display: "flex", flexDirection: "column", gap: 32, position: "relative", zIndex: 1 }}>
               <Fig a="FIG. 0" b="ONE PATH" c="7 PHASES · 16 WEEKS" />
               <h1 style={{ margin: 0, fontSize: 116, lineHeight: 0.9, fontWeight: 800, letterSpacing: "-.05em" }}>You design it.<br />Then you<br /><span className="em">break</span> it.</h1>
-              <p style={{ margin: 0, maxWidth: "30em", fontSize: 21, lineHeight: 1.5 }}>Lessons, 29 simulators, a design studio and timed mock interviews. Everything you need for system design, in one place, in the order you should learn it.</p>
+              <p style={{ margin: 0, maxWidth: "30em", fontSize: 21, lineHeight: 1.5 }}>Lessons, {SIMS} simulators, a design studio and timed mock interviews. Everything you need for system design, in one place, in the order you should learn it.</p>
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                 <Link className="btn pri" href="/today">Start week 1 <Arrow /></Link>
                 <Link className="btn" href="/simulators">Open a simulator</Link>
@@ -70,7 +76,7 @@ export default function Landing() {
               </table>
             </div>
             <div className="stats3" style={{ gridColumn: "8/13", alignSelf: "end", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 24, borderTop: "2px solid var(--ink)", paddingTop: 16 }}>
-              {[["92", "Lessons"], ["29", "Simulators"], ["15", "Case studies"]].map(([n, l]) => (
+              {[[SECTIONS, "Lessons"], [SIMS, "Simulators"], [CASES, "Case studies"]].map(([n, l]) => (
                 <div key={l}><div className="stat">{n}</div><div className="mono muted" style={{ marginTop: 8 }}>{l}</div></div>
               ))}
             </div>

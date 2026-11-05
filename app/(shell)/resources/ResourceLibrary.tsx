@@ -99,9 +99,9 @@ export function ResourceLibrary({ items, classics, topics }: { items: LibraryIte
           <div className="flex flex-wrap gap-1">
             <button type="button" className={`fm-btn fm-btn--tool ${f.phase === null ? "is-on" : ""}`} aria-pressed={f.phase === null} onClick={() => set({ phase: null })}>All</button>
             {PHASES.map((p) => (
-              <button key={p.n} type="button" title={p.name} aria-label={`Phase ${p.n}: ${p.name}`} className={`fm-btn fm-btn--tool ${f.phase === p.n ? "is-on" : ""}`} aria-pressed={f.phase === p.n}
+              <button key={p.n} type="button" title={p.name} className={`fm-btn fm-btn--tool ${f.phase === p.n ? "is-on" : ""}`} aria-pressed={f.phase === p.n}
                 onClick={() => set({ phase: f.phase === p.n ? null : p.n, topic: "" })}>
-                {p.n} <span className="max-sm:hidden">{p.short}</span>
+                <span className="sr-only">Phase </span>{p.n} <span className="max-sm:hidden">{p.short}</span>
               </button>
             ))}
           </div>

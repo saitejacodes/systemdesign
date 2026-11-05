@@ -54,7 +54,7 @@ export function Sidebar({ sections = [] }: { sections?: TreeSection[] }) {
       {drawerOpen && <div className="fixed inset-0 z-30 bg-ink/40 lg:hidden" onClick={() => set({ drawerOpen: false })} aria-hidden />}
       <aside
         aria-label="Sidebar"
-        className={`fixed inset-y-0 left-0 z-40 flex flex-col border-r border-ink bg-paper transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0 ${drawerOpen ? "translate-x-0" : "-translate-x-full"} ${collapsed ? "w-16" : "w-[280px]"}`}
+        className={`fixed inset-y-0 left-0 z-40 flex flex-col border-r border-ink bg-paper transition-[transform,visibility] duration-200 lg:visible lg:static lg:z-auto lg:translate-x-0 ${drawerOpen ? "translate-x-0" : "-translate-x-full max-lg:invisible"} ${collapsed ? "w-16" : "w-[280px]"}`}
       >
         <div className="flex h-14 items-center border-b border-ink px-4">
           <Link href="/" className="no-underline" style={{ color: "var(--ink)" }} aria-label="SysDesign Lab home">
@@ -95,8 +95,10 @@ export function Sidebar({ sections = [] }: { sections?: TreeSection[] }) {
                             const href = `/phase/${s.phase}/${s.slug}`;
                             const sp = sectionProgress(s, data, SIM_CHALLENGES);
                             return (
-                              <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined} className={sp.complete ? "done" : undefined} aria-label={`§${s.phase}.${s.order} ${s.title}${sp.complete ? ", complete" : ""}${sp.newSimulator ? ", new simulator" : ""}`}>
-                                <span className="s">§{s.phase}.{s.order}</span>{s.title}
+                              <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined} className={sp.complete ? "done" : undefined}>
+                                <span className="s">§{s.phase}.{s.order}</span> {s.title}
+                                {sp.complete && <span className="sr-only">, complete</span>}
+                                {sp.newSimulator && <span className="sr-only">, new simulator</span>}
                               </Link>
                             );
                           })

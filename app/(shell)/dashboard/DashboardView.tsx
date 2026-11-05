@@ -72,7 +72,7 @@ export function DashboardView({ weeks, sections }: { weeks: PlanWeek[]; sections
         <ul className="grid gap-2">
           {PHASES.map((p) => (
             <li key={p.n} className="grid grid-cols-[minmax(0,10rem)_1fr_3rem] items-center gap-3 max-sm:grid-cols-[minmax(0,7rem)_1fr_3rem]">
-              <Link href={`/phase/${p.n}`} className="truncate text-[15px]">{p.n}. {p.short}</Link>
+              <Link href={`/phase/${p.n}`} className="truncate text-[15px] max-lg:py-[11px]">{p.n}. {p.short}</Link>
               <div className="h-3 border border-ink" role="progressbar" aria-label={`Phase ${p.n} progress`} aria-valuenow={phases[p.n]} aria-valuemin={0} aria-valuemax={100} style={{ borderRadius: 2 }}>
                 <div className="h-full" style={{ width: `${phases[p.n]}%`, background: `var(--phase-${p.n})` }} />
               </div>

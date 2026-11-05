@@ -21,7 +21,7 @@ export default async function Page({ params }: PageProps<"/simulators/[id]">) {
     <div className="grid gap-4 px-4 py-6 sm:px-8">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <FigureCaption parts={[entry.code, "Simulator", `Phase ${entry.phase}`]} />
-        {lessons.map((s) => <Link key={s.meta.id} href={sectionHref(s.meta)} className="fm-cap">Lesson · {s.meta.title} →</Link>)}
+        {lessons.map((s) => <Link key={s.meta.id} href={sectionHref(s.meta)} className="fm-cap inline-flex min-h-11 items-center">Lesson · {s.meta.title} →</Link>)}
       </div>
       <h1 className="fm-h2">{entry.title}</h1>
       <p className="max-w-[70ch] text-ink-muted">{entry.summary}</p>

@@ -27,7 +27,7 @@ export function ShView({ state: s, reducedMotion, act }: ViewProps<ShConfig, ShS
             <li key={i} className="fm-card grid gap-1 p-2" style={{ background: `var(--status-${st}-fill)`, borderColor: `var(--status-${st})` }} aria-label={`Shard ${i + 1}: ${Math.round(s.load[i])} requests per second, ${s.users[i]} users, ${TAG[st]}`}>
               <div className="flex items-baseline justify-between gap-1 font-mono">
                 <span className="font-semibold">S{i + 1}{celebs ? ` ${"★".repeat(celebs)}` : ""}</span>
-                <span className="text-[11px] font-semibold" style={{ color: `var(--status-${st})` }}>{TAG[st]}</span>
+                <span className="text-[11px] font-semibold" style={{ color: "var(--ink)" }}>{TAG[st]}</span>
               </div>
               <div className="font-mono text-[18px] tabular-nums">{Math.round(live).toLocaleString()}<span className="text-[11px]"> req/s</span></div>
               <div className="h-1.5 w-full border border-ink" style={{ borderRadius: 2 }}>

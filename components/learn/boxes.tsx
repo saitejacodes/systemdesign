@@ -65,7 +65,16 @@ export function Figure({ caption, children }: { caption: string; children: React
   return (
     <figure className="my-8 grid gap-3">
       <figcaption><FigureCaption parts={parts} /></figcaption>
-      <div className="overflow-x-auto rounded-[4px] border border-ink bg-surface p-4">{children}</div>
+      <div className="overflow-x-auto rounded-[4px] border border-ink bg-surface p-4" tabIndex={0} role="region" aria-label={parts[1] ?? caption}>{children}</div>
     </figure>
+  );
+}
+
+/** A Markdown table in a sideways-scrolling box that keyboard users can focus and scroll. */
+export function ScrollTable({ children, className = "my-6" }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={`${className} overflow-x-auto`} tabIndex={0} role="region" aria-label="Table, scrolls sideways">
+      <table className="fm-parts">{children}</table>
+    </div>
   );
 }

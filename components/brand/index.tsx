@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { CASE_STUDY_COUNT, PHASES } from "@/lib/curriculum";
 import { PHASE_PATH_MARKUP } from "./phase-path-markup";
 
 /** FIG. 0 · ONE PATH · 7 PHASES — `bold` is the subject part. */
@@ -95,8 +96,16 @@ export function StatusLabel({ status, detail }: { status: Status; detail?: strin
  * The curriculum as 7 isometric steps. Geometry is the approved drawing (phase-path-markup.ts);
  * hover/focus readouts, rise and draw-in motion are pure CSS in components.css.
  */
+// The generated drawing carries counts from when it was drawn; write the current ones in.
+const PATH_WITH_COUNTS = PHASES.reduce((m, p) => {
+  const tail = p.n === 7 ? `${CASE_STUDY_COUNT} case studies` : `${p.simulators} simulators`;
+  return m
+    .replace(new RegExp(`(aria-label="Phase ${p.n}:[^"]*?, )\\d+ sections · \\d+ (simulators|case studies)"`), `$1${p.sections} sections · ${tail}"`)
+    .replace(new RegExp(`(PHASE ${p.n} ·[^<]*</text><text[^>]*>[^<]*?· )\\d+ SECTIONS · \\d+ (SIMULATORS|CASE STUDIES)`), `$1${p.sections} SECTIONS · ${tail.toUpperCase()}`);
+}, PHASE_PATH_MARKUP);
+
 export function PhasePath({ active, labels = true, interactive = true, className = "" }: { active?: number; labels?: boolean; interactive?: boolean; className?: string }) {
-  let markup = PHASE_PATH_MARKUP;
+  let markup = PATH_WITH_COUNTS;
   if (active) markup = markup.replace(`class="co" tabindex="0" role="button" aria-label="Phase ${active}:`, `class="co is-on" tabindex="0" role="button" aria-label="Phase ${active}:`);
   if (!interactive) markup = markup.replaceAll(` tabindex="0" role="button"`, "").replace(/<g class="tipbox"[\s\S]*?<\/g>/g, "");
   if (!labels) markup = markup.replace(/<text class="lbl(-sub)?"[^>]*>[^<]*<\/text>/g, "");
@@ -104,7 +113,7 @@ export function PhasePath({ active, labels = true, interactive = true, className
     <svg
       className={`fm-path ${className}`}
       viewBox="0 0 640 700"
-      role="img"
+      role={interactive ? "group" : "img"}
       aria-label="The learning path: seven steps rising from Phase 1, Foundations and Networking, to Phase 7, Interview Mastery. Each step carries a shape for what that phase teaches."
       xmlns="http://www.w3.org/2000/svg"
       dangerouslySetInnerHTML={{ __html: markup }}

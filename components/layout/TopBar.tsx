@@ -35,17 +35,17 @@ export function TopBar() {
       </button>
       <nav aria-label="Breadcrumb" className="fm-mono min-w-0 flex-1 truncate">
         <ol className="flex items-center gap-2">
-          <li><Link href="/" className="no-underline" style={{ color: "var(--ink-muted)" }}>Lab</Link></li>
+          <li><Link href="/" className="no-underline max-lg:inline-flex max-lg:min-h-11 max-lg:items-center" style={{ color: "var(--ink-muted)" }}>Lab</Link></li>
           {list.map((c, i) => (
             <li key={c.href} className={`flex items-center gap-2 truncate ${i < list.length - 1 ? "max-sm:hidden" : ""}`}>
               <span aria-hidden style={{ color: "var(--ink-muted)" }}>/</span>
-              {i === list.length - 1 ? <span aria-current="page">{c.label}</span> : NO_PAGE.has(c.href) ? <span style={{ color: "var(--ink-muted)" }}>{c.label}</span> : <Link href={c.href} className="no-underline" style={{ color: "var(--ink-muted)" }}>{c.label}</Link>}
+              {i === list.length - 1 ? <span aria-current="page">{c.label}</span> : NO_PAGE.has(c.href) ? <span style={{ color: "var(--ink-muted)" }}>{c.label}</span> : <Link href={c.href} className="no-underline max-lg:inline-flex max-lg:min-h-11 max-lg:items-center" style={{ color: "var(--ink-muted)" }}>{c.label}</Link>}
             </li>
           ))}
         </ol>
       </nav>
-      <button type="button" className="fm-btn fm-btn--tool" onClick={() => set({ paletteOpen: true })} aria-label="Search (Ctrl+K)">
-        <Search size={14} aria-hidden /><span className="hidden sm:inline">Search</span><kbd className="hidden md:inline opacity-70">⌘K</kbd>
+      <button type="button" className="fm-btn fm-btn--tool" onClick={() => set({ paletteOpen: true })} aria-keyshortcuts="Control+K Meta+K">
+        <Search size={14} aria-hidden /><span className="sr-only sm:not-sr-only">Search</span><kbd className="hidden md:inline opacity-70" aria-hidden>⌘K</kbd>
       </button>
       <div className="hidden md:block"><ThemeToggle /></div>
       <button type="button" className="fm-btn fm-btn--tool" aria-label="Toggle right panel" aria-pressed={rightOpen} onClick={() => set({ rightOpen: !rightOpen })}>

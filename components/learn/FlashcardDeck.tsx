@@ -25,8 +25,8 @@ export function FlashcardDeck({ sectionId, sectionLabel, cards }: { sectionId: s
     <div className="grid gap-4">
       <FlashcardView front={card.front} back={card.back} label={`Card ${i + 1} / ${cards.length} · ${sectionLabel}`} flipped={flipped} onFlip={() => setFlipped(!flipped)} />
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="fm-btn fm-btn--tool" onClick={() => go(-1)} aria-label="Previous card">← Prev</button>
-        <button type="button" className="fm-btn fm-btn--tool" onClick={() => go(1)} aria-label="Next card">Next →</button>
+        <button type="button" className="fm-btn fm-btn--tool" onClick={() => go(-1)} ><span aria-hidden>← </span>Prev</button>
+        <button type="button" className="fm-btn fm-btn--tool" onClick={() => go(1)} >Next<span aria-hidden> →</span></button>
         <span className="flex-1" />
         {inReview === ids.length ? (
           <span className="fm-status fm-status--ok"><span className="g" aria-hidden>✓</span>All {ids.length} in review</span>

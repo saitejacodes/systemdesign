@@ -184,13 +184,20 @@ export function SimulatorShell({ entry, def, compact = false }: { entry: SimEntr
   const [seedText, setSeedText] = useState(String(sim.seed));
   const [reduced, setReduced] = useState(false);
   const [faultMenu, setFaultMenu] = useState(false);
+  const faultBtn = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     // Defaults read from the browser after mount: reduced motion and the first-visit tour.
     const rm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let first = false;
-    if (!compact) { try { first = !localStorage.getItem(TOUR_KEY(entry.id)); localStorage.setItem(TOUR_KEY(entry.id), "1"); } catch { /* storage blocked */ } }
-    const id = setTimeout(() => { setReduced(rm); if (first) setTour(true); }, 0);
+    if (!compact) { try { first = !localStorage.getItem(TOUR_KEY(entry.id)); } catch { /* storage blocked */ } }
+    // Mark the tour seen only when it opens, so an effect that is cleaned up and re-run (Strict Mode) still shows it.
+    const id = setTimeout(() => {
+      setReduced(rm);
+      if (!first) return;
+      setTour(true);
+      try { localStorage.setItem(TOUR_KEY(entry.id), "1"); } catch { /* storage blocked */ }
+    }, 0);
     return () => clearTimeout(id);
   }, [compact, entry.id]);
 
@@ -224,14 +231,33 @@ export function SimulatorShell({ entry, def, compact = false }: { entry: SimEntr
     </div>
   );
 
+  // Menu keys (WAI-ARIA menu pattern): arrows move, Home/End jump, Escape closes and returns focus to the button.
+  const menuKeys = (e: React.KeyboardEvent<HTMLUListElement>) => {
+    const items = [...e.currentTarget.querySelectorAll<HTMLElement>("[role=menuitemcheckbox]")];
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    const go = (n: number) => { e.preventDefault(); items[(n + items.length) % items.length]?.focus(); };
+    if (e.key === "ArrowDown") go(i + 1);
+    else if (e.key === "ArrowUp") go(i - 1);
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(items.length - 1);
+    else if (e.key === "Escape") { e.preventDefault(); setFaultMenu(false); faultBtn.current?.focus(); }
+  };
+
   const faults = (
     <div data-tour="faults" className="relative flex flex-wrap items-center gap-2">
-      <button type="button" className="fm-btn fm-btn--tool fm-btn--danger !h-8" aria-expanded={faultMenu} aria-haspopup="menu" onClick={() => setFaultMenu(!faultMenu)}>Break it ▾</button>
+      <button ref={faultBtn} type="button" className="fm-btn fm-btn--tool fm-btn--danger !h-8" aria-expanded={faultMenu} aria-haspopup="menu" onClick={() => setFaultMenu(!faultMenu)}>Break it <span aria-hidden>▾</span></button>
       {faultMenu && (
-        <ul role="menu" className="fm-card fm-card--raised absolute left-0 top-10 z-20 grid w-72 gap-0 p-1">
+        <ul
+          role="menu"
+          aria-label="Faults"
+          className="fm-card fm-card--raised absolute left-0 top-10 z-20 grid w-72 gap-0 p-1"
+          ref={(ul) => { ul?.querySelector<HTMLElement>("[role=menuitemcheckbox]")?.focus(); }}
+          onKeyDown={menuKeys}
+          onBlur={(e) => { const to = e.relatedTarget as Node | null; if (!e.currentTarget.contains(to) && to !== faultBtn.current) setFaultMenu(false); }}
+        >
           {def.model.faults.map((f) => (
             <li key={f.id} role="none">
-              <button type="button" role="menuitemcheckbox" aria-checked={sim.faults.has(f.id)} className="grid w-full gap-0.5 p-2 text-left hover:bg-paper" onClick={() => { s.toggleFault(f.id); setFaultMenu(false); }}>
+              <button type="button" role="menuitemcheckbox" aria-checked={sim.faults.has(f.id)} className="grid w-full gap-0.5 p-2 text-left hover:bg-paper" onClick={() => { s.toggleFault(f.id); setFaultMenu(false); faultBtn.current?.focus(); }}>
                 <span className="font-semibold">{sim.faults.has(f.id) ? "✓ " : ""}{f.label}</span>
                 <span className="text-[13px] text-ink-muted">{f.description}</span>
               </button>

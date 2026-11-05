@@ -8,8 +8,8 @@
 .lesson.sheet .fm-parts { font-size: 12.5px; }
 .lesson.sheet .fm-parts td { vertical-align: top; padding-top: 7px; padding-bottom: 7px; }
 .lesson.sheet .fm-parts tr:hover td { background: transparent; }
-.lesson.sheet ul:has(> li > input[type="checkbox"]) { list-style: none; padding-left: 0; }
-.lesson.sheet li > input[type="checkbox"] { width: 14px; height: 14px; margin: 0 .5em 0 0; vertical-align: -2px; accent-color: var(--ink); }
+.lesson.sheet ul:has(> li > .sheet-check) { list-style: none; padding-left: 0; }
+.lesson.sheet .sheet-check { display: inline-block; width: 14px; height: 14px; margin: 0 .5em 0 0; vertical-align: -2px; border: 1px solid var(--ink); border-radius: 2px; }
 @media (max-width: 640px) { .lesson.sheet { font-size: 16px; } .lesson.sheet h2 { font-size: 21px; } }
 
 @media print {

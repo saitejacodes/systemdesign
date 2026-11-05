@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import { DepthStamp } from "@/components/brand";
 import type { Section } from "@/lib/content";
 import { getGlossary } from "@/lib/content";
-import { Callout, Figure, InterviewAngle, Misconception, NotWhenBox, TradeoffBox } from "./boxes";
+import { Callout, Figure, InterviewAngle, Misconception, NotWhenBox, ScrollTable, TradeoffBox } from "./boxes";
 import { CodeBlock } from "./CodeBlock";
 import { Diagram } from "./Diagram";
 import { ResourceList, SimulatorCard } from "./static";
@@ -42,7 +42,7 @@ export async function LessonRenderer({ section }: { section: Section }) {
         const lang = el.props.className?.replace("language-", "") ?? "text";
         return <CodeBlock code={String(el.props.children ?? "").replace(/\n$/, "")} lang={lang} />;
       },
-      table: ({ children }) => <div className="my-6 overflow-x-auto"><table className="fm-parts">{children}</table></div>,
+      table: ({ children }) => <ScrollTable>{children}</ScrollTable>,
       DepthStamp,
       Figure,
       Callout,
