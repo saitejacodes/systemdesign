@@ -1,8 +1,9 @@
 import tokens from "@/design/tokens.json";
+import { arrowBounds, arrowMid, arrowPath } from "./arrows";
 import { CATALOG } from "./catalog";
 import { iconMarkup } from "./icons";
 import { absoluteRects, boundsOf, COMPONENT_SIZE, edgeLine, keyProps, parentsFirst, type Rect } from "./serialize";
-import type { StudioEdge, StudioGraph, StudioNode } from "./types";
+import type { FreeArrow, StudioEdge, StudioGraph, StudioNode } from "./types";
 
 export type ExportTheme = "paper" | "blueprint";
 
@@ -116,6 +117,17 @@ function edgeSvg(e: StudioEdge, a: Rect, b: Rect): string {
   return `<g data-edge="${e.kind}">${body}${label}</g>`;
 }
 
+function freeArrowSvg(a: FreeArrow): string {
+  const head = a.head ?? "end";
+  const markers = `${head !== "none" ? ` marker-end="url(#sdl-arrow)"` : ""}${head === "both" ? ` marker-start="url(#sdl-arrow)"` : ""}`;
+  let label = "";
+  if (a.label) {
+    const m = arrowMid(a);
+    label = `<text x="${r(m.x)}" y="${r(m.y - 8)}" text-anchor="middle" font-family="${attrFont(FONTS.sans)}" font-size="13" fill="var(--ink)" stroke="var(--paper)" stroke-width="4" paint-order="stroke">${esc(fit(a.label, 40))}</text>`;
+  }
+  return `<g data-arrow="free"><path d="${arrowPath(a)}" fill="none" stroke="var(--ink)" stroke-width="1.75" stroke-linecap="round"${markers}/>${label}</g>`;
+}
+
 /**
  * The whole diagram as a standalone SVG document: fitted to its bounds plus a margin, with the theme's token
  * values written in (no CSS variables left), so it opens in any viewer and can be drawn onto a canvas for PNG.
@@ -124,17 +136,19 @@ export function toSvg(graph: StudioGraph, theme: ExportTheme, opts: SvgOptions =
   const margin = opts.margin ?? 48;
   const colors = themeColors(theme);
   const rects = absoluteRects(graph.nodes);
-  const b = boundsOf(rects.values()) ?? { x: 0, y: 0, w: 320, h: 160 };
+  const arrows = graph.arrows ?? [];
+  const b = boundsOf([...rects.values(), ...arrows.map(arrowBounds)]) ?? { x: 0, y: 0, w: 320, h: 160 };
   const caption = 28;
   const vx = b.x - margin, vy = b.y - margin, vw = b.w + margin * 2, vh = b.h + margin * 2 + caption;
   const ordered = parentsFirst(graph.nodes);
   const frames = ordered.filter((n) => n.kind === "frame").map((n) => frameSvg(n, rects.get(n.id)!)).join("");
   const edges = graph.edges.map((e) => (rects.has(e.source) && rects.has(e.target) ? edgeSvg(e, rects.get(e.source)!, rects.get(e.target)!) : "")).join("");
   const nodes = ordered.filter((n) => n.kind !== "frame").map((n) => (n.kind === "note" ? noteSvg(n, rects.get(n.id)!) : componentSvg(n, rects.get(n.id)!))).join("");
+  const free = arrows.map(freeArrowSvg).join("");
   const components = graph.nodes.filter((n) => n.kind !== "frame" && n.kind !== "note").length;
   const title = opts.title?.trim() || "Design";
   const capText = `${title} · ${components} component${components === 1 ? "" : "s"} · ${graph.edges.length} connection${graph.edges.length === 1 ? "" : "s"}`;
-  const empty = graph.nodes.length ? "" : `<text x="${r(b.x + b.w / 2)}" y="${r(b.y + b.h / 2)}" text-anchor="middle" font-family="${attrFont(FONTS.mono)}" font-size="12" letter-spacing="1.4" fill="var(--ink-muted)">EMPTY DESIGN</text>`;
+  const empty = graph.nodes.length || arrows.length ? "" : `<text x="${r(b.x + b.w / 2)}" y="${r(b.y + b.h / 2)}" text-anchor="middle" font-family="${attrFont(FONTS.mono)}" font-size="12" letter-spacing="1.4" fill="var(--ink-muted)">EMPTY DESIGN</text>`;
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${r(vw)}" height="${r(vh)}" viewBox="${r(vx)} ${r(vy)} ${r(vw)} ${r(vh)}" data-theme="${theme}">` +
     `<title>${esc(title)}</title>` +
@@ -144,7 +158,7 @@ export function toSvg(graph: StudioGraph, theme: ExportTheme, opts: SvgOptions =
     `</defs>` +
     `<rect x="${r(vx)}" y="${r(vy)}" width="${r(vw)}" height="${r(vh)}" fill="var(--paper)"/>` +
     `<rect x="${r(vx)}" y="${r(vy)}" width="${r(vw)}" height="${r(vh - caption)}" fill="url(#sdl-grid)"/>` +
-    frames + edges + nodes + empty +
+    frames + edges + nodes + free + empty +
     `<line x1="${r(vx)}" y1="${r(vy + vh - caption)}" x2="${r(vx + vw)}" y2="${r(vy + vh - caption)}" stroke="var(--ink)" stroke-width="1"/>` +
     `<text x="${r(vx + 12)}" y="${r(vy + vh - 10)}" font-family="${attrFont(FONTS.mono)}" font-size="10.5" letter-spacing="1.2" fill="var(--ink-muted)">${esc(capText.toUpperCase())}</text>` +
     `<text x="${r(vx + vw - 12)}" y="${r(vy + vh - 10)}" text-anchor="end" font-family="${attrFont(FONTS.mono)}" font-size="10.5" letter-spacing="1.2" fill="var(--ink-muted)">SYSDESIGN LAB · ${theme.toUpperCase()}</text>` +

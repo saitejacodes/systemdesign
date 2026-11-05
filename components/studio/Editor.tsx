@@ -13,16 +13,18 @@ import { Hand, Maximize2, Minimize2, MousePointer2, MoveUpRight, PanelLeft, Pane
 import { SetHud } from "@/components/layout/SetHud";
 import { getAdapter } from "@/lib/db/adapter";
 import type { Design, DesignVersion } from "@/lib/db/types";
+import { addArrow, snapAngle, updateArrow } from "@/lib/studio/arrows";
 import { CATALOG } from "@/lib/studio/catalog";
 import { toSvg } from "@/lib/studio/export-svg";
 import { canRedo, canUndo, commit, createHistory, redo, undo, type History } from "@/lib/studio/history";
-import { copySelection, exportJson, fromFlow, pasteClip, toFlow, type Clip, type FlowEdge, type FlowNode } from "@/lib/studio/serialize";
+import { absoluteRects, borderPoint, copySelection, exportJson, fromFlow, pasteClip, toFlow, type Clip, type FlowEdge, type FlowNode } from "@/lib/studio/serialize";
 import { defaultProfile } from "@/lib/studio/sim";
 import type { TrafficProfile } from "@/lib/studio/sim/types";
 import { templateById } from "@/lib/studio/templates";
 import { StudioGraph, type NodeKind } from "@/lib/studio/types";
 import { downloadBlob, slug, svgToPng } from "./download";
 import { ExportMenu, HistoryTab, NotesTab, TitleEditor, timeOf, type ExportKind } from "./EditorParts";
+import { FreeArrowLayer, type Draft } from "./FreeArrows";
 import { edgeTypes, EdgeMarkers, NodeEvents, nodeTypes } from "./nodes";
 import { addNode, connect, counts, deleteIds, nudge, reparent, sameGraph, summaryText } from "./ops";
 import { DRAG_MIME, Palette } from "./Palette";
@@ -108,6 +110,15 @@ export function DesignEditor({ designId, lessons, caseRuns = {} }: { designId: s
   );
 }
 
+/** The component card under a screen point (frames and notes don't count: arrows connect components). */
+function componentAt(x: number, y: number): string | null {
+  for (const el of document.elementsFromPoint(x, y)) {
+    const n = el.closest(".react-flow__node-component");
+    if (n) return n.getAttribute("data-id");
+  }
+  return null;
+}
+
 /** A component's display name, for the arrow tool's prompts. */
 function nodeLabel(graph: StudioGraph, id: string) {
   const n = graph.nodes.find((x) => x.id === id);
@@ -138,13 +149,13 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
   const [sheet, setSheet] = useState<"palette" | "panel" | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [announce, setAnnounce] = useState("");
-  // Canvas tool, as in diagram tools: Select (box-select on empty drag), Hand (drag pans), Arrow (click two components).
+  // Canvas tool, as in diagram tools: Select (box-select on empty drag), Hand (drag pans), Arrow (drag to draw, or click two components).
   const [tool, setToolState] = useState<"select" | "hand" | "arrow">("select");
   const [arrowFrom, setArrowFrom] = useState<string | null>(null);
   const setTool = useCallback((t: "select" | "hand" | "arrow") => {
     setToolState(t);
     setArrowFrom(null);
-    setAnnounce(t === "arrow" ? "Arrow tool. Click the component the arrow starts from." : t === "hand" ? "Hand tool. Drag to move the canvas." : "Select tool");
+    setAnnounce(t === "arrow" ? "Arrow tool. Drag on the canvas to draw an arrow, or click two components." : t === "hand" ? "Hand tool. Drag to move the canvas." : "Select tool");
   }, []);
   const [paletteOpen, setPaletteOpen] = useState(true);
   // Focus mode: the editor fills the window (and the screen, where the browser allows it), with the app chrome hidden.
@@ -164,6 +175,11 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
   }, []);
   const focusRef = useRef(focus);
   useEffect(() => { focusRef.current = focus; }, [focus]);
+  // The selected free arrow (they live outside React Flow, so their selection does too), and the arrow being drawn.
+  const [arrowSel, setArrowSelState] = useState<string | null>(null);
+  const arrowSelRef = useRef(arrowSel);
+  const setArrowSel = useCallback((id: string | null) => { arrowSelRef.current = id; setArrowSelState(id); }, []);
+  const [draft, setDraft] = useState<Draft | null>(null);
   const arrowFromRef = useRef(arrowFrom);
   useEffect(() => { arrowFromRef.current = arrowFrom; }, [arrowFrom]);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -206,7 +222,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
   // ---- graph state ----
   const setFlow = useCallback((f: Flow) => { flowRef.current = f; setFlowState(f); }, []);
   const setHist = useCallback((h: History<StudioGraph>) => { const changed = h.present !== histRef.current.present; histRef.current = h; setHistState(h); if (changed) scheduleSave(); }, [scheduleSave]);
-  const selectedIds = useCallback(() => [...flowRef.current.nodes.filter((n) => n.selected).map((n) => n.id), ...flowRef.current.edges.filter((e) => e.selected).map((e) => e.id)], []);
+  const selectedIds = useCallback(() => [...flowRef.current.nodes.filter((n) => n.selected).map((n) => n.id), ...flowRef.current.edges.filter((e) => e.selected).map((e) => e.id), ...(arrowSelRef.current ? [arrowSelRef.current] : [])], []);
 
   /** Commit a new graph (unless nothing changed) and show it, selecting `select` (default: keep the selection). */
   const apply = useCallback((next: StudioGraph, key?: string, select?: string[]) => {
@@ -221,33 +237,37 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
     const ids = selectedIds();
     if (!ids.length) return;
     apply(deleteIds(histRef.current.present, ids), undefined, []);
+    setArrowSel(null);
     setAnnounce(`Deleted ${ids.length} item${ids.length === 1 ? "" : "s"}`);
-  }, [apply, selectedIds]);
+  }, [apply, selectedIds, setArrowSel]);
   const doCopy = useCallback(() => {
     const clip = copySelection(histRef.current.present, selectedIds());
     if (!clip) return false;
     CLIPBOARD = { clip, pastes: 0 };
-    setAnnounce(`Copied ${clip.nodes.length} item${clip.nodes.length === 1 ? "" : "s"}`);
+    const n = clip.nodes.length + (clip.arrows?.length ?? 0);
+    setAnnounce(`Copied ${n} item${n === 1 ? "" : "s"}`);
     return true;
   }, [selectedIds]);
   const doPaste = useCallback(() => {
     if (!CLIPBOARD) return;
     CLIPBOARD.pastes++;
     const r = pasteClip(histRef.current.present, CLIPBOARD.clip, { offset: 32 * CLIPBOARD.pastes });
-    if (!r.ids.length) { setAnnounce("Paste would exceed 500 components"); return; }
+    if (!r.ids.length) { setAnnounce("Paste would exceed the design's size limit"); return; }
     apply(r.graph, undefined, r.ids);
-    setAnnounce(`Pasted ${CLIPBOARD.clip.nodes.length} item${CLIPBOARD.clip.nodes.length === 1 ? "" : "s"}`);
-  }, [apply]);
+    setArrowSel(null);
+    setAnnounce(`Pasted ${r.ids.length} item${r.ids.length === 1 ? "" : "s"}`);
+  }, [apply, setArrowSel]);
   const doDuplicate = useCallback(() => {
     const clip = copySelection(histRef.current.present, selectedIds());
     if (!clip) return;
     const r = pasteClip(histRef.current.present, clip, { offset: 32 });
-    if (r.ids.length) { apply(r.graph, undefined, r.ids); setAnnounce(`Duplicated ${clip.nodes.length} item${clip.nodes.length === 1 ? "" : "s"}`); }
-  }, [apply, selectedIds]);
+    if (r.ids.length) { apply(r.graph, undefined, r.ids); setArrowSel(null); setAnnounce(`Duplicated ${r.ids.length} item${r.ids.length === 1 ? "" : "s"}`); }
+  }, [apply, selectedIds, setArrowSel]);
   const selectAll = useCallback((on: boolean) => {
     const f = flowRef.current;
+    if (!on) setArrowSel(null);
     setFlow({ nodes: f.nodes.map((n) => (!!n.selected === on ? n : { ...n, selected: on })), edges: f.edges.map((e) => (!!e.selected === on ? e : { ...e, selected: on })) });
-  }, [setFlow]);
+  }, [setFlow, setArrowSel]);
 
   const viewCentre = useCallback(() => {
     const r = canvasRef.current?.getBoundingClientRect();
@@ -290,7 +310,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
       if (k === "v" || k === "h" || k === "a") { e.preventDefault(); setTool(k === "v" ? "select" : k === "h" ? "hand" : "arrow"); return; }
       const dir = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] }[k];
       if (dir) {
-        const ids = flowRef.current.nodes.filter((n) => n.selected).map((n) => n.id);
+        const ids = [...flowRef.current.nodes.filter((n) => n.selected).map((n) => n.id), ...(arrowSelRef.current ? [arrowSelRef.current] : [])];
         if (!ids.length) return;
         e.preventDefault();
         e.stopPropagation();
@@ -313,22 +333,87 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
   }, [setFlow]);
   const commitFromFlow = useCallback((moved: string[] = []) => {
     const f = flowRef.current;
-    apply(reparent(fromFlow(f.nodes, f.edges), moved));
+    apply(reparent(fromFlow(f.nodes, f.edges, histRef.current.present.arrows), moved));
   }, [apply]);
   const onConnect = useCallback((c: Connection) => {
     if (modeRef.current === "run") return;
     const r = connect(histRef.current.present, c.source, c.target, "sync");
     if (r) { apply(r.graph, undefined, [r.id]); setAnnounce("Connected"); }
   }, [apply]);
-  const onNodeClick = useCallback((_: unknown, node: FlowNode) => {
-    if (tool !== "arrow" || modeRef.current === "run") return;
-    if (!arrowFrom) { setArrowFrom(node.id); setAnnounce(`Arrow from ${nodeLabel(histRef.current.present, node.id)}. Click where it goes.`); return; }
-    if (node.id === arrowFrom) { setArrowFrom(null); setAnnounce("Arrow cancelled"); return; }
-    const r = connect(histRef.current.present, arrowFrom, node.id, "sync");
+  const justDrew = useRef(false);
+  const onEdgeClick = useCallback(() => setArrowSel(null), [setArrowSel]);
+  // The click that ends a drawing drag lands on the pane; it must not deselect the arrow just drawn.
+  const onPaneClick = useCallback(() => { if (justDrew.current) justDrew.current = false; else setArrowSel(null); }, [setArrowSel]);
+  /** Arrow tool, click on a component: the first click picks the start, the second draws the connection. */
+  const arrowClick = useCallback((id: string | null) => {
+    const from = arrowFromRef.current;
+    if (!id) { if (from) { setArrowFrom(null); setAnnounce("Arrow cancelled"); } return; }
+    if (!from) { setArrowFrom(id); setAnnounce(`Arrow from ${nodeLabel(histRef.current.present, id)}. Click where it goes, or drag from anywhere to draw.`); return; }
     setArrowFrom(null);
-    if (r) { apply(r.graph, undefined, [r.id]); setAnnounce(`Arrow added: ${nodeLabel(histRef.current.present, arrowFrom)} to ${nodeLabel(histRef.current.present, node.id)}`); }
+    if (id === from) { setAnnounce("Arrow cancelled"); return; }
+    const r = connect(histRef.current.present, from, id, "sync");
+    if (r) { apply(r.graph, undefined, [r.id]); setAnnounce(`Arrow added: ${nodeLabel(histRef.current.present, from)} to ${nodeLabel(histRef.current.present, id)}`); }
     else setAnnounce("Those two are already connected");
-  }, [tool, arrowFrom, apply]);
+  }, [apply]);
+  // Runs after React Flow's own click selection, so the connection the second click makes stays selected.
+  const onNodeClick = useCallback((_: unknown, node: FlowNode) => {
+    setArrowSel(null);
+    if (tool === "arrow" && modeRef.current !== "run" && node.type === "component") arrowClick(node.id);
+  }, [tool, arrowClick, setArrowSel]);
+  /**
+   * Arrow tool, press on the canvas: dragging draws an arrow from the press point (Shift snaps to 15° steps).
+   * From one component to another it becomes a connection (the simulation uses it); anywhere else, a free arrow.
+   * A press without a drag is a click (see arrowClick).
+   */
+  const onCanvasPointerDown = useCallback((e: React.PointerEvent) => {
+    if (tool !== "arrow" || modeRef.current === "run" || e.button !== 0) return;
+    const t = e.target as Element;
+    if (!t.closest(".react-flow__pane, .react-flow__node") || t.closest(".react-flow__controls, .react-flow__minimap, .react-flow__panel")) return;
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY;
+    const fromNode = componentAt(sx, sy);
+    const start = rf.screenToFlowPosition({ x: sx, y: sy });
+    let end = start, dragged = false;
+    const at = (ev: PointerEvent) => { const p = rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY }); return ev.shiftKey ? snapAngle(start, p) : p; };
+    const move = (ev: PointerEvent) => {
+      if (!dragged && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
+      dragged = true;
+      end = at(ev);
+      const to = componentAt(ev.clientX, ev.clientY);
+      setDraft({ x1: start.x, y1: start.y, x2: end.x, y2: end.y, toNode: !!fromNode && !!to && to !== fromNode });
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      setDraft(null);
+      if (ev.type === "pointercancel") return;
+      if (!dragged) { if (!fromNode) arrowClick(null); return; } // a click on a component: onNodeClick
+      setArrowFrom(null);
+      const toNode = componentAt(ev.clientX, ev.clientY);
+      if (fromNode && toNode && fromNode !== toNode) {
+        const r = connect(histRef.current.present, fromNode, toNode, "sync");
+        if (r) { apply(r.graph, undefined, [r.id]); setArrowSel(null); setAnnounce(`Connection added: ${nodeLabel(histRef.current.present, fromNode)} to ${nodeLabel(histRef.current.present, toNode)}`); }
+        else setAnnounce("Those two are already connected");
+        return;
+      }
+      // An end on a component starts (or stops) at its border, as if drawn from its edge.
+      let from = start, to = at(ev);
+      const rects = absoluteRects(histRef.current.present.nodes);
+      if (fromNode && rects.has(fromNode)) from = borderPoint(rects.get(fromNode)!, to);
+      if (toNode && rects.has(toNode)) to = borderPoint(rects.get(toNode)!, from);
+      const r = addArrow(histRef.current.present, from, to);
+      if (!r) return;
+      justDrew.current = true;
+      setTimeout(() => { justDrew.current = false; }, 0);
+      apply(r.graph, undefined, []);
+      setArrowSel(r.id);
+      setAnnounce("Arrow drawn. Drag its middle dot to curve it; label it in the Properties panel.");
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  }, [tool, rf, apply, arrowClick, setArrowSel]);
   const nodeEvents = useMemo(() => ({ resized: () => setTimeout(() => commitFromFlow(), 0) }), [commitFromFlow]);
 
   // ---- export ----
@@ -370,7 +455,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
   const resetProfile = () => { setSavedRun(null); latest.current.run = undefined; scheduleSave(); setAnnounce("Traffic reset to the default"); };
   const enterRun = () => { setMode("run"); run.reset(); setSheet(null); setConnecting(false); setArrowFrom(null); setAnnounce("Run mode. Editing is paused. Press Play to send traffic."); };
   const exitRun = () => { setMode("edit"); run.stop(); setSheet(null); setAnnounce("Edit mode"); };
-  const selection = useMemo(() => [...flow.nodes.filter((n) => n.selected).map((n) => n.id), ...flow.edges.filter((e) => e.selected).map((e) => e.id)], [flow]);
+  const selection = useMemo(() => [...flow.nodes.filter((n) => n.selected).map((n) => n.id), ...flow.edges.filter((e) => e.selected).map((e) => e.id), ...(arrowSel ? [arrowSel] : [])], [flow, arrowSel]);
   const summary = summaryText(graph);
   const c = counts(graph);
   const saveText = save.state === "saving" ? "Saving…" : save.state === "error" ? `Not saved: ${save.error}` : save.at ? `Saved ${timeOf(save.at)}` : "Saved";
@@ -447,6 +532,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
           aria-label="Design canvas"
           aria-describedby="sdl-canvas-help"
           className="relative min-w-0 flex-1"
+          onPointerDown={onCanvasPointerDown}
           onDragOver={(e) => { if (!running && e.dataTransfer.types.includes(DRAG_MIME)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
           onDrop={(e) => {
             const kind = e.dataTransfer.getData(DRAG_MIME) as NodeKind;
@@ -456,13 +542,13 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
           }}
         >
           <p id="sdl-canvas-help" className="sr-only">
-            Diagram canvas. Add components from the palette with Enter. Press V, H or A for the Select, Hand and Arrow tools, and F for focus mode. Tab moves between components; Enter selects one; arrow keys nudge the selection (Shift for 10 pixels); Delete removes it. Edit and connect the selection in the Properties panel.
+            Diagram canvas. Add components from the palette with Enter. Press V, H or A for the Select, Hand and Arrow tools, and F for focus mode. With the Arrow tool, drag to draw an arrow; drawn between two components it becomes a connection. Tab moves between components; Enter selects one; arrow keys nudge the selection (Shift for 10 pixels); Delete removes it. Edit and connect the selection in the Properties panel.
           </p>
           <EdgeMarkers />
           <RunViewContext.Provider value={runView}>
           <NodeEvents.Provider value={nodeEvents}>
             <ReactFlow<FlowNode, FlowEdge>
-              className={`sdl-flow is-tool-${running ? "select" : tool}${connecting || tool === "arrow" ? " is-connecting" : ""}${running ? ` is-run${run.playing ? "" : " is-paused"}` : ""}`}
+              className={`sdl-flow is-tool-${running ? "select" : tool}${connecting ? " is-connecting" : ""}${running ? ` is-run${run.playing ? "" : " is-paused"}` : ""}`}
               nodes={flow.nodes}
               edges={flow.edges}
               nodeTypes={nodeTypes}
@@ -474,8 +560,11 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
               onConnectEnd={() => setConnecting(false)}
               onNodeDragStop={(_, __, dragged) => { if (!running) commitFromFlow(dragged.map((n) => n.id)); }}
               onNodeClick={onNodeClick}
+              onEdgeClick={onEdgeClick}
+              onPaneClick={onPaneClick}
+              onSelectionStart={onEdgeClick}
               nodesDraggable={!running && tool === "select"}
-              nodesConnectable={!running}
+              nodesConnectable={!running && tool !== "arrow"}
               connectionMode={ConnectionMode.Loose}
               snapToGrid
               snapGrid={[16, 16]}
@@ -484,7 +573,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
               multiSelectionKeyCode={["Shift", "Meta", "Control"]}
               panActivationKeyCode="Space"
               selectionOnDrag={!coarse && (running || tool === "select")}
-              panOnDrag={coarse || (!running && tool !== "select") ? true : [1, 2]}
+              panOnDrag={!running && tool === "arrow" ? [1, 2] : coarse || (!running && tool === "hand") ? true : [1, 2]}
               panOnScroll={!coarse}
               zoomOnDoubleClick={false}
               minZoom={0.15}
@@ -496,21 +585,24 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
               <Background variant={BackgroundVariant.Lines} gap={32} color="var(--grid)" />
               <MiniMap pannable zoomable ariaLabel="Minimap of the design" nodeStrokeWidth={1} />
               <Controls showInteractive={false} aria-label="Zoom controls" />
+              <FreeArrowLayer arrows={graph.arrows ?? []} selected={arrowSel} draft={draft} interactive={!running && tool === "select"}
+                onSelect={(id) => { if (arrowSelRef.current !== id) { selectAll(false); setArrowSel(id); setTab("properties"); } }}
+                onChange={(a) => apply(updateArrow(histRef.current.present, a), undefined, [])} />
             </ReactFlow>
           </NodeEvents.Provider>
           </RunViewContext.Provider>
-          {graph.nodes.length === 0 && (
+          {graph.nodes.length === 0 && !graph.arrows?.length && !draft && (
             <div className="pointer-events-none absolute inset-0 grid place-items-center p-6 text-center">
               <div className="grid gap-2">
                 <p className="fm-h4">Empty canvas</p>
-                <p className="fm-help">Add a component from the palette: drag it here, or select it and press Enter. Then press A and click two components to draw an arrow.</p>
+                <p className="fm-help">Add a component from the palette: drag it here, or select it and press Enter. Then press A and drag to draw arrows.</p>
               </div>
             </div>
           )}
           <p className="fm-cap pointer-events-none absolute left-3 top-2 bg-paper/80 px-1" data-testid="canvas-summary">{summary}</p>
           {!running && tool === "arrow" && (
             <p className="fm-cap pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-[3px] bg-ink px-2.5 py-1 !text-paper">
-              {arrowFrom ? `From ${nodeLabel(hist.present, arrowFrom)}: click where the arrow goes · Esc cancels` : "Arrow: click the component it starts from"}
+              {arrowFrom ? `From ${nodeLabel(hist.present, arrowFrom)}: click where the arrow goes · Esc cancels` : "Arrow: drag anywhere to draw · component to component makes a connection · Shift for 15°"}
             </p>
           )}
           {arrowFrom && <style>{`.sdl-flow .react-flow__node[data-id="${arrowFrom.replace(/["\\]/g, "")}"] .sdl-node { border-color: var(--cobalt); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cobalt) 25%, transparent); }`}</style>}
@@ -531,7 +623,7 @@ function Editor({ design, initial, lessons, caseRuns }: { design: Design; initia
             </div>
             <button type="button" className="fm-btn fm-btn--tool mb-1 !px-2 lg:hidden" aria-label="Close panel" onClick={() => setSheet(null)}><X size={14} aria-hidden /></button>
           </div>
-          <div role="tabpanel" id={`sdl-panel-${tab}`} aria-labelledby={`sdl-tab-${tab}`} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div role="tabpanel" tabIndex={0} id={`sdl-panel-${tab}`} aria-labelledby={`sdl-tab-${tab}`} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             {tab === "properties" && <PropertiesPanel graph={graph} selection={selection} apply={apply} lessons={lessons} onDelete={doDelete} />}
             {tab === "notes" && <NotesTab notes={notes} onChange={changeNotes} />}
             {tab === "history" && <HistoryTab versions={versions} onRestore={restore} onSaveVersion={() => { void flush(true); setAnnounce("Version saved"); }} />}

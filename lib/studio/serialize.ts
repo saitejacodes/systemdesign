@@ -1,7 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import { z as zod } from "zod";
 import { CATALOG } from "./catalog";
-import { StudioGraph, type EdgeKind, type NodeKind, type PropValue, type StudioEdge, type StudioNode } from "./types";
+import { StudioGraph, type EdgeKind, type FreeArrow, type NodeKind, type PropValue, type StudioEdge, type StudioNode } from "./types";
 
 // ---------- Sizes and geometry (shared by the canvas and the SVG export) ----------
 
@@ -131,7 +131,8 @@ export function toFlow(graph: StudioGraph, selected: ReadonlySet<string> = new S
   return { nodes, edges };
 }
 
-export function fromFlow(nodes: FlowNode[], edges: FlowEdge[]): StudioGraph {
+/** The graph from React Flow's state; free arrows aren't React Flow elements, so they are passed through. */
+export function fromFlow(nodes: FlowNode[], edges: FlowEdge[], arrows?: FreeArrow[]): StudioGraph {
   return {
     version: 1,
     nodes: nodes.map((f): StudioNode => {
@@ -150,6 +151,7 @@ export function fromFlow(nodes: FlowNode[], edges: FlowEdge[]): StudioGraph {
       if (d.label !== undefined) e.label = d.label;
       return e;
     }),
+    ...(arrows?.length ? { arrows } : {}),
   };
 }
 
@@ -158,28 +160,30 @@ export function fromFlow(nodes: FlowNode[], edges: FlowEdge[]): StudioGraph {
 export type IdGen = (prefix: string) => string;
 export const randomId: IdGen = (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 
-/** Fresh ids for every node and edge; parentId, source and target follow. */
+/** Fresh ids for every node, edge and free arrow; parentId, source and target follow. */
 export function remapIds(graph: StudioGraph, gen: IdGen = randomId, taken: ReadonlySet<string> = new Set()): { graph: StudioGraph; map: Map<string, string> } {
   const used = new Set(taken);
   const fresh = (p: string) => { let id = gen(p); while (used.has(id)) id = gen(p); used.add(id); return id; };
   const map = new Map<string, string>();
   for (const n of graph.nodes) map.set(n.id, fresh("n"));
   for (const e of graph.edges) map.set(e.id, fresh("e"));
+  for (const a of graph.arrows ?? []) map.set(a.id, fresh("a"));
   return {
     map,
     graph: {
       version: 1,
       nodes: graph.nodes.map((n) => ({ ...n, id: map.get(n.id)!, ...(n.parentId ? { parentId: map.get(n.parentId) ?? n.parentId } : {}) })),
       edges: graph.edges.map((e) => ({ ...e, id: map.get(e.id)!, source: map.get(e.source) ?? e.source, target: map.get(e.target) ?? e.target })),
+      ...(graph.arrows?.length ? { arrows: graph.arrows.map((a) => ({ ...a, id: map.get(a.id)! })) } : {}),
     },
   };
 }
 
 // ---------- Copy / paste / duplicate ----------
 
-export interface Clip { nodes: StudioNode[]; edges: StudioEdge[] }
+export interface Clip { nodes: StudioNode[]; edges: StudioEdge[]; arrows?: FreeArrow[] }
 
-/** Selected nodes (plus everything inside selected frames) and the edges between them. Nodes whose frame isn't copied get absolute positions. */
+/** Selected nodes (plus everything inside selected frames), the edges between them, and selected free arrows. Nodes whose frame isn't copied get absolute positions. */
 export function copySelection(graph: StudioGraph, ids: Iterable<string>): Clip | null {
   const want = new Set(ids);
   let grew = true;
@@ -192,19 +196,28 @@ export function copySelection(graph: StudioGraph, ids: Iterable<string>): Clip |
     delete copy.parentId;
     return copy;
   });
-  if (!nodes.length) return null;
+  const arrows = (graph.arrows ?? []).filter((a) => want.has(a.id));
+  if (!nodes.length && !arrows.length) return null;
   const keep = new Set(nodes.map((n) => n.id));
-  return { nodes, edges: graph.edges.filter((e) => keep.has(e.source) && keep.has(e.target)) };
+  const clip: Clip = { nodes, edges: graph.edges.filter((e) => keep.has(e.source) && keep.has(e.target)) };
+  if (arrows.length) clip.arrows = arrows;
+  return clip;
 }
 
 /** Adds a clip with fresh ids, top-level nodes shifted by `offset`. Returns the new graph and the pasted ids (to select them). */
 export function pasteClip(graph: StudioGraph, clip: Clip, opts: { offset?: number; gen?: IdGen } = {}): { graph: StudioGraph; ids: string[] } {
   const offset = opts.offset ?? 32;
-  if (graph.nodes.length + clip.nodes.length > 500 || graph.edges.length + clip.edges.length > 2000) return { graph, ids: [] };
-  const taken = new Set([...graph.nodes.map((n) => n.id), ...graph.edges.map((e) => e.id)]);
-  const { graph: g } = remapIds({ version: 1, nodes: clip.nodes, edges: clip.edges }, opts.gen, taken);
+  const clipArrows = clip.arrows ?? [];
+  if (graph.nodes.length + clip.nodes.length > 500 || graph.edges.length + clip.edges.length > 2000 || (graph.arrows?.length ?? 0) + clipArrows.length > 1000) return { graph, ids: [] };
+  const taken = new Set([...graph.nodes.map((n) => n.id), ...graph.edges.map((e) => e.id), ...(graph.arrows ?? []).map((a) => a.id)]);
+  const { graph: g } = remapIds({ version: 1, nodes: clip.nodes, edges: clip.edges, ...(clipArrows.length ? { arrows: clipArrows } : {}) }, opts.gen, taken);
   const nodes = g.nodes.map((n) => (n.parentId ? n : { ...n, x: n.x + offset, y: n.y + offset }));
-  return { graph: { version: 1, nodes: [...graph.nodes, ...nodes], edges: [...graph.edges, ...g.edges] }, ids: [...nodes.map((n) => n.id), ...g.edges.map((e) => e.id)] };
+  const pasted = (g.arrows ?? []).map((a): FreeArrow => ({ ...a, x1: a.x1 + offset, y1: a.y1 + offset, x2: a.x2 + offset, y2: a.y2 + offset, ...(a.mx !== undefined && a.my !== undefined ? { mx: a.mx + offset, my: a.my + offset } : {}) }));
+  const arrows = [...(graph.arrows ?? []), ...pasted];
+  return {
+    graph: { ...graph, nodes: [...graph.nodes, ...nodes], edges: [...graph.edges, ...g.edges], ...(arrows.length ? { arrows } : {}) },
+    ids: [...nodes.map((n) => n.id), ...g.edges.map((e) => e.id), ...pasted.map((a) => a.id)],
+  };
 }
 
 // ---------- JSON export / import ----------

@@ -276,3 +276,8 @@
 - **Arrows by clicking.** Dragging from a hover-only edge square was the only pointer way to connect, and the user could not find it. The Arrow tool connects by click, click (sync request, arrow at the target); the edge dots and "Connect to" still work.
 - **Hand tool instead of changing the default.** Drag on empty canvas stays box-select in the Select tool (as in Figma and Excalidraw); Hand makes left-drag pan, and scroll or Space + drag pan in any tool. Touch screens pan on drag as before.
 - **Focus mode** is a fixed full-window layout over the app shell plus a Fullscreen API request; dialogs still open above it (they portal to the body at a higher z-index). Where the browser refuses full screen, the in-window layout still applies.
+
+## Free-drawn arrows (2026-11-05, user request)
+- **Two kinds of arrow, one tool.** A drag that starts and ends on components makes a connection, because connections carry meaning (traffic, SPOF analysis); every other drag makes a free arrow stored in `graph.arrows`. Free arrows are drawings, so the simulator ignores them.
+- **No binding.** A free arrow keeps absolute canvas points and does not follow a component when it moves (Excalidraw binds). Binding would need anchor maths on every node move; a connection already gives a following arrow.
+- **Curves are one bend point.** A quadratic curve through the dragged middle point (control = 2·mid − average of the ends): one handle, predictable, and it exports to SVG as a single path. Multi-point polylines are left out.

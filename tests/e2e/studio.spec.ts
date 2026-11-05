@@ -146,7 +146,7 @@ test("375px: drawers for palette and panel, no horizontal scroll", async ({ page
   expect(errors).toEqual([]);
 });
 
-test("tools: the Arrow tool draws an arrow, Hand pans, Focus fills the window", async ({ page }, info) => {
+test("tools: the Arrow tool connects and draws free arrows, Hand pans, Focus fills the window", async ({ page }, info) => {
   test.skip(info.project.name === "mobile", "pointer tools are desktop; touch pans by default");
   const errors = watchErrors(page);
   await page.goto("/studio/new");
@@ -167,9 +167,40 @@ test("tools: the Arrow tool draws an arrow, Hand pans, Focus fills the window", 
   // Esc cancels a half-drawn arrow; V returns to Select
   await node(page, "Load Balancer").click();
   await page.keyboard.press("Escape");
-  await expect(page.getByText("Arrow: click the component it starts from")).toBeVisible();
+  await expect(page.getByText("Arrow: drag anywhere to draw")).toBeVisible();
   await page.keyboard.press("v");
   await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  // Free arrows: drag on empty canvas draws one; drag component to component makes a connection
+  await page.keyboard.press("a");
+  const drag = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+  };
+  const centre = async (name: string) => { const b = (await node(page, name).boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+  await drag(await centre("Load Balancer"), await centre("Client"));
+  await expect(summary(page)).toHaveText("2 components, 2 connections");
+  const area = (await page.locator(".react-flow__pane").boundingBox())!;
+  await drag({ x: area.x + 80, y: area.y + area.height - 140 }, { x: area.x + 280, y: area.y + area.height - 180 });
+  const free = page.locator("[data-arrow-id]");
+  await expect(free).toHaveCount(1);
+  await expect(page.getByRole("tabpanel").getByText("Free arrow")).toBeVisible();
+  await page.getByRole("tabpanel").getByLabel("Label").fill("retry on 503");
+  await expect(free.locator("text")).toHaveText("retry on 503");
+  // Select tool (the button: focus is still in the label field): drag the middle dot to curve it
+  await page.getByRole("button", { name: "Select", exact: true }).click();
+  const mid = (await page.locator(".sdl-free-handle.is-mid").boundingBox())!;
+  await drag({ x: mid.x + mid.width / 2, y: mid.y + mid.height / 2 }, { x: mid.x + mid.width / 2, y: mid.y + 60 });
+  await expect(free.locator(".sdl-free-line")).toHaveAttribute("d", /Q/);
+  await expect(page.getByRole("button", { name: "Straighten" })).toBeVisible();
+  // It is saved with the design, and Delete removes it
+  await page.keyboard.press("Delete");
+  await expect(free).toHaveCount(0);
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(free).toHaveCount(1);
+  await expect(summary(page)).toHaveText("2 components, 2 connections");
 
   // Hand tool: dragging empty canvas moves the view, not the components
   await page.keyboard.press("h");
@@ -182,7 +213,7 @@ test("tools: the Arrow tool draws an arrow, Hand pans, Focus fills the window", 
   await page.mouse.move(pane!.x + 200, pane!.y + 140, { steps: 6 });
   await page.mouse.up();
   await expect(viewport).not.toHaveAttribute("style", before!);
-  await expect(summary(page)).toHaveText("2 components, 1 connection");
+  await expect(summary(page)).toHaveText("2 components, 2 connections");
 
   // Focus mode hides the app chrome; F toggles it back
   await expect(page.getByRole("complementary", { name: "Sidebar" })).toBeVisible();

@@ -72,7 +72,7 @@ export function addNode(graph: StudioGraph, kind: NodeKind, at: { x: number; y: 
   return { graph: kind === "frame" ? g : reparent(g, [id]), id };
 }
 
-/** Removes nodes and edges. A deleted frame's contents stay, at the same place on the canvas. */
+/** Removes nodes, edges and free arrows. A deleted frame's contents stay, at the same place on the canvas. */
 export function deleteIds(graph: StudioGraph, ids: Iterable<string>): StudioGraph {
   const del = new Set(ids);
   if (!del.size) return graph;
@@ -89,7 +89,10 @@ export function deleteIds(graph: StudioGraph, ids: Iterable<string>): StudioGrap
     return out;
   });
   const keep = new Set(nodes.map((n) => n.id));
-  return { ...graph, nodes, edges: graph.edges.filter((e) => !del.has(e.id) && keep.has(e.source) && keep.has(e.target)) };
+  const out: StudioGraph = { ...graph, nodes, edges: graph.edges.filter((e) => !del.has(e.id) && keep.has(e.source) && keep.has(e.target)) };
+  const arrows = graph.arrows?.filter((a) => !del.has(a.id));
+  if (arrows?.length) out.arrows = arrows; else delete out.arrows;
+  return out;
 }
 
 export function updateNode(graph: StudioGraph, id: string, patch: { label?: string; props?: Record<string, PropValue>; w?: number; h?: number }): StudioGraph {
@@ -129,9 +132,13 @@ function roots(graph: StudioGraph, ids: Iterable<string>): StudioNode[] {
 }
 
 export function nudge(graph: StudioGraph, ids: Iterable<string>, dx: number, dy: number): StudioGraph {
-  const move = new Set(roots(graph, ids).map((n) => n.id));
-  if (!move.size) return graph;
-  return { ...graph, nodes: graph.nodes.map((n) => (move.has(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n)) };
+  const list = [...ids];
+  const move = new Set(roots(graph, list).map((n) => n.id));
+  const arrowIds = new Set(list.filter((id) => graph.arrows?.some((a) => a.id === id)));
+  if (!move.size && !arrowIds.size) return graph;
+  const out: StudioGraph = { ...graph, nodes: graph.nodes.map((n) => (move.has(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n)) };
+  if (arrowIds.size) out.arrows = graph.arrows!.map((a) => (arrowIds.has(a.id) ? { ...a, x1: a.x1 + dx, y1: a.y1 + dy, x2: a.x2 + dx, y2: a.y2 + dy, ...(a.mx !== undefined && a.my !== undefined ? { mx: a.mx + dx, my: a.my + dy } : {}) } : a));
+  return out;
 }
 
 export type AlignMode = "left" | "center" | "right" | "top" | "middle" | "bottom";

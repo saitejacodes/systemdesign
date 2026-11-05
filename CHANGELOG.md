@@ -298,3 +298,9 @@
 - Connection dots on component edges are larger and round; a selected component shows a cobalt glow instead of an offset shadow. The panel's keyboard list and the empty-canvas hint mention the new tools.
 - Fixes: a checked radio button was struck through (the checklist style applied to radios); the "Lab" breadcrumb and two simulator disclosure toggles are 44 px touch targets again after the type change.
 - Verify: open /studio/new, add two components, press A and click both; press H and drag; press F. `pnpm test:e2e tests/e2e/studio.spec.ts`.
+
+## Design Studio · free-drawn arrows
+- The Arrow tool (A) now draws like Excalidraw: press and drag anywhere on the canvas. Drawn from one component to another it becomes a connection (the simulation uses it, as before); anywhere else it is a **free arrow**, an annotation the simulation ignores. An end on a component starts at its border. Shift snaps to 15° steps. Clicking two components still connects them.
+- In the Select tool a free arrow can be clicked, moved by its line, have each end dragged, and be **curved by dragging its middle dot** (drag it back to the middle, or press Straighten, to make it straight again). The Properties panel gives it a label, arrowheads (end, both, none) and Reverse.
+- Free arrows are saved with the design (`graph.arrows`, optional, so older designs and exports still load), and go through undo/redo, Delete, arrow-key nudge, copy/paste, JSON import/export and the SVG/PNG export.
+- Verify: /studio/new, press A, drag on empty canvas; press V, drag the middle dot. `pnpm test lib/studio/arrows.test.ts`, `pnpm test:e2e tests/e2e/studio.spec.ts`.

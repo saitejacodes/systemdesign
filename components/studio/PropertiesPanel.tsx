@@ -4,7 +4,8 @@ import { useId, useState } from "react";
 import { AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalDistributeCenter, Trash2 } from "lucide-react";
 import { ComponentIcon } from "@/components/studio/ComponentIcon";
 import { CATALOG, runProps, validateProp, type PropSpec } from "@/lib/studio/catalog";
-import { EDGE_KINDS, type ComponentKind, type EdgeKind, type PropValue, type StudioEdge, type StudioGraph, type StudioNode } from "@/lib/studio/types";
+import { updateArrow } from "@/lib/studio/arrows";
+import { EDGE_KINDS, type ComponentKind, type EdgeKind, type FreeArrow, type PropValue, type StudioEdge, type StudioGraph, type StudioNode } from "@/lib/studio/types";
 import { align, connect, counts, distribute, summaryText, updateEdge, updateNode, type AlignMode } from "./ops";
 
 export type Lessons = Record<string, { href: string; title: string }>;
@@ -27,6 +28,8 @@ export function PropertiesPanel({ graph, selection, apply, lessons, onDelete }: 
   const sel = new Set(selection);
   const nodes = graph.nodes.filter((n) => sel.has(n.id));
   const edges = graph.edges.filter((e) => sel.has(e.id));
+  const arrows = (graph.arrows ?? []).filter((a) => sel.has(a.id));
+  if (arrows.length === 1 && nodes.length + edges.length === 0) return <FreeArrowProps key={arrows[0].id} arrow={arrows[0]} graph={graph} apply={apply} onDelete={onDelete} />;
   if (nodes.length + edges.length === 0) return <NothingSelected graph={graph} />;
   if (nodes.length === 1 && edges.length === 0) return <NodeProps key={nodes[0].id} node={nodes[0]} graph={graph} apply={apply} lessons={lessons} onDelete={onDelete} />;
   if (edges.length === 1 && nodes.length === 0) return <EdgeProps key={edges[0].id} edge={edges[0]} graph={graph} apply={apply} onDelete={onDelete} />;
@@ -53,7 +56,8 @@ function DeleteButton({ onDelete, what }: { onDelete: () => void; what: string }
 function NothingSelected({ graph }: { graph: StudioGraph }) {
   const rows: [string, string][] = [
     ["V · H · A", "Select · Hand · Arrow tool"],
-    ["Arrow tool", "Click a component, then another"],
+    ["Arrow tool: drag", "Draw an arrow anywhere (Shift: 15° steps)"],
+    ["Drag arrow's middle dot", "Curve it"],
     ["Hand tool, scroll or Space + drag", "Move the canvas"],
     ["F", "Focus mode (full screen)"],
     ["Click / Shift+click", "Select, add to selection"],
@@ -68,7 +72,7 @@ function NothingSelected({ graph }: { graph: StudioGraph }) {
     <div>
       <Section title="Design">
         <p className="text-[15px]">{summaryText(graph)}.</p>
-        <p className="fm-help">Select a component or connection to edit it. Draw an arrow with the Arrow tool (A): click one component, then another. You can also drag from the dot on a card&apos;s edge, or use “Connect to” after selecting one.</p>
+        <p className="fm-help">Select a component or connection to edit it. Draw arrows with the Arrow tool (A): drag anywhere on the canvas. Drawn from one component to another, it becomes a connection the simulation uses; anywhere else it is a free arrow for annotation. You can also use “Connect to” after selecting a component.</p>
       </Section>
       <Section title="Keyboard">
         <table className="fm-parts !text-[11px]">
@@ -271,6 +275,37 @@ function EdgeProps({ edge, graph, apply, onDelete }: { edge: StudioEdge; graph: 
         </button>
       </Section>
       <div className="px-3 py-3"><DeleteButton onDelete={onDelete} what="connection" /></div>
+    </div>
+  );
+}
+
+const HEADS: { v: NonNullable<FreeArrow["head"]>; label: string }[] = [
+  { v: "end", label: "→ Arrow at the end" },
+  { v: "both", label: "⇄ Arrows at both ends" },
+  { v: "none", label: "— No arrows (a line)" },
+];
+
+function FreeArrowProps({ arrow, graph, apply, onDelete }: { arrow: FreeArrow; graph: StudioGraph; apply: Apply; onDelete: () => void }) {
+  const set = (patch: Partial<FreeArrow>, key?: string) => apply(updateArrow(graph, { ...arrow, ...patch }), key, [arrow.id]);
+  const headId = useId();
+  const curved = arrow.mx !== undefined;
+  return (
+    <div>
+      <Section title="Free arrow">
+        <p className="fm-help">A drawing on the canvas: the simulation ignores it. Drag the ends to move them, the middle dot to curve it, the line to move it.</p>
+        <TextField label="Label" value={arrow.label ?? ""} onChange={(v) => set({ label: v }, `alabel:${arrow.id}`)} />
+        <div className="grid gap-1.5">
+          <label htmlFor={headId} className="fm-label">Arrows</label>
+          <select id={headId} className="fm-input !h-9" value={arrow.head ?? "end"} onChange={(e) => set({ head: e.target.value as FreeArrow["head"] })}>
+            {HEADS.map((d) => <option key={d.v} value={d.v}>{d.label}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="fm-btn fm-btn--tool" onClick={() => set({ x1: arrow.x2, y1: arrow.y2, x2: arrow.x1, y2: arrow.y1 })}>⇄ Reverse</button>
+          {curved && <button type="button" className="fm-btn fm-btn--tool" onClick={() => set({ mx: undefined, my: undefined })}>Straighten</button>}
+        </div>
+      </Section>
+      <div className="px-3 py-3"><DeleteButton onDelete={onDelete} what="arrow" /></div>
     </div>
   );
 }
