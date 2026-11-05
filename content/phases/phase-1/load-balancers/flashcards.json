@@ -15,4 +15,3 @@
   { "id": "f14", "front": "Active-passive vs active-active LB?", "back": "Active-passive: one handles traffic, one is standby. Active-active: both handle traffic, doubling capacity and redundancy.", "topicId": "lb-redundancy" },
   { "id": "f15", "front": "What should a /health endpoint check?", "back": "Critical dependencies: database connection, disk space, memory. Return 200 OK if healthy, 503 if not. Do not always return 200.", "topicId": "lb-health-checks" }
 ]
-

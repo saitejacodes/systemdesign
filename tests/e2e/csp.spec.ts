@@ -3,6 +3,8 @@ import { ROUTES } from "./routes";
 
 // Security headers on every route, and zero CSP violations while each page loads and settles (Prompt 24).
 test.describe("security headers and CSP", () => {
+  // Lessons that embed the SQL sandbox boot PGlite before the network goes idle; slow CI machines need longer.
+  test.describe.configure({ timeout: 90_000 });
   test.skip(({ viewport }) => (viewport?.width ?? 0) < 768, "headers do not depend on the viewport");
 
   for (const route of ROUTES) {

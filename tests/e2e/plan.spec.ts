@@ -24,6 +24,8 @@ test("a plan start 3 weeks ago puts you in week 4 with a catch-up banner", async
   const d = new Date(Date.now() - 21 * 86_400_000);
   const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   await page.getByLabel("Plan start date").fill(key);
+  // The setting saves to IndexedDB asynchronously; a reload that shows it proves the write landed before we leave.
+  await expect(async () => { await page.reload(); await expect(page.getByLabel("Plan start date")).toHaveValue(key, { timeout: 1_000 }); }).toPass();
   await page.goto("/today");
   await expect(page.getByText("Week 4 of 16")).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "behind" })).toBeVisible();

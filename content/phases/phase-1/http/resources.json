@@ -3,4 +3,3 @@
   { "id": "http3-explained", "title": "HTTP/3 explained", "author": "Daniel Stenberg", "kind": "free-book", "url": "https://http3-explained.haxx.se/", "why": "The curl author's free online book explaining QUIC and HTTP/3 in plain language, covering why they exist and how they differ from HTTP/2.", "topicIds": ["http-versions"], "free": true },
   { "id": "web-dev-caching", "title": "Prevent unnecessary network requests with the HTTP Cache", "author": "web.dev", "kind": "blog", "url": "https://web.dev/articles/http-cache", "why": "Practical guide to HTTP caching headers with flowcharts for choosing the right Cache-Control directives.", "topicIds": ["http-caching-headers"], "free": true }
 ]
-

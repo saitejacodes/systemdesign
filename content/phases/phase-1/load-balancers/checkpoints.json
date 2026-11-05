@@ -5,4 +5,3 @@
   { "id": "c4", "text": "I can explain why sticky sessions are problematic and describe the external session storage alternative.", "topicId": "lb-sticky-sessions" },
   { "id": "c5", "text": "I can describe active-passive and active-active LB redundancy and why a single LB is a SPOF.", "topicId": "lb-redundancy" }
 ]
-

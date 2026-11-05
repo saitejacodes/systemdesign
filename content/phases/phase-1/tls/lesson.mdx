@@ -187,4 +187,3 @@ TLS comes up when the interviewer asks about security or when you draw a load ba
 ## Practice
 
 Run `openssl s_client -connect example.com:443 -servername example.com` (or click the padlock in your browser) and find the leaf certificate's name, its issuer (the intermediate), and its expiry date. Then, in the [Design Studio](/studio), draw an architecture with a public load balancer and three internal services. Mark where TLS terminates, where you re-encrypt, and where you would use mTLS. Write the renewal and alerting policy for every certificate you drew.
-

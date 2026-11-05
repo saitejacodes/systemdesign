@@ -15,4 +15,3 @@
   { "id": "f14", "front": "What is s-maxage?", "back": "A Cache-Control directive that overrides max-age for shared caches (CDNs, reverse proxies) but not for the browser.", "topicId": "http-caching-headers" },
   { "id": "f15", "front": "304 Not Modified?", "back": "Returned when a conditional request (ETag or Last-Modified) shows the content has not changed. No body is sent, saving bandwidth. The client uses its cached copy.", "topicId": "http-caching-headers" }
 ]
-

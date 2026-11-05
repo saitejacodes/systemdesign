@@ -3,4 +3,3 @@
   { "id": "envoy-overview", "title": "What is Envoy?", "author": "Envoy Proxy", "kind": "docs", "url": "https://www.envoyproxy.io/docs/envoy/latest/intro/what_is_envoy", "why": "Introduction to Envoy's architecture and features, from the proxy designed for modern microservice architectures.", "topicIds": ["proxy-roles", "sidecar-proxy"], "free": true },
   { "id": "istio-concepts", "title": "What is Istio?", "author": "Istio", "kind": "docs", "url": "https://istio.io/latest/about/service-mesh/", "why": "Overview of the service mesh concept with Istio's sidecar proxy model, mTLS and traffic management.", "topicIds": ["sidecar-proxy"], "free": true }
 ]
-

@@ -5,4 +5,3 @@
   { "id": "c4", "text": "I can explain when UDP is preferable to TCP and give concrete examples (DNS, live video, gaming).", "topicId": "udp-use-cases" },
   { "id": "c5", "text": "I can describe head-of-line blocking, why it affects HTTP/2 over TCP, and how QUIC solves it.", "topicId": "hol-blocking" }
 ]
-

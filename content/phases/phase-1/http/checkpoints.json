@@ -5,4 +5,3 @@
   { "id": "c4", "text": "I can design a caching strategy using Cache-Control, ETag and content-hashed filenames.", "topicId": "http-caching-headers" },
   { "id": "c5", "text": "I can explain the difference between no-cache and no-store and when to use each.", "topicId": "http-caching-headers" }
 ]
-

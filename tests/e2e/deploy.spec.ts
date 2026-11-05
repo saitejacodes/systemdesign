@@ -4,13 +4,14 @@ import { expect, test } from "@playwright/test";
 // (Python and JS labs: labs.spec.ts; a simulator challenge: simulator.spec.ts; offline reload: offline.spec.ts.)
 
 test("SQL sandbox: PGlite boots under the CSP and a query returns rows", async ({ page }) => {
+  test.setTimeout(120_000); // PGlite's first boot downloads and compiles about 10 MB of WASM
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/simulators/sql-sandbox");
   await page.getByRole("switch", { name: "Plain editor" }).click({ timeout: 60_000 });
   await page.getByLabel("SQL").fill("SELECT 6 * 7 AS answer, version() LIKE 'PostgreSQL%' AS pg;");
   await page.getByRole("button", { name: "Run all" }).click();
-  await expect(page.getByText("1 row ·")).toBeVisible();
+  await expect(page.getByText("1 row ·")).toBeVisible({ timeout: 30_000 });
   await expect(page.locator("td").first()).toHaveText("42");
   expect(errors).toEqual([]);
 });

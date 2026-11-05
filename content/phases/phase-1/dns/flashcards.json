@@ -15,4 +15,3 @@
   { "id": "f14", "front": "What is anycast?", "back": "Multiple servers in different locations share the same IP address. BGP routing sends each packet to the nearest server by network topology.", "topicId": "dns-anycast" },
   { "id": "f15", "front": "Where is anycast commonly used?", "back": "DNS (root servers, public resolvers), CDNs, and DDoS mitigation. Works best for stateless or short-lived protocols.", "topicId": "dns-anycast" }
 ]
-

@@ -15,4 +15,3 @@
   { "id": "f14", "front": "How does QUIC solve TCP's HOL blocking?", "back": "QUIC runs over UDP and implements per-stream reliability. A lost packet in stream A only blocks stream A; other streams continue unaffected.", "topicId": "hol-blocking" },
   { "id": "f15", "front": "TCP Fast Open (TFO)?", "back": "A TCP extension that lets the client send data in the SYN packet on repeat connections, saving one RTT. Requires both client and server support.", "topicId": "tcp-handshake" }
 ]
-
