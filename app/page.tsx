@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { Mark, PhasePath } from "@/components/brand";
+import { Mark } from "@/components/brand";
+import { CurrentPhasePath } from "@/components/brand/CurrentPhasePath";
 import { LB_PREVIEW_MARKUP } from "@/components/landing/lb-preview-markup";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { getAllSections } from "@/lib/content";
 import { CASE_STUDY_COUNT, PHASES, weekLabel } from "@/lib/curriculum";
 import { REGISTRY } from "@/lib/simulators/registry";
 
@@ -10,6 +12,8 @@ import { REGISTRY } from "@/lib/simulators/registry";
 const SECTIONS = PHASES.reduce((n, p) => n + p.sections, 0);
 const SIMS = REGISTRY.length;
 const CASES = CASE_STUDY_COUNT;
+/** Every section in course order, for lighting the learner's current phase on the path. */
+const COURSE = getAllSections().map((s) => s.meta).sort((a, b) => a.phase - b.phase || a.order - b.order).map((m) => ({ id: m.id, phase: m.phase }));
 
 // The weekly loop, drawn as a request path: each move is a hop, and the last one feeds back into the first.
 const STEPS = [
@@ -50,7 +54,7 @@ export default function Landing() {
               </div>
             </div>
             <div className="heroimg" style={{ gridColumn: "7/13", gridRow: 1, position: "relative", marginTop: -16 }}>
-              <PhasePath active={3} />
+              <CurrentPhasePath sections={COURSE} />
             </div>
             <div style={{ gridColumn: "1/7" }}>
               <table className="parts">

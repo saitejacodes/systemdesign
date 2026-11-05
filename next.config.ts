@@ -7,9 +7,11 @@ import { LAB_WORKER_CSP, PAGE_CSP, SECURITY_HEADERS } from "./lib/security/csp";
 // No COOP/COEP: nothing uses SharedArrayBuffer (PGlite and Pyodide run single-threaded here; DECISIONS.md, Prompt 24).
 const nextConfig: NextConfig = withSerwist({
   poweredByHeader: false,
-  // lib/content reads folders by computed path, so the tracer includes the whole project in server functions.
-  // Keep design exports, prompts and test specs out of the deployment.
-  outputFileTracingExcludes: { "/*": ["design/**", "prompts/**", "tests/e2e/**", ".github/**", "tsconfig.tsbuildinfo", "*.md"] },
+  // lib/content reads folders by computed path, so the tracer guesses at which files server functions need.
+  // Ship all of content/ explicitly (on-demand pages read lesson and solution MDX), and keep design exports,
+  // prompts and test specs out of the deployment.
+  outputFileTracingIncludes: { "/*": ["content/**/*"] },
+  outputFileTracingExcludes: { "/*": ["design/**", "prompts/**", "tests/e2e/**", ".github/**", "tsconfig.tsbuildinfo"] },
   turbopack: {
     rules: {
       "*.css": {
