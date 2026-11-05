@@ -95,7 +95,7 @@ export function DashboardView({ weeks, sections }: { weeks: PlanWeek[]; sections
         </section>
         <section aria-labelledby="int-h" className="grid content-start gap-3">
           <h2 id="int-h" className="fm-cap border-b border-ink pb-1">Interview attempts · {interviews.length}</h2>
-          {interviews.length === 0 ? <p className="text-ink-muted">No mock interviews yet. They unlock with Interview Mode in week 14.</p> : (
+          {interviews.length === 0 ? <p className="text-ink-muted">No mock interviews yet. They are part of week 14; to try one now, open a <Link href="/case-studies">case study</Link> and press Mock interview.</p> : (
             <ul className="grid gap-2" aria-label="Score trend per case">
               {interviewTrends(interviews).map((t) => (
                 <li key={t.caseId} className="grid gap-0.5">

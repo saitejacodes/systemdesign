@@ -8,6 +8,7 @@ export function Diagram({ chart, label }: { chart: string; label: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const id = "m" + useId().replace(/[^a-zA-Z0-9]/g, "");
   const [error, setError] = useState<string | null>(null);
+  const [drawn, setDrawn] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -36,7 +37,7 @@ export function Diagram({ chart, label }: { chart: string; label: string }) {
       });
       try {
         const { svg } = await mermaid.render(id + Date.now(), chart);
-        if (alive && ref.current) ref.current.innerHTML = svg;
+        if (alive && ref.current) { ref.current.innerHTML = svg; setDrawn(true); }
       } catch (e) {
         if (alive) setError((e as Error).message);
       }
@@ -48,5 +49,10 @@ export function Diagram({ chart, label }: { chart: string; label: string }) {
   }, [chart, id]);
 
   if (error) return <p className="fm-help is-error">■ Diagram failed to render: {error}</p>;
-  return <div ref={ref} role="img" aria-label={label} className="flex min-h-24 justify-center [&_svg]:max-w-full" />;
+  return (
+    <div className="relative">
+      {!drawn && <span className="fm-cap absolute inset-0 grid place-items-center" aria-hidden>Drawing diagram…</span>}
+      <div ref={ref} role="img" aria-label={label} className="flex min-h-24 justify-center [&_svg]:max-w-full" />
+    </div>
+  );
 }

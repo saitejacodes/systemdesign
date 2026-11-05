@@ -58,5 +58,6 @@ export const ROUTES = [
   "/resources",
   "/capstone",
   "/settings",
-  "/about"
+  "/about",
+  "/offline" // the service worker's fallback for pages not yet cached
 ];

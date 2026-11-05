@@ -28,6 +28,11 @@ export function GlossaryList({ terms }: { terms: Term[] }) {
           ),
         )}
       </nav>
+      {shown.length === 0 && (
+        <p className="m-0 text-ink-muted" data-testid="glossary-empty">
+          No term or definition contains “{f}”. Try a shorter word, or <button type="button" className="underline" onClick={() => setF("")}>clear the filter</button> and search lessons too from <Link href={`/search?q=${encodeURIComponent(f)}`}>Search</Link>.
+        </p>
+      )}
       {groups.map(([l, items]) => (
         <section key={l} id={`letter-${l}`} aria-labelledby={`h-${l}`} className="scroll-mt-4">
           <h2 id={`h-${l}`} className="fm-h2 mb-3 border-b border-ink pb-1">{l}</h2>
