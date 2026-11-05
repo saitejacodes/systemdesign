@@ -14,7 +14,7 @@ Every delivery guarantee is built from one mechanism: the <Term slug="message-ac
 
 **Amazon SQS** uses a <Term slug="visibility-timeout">visibility timeout</Term>. When a consumer receives a message, SQS doesn't delete it; it hides it from other consumers for the timeout period (30 seconds by default, configurable up to 12 hours). If the consumer calls `DeleteMessage` before the timeout ends, the message is gone. If it doesn't (it crashed, or it's still working), the message becomes visible again and another consumer receives it. A consumer that knows it needs longer can call `ChangeMessageVisibility` to extend the timeout.
 
-<Figure caption="FIG. 9.1 · SQS VISIBILITY TIMEOUT · A SLOW CONSUMER CAUSES A DUPLICATE">
+<Figure caption="Figure 9.1 · SQS visibility timeout · A slow consumer causes a duplicate">
 <Diagram label="Consumer A receives a message and takes longer than the 30 second visibility timeout, so consumer B receives it again and both process it" chart={`sequenceDiagram
     participant A as Consumer A
     participant Q as SQS queue
@@ -151,7 +151,7 @@ Kafka added "exactly-once semantics" in version 0.11 (2017). It's built from two
 
 So "consumed input message X, produced output message Y" either happens completely or not at all. Downstream consumers set `isolation.level=read_committed` so they never see messages from aborted transactions. Kafka Streams wraps all of this behind one setting, `processing.guarantee=exactly_once_v2`.
 
-<Figure caption="FIG. 9.2 · KAFKA TRANSACTION · OUTPUT AND OFFSET COMMIT TOGETHER">
+<Figure caption="Figure 9.2 · Kafka transaction · Output and offset commit together">
 <Diagram label="A Kafka application reads from an input topic, writes to an output topic and commits its input offset in one transaction" chart={`sequenceDiagram
     participant App as Stream app
     participant In as Topic: payments

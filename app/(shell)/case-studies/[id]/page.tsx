@@ -20,7 +20,7 @@ export default async function Page({ params }: PageProps<"/case-studies/[id]">) 
   const tp = meta.trafficProfile;
   return (
     <>
-      <PageHeader code="C-00" spec={`Case study · ${meta.title}`} before={meta.title} em="worked" after="." lede={meta.summary}>
+      <PageHeader title={meta.title} lede={meta.summary}>
         <div className="flex flex-wrap gap-2">
           <Link href={`/interview/${meta.id}`} className="fm-btn fm-btn--primary">Mock interview</Link>
           {templateById(meta.id) && <Link href={`/studio/new?template=${meta.id}`} className="fm-btn fm-btn--tool">Practise in Design Studio</Link>}

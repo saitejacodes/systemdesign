@@ -1,12 +1,9 @@
 import Link from "next/link";
-import { FigureCaption } from "@/components/brand";
 
 export interface ErrorStateProps {
-  /** Caption parts, e.g. ["ERR", "SIMULATOR"]. */
-  caption: string[];
-  before: string;
-  em: string;
-  after?: string;
+  /** The status line, written like a log entry: "unhandled error · simulator". */
+  status: string;
+  title: string;
   message: string;
   retry?: () => void;
   /** Server-rendered alternative to `retry`: a plain link (no JavaScript needed, used by the offline page). */
@@ -23,16 +20,16 @@ export interface ErrorStateProps {
 export const digestOf = (error: unknown) => (typeof error === "object" && error && "digest" in error && typeof error.digest === "string" ? error.digest : undefined);
 
 /**
- * Field Manual error / offline panel shared by every error boundary and the offline fallback.
+ * Error / offline panel shared by every error boundary and the offline fallback.
  * Not a client module itself: error boundaries (client) pass `retry`; the offline page (server) passes `retryHref`.
  */
-export function ErrorState({ caption, before, em, after = ".", message, retry, retryHref, retryLabel = "Try again", home = { href: "/", label: "Back to the start" }, digest, standalone = false }: ErrorStateProps) {
+export function ErrorState({ status, title, message, retry, retryHref, retryLabel = "Try again", home = { href: "/", label: "Back to the start" }, digest, standalone = false }: ErrorStateProps) {
   const body = (
     <div className="grid w-full max-w-xl gap-6" role="alert" aria-live="assertive">
-      <FigureCaption parts={caption} />
-      <h1 className={standalone ? "fm-h1 max-sm:text-[44px]" : "fm-h2"}>{before} <span className="fm-em">{em}</span>{after}</h1>
+      <p className="fm-mono m-0 inline-flex items-center gap-2"><span aria-hidden className="inline-block size-2 rounded-full" style={{ background: status.startsWith("offline") ? "var(--status-hot)" : "var(--status-over)" }} />{status}</p>
+      <h1 className={standalone ? "fm-h1 max-sm:text-[44px]" : "fm-h2"}>{title}</h1>
       <p className="m-0 max-w-[60ch] text-ink-muted">{message}</p>
-      {digest && <p className="fm-cap m-0">Ref · {digest}</p>}
+      {digest && <p className="fm-mono m-0 text-ink-muted">digest {digest}</p>}
       <div className="flex flex-wrap gap-2">
         {retry && <button type="button" className="fm-btn fm-btn--primary" onClick={retry}>{retryLabel} <span className="arr">↻</span></button>}
         {retryHref !== undefined && <a className="fm-btn fm-btn--primary no-underline" href={retryHref}>{retryLabel} <span className="arr">↻</span></a>}

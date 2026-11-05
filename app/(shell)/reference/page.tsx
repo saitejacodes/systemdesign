@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { getCheatSheets } from "@/lib/content";
-import { sheetCode } from "@/lib/content/cheatsheets";
 import { CHEATSHEET_GROUPS } from "@/lib/content/schemas";
 
 export const metadata: Metadata = { title: "Reference" };
@@ -11,7 +10,7 @@ export default function Page() {
   const sheets = getCheatSheets();
   return (
     <>
-      <PageHeader code="R-00" spec="Reference" before="The" em="cheat" after=" sheets." lede="One- or two-page spec sheets to revise from and print: the numbers, the building blocks, the distributed-systems rules and the interview routine, each agreeing with the lessons it summarises." />
+      <PageHeader title="The cheat sheets" lede="One- or two-page spec sheets to revise from and print: the numbers, the building blocks, the distributed-systems rules and the interview routine, each agreeing with the lessons it summarises." />
       <div className="grid gap-10 px-4 py-6 sm:px-8">
         {CHEATSHEET_GROUPS.map((group) => {
           const list = sheets.filter((s) => s.meta.group === group);
@@ -22,8 +21,7 @@ export default function Page() {
               <h2 id={hid} className="fm-cap border-b-2 border-ink pb-2 !text-ink">{group} · {list.length}</h2>
               <ol className="grid gap-0">
                 {list.map((s) => (
-                  <li key={s.slug} className="grid gap-1 border-b border-line py-4 sm:grid-cols-[4rem_1fr] sm:items-baseline sm:gap-4">
-                    <span className="fm-cap">{sheetCode(s.meta.order)}</span>
+                  <li key={s.slug} className="grid gap-1 border-b border-line py-4 ">
                     <div className="grid gap-1">
                       <Link href={`/reference/${s.slug}`} className="fm-h4">{s.meta.title}</Link>
                       <p className="text-ink-muted">{s.meta.summary}</p>

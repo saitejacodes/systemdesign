@@ -4,9 +4,8 @@ import { digestOf, ErrorState } from "@/components/layout/ErrorState";
 export default function ErrorBoundary({ error, retry }: { error: unknown; retry: () => void }) {
   return (
     <ErrorState
-      caption={["ERR", "LESSON"]}
-      before="This lesson"
-      em="jammed"
+      status="unhandled error · lesson"
+      title="This lesson failed to load"
       message="Part of this lesson failed to render. Your checkpoints and quiz scores are saved; try again, or open the phase overview."
       retry={retry}
       digest={digestOf(error)}

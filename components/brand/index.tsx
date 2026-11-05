@@ -121,20 +121,37 @@ export function PhasePath({ active, labels = true, interactive = true, className
   );
 }
 
+/** Geometry of the brand mark on a 32-unit tile: one node fanning out to two servers. scripts/make-icons.mjs draws the same shapes. */
+export const MARK_PATHS = {
+  tile: { width: 32, height: 32, rx: 7 },
+  wires: "M16 11.5 L9 20 M16 11.5 L23 20",
+  node: { cx: 16, cy: 10, r: 4.25 },
+  servers: [{ x: 4.5, y: 19, width: 9, height: 8, rx: 1.75 }, { x: 18.5, y: 19, width: 9, height: 8, rx: 1.75 }],
+};
+
+/** The brand mark: one request node fanning out to two servers. Inverts with the theme. */
+export function Mark({ size = 24 }: { size?: number }) {
+  const m = MARK_PATHS;
+  return (
+    <svg viewBox="0 0 32 32" width={size} height={size} aria-hidden="true" style={{ flex: "none" }}>
+      <rect {...m.tile} style={{ fill: "var(--ink)" }} />
+      <path d={m.wires} style={{ stroke: "var(--paper)", strokeWidth: 2, fill: "none" }} />
+      <circle {...m.node} style={{ fill: "var(--cobalt)", stroke: "var(--paper)", strokeWidth: 1.75 }} />
+      {m.servers.map((r) => <rect key={r.x} {...r} style={{ fill: "var(--paper)" }} />)}
+    </svg>
+  );
+}
+
 export function Wordmark() {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-      <svg viewBox="0 0 28 22" width="28" height="22" aria-hidden="true">
-        <polygon points="14,1 27,7.5 14,14 1,7.5" style={{ fill: "var(--cobalt)", stroke: "var(--ink)", strokeWidth: 1.25 }} />
-        <polygon points="1,11.5 14,18 27,11.5" style={{ fill: "none", stroke: "var(--ink)", strokeWidth: 1.25 }} />
-        <polygon points="1,15 14,21.5 27,15" style={{ fill: "none", stroke: "var(--ink)", strokeWidth: 1.25 }} />
-      </svg>
-      <span style={{ fontWeight: 800, fontSize: 19, letterSpacing: "-.03em" }}>SysDesign Lab</span>
+      <Mark size={26} />
+      <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-.02em" }}>SysDesign Lab</span>
     </span>
   );
 }
 
-/** The one italic serif cobalt word in a headline. */
+/** Kept for old call sites: renders its words plainly (the italic accent word was retired, DECISIONS "Design revision"). */
 export function Em({ children }: { children: ReactNode }) {
   return <span className="fm-em">{children}</span>;
 }

@@ -46,7 +46,7 @@ traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 
 The last field is the **trace flags**; the lowest bit is the "sampled" flag, so `01` means the caller is recording this trace and `00` means it is not. An all-zero trace ID or parent ID is invalid. A second header, `tracestate`, carries vendor-specific key-value pairs alongside it. A separate W3C header, `baggage`, carries application-defined key-value pairs (such as a tenant ID) that every downstream service can read; anything put in baggage travels in every request header, so keep it small and never put secrets in it.
 
-<Figure caption="FIG. 1 · ONE TRACE ID, NEW PARENT ID AT EVERY HOP">
+<Figure caption="Figure 1 · One trace ID, new parent ID at every hop">
   <Diagram label="The gateway starts a trace with ID 4bf9 and span A. It calls orders with parent A; orders creates span B and calls payments with parent B; payments creates span C. Every span shares trace ID 4bf9." chart={`sequenceDiagram
     participant G as Gateway
     participant O as Orders

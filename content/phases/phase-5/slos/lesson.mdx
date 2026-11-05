@@ -226,7 +226,7 @@ The SRE workbook includes an example policy. Its core rules, paraphrased:
 - If one class of outage uses more than 20% of the budget in a quarter, it goes on the team's planning priorities for the next quarter.
 - Disagreements about the calculation or the policy go up to a named executive, so the argument has an end.
 
-<Figure caption="FIG. 4.1 · ERROR BUDGET STATES · WHAT THE TEAM DOES IN EACH">
+<Figure caption="Figure 4.1 · Error budget states · What the team does in each">
   <Diagram label="Healthy: budget remaining, feature work and normal releases proceed. When burn rate alerts or a big incident spend a large share, the service moves to At risk, where releases slow down and reliability work is prioritised. When the budget is exhausted, it moves to Frozen, where only fixes and security patches ship. As the rolling window moves past the bad days and the budget recovers, it returns to At risk and then Healthy." chart={`stateDiagram-v2
     [*] --> Healthy
     Healthy --> AtRisk: large share of budget spent

@@ -117,7 +117,7 @@ An <Term slug="inverted-index">inverted index</Term> maps each term to its posti
 
 ## High-level design
 
-<Figure caption="FIG. 1 · SEARCH ENGINE · INDEXING PIPELINE AND QUERY PATH">
+<Figure caption="Figure 1 · Search engine · Indexing pipeline and query path">
   <Diagram label="The crawler's page-fetched events feed indexers that write hourly delta segments to object storage and page text to doc servers; a weekly batch rebuilds base segments. Searches reach a query service in three zones that checks a result cache, scatters the query to one row of 200 index shards, merges and reranks, and fetches snippets from doc servers." chart={`flowchart LR
     CR[(Crawled WARC files)] -.->|page-fetched events| K[[Kafka]]
     K -.-> IX[Indexers 40 x 8 cores]

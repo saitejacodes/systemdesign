@@ -18,7 +18,7 @@ The unit to understand is the <Term slug="execution-environment">execution envir
 2. **Invoke.** The runtime calls your handler with one event. When the handler returns, the environment stays alive, frozen between invocations, so the next event can reuse it. Global variables, open connections and files in `/tmp` survive while the environment lives.
 3. **Shutdown.** After a period of no use, or whenever the platform decides (to rebalance, patch or replace hosts), the environment is destroyed. You are not told in advance, and there is no guaranteed lifetime.
 
-<Figure caption="FIG. 1.1 · EXECUTION ENVIRONMENT LIFECYCLE · ONE INVOCATION AT A TIME">
+<Figure caption="Figure 1.1 · Execution environment lifecycle · One invocation at a time">
   <Diagram label="State diagram of a function execution environment: it is created and initialised, then alternates between idle and invoking, and is eventually shut down by the platform." chart={`stateDiagram-v2
     [*] --> Init: first request, no idle environment
     Init --> Invoking: init code done

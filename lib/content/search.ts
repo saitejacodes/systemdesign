@@ -11,7 +11,7 @@ export function searchDocs(): SearchDoc[] {
   const docs: SearchDoc[] = [];
   for (const s of getAllSections()) {
     const href = sectionHref(s.meta);
-    const num = `§${s.meta.phase}.${s.meta.order}`;
+    const num = `${s.meta.phase}.${s.meta.order}`;
     // One document per H2 so results land on the right heading.
     for (const chunk of s.lesson.split(/^## /m).slice(1)) {
       const [title, ...rest] = chunk.split("\n");

@@ -51,7 +51,7 @@ Alice and Bob publicly agree on a common base colour, say yellow. Each secretly 
 
 Because TLS 1.3 always uses fresh (ephemeral) Diffie–Hellman keys for each connection, it gives <Term slug="forward-secrecy">forward secrecy</Term>: if an attacker records your encrypted traffic today and steals the server's private key next year, they still cannot decrypt the old recordings. The certificate's private key is only used to *prove identity* (sign the handshake), not to encrypt the session key. Older TLS setups that used RSA key transport did not have this property, which is one reason TLS 1.3 removed it.
 
-<Figure caption="FIG. 9.1 · TLS 1.3 HANDSHAKE · ONE ROUND TRIP">
+<Figure caption="Figure 9.1 · TLS 1.3 handshake · One round trip">
   <Diagram label="TLS 1.3 handshake completes in one round trip, compared to two for TLS 1.2." chart={`sequenceDiagram
     participant Client
     participant Server
@@ -112,7 +112,7 @@ TLS adds two costs: **round trips** to set up (1 for TLS 1.3, 2 for TLS 1.2, on 
 
 In a typical deployment, TLS is terminated at the load balancer or reverse proxy, not at each application server:
 
-<Figure caption="FIG. 9.2 · TLS TERMINATES AT THE LOAD BALANCER">
+<Figure caption="Figure 9.2 · TLS terminates at the load balancer">
   <Diagram label="TLS terminates at the load balancer. Traffic between the LB and app servers is plain HTTP within a private network." chart={`flowchart LR
     Client -->|HTTPS| LB["Load balancer<br/>(TLS terminated)"]
     LB -->|HTTP| App1["App server 1"]

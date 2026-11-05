@@ -98,7 +98,7 @@ The practical pipeline:
 
 <Term slug="llm-guardrail">Guardrails</Term> are checks that run around the model call, separate from the prompt, to block or rewrite unsafe inputs and outputs. They exist because instructions in a prompt are not an enforcement mechanism: the model usually follows them, but not always.
 
-<Figure caption="FIG. 11.1 · GUARDRAILS AROUND A MODEL CALL">
+<Figure caption="Figure 11.1 · Guardrails around a model call">
   <Diagram label="User input passes input checks, then the model, then output checks, before the response returns. Failing input checks returns a refusal; failing output checks returns a safe fallback." chart={`sequenceDiagram
     participant U as User
     participant IN as Input checks

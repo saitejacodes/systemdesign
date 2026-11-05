@@ -77,7 +77,7 @@ export function ReviewQueue({ cards }: { cards: CardContent[] }) {
         <div className="fm-card p-6">
           <p className="fm-h4 m-0">Nothing due right now.</p>
           <p className="m-0 mt-2 text-ink-muted">{states.length === 0 ? "Open a lesson and press “Add all to review” under its flashcards to start." : "Come back tomorrow, or add another lesson's cards."}</p>
-          {states.length === 0 && <Link href="/phase/1/client-server" className="mt-3 inline-block">Start with §1.1 Client–server →</Link>}
+          {states.length === 0 && <Link href="/phase/1/client-server" className="mt-3 inline-block">Start with lesson 1.1 Client–server →</Link>}
         </div>
       ) : (
         <div className="grid gap-4">

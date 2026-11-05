@@ -83,7 +83,7 @@ The costs are real, which is why event sourcing is a tradeoff and not a default:
 
 <Term slug="cqrs">CQRS</Term> (Command Query Responsibility Segregation) means using **different models for writes and reads**. The write side validates commands and enforces rules on a model shaped for correctness. The read side serves queries from one or more models shaped for exactly those queries: a denormalised table for the order history page, a search index for product search, a precomputed counter for the dashboard. Each read model is a <Term slug="projection">projection</Term>, kept up to date by consuming the events the write side emits.
 
-<Figure caption="FIG. 12.1 · CQRS: ONE WRITE MODEL, SEVERAL READ MODELS FED BY EVENTS">
+<Figure caption="Figure 12.1 · CQRS: one write model, several read models fed by events">
 <Diagram label="Commands go to a write model, which emits events consumed by projections that update separate read models used by queries" chart={`flowchart LR
   C["Commands"] --> W["Write model<br/>validates and stores"]
   W -->|"events"| B["Event stream"]
@@ -136,7 +136,7 @@ Order 991 exists, the customer was told it succeeded, and no other service ever 
 
 Now the rest of the system believes in an order that doesn't exist. Publishing *inside* an open transaction just before `COMMIT` has the same problem: the commit can still fail after the event is out.
 
-<Figure caption="FIG. 12.2 · THE DUAL WRITE: DATABASE COMMIT SUCCEEDS, PUBLISH FAILS">
+<Figure caption="Figure 12.2 · The dual write: database commit succeeds, publish fails">
 <Diagram label="The order service commits to the database, then its publish to the broker fails, so downstream services never learn about the order" chart={`sequenceDiagram
     participant S as Order service
     participant DB as Database
@@ -174,7 +174,7 @@ FOR UPDATE SKIP LOCKED;
 UPDATE outbox SET published_at = now() WHERE id IN (...);
 ```
 
-<Figure caption="FIG. 12.3 · THE OUTBOX: ONE TRANSACTION, THEN A RELAY PUBLISHES">
+<Figure caption="Figure 12.3 · The outbox: one transaction, then a relay publishes">
 <Diagram label="The service writes the order and the outbox row in one transaction; a relay later reads the outbox, publishes to the broker, and marks the row published" chart={`sequenceDiagram
     participant S as Order service
     participant DB as Database

@@ -4,7 +4,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { LabExplanation } from "@/components/labs/LabExplanation";
-import { labCode } from "@/components/labs/labCode";
 import { LabWorkbench } from "@/components/labs/LabWorkbench";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { getSectionById, sectionHref } from "@/lib/content";
@@ -24,14 +23,12 @@ export default async function Page({ params }: PageProps<"/simulators/code-labs/
   if (!lab) notFound();
   const { meta } = lab;
   const lessons = meta.sectionIds.map((id) => getSectionById(id)).filter((s) => !!s);
-  const words = meta.title.split(" ");
-  const em = words.pop() ?? meta.title;
   return (
     <>
-      <PageHeader code={labCode(meta.order)} spec="Code lab" before={words.join(" ")} em={em} lede={meta.summary}>
+      <PageHeader title={meta.title} lede={meta.summary}>
         {lessons.length > 0 && (
           <ul className="flex flex-wrap gap-x-5 gap-y-1" aria-label="Related lessons">
-            {lessons.map((s) => <li key={s.meta.id}><Link href={sectionHref(s.meta)} className="fm-cap">Lesson · §{s.meta.phase}.{s.meta.order} {s.meta.title} →</Link></li>)}
+            {lessons.map((s) => <li key={s.meta.id}><Link href={sectionHref(s.meta)} className="fm-cap">Lesson {s.meta.phase}.{s.meta.order} {s.meta.title} →</Link></li>)}
           </ul>
         )}
       </PageHeader>

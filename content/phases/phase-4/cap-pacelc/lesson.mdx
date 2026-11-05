@@ -20,7 +20,7 @@ The <Term slug="cap-theorem">CAP theorem</Term> was presented by Eric Brewer as 
 
 With those definitions, the theorem says: **in a system where a <Term slug="network-partition">network partition</Term> can occur, you cannot guarantee both linearizable consistency and availability during that partition.** The proof is short. Put two replicas, G1 and G2, on opposite sides of a partition. A client writes `x = 1` to G1. Another client then reads `x` from G2. To be available, G2 must answer. It cannot have heard about the write, because no messages cross the partition, so it answers with the old value, which violates linearizability. To be linearizable, G2 would have to wait or refuse, which violates availability.
 
-<Figure caption="FIG. 1.1 · THE CAP PROOF IN ONE PICTURE · G2 MUST CHOOSE">
+<Figure caption="Figure 1.1 · The CAP proof in one picture · G2 must choose">
   <Diagram label="Client 1 writes x=1 to G1. Replication to G2 is lost in the partition. Client 2 reads x from G2, which must either answer with the stale value 0 or refuse." chart={`sequenceDiagram
     participant C1 as Client 1
     participant G1 as Replica G1

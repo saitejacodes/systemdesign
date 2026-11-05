@@ -25,7 +25,7 @@ export function SimGrid() {
             return (
               <li key={s.id}>
                 <Link href={`/simulators/${s.id}`} className="fm-card block h-full no-underline" style={{ color: "var(--ink)" }}>
-                  <div className="fm-card__head"><span>{s.code} · Phase {s.phase}</span><span>{passed}/{s.challengeIds.length} challenges</span></div>
+                  <div className="fm-card__head"><span>Phase {s.phase}</span><span>{passed}/{s.challengeIds.length} challenges</span></div>
                   <div className="fm-card__body grid gap-3">
                     <h2 className="text-[20px] font-semibold">{s.title}</h2>
                     <p className="text-[15px] text-ink-muted">{s.summary}</p>

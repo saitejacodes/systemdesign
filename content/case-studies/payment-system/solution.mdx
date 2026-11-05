@@ -134,7 +134,7 @@ A wide-column store such as Cassandra would scale writes further but gives up mu
 
 ## High-level design
 
-<Figure caption="FIG. 1 · PAYMENT SYSTEM · REFERENCE ARCHITECTURE">
+<Figure caption="Figure 1 · Payment system · Reference architecture">
   <Diagram label="A load balancer spreads buyer and seller requests over 48 payments API instances in three zones. The API writes to Postgres before and after authorizing with one of two PSPs. An outbox relay feeds Kafka for capture and status workers; reconciliation and payout jobs read the ledger." chart={`flowchart LR
     B[Buyers] --> LB[Load balancer]
     S[Sellers] --> LB

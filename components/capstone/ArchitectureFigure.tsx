@@ -26,7 +26,7 @@ const line = { stroke: "var(--ink)", strokeWidth: 1.25, fill: "none" } as const;
 const hot = { stroke: "var(--cobalt)", strokeWidth: 2, fill: "none" } as const;
 const dash = { ...line, strokeDasharray: "4 4" } as const;
 
-/** The stage 10 system, drawn as a Field Manual figure. Request path in cobalt; dashed = optional or async. */
+/** The stage 10 system, drawn as a technical figure. Request path in cobalt; dashed = optional or async. */
 export function ArchitectureFigure() {
   return (
     <figure className="grid gap-3">
@@ -65,7 +65,7 @@ export function ArchitectureFigure() {
           ))}
         </svg>
       </div>
-      <FigureCaption parts={["FIG. K.1", "The platform at stage 10", "Cobalt = request path · dashed = optional or async"]} />
+      <FigureCaption parts={["Figure 1", "The platform at stage 10", "Cobalt is the request path; dashed is optional or async"]} />
     </figure>
   );
 }

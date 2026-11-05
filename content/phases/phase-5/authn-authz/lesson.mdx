@@ -45,7 +45,7 @@ This is the flow for anything with a user: web apps, single-page apps, mobile ap
 
 The weak spot was the code itself: on mobile, a malicious app registered for the same redirect URL scheme could intercept it. <Term slug="pkce">PKCE</Term> (Proof Key for Code Exchange, RFC 7636, pronounced "pixie") closes that hole. The client invents a random secret, the `code_verifier` (43 to 128 characters), and sends only its hash, `code_challenge = BASE64URL(SHA-256(code_verifier))` with `code_challenge_method=S256`, in the first redirect. At the token endpoint it must present the original verifier. An attacker who steals the code doesn't have the verifier, so the code is useless to them. RFC 9700 now recommends PKCE for every client, including confidential server-side ones.
 
-<Figure caption="FIG. 6.1 · AUTHORIZATION CODE + PKCE · CODE IN THE FRONT CHANNEL, TOKENS IN THE BACK">
+<Figure caption="Figure 6.1 · Authorization code + PKCE · Code in the front channel, tokens in the back">
   <Diagram label="The app sends the user to the authorization server with a code challenge, receives a one-time code on the redirect, then exchanges code plus verifier for tokens directly with the authorization server and calls the API with the access token." chart={`sequenceDiagram
     participant U as User browser
     participant C as Client app
@@ -155,7 +155,7 @@ With a 15-minute TTL the exposure is about 10 minutes. With a 24-hour TTL, a com
 
 **2. Refresh token rotation with reuse detection.** Each use of a refresh token returns a *new* refresh token and invalidates the old one. If an old one is ever presented again, someone has a copy, so the server revokes the whole token family. RFC 9700 requires public clients to rotate refresh tokens or bind them to the client.
 
-<Figure caption="FIG. 6.2 · REFRESH TOKEN ROTATION · REUSE REVEALS THE THEFT">
+<Figure caption="Figure 6.2 · Refresh token rotation · Reuse reveals the theft">
   <Diagram label="The attacker copies refresh token RT1. The real client uses RT1 first and gets RT2. When the attacker later presents RT1, the server sees a reused token and revokes the entire family, so RT2 also stops working and the user must log in again." chart={`sequenceDiagram
     participant C as Real client
     participant X as Attacker

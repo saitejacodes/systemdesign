@@ -74,7 +74,7 @@ A <Term slug="lamport-clock">Lamport clock</Term> is a single counter per proces
 - Before each local event or send, increment the counter. Attach it to outgoing messages.
 - On receiving a message with timestamp t, set the counter to max(counter, t) + 1.
 
-<Figure caption="FIG. 5.1 · LAMPORT TIMESTAMPS ACROSS THREE PROCESSES">
+<Figure caption="Figure 5.1 · Lamport timestamps across three processes">
   <Diagram label="Sequence: P1 at counter 1 sends to P2. P2 had counter 0, receives and sets counter to max(0,1)+1 = 2. P2 does a local event at 3 and sends to P3. P3 had a local event at 1, receives and sets max(1,3)+1 = 4. Separately P1 does a local event at 2, which is concurrent with P2's events." chart={`sequenceDiagram
     participant P1
     participant P2

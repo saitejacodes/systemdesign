@@ -34,7 +34,7 @@ Two rules make the table useful under time pressure.
 
 **Every block brings its watch-out column with it.** Adding a cache means you now owe the interviewer an invalidation story. Adding a queue means you owe an idempotency story. A good habit is to say the cost in the same sentence as the block: "I'll put a queue between checkout and email so a slow provider can't slow checkout; that makes delivery at-least-once, so the email worker dedupes on the order ID."
 
-<Figure caption="FIG. 3.1 · FROM PRESSURE TO BLOCK">
+<Figure caption="Figure 3.1 · From pressure to block">
   <Diagram label="A decision tree. Start from the main pressure found in estimation. Read pressure leads to cache, read replicas or CDN depending on whether reads are key lookups, varied queries or static bytes. Write pressure leads to sharding or a queue depending on whether writes must be synchronous. Large blobs lead to object storage plus CDN. Text search leads to an inverted index; meaning-based search leads to a vector index. Abusive or bursty clients lead to a rate limiter." chart={`flowchart TD
     P[Main pressure from estimation] --> R[Reads]
     P --> W[Writes]

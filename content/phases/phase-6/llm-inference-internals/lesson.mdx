@@ -20,7 +20,7 @@ A <Term slug="forward-pass">forward pass</Term> is one run of the model from inp
 3. **Final norm and the LM head.** A 4,096 × 32,000 matrix turns the last position's residual into 32,000 <Term slug="logits">logits</Term>: unnormalised scores, one per vocabulary token. Engines usually compute them only for the last position.
 4. **Sampling** turns logits into one chosen token, which is appended and fed back in as the next input.
 
-<Figure caption="FIG. 6.13 · ONE DECODE STEP THROUGH A DECODER-ONLY TRANSFORMER">
+<Figure caption="Figure 6.13 · One decode step through a decoder-only transformer">
   <Diagram label="Flowchart: a token ID is embedded into the residual stream, passes through 32 blocks of norm, attention (reading and appending to the KV cache) and MLP with residual adds, then a final norm and LM head produce logits, and a sampler picks the next token which loops back as input." chart={`flowchart LR
     T[Token ID] --> E[Embedding row: 4,096 numbers]
     E --> B1[Block 1: norm, attention, add, norm, MLP, add]

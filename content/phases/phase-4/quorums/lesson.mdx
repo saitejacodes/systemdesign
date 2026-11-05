@@ -115,7 +115,7 @@ The limitation is structural: read repair only fixes what is read. A key written
 
 <Term slug="anti-entropy">Anti-entropy</Term> is a background process that compares whole replicas and copies over whatever is missing, whether or not anyone reads it. The challenge is doing that without shipping every key across the network. Dynamo, Cassandra (`nodetool repair`) and Riak (active anti-entropy) use a <Term slug="merkle-tree">Merkle tree</Term>: each leaf is a hash of a range of keys, and each parent is a hash of its children. Two replicas compare their root hashes; if they match, the whole range is identical. If not, they compare children and descend only into subtrees that differ.
 
-<Figure caption="FIG. 3.1 · MERKLE COMPARISON · DESCEND ONLY WHERE HASHES DIFFER">
+<Figure caption="Figure 3.1 · Merkle comparison · Descend only where hashes differ">
   <Diagram label="Two replicas compare Merkle trees. The roots differ, so they compare the left and right children. The left matches and is skipped. The right differs, so they descend until they find one differing leaf range, then exchange only those keys." chart={`sequenceDiagram
     participant A as Replica A
     participant B as Replica B

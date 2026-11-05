@@ -56,7 +56,7 @@ What it shows: correct diagnosis, a specific mechanism, a number on the TTL and,
 
 What it shows: the same core mechanism as the mid-level answer, plus arithmetic (30,000 per second becomes about 0.3 per second against Redis), a second failure mode the interviewer did not ask about, the cost of the fix checked against an existing requirement, detection, a safe rollout, and an escalation path with its own trade-off. Each extra sentence is short and specific. None of it is a buzzword list.
 
-<Figure caption="FIG. 7.1 · THE HOT-KEY ANSWER, LAYER BY LAYER">
+<Figure caption="Figure 7.1 · The hot-key answer, layer by layer">
   <Diagram label="Thirty thousand redirects per second for one viral code arrive at nine link-service instances. Each instance answers from its in-process LRU cache; only one refresh per instance every 30 seconds reaches the single Redis shard holding that code. On a cold miss, request coalescing collapses a thousand concurrent misses into one key-value store read. The mid-level answer stops at the in-process cache; the senior answer adds coalescing, a per-key rate metric with an alert, and a flagged rollout." chart={`flowchart LR
     U[30,000 req/s for one code] --> LB[Load balancer]
     LB --> I1[Link service x9]

@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Settings" };
 export default function Page() {
   return (
     <>
-      <PageHeader code="X-00" spec="Settings" before="Make it" em="yours" after="." lede="Study plan, review limits, and your data: export, import, reset." />
+      <PageHeader title="Make it yours" lede="Study plan, review limits, and your data: export, import, reset." />
       <SettingsForm />
     </>
   );

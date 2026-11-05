@@ -73,7 +73,7 @@ The same arithmetic tells you when brute force is fine: 100,000 vectors × 768 d
 
 **Searching it.** Start at the single entry point on the top layer. Greedily hop to whichever neighbour is closest to the query until no neighbour improves; drop one layer and repeat from there. On layer 0, run a wider best-first search that keeps the **efSearch** best candidates seen so far, then return the top k. efSearch must be at least k, and it is the main query-time knob.
 
-<Figure caption="FIG. 6.1 · HNSW SEARCH · GREEDY DESCENT THROUGH THE LAYERS">
+<Figure caption="Figure 6.1 · HNSW search · Greedy descent through the layers">
   <Diagram label="A query enters at the top layer, greedily moves toward the query on each sparse upper layer, drops down a layer when no neighbour is closer, and finishes with a wider beam search on the dense bottom layer." chart={`flowchart TD
     E["Entry point on top layer"] --> L2["Layer 2: few nodes, long links. Greedy hop to the closest neighbour"]
     L2 -->|"no closer neighbour"| L1["Layer 1: more nodes. Continue greedy hops from where layer 2 ended"]

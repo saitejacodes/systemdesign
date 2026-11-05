@@ -140,7 +140,7 @@ rules:
 
 ## High-level design
 
-<Figure caption="FIG. 1 · METRICS AND ALERTING · TWO DOORS, ZONE-REPLICATED INGESTERS, SEPARATE ALERT PATH">
+<Figure caption="Figure 1 · Metrics and alerting · Two doors, zone-replicated ingesters, separate alert path">
 <Diagram label="Agents push through an ingest load balancer to stateless distributors in three zones, which hash each series to ingesters with one replica per zone. Ingesters cut 2-hour blocks into object storage, where a compactor deduplicates and downsamples them. Engineers query through a query load balancer to query services with a results cache, which read recent data from ingesters and older data from object storage. A ruler evaluates alert rules directly against the ingesters and sends alerts to a clustered alert manager, which pages through the external provider." chart={`flowchart LR
   H["Agents on 100k hosts"] --> ILB["Ingest LB"]
   ILB --> D["Distributors x3 zones"]

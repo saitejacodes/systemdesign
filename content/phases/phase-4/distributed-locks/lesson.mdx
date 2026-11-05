@@ -65,7 +65,7 @@ Every component behaved correctly. The lock service gave the lock to one client 
 
 A <Term slug="fencing-token">fencing token</Term> fixes this by moving the final check to the only component that sees both writes: the storage. Every time the lock service grants the lock, it also returns a number that strictly increases with each grant. Clients send the token with every write, and the storage rejects any write whose token is lower than the highest it has already accepted.
 
-<Figure caption="FIG. 8.1 · FENCING · THE STORAGE REJECTS THE PAUSED CLIENT">
+<Figure caption="Figure 8.1 · Fencing · The storage rejects the paused client">
   <Diagram label="Sequence diagram: client 1 gets token 33 and pauses; its lease expires; client 2 gets token 34 and writes; storage records 34; client 1 resumes and writes with token 33; storage rejects it because 33 is less than 34." chart={`sequenceDiagram
     participant C1 as Client 1
     participant L as Lock service

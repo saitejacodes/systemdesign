@@ -83,9 +83,9 @@ export function DashboardView({ weeks, sections }: { weeks: PlanWeek[]; sections
       </section>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Figure code="FIG. 1" title="Quiz accuracy, last 30" empty={accuracy.length ? undefined : "Finish a quiz to start this graph."}><AccuracyLine data={accuracy} /></Figure>
-        <Figure code="FIG. 2" title="Cards reviewed / day" empty={reviews.length ? undefined : "Review flashcards to fill this in."}><DailyBars data={days.map((d) => ({ day: short(d), v: reviewsByDay.get(d) ?? 0 }))} color="var(--phase-5)" label="Cards" /></Figure>
-        <Figure code="FIG. 3" title="Study minutes / day" empty={sessions.length ? undefined : "Minutes appear after time on lessons and simulators."}><DailyBars data={days.map((d) => ({ day: short(d), v: minutesByDay.get(d) ?? 0 }))} color="var(--phase-1)" label="Minutes" /></Figure>
+        <Figure title="Quiz accuracy, last 30 attempts" empty={accuracy.length ? undefined : "Finish a quiz to start this graph."}><AccuracyLine data={accuracy} /></Figure>
+        <Figure title="Cards reviewed per day" empty={reviews.length ? undefined : "Review flashcards to fill this in."}><DailyBars data={days.map((d) => ({ day: short(d), v: reviewsByDay.get(d) ?? 0 }))} color="var(--phase-5)" label="Cards" /></Figure>
+        <Figure title="Study minutes per day" empty={sessions.length ? undefined : "Minutes appear after time on lessons and simulators."}><DailyBars data={days.map((d) => ({ day: short(d), v: minutesByDay.get(d) ?? 0 }))} color="var(--phase-1)" label="Minutes" /></Figure>
       </div>
 
       <div className="grid gap-8 lg:grid-cols-2">

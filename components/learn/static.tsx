@@ -9,7 +9,7 @@ export function ResourceList({ items }: { items: Resource[] }) {
     <section aria-labelledby="res-h" className="my-10">
       <h2 id="res-h" className="fm-h4 mb-3">Further reading</h2>
       <table className="fm-parts">
-        <caption>Parts list · Resources</caption>
+        <caption className="sr-only">Resources for this lesson</caption>
         <thead><tr><th>Kind</th><th>Title</th><th style={{ textAlign: "right", paddingRight: 0 }}>Cost</th></tr></thead>
         <tbody>
           {items.map((r) => (

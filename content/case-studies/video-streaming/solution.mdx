@@ -142,7 +142,7 @@ Content-Type: application/json
 
 ## High-level design
 
-<Figure caption="FIG. 1 · VIDEO STREAMING · REFERENCE ARCHITECTURE">
+<Figure caption="Figure 1 · Video streaming · Reference architecture">
   <Diagram label="Creators upload parts straight to object storage with presigned URLs from the upload service, which then enqueues a transcoding DAG; transcode workers write renditions back and call the service to publish. Viewers fetch manifests and segments from a tiered CDN backed by object storage, call playback services in three zones that read play-info from Redis or the metadata store, and send events to collectors that feed zone-local Kafka buffers and view-count aggregators." chart={`flowchart LR
     CR[Creators] -->|init, complete| ULB[Upload LB]
     CR -->|PUT parts, presigned| OS[(Object storage)]

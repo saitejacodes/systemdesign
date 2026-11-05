@@ -16,7 +16,7 @@ A naming trap: in electrical terms, a **closed** circuit lets current flow and a
 
 A circuit breaker is a small state machine that wraps calls to one dependency.
 
-<Figure caption="FIG. 12.1 · THE CIRCUIT BREAKER STATE MACHINE">
+<Figure caption="Figure 12.1 · The circuit breaker state machine">
   <Diagram label="Closed: calls pass and outcomes are recorded. When the failure rate crosses the threshold, the breaker moves to Open, where calls fail fast. After the wait duration, it moves to Half-open, where a few trial calls pass. If they succeed, it returns to Closed. If they fail, it returns to Open." chart={`stateDiagram-v2
     [*] --> Closed
     Closed --> Open: failure rate over threshold

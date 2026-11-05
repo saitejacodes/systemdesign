@@ -72,7 +72,7 @@ The <Term slug="steady-state-hypothesis">steady-state hypothesis</Term> is the p
 
 Comparing the metric before and after the fault is weak, because traffic changes minute to minute. Stronger: split traffic into a **control** group and an **experiment** group of equal size at the same time, inject the fault only into the experiment group and compare the two. Any difference is caused by the fault, not by the time of day.
 
-<Figure caption="FIG. 15.1 · A CHAOS EXPERIMENT · HYPOTHESIS, FAULT, COMPARE, STOP">
+<Figure caption="Figure 15.1 · A chaos experiment · Hypothesis, fault, compare, stop">
   <Diagram label="Define the steady state and hypothesis, split a small slice of traffic into control and experiment groups, inject the fault into the experiment group only, then compare. If a stop condition fires, roll back. If the metric holds, confidence rises and the blast radius can grow. If it deviates, record a weakness and fix it." chart={`flowchart TD
     A[Define steady-state metric and tolerance] --> B[Write hypothesis: under fault X, metric stays within bounds]
     B --> C[Route 1 percent to control, 1 percent to experiment]

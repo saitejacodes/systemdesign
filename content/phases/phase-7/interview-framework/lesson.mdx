@@ -18,7 +18,7 @@ Each step produces something the next one consumes. That dependency chain is the
 | 6. Deep Dives | 2–3 hard sub-problems solved with options and a decision | Wrap-up |
 | 7. Wrap-up | Failure modes, what breaks at 10×, trade-offs restated as decisions | The interviewer's final impression |
 
-<Figure caption="FIG. 1.1 · THE SEVEN STEPS AND WHAT FLOWS BETWEEN THEM">
+<Figure caption="Figure 1.1 · The seven steps and what flows between them">
   <Diagram label="Seven steps in a row: Requirements feeds Estimation with targets; Estimation feeds API and Data Model with numbers; API feeds Data Model with access patterns; Data Model feeds High-Level Design with store choice; High-Level Design feeds Deep Dives with the riskiest components; Deep Dives feed Wrap-up with decisions. A feedback arrow from Deep Dives back to Requirements shows that a deep dive can revisit an assumption." chart={`flowchart LR
     R[1 Requirements] -->|targets| E[2 Estimation]
     E -->|peak numbers| A[3 API]
@@ -151,7 +151,7 @@ Candidate: *"I'm choosing 302 rather than 301 here and I'll justify it in a deep
 
 ### 20:00–30:00 · High-Level Design
 
-<Figure caption="FIG. 1.2 · THE BOARD AT MINUTE 30">
+<Figure caption="Figure 1.2 · The board at minute 30">
   <Diagram label="Visitors and creators reach a load balancer, then nine stateless link-service instances across three zones. Redirect path numbered 1 to 4: in-process cache, then Redis, then the key-value store on a miss, then a 302 response. Create path: conditional insert into the key-value store and deletion of any negative-cache entry. Click events go asynchronously to a Kafka topic and analytics consumers." chart={`flowchart LR
     V[Visitors] -->|1 GET code| LB[Load balancer]
     C[Creators] -->|POST links| LB

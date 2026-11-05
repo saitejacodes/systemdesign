@@ -49,7 +49,7 @@ The weakness of rolling: **for minutes, two versions serve traffic at once**, an
 
 A <Term slug="blue-green-deployment">blue-green deployment</Term>, described by Martin Fowler in 2010 (he credits Dan North and Jez Humble), runs two full production environments. Blue serves traffic; green gets the new version, is tested in place, and then the router switches all traffic to green. Blue stays up, idle, as the instant rollback.
 
-<Figure caption="FIG. 13.1 · BLUE-GREEN · THE SWITCH IS THE RELEASE">
+<Figure caption="Figure 13.1 · Blue-green · The switch is the release">
   <Diagram label="The router sends all traffic to blue (v1). Green (v2) is deployed and smoke-tested with no user traffic. The router switches to green. On a problem it switches back to blue, which was never touched. Both environments share one database." chart={`sequenceDiagram
     participant R as Router
     participant B as Blue (v1)
@@ -100,7 +100,7 @@ Small canaries see little traffic, so noise can swamp the signal. With 2,000 req
 
 So pick the step size and duration from the regression you need to detect. <Term slug="canary-analysis">Automated canary analysis</Term> does this properly: Netflix and Google open-sourced Kayenta in 2018 as part of Spinnaker. A detail from that design worth copying: compare the canary against a **freshly deployed baseline** of the old version at the same size, not against the long-running fleet, so differences like warm caches and process age do not masquerade as regressions.
 
-<Figure caption="FIG. 13.2 · CANARY STEPS · PROMOTE OR ABORT AT EACH GATE">
+<Figure caption="Figure 13.2 · Canary steps · Promote or abort at each gate">
   <Diagram label="A state diagram: deploy canary at 1 percent, analyse, then 5 percent, 25 percent and 100 percent, each followed by analysis. Any failed analysis goes to abort, which routes all traffic back to v1." chart={`stateDiagram-v2
     [*] --> Canary1: deploy v2 at 1%
     Canary1 --> Canary5: analysis passes (15 min)

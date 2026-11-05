@@ -131,7 +131,7 @@ SSE fits whenever the server pushes and the client mostly listens: notifications
 
 **How it works.** The client sends an HTTP request with `Upgrade: websocket` and a random `Sec-WebSocket-Key` header (a <Term slug="connection-upgrade">connection upgrade</Term>). If the server agrees, it answers `101 Switching Protocols` with a `Sec-WebSocket-Accept` value derived from that key, proving it really speaks WebSocket. From then on the TCP connection stops carrying HTTP and carries WebSocket frames instead, over `ws://` or, encrypted with TLS, `wss://`.
 
-<Figure caption="FIG. 12.1 · THE WEBSOCKET UPGRADE · THEN FULL-DUPLEX MESSAGES">
+<Figure caption="Figure 12.1 · The WebSocket upgrade · Then full-duplex messages">
   <Diagram label="After the HTTP upgrade, both client and server send messages freely over the WebSocket connection." chart={`sequenceDiagram
     participant Client
     participant Server
@@ -192,7 +192,7 @@ Picture a hotel chain where every guest has a phone line into one particular hot
 
 **Message routing.** If user A is connected to server 1 and user B to server 3, how does A's message reach B? Put a pub/sub system (Redis Pub/Sub, NATS, Kafka) between the connection servers. Server 1 publishes A's message on B's channel (or the chat room's channel). Server 3 subscribed to that channel when B connected, so it receives the message and pushes it down B's socket.
 
-<Figure caption="FIG. 12.2 · A PUB/SUB BUS ROUTES MESSAGES BETWEEN CONNECTION SERVERS">
+<Figure caption="Figure 12.2 · A pub/sub bus routes messages between connection servers">
   <Diagram label="A pub/sub bus routes messages between connection servers so clients on different servers can communicate." chart={`flowchart LR
     A["Client A"] --> S1["Conn server 1"]
     B["Client B"] --> S3["Conn server 3"]

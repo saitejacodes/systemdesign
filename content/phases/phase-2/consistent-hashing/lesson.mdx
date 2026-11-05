@@ -57,7 +57,7 @@ Every client that builds the ring from the same node list with the same hash fun
 
 When **a node is added**, it lands somewhere on the ring and takes over only the keys between itself and the previous node counter-clockwise. When **a node is removed**, its keys go to the next node clockwise. Every other key stays exactly where it was. On average only **1/N** of keys move, the minimum possible.
 
-<Figure caption="FIG. 14.1 · ADDING NODE E ONLY MOVES THE KEYS BETWEEN D AND E">
+<Figure caption="Figure 14.1 · Adding node E only moves the keys between D and E">
 <Diagram label="Ring with nodes A to D; new node E takes keys from its clockwise neighbour only" chart={`flowchart LR
   D["node-D"] -->|"keys in (D, E]"| E["node-E (new)"]
   E -->|"keys in (E, A]"| A["node-A (was serving D→A)"]

@@ -107,7 +107,7 @@ A <Term slug="service-mesh">service mesh</Term> (like Istio, Linkerd or Consul C
 Every diplomat (service) at a summit has a personal aide (the sidecar) who walks beside them everywhere. The aide translates (protocol handling), checks the other side's credentials and makes sure nobody listens in (mTLS), tries again politely if a message gets lost (retries), gives up if the other delegation hasn't answered in time (timeouts, circuit breaking), and writes down every conversation in the summit log (tracing and metrics). The diplomat just talks. The summit organisers (the service mesh control plane) brief all the aides centrally, so a new security rule reaches every delegation at once without retraining any diplomat. The cost: every conversation now passes through two aides, one on each side, which adds a little delay and a lot of aides to manage.
 </Callout>
 
-<Figure caption="FIG. 11.1 · SIDECAR PROXIES · MTLS BETWEEN PODS">
+<Figure caption="Figure 11.1 · Sidecar proxies · mTLS between pods">
   <Diagram label="Sidecar proxies handle cross-cutting concerns (TLS, retries, tracing) between services." chart={`flowchart LR
     subgraph Pod A
         AppA["Service A"] --> SideA["Sidecar proxy"]

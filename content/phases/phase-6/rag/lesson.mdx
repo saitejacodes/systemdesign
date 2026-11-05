@@ -8,7 +8,7 @@ The model is a fluent student sitting an open-book exam. It writes beautifully a
 
 The pipeline has two halves: an offline **ingestion** path that turns documents into a searchable index, and an online **query** path that runs per question.
 
-<Figure caption="FIG. 7.1 · RAG PIPELINE · INGESTION OFFLINE, QUERY ONLINE">
+<Figure caption="Figure 7.1 · RAG pipeline · Ingestion offline, query online">
   <Diagram label="Ingestion: source documents are parsed, chunked, embedded and written to a vector index and a keyword index. Query: the question is embedded and searched in both indexes, results are fused and reranked, a prompt is assembled within a token budget, and the model answers with citations." chart={`flowchart LR
     subgraph Ingestion
       S["Source docs"] --> P["Parse to clean text"] --> C["Chunk with overlap"] --> E["Embed chunks"]
@@ -123,7 +123,7 @@ Rules that hold up in production:
 
 <Term slug="citation-grounding">Citation grounding</Term> means every claim in the answer points to a source the user can open. Treat citations as data to verify, not decoration: check that each cited id was actually in the context (models can invent plausible ids), optionally check that the cited chunk contains the key phrase or number, and render links to the source document so a human can check in one click.
 
-<Figure caption="FIG. 7.2 · QUERY PATH · ONE QUESTION, END TO END">
+<Figure caption="Figure 7.2 · Query path · One question, end to end">
   <Diagram label="The app checks access, embeds the question, queries both indexes, fuses and reranks, assembles a budgeted prompt, calls the model, validates the cited ids against the context and returns the answer with links." chart={`sequenceDiagram
     participant U as User
     participant App as RAG service

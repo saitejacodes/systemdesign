@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FigureCaption, SpecLabel } from "@/components/brand";
 import { CapstoneChecklist } from "@/components/capstone/CapstoneChecklist";
 import { CapstoneMdx } from "@/components/capstone/CapstoneMdx";
 import { CodeBlock } from "@/components/learn/CodeBlock";
@@ -20,7 +19,6 @@ export async function generateMetadata({ params }: PageProps<"/capstone/[stage]"
   return { title: g ? `Capstone ${g.meta.stage}: ${g.meta.title}` : "Capstone" };
 }
 
-const pad = (n: number) => String(n).padStart(2, "0");
 
 const LANG: Record<string, string> = { ts: "ts", js: "js", mjs: "js", json: "json", jsonl: "json", yml: "yaml", yaml: "yaml", sql: "sql", sh: "bash", conf: "nginx", md: "markdown" };
 function langOf(file: string): string {
@@ -43,9 +41,9 @@ export default async function Page({ params }: PageProps<"/capstone/[stage]">) {
   return (
     <article className="px-4 pb-16 pt-8 sm:px-8">
       <header className="grid max-w-[68ch] gap-5 pb-8">
-        <FigureCaption parts={[`K-${pad(meta.stage)}`, `Capstone stage ${meta.stage} of 10`, `about ${meta.minutes} min`]} />
+        <span className="fm-cap">Capstone stage {meta.stage} of 10 · about {meta.minutes} min</span>
         <h1 className="fm-h1 max-sm:text-[40px]">{meta.title}</h1>
-        <SpecLabel code={`K-${pad(meta.stage)}`} parts={[meta.folder ?? "design review"]} note={meta.folder ? "cd into this folder" : "no code"} />
+        {meta.folder ? <p className="fm-mono m-0">cd {meta.folder}</p> : <p className="fm-cap m-0">Written design review, no code</p>}
         <p className="text-[18px] leading-relaxed">{meta.goal}</p>
         <p><Link href="/capstone">← All stages</Link></p>
       </header>

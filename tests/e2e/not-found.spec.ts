@@ -17,7 +17,7 @@ for (const url of UNKNOWN) {
   test(`${url} is a 404 with the not-found page`, async ({ page }) => {
     const res = await page.goto(url);
     expect(res?.status()).toBe(404);
-    await expect(page.getByRole("heading", { level: 1, name: /This page is missing/ })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: /No route matches this page/ })).toBeVisible();
     await expect(page.getByRole("link", { name: /Back to the start/ })).toBeVisible();
   });
 }

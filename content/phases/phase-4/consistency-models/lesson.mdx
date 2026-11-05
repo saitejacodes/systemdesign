@@ -10,7 +10,7 @@ Where it breaks down: in the analogy you can see that a delay exists. In a real 
 
 A <Term slug="consistency-model">consistency model</Term> is a contract between a data store and its clients: it defines which values a read is allowed to return, given the history of writes. A stronger model allows fewer outcomes, which is easier to program against, and costs more coordination, which means more latency and less availability during partitions. The models below are ordered from strongest to weakest.
 
-<Figure caption="FIG. 2.1 · THE LADDER · EACH RUNG ALLOWS MORE OUTCOMES AND NEEDS LESS COORDINATION">
+<Figure caption="Figure 2.1 · The ladder · Each rung allows more outcomes and needs less coordination">
   <Diagram label="Diagram: linearizable implies sequential, which implies causal, which implies the four session guarantees, which sit above eventual consistency. Linearizable and sequential cannot stay available during a partition; causal and weaker can." chart={`flowchart TD
     L["Linearizable: one copy, real-time order"] --> S["Sequential: one order for everyone, may lag real time"]
     S --> C["Causal: causes before effects; concurrent writes in any order"]

@@ -9,9 +9,8 @@ export default function OfflinePage() {
   return (
     <ErrorState
       standalone
-      caption={["NET", "OFFLINE"]}
-      before="You're"
-      em="offline"
+      status="offline · no network"
+      title="You're offline"
       message="This page hasn't been saved for offline use yet. Lessons, simulators and code labs you've opened before still work without a connection; AI features need one. Reconnect and try again."
       // An empty href is the current URL, so this reloads the page the learner asked for.
       retryHref=""

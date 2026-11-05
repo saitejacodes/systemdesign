@@ -6,9 +6,8 @@ export default function ErrorBoundary({ error, retry }: { error: unknown; retry:
   return (
     <ErrorState
       standalone
-      caption={["ERR", "PAGE FAULT"]}
-      before="This page hit a"
-      em="fault"
+      status="unhandled error · page"
+      title="This page hit an error"
       message="Something went wrong while drawing this page. Your progress is saved in this browser and is not affected."
       retry={retry}
       digest={digestOf(error)}

@@ -17,7 +17,7 @@ export default function Page() {
 
   const items: LibraryItem[] = entries.map(({ resource: r, phases, sectionIds }) => ({
     id: r.id, title: r.title, author: r.author, kind: r.kind, url: r.url, why: r.why, free: r.free, phases, topicIds: r.topicIds,
-    sections: sectionIds.map((id) => { const m = meta.get(id)!; return { href: sectionHref(m), label: `§${m.phase}.${m.order} ${m.title}` }; }),
+    sections: sectionIds.map((id) => { const m = meta.get(id)!; return { href: sectionHref(m), label: `${m.phase}.${m.order} ${m.title}` }; }),
   }));
 
   // Topic filter: every topic some resource covers, listed once under the first phase that teaches it.
@@ -33,7 +33,7 @@ export default function Page() {
 
   return (
     <>
-      <PageHeader code="R-01" spec="Resources" before="Read the" em="sources" after="." lede={`${items.length} books, papers, docs, talks and engineering blogs: every resource linked from a lesson, plus the classics. Filter by phase, topic, kind or cost.`} />
+      <PageHeader title="Read the sources" lede={`${items.length} books, papers, docs, talks and engineering blogs: every resource linked from a lesson, plus the classics. Filter by phase, topic, kind or cost.`} />
       <Suspense>
         <ResourceLibrary items={items} classics={classics} topics={topics} />
       </Suspense>

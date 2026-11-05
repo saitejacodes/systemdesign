@@ -5,7 +5,6 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { PrintButton } from "@/components/reference/PrintButton";
 import { SheetRenderer, sheetHeadings } from "@/components/reference/SheetRenderer";
 import { getCheatSheet, getCheatSheets, getSectionById, sectionHref } from "@/lib/content";
-import { sheetCode } from "@/lib/content/cheatsheets";
 
 export const dynamicParams = false;
 
@@ -22,13 +21,11 @@ export default async function Page({ params }: PageProps<"/reference/[sheet]">) 
   const s = getCheatSheet(decodeURIComponent((await params).sheet));
   if (!s) notFound();
   const { meta } = s;
-  const code = sheetCode(meta.order);
-  const words = meta.title.split(" ");
   const related = meta.relatedSectionIds.map(getSectionById).filter((x) => x !== undefined);
   const toc = sheetHeadings(s.body);
   return (
     <div data-print-sheet>
-      <PageHeader code={code} spec={`Reference · ${meta.group}`} before={words.slice(0, -1).join(" ")} em={words.at(-1) ?? meta.title} after="." lede={meta.summary}>
+      <PageHeader title={meta.title} lede={meta.summary}>
         <div className="sheet-actions flex flex-wrap items-center gap-2">
           <PrintButton />
           <Link href="/reference" className="fm-btn">All sheets</Link>
@@ -37,7 +34,7 @@ export default async function Page({ params }: PageProps<"/reference/[sheet]">) 
       <div className="grid gap-8 px-4 py-6 sm:px-8 xl:grid-cols-[minmax(0,88ch)_1fr]">
         <article className="min-w-0" aria-label={meta.title}>
           <SheetRenderer source={s.body} />
-          <p className="sheet-foot fm-cap mt-8 border-t border-ink pt-2">{code} · {meta.title} · SysDesign Lab field manual · Rev. A</p>
+          <p className="sheet-foot fm-cap mt-8 border-t border-ink pt-2">{meta.title} · SysDesign Lab</p>
         </article>
         <aside className="sheet-aside grid content-start gap-6 xl:sticky xl:top-4">
           <nav aria-labelledby="toc-h" className="sheet-toc grid gap-1">
@@ -46,7 +43,7 @@ export default async function Page({ params }: PageProps<"/reference/[sheet]">) 
           </nav>
           <section aria-labelledby="rel-h" className="sheet-related grid gap-1">
             <h2 id="rel-h" className="fm-cap border-b border-ink pb-1">Lessons behind this sheet</h2>
-            <ul className="grid gap-1 text-[15px]">{related.map((x) => <li key={x.meta.id}><span className="fm-cap mr-2">§{x.meta.phase}.{x.meta.order}</span><Link href={sectionHref(x.meta)}>{x.meta.title}</Link></li>)}</ul>
+            <ul className="grid gap-1 text-[15px]">{related.map((x) => <li key={x.meta.id}><span className="fm-cap mr-2">{x.meta.phase}.{x.meta.order}</span><Link href={sectionHref(x.meta)}>{x.meta.title}</Link></li>)}</ul>
           </section>
         </aside>
       </div>

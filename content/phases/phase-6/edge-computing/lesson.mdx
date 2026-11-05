@@ -12,7 +12,7 @@ Picture an airline with a tiny kiosk in every airport on Earth and one head offi
 
 An <Term slug="edge-function">edge function</Term> is code that runs inside a CDN's <Term slug="point-of-presence">points of presence</Term> (PoPs), on the request path between the user and the cache or <Term slug="origin-server">origin</Term>. Users usually reach the nearest PoP through <Term slug="anycast">anycast</Term> routing or DNS steering, so the function runs close to them without any region choice on your part.
 
-<Figure caption="FIG. 2.1 · THE EDGE REQUEST PATH · MOST REQUESTS SHOULD STOP AT THE PoP">
+<Figure caption="Figure 2.1 · The edge request path · Most requests should stop at the PoP">
   <Diagram label="Sequence: a user's request reaches the nearest PoP, an edge function validates it and computes a cache key, the edge cache answers a hit, and only misses travel to the origin." chart={`sequenceDiagram
     participant U as User (Sydney)
     participant E as Edge function (Sydney PoP)

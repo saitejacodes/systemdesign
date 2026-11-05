@@ -119,7 +119,7 @@ HTTP/1.1 201 Created
 
 ## High-level design
 
-<Figure caption="FIG. 1 · NEWS FEED · HYBRID FAN-OUT">
+<Figure caption="Figure 1 · News feed · Hybrid fan-out">
   <Diagram label="Users reach a load balancer in front of 228 stateless feed API instances in three zones. Creating a post writes it to the post store and publishes an event to Kafka; fan-out workers pull events, read follower lists from the sharded social graph, and insert the post ID into each active follower's timeline in a Redis cluster, skipping accounts with over a million followers. Reading the feed takes the user's timeline from Redis, merges recent posts from followed celebrities held in memory, sends about 500 candidates to a ranking service, and hydrates the top 20 from a Memcached post cache backed by the post store. Images go to object storage and are served by a CDN." chart={`flowchart LR
     U[Users] --> LB[Load balancer]
     U -->|images| CDN[CDN] --> OBJ[(Object storage)]

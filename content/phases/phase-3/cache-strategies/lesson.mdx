@@ -20,7 +20,7 @@ The facts live in a filing cabinet in the basement (the database); a whiteboard 
 
 **On a write:** update the database, then **delete** the cache key so the next read reloads it. (The invalidation lesson explains why delete beats overwriting the cached value.)
 
-<Figure caption="FIG. 2.1 · CACHE-ASIDE · THE APPLICATION FILLS THE CACHE ON A MISS">
+<Figure caption="Figure 2.1 · Cache-aside · The application fills the cache on a miss">
 <Diagram label="Cache-aside sequence: the app asks the cache, gets a miss, reads the database, writes the value into the cache, and returns it. A write updates the database, then deletes the cache key." chart={`sequenceDiagram
   participant App
   participant Cache
@@ -68,7 +68,7 @@ async function updateUser(id: string, changes: Partial<User>) {
 
 A <Term slug="read-through">read-through</Term> cache looks the same as cache-aside from the database's point of view, but the **cache itself** loads missing data. The application only ever talks to the cache; on a miss, the cache calls a loader function (or a configured connector) to fetch from the database, stores the result and returns it.
 
-<Figure caption="FIG. 2.2 · READ-THROUGH · THE CACHE LOADS ITS OWN MISSES">
+<Figure caption="Figure 2.2 · Read-through · The cache loads its own misses">
 <Diagram label="Read-through sequence: the app asks the cache, the cache misses and itself queries the database, stores the row and returns it to the app." chart={`sequenceDiagram
   participant App
   participant Cache
@@ -94,7 +94,7 @@ Consistency is the same as cache-aside: reads can be stale until a write invalid
 
 With <Term slug="write-through">write-through</Term>, every write goes to the cache **and** the database **synchronously**, and the write is acknowledged only when both succeed. Usually the cache (or a library wrapping it) writes to the database on the application's behalf; some teams implement it in the application by updating the database and then setting the cache value.
 
-<Figure caption="FIG. 2.3 · WRITE-THROUGH · THE WRITE RETURNS ONLY WHEN CACHE AND DATABASE AGREE">
+<Figure caption="Figure 2.3 · Write-through · The write returns only when cache and database agree">
 <Diagram label="Write-through sequence: the app writes to the cache, the cache writes to the database synchronously, and only after the database acknowledges does the cache acknowledge the app." chart={`sequenceDiagram
   participant App
   participant Cache
@@ -121,7 +121,7 @@ The consistency caveat: unless the cache and database are updated atomically (th
 
 <Term slug="write-behind">Write-behind</Term> (also called write-back) acknowledges the write as soon as the **cache** has it, and flushes changes to the database **asynchronously** later, often in batches.
 
-<Figure caption="FIG. 2.4 · WRITE-BEHIND · FAST ACKNOWLEDGEMENT, DELAYED DURABILITY">
+<Figure caption="Figure 2.4 · Write-behind · Fast acknowledgement, delayed durability">
 <Diagram label="Write-behind sequence: the app writes to the cache and is acknowledged immediately. Later, a background flush writes a batch of changes to the database." chart={`sequenceDiagram
   participant App
   participant Cache
@@ -154,7 +154,7 @@ A video platform counts plays: **20,000 increments a second** across all videos,
 
 <Term slug="write-around">Write-around</Term> sends writes **only to the database** and leaves the cache alone (or just invalidates the key). The data enters the cache later, only if someone reads it, through cache-aside or read-through.
 
-<Figure caption="FIG. 2.5 · WRITE-AROUND · WRITES SKIP THE CACHE, READS FILL IT">
+<Figure caption="Figure 2.5 · Write-around · Writes skip the cache, reads fill it">
 <Diagram label="Write-around sequence: the app writes directly to the database and deletes the cache key. A later read misses the cache, reads the database and fills the cache." chart={`sequenceDiagram
   participant App
   participant Cache

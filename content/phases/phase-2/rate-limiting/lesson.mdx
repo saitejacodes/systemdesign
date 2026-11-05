@@ -73,7 +73,7 @@ Worked example: limit 100 a minute. The previous minute had 80 requests, the cur
 - **Cheap:** two counters per client.
 - **Close to exact:** it assumes the previous window's requests were evenly spread, which smooths out most of the boundary problem.
 
-<Figure caption="FIG. 5.1 · FIXED WINDOW LETS 2× THROUGH AT THE BOUNDARY">
+<Figure caption="Figure 5.1 · Fixed window lets 2× through at the boundary">
 <Diagram label="Timeline showing 100 requests at the end of one window and 100 at the start of the next" chart={`flowchart LR
   A["10:05:00–10:05:58<br/>0 requests"] --> B["10:05:59<br/>100 requests ✓"]
   B --> C["10:06:00<br/>100 requests ✓"]

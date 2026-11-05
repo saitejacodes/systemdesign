@@ -128,7 +128,7 @@ Idempotency-Key: 9a41…
 
 ## High-level design
 
-<Figure caption="FIG. 1 · TICKET BOOKING · REFERENCE ARCHITECTURE">
+<Figure caption="Figure 1 · Ticket booking · Reference architecture">
   <Diagram label="Fans poll a cached now-serving file through the CDN and join the waiting room through a load balancer, which issues one token per account from a key-value queue store. Admitted fans use the booking API, which reads seat availability from Redis and holds, confirms and releases seats in Postgres, and authorizes payments with the PSP. An admission controller publishes the admit threshold; a sweeper releases expired holds; an outbox relay feeds workers that capture payments and issue tickets." chart={`flowchart LR
     F[Fans] -->|poll every 10 s| CDN[CDN]
     CDN --> NS[(now-serving.json)]

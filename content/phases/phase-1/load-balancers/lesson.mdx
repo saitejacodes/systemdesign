@@ -122,7 +122,7 @@ A single load balancer is a <Term slug="single-point-of-failure">single point of
 
 **<Term slug="active-active">Active-active</Term>.** Both LBs handle traffic simultaneously. DNS returns both IPs, or an upstream L4 LB (often hardware or cloud-native) distributes across them. This provides both redundancy and doubled capacity.
 
-<Figure caption="FIG. 10.1 · REDUNDANT LOAD BALANCERS">
+<Figure caption="Figure 10.1 · Redundant load balancers">
   <Diagram label="Redundant load balancers: active-passive with automatic failover via a shared VIP." chart={`flowchart TD
     Client["Clients"]
     subgraph LB layer

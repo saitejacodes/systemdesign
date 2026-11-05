@@ -139,7 +139,7 @@ POST /internal/runs/{runId}:complete    { "attempt": 1, "exitCode": 0 } → 200 
 
 ## High-level design
 
-<Figure caption="FIG. 1 · JOB SCHEDULER · REFERENCE ARCHITECTURE">
+<Figure caption="Figure 1 · Job scheduler · Reference architecture">
   <Diagram label="Owners use the owner API, which stores job definitions in Postgres and reads run history from a search index and logs from object storage. Scheduler instances in three zones each hold leases on some of 96 partitions in etcd, scan Postgres a minute ahead for due jobs, hold them in in-memory timers, and at the due second put a run message on one of two dispatch queues. Workers pull messages, claim the run through the Run API with a conditional write to the runs store, heartbeat while running, upload logs to object storage and report completion." chart={`flowchart LR
     O[Owners] --> LB[Load balancer]
     LB --> OA[Owner API x6]

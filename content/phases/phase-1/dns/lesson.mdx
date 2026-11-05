@@ -24,7 +24,7 @@ The recursive resolver caches the answer for the duration of the record's <Term 
 You are in a huge foreign city and you want the phone number of "Luigi's on 5th". You ask your hotel concierge (the **stub resolver**: you don't search yourself, you ask one person and wait). The concierge (the **recursive resolver**) doesn't know either, so they call the city tourist office (the **root**). The tourist office has no idea where Luigi's is, but it does know who handles the Italian quarter, and gives the concierge that number (a **referral**). The Italian quarter's information booth (the **TLD**) doesn't know Luigi's number either, but it knows which building manager is responsible for 5th Street. The building manager (the **authoritative server**) finally reads the number off the wall. The concierge writes it on a sticky note with an expiry time (the **TTL**), so when the next guest asks for Luigi's, they answer instantly without a single phone call. Nobody in this chain knows everything. Each one knows exactly who to ask next. That is why DNS can hold hundreds of millions of names without any single server knowing them all.
 </Callout>
 
-<Figure caption="FIG. 6.1 · A FULL DNS RESOLUTION">
+<Figure caption="Figure 6.1 · A full DNS resolution">
   <Diagram label="A full DNS resolution: the recursive resolver walks root → TLD → authoritative. Cached answers skip steps." chart={`sequenceDiagram
     participant App as Application
     participant Stub as Stub resolver

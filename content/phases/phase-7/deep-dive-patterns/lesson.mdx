@@ -10,7 +10,7 @@ An experienced mechanic hears a squeal under braking and already knows the three
 
 Interview Mode's hint for the Deep Dives step suggests a structure that works for every pattern below: **what saturates or fails, how you detect it, what a request sees meanwhile, and the fix with its cost.** A weak answer jumps straight to the fix ("add a cache"). A strong one spends 20 seconds on the first beat with a number ("one post from that account is 35M cache inserts, about 23 seconds of the whole cluster's spare capacity"), because that number is what justifies the fix.
 
-<Figure caption="FIG. 5.1 · FROM SIGNAL TO PATTERN">
+<Figure caption="Figure 5.1 · From signal to pattern">
   <Diagram label="Clues in the prompt or estimates point to a deep-dive pattern: skewed or viral keys lead to hot keys; followers, groups or campaigns lead to fan-out; money, sends and retries lead to idempotency; never oversell or never double-assign lead to the consistency choice; a large read to write ratio or a huge write rate leads to read or write scaling; bursts and slow providers lead to backpressure; several continents or surviving a region loss lead to multi-region." chart={`flowchart LR
     S1[Skewed or viral keys] --> P1[Hot keys]
     S2[Followers, groups, campaigns, shards per query] --> P2[Fan-out]

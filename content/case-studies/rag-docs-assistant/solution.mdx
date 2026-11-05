@@ -127,7 +127,7 @@ POST /internal/v1/source-events
 
 ## High-level design
 
-<Figure caption="FIG. 1 · RAG DOCS ASSISTANT · QUESTION PATH AND CHANGE PATH SHARE ONE PERMISSION-AWARE INDEX">
+<Figure caption="Figure 1 · RAG docs assistant · Question path and change path share one permission-aware index">
 <Diagram label="Employees ask through a load balancer to the assistant API in three zones. The API checks the answer cache, looks up the user's groups, embeds the question, runs one hybrid BM25 plus vector search filtered by the user's groups, reranks, and sends a budgeted prompt through an LLM gateway to one of two chat model deployments, streaming the answer back. Source systems send change events to a receiver that fills priority queues; ingestion workers fetch, parse, chunk and embed changed chunks and update the index and registry. A directory sync keeps memberships current; a poller and nightly reconciler catch missed changes." chart={`flowchart LR
   U["Employees"] --> LB["Load balancer"]
   LB --> API["Assistant API x3 zones"]

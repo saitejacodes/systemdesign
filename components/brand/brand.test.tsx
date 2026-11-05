@@ -4,9 +4,9 @@ import { DepthStamp, FigureCaption, HudBar, NumberedCallout, PartsList, PhasePat
 
 describe("brand components", () => {
   it("FigureCaption bolds the subject", () => {
-    const { container } = render(<FigureCaption parts={["FIG. 0", "ONE PATH", "7 PHASES"]} />);
-    expect(container.querySelector("b")?.textContent).toBe("ONE PATH");
-    expect(container.textContent).toContain("FIG. 0·ONE PATH·7 PHASES");
+    const { container } = render(<FigureCaption parts={["Figure 1", "One path", "7 phases"]} />);
+    expect(container.querySelector("b")?.textContent).toBe("One path");
+    expect(container.textContent).toContain("Figure 1·One path·7 phases");
   });
 
   it("NumberedCallout pads numbers", () => {
@@ -15,8 +15,8 @@ describe("brand components", () => {
   });
 
   it("PartsList renders caption and rows", () => {
-    render(<PartsList caption="Parts list · Curriculum" head={["No.", "Phase"]} rows={[{ cells: ["1", "Foundations"] }]} />);
-    expect(screen.getByText("Parts list · Curriculum")).toBeTruthy();
+    render(<PartsList caption="The curriculum" head={["No.", "Phase"]} rows={[{ cells: ["1", "Foundations"] }]} />);
+    expect(screen.getByText("The curriculum")).toBeTruthy();
     expect(screen.getByText("Foundations")).toBeTruthy();
   });
 
@@ -26,7 +26,7 @@ describe("brand components", () => {
   });
 
   it("HudBar is a status region with live text", () => {
-    render(<HudBar live="Week 07 · Caching" items={[{ k: "QPS", v: "12,400" }]} right="§3.2" />);
+    render(<HudBar live="Week 07 · Caching" items={[{ k: "QPS", v: "12,400" }]} right="Lesson 3.2" />);
     expect(screen.getByRole("status").textContent).toContain("QPS12,400");
   });
 

@@ -56,7 +56,7 @@ loop:
         append tool call and result to messages
 ```
 
-<Figure caption="FIG. 12.1 · ONE TURN OF THE TOOL-CALLING LOOP">
+<Figure caption="Figure 12.1 · One turn of the tool-calling loop">
   <Diagram label="The orchestrator sends messages and tool definitions to the model, which asks for a tool call. The orchestrator checks policy, runs the tool, appends the result and calls the model again until it returns a final answer." chart={`sequenceDiagram
     participant O as Orchestrator
     participant M as Model

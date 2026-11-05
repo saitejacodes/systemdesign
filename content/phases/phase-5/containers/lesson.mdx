@@ -90,7 +90,7 @@ A <Term slug="container-image">container image</Term> is a read-only template fo
 
 An image is not one big file. It is an ordered list of <Term slug="image-layer">image layers</Term>, each a compressed tarball of the files that one build step added, changed or deleted, plus a JSON manifest that lists them. At run time the runtime stacks the layers with a union filesystem (overlayfs, Docker's default `overlay2` driver on Linux) and adds one thin writable layer on top. Reads fall through the stack to the topmost layer that has the file. A write to a file from a lower layer uses <Term slug="copy-on-write">copy-on-write</Term>: the file is copied up into the writable layer first, then changed. Delete the container and the writable layer is gone.
 
-<Figure caption="FIG. 10.1 · IMAGE LAYERS · SHARED BELOW, PRIVATE ON TOP">
+<Figure caption="Figure 10.1 · Image layers · Shared below, private on top">
   <Diagram label="Two containers share the same three read-only image layers: a base OS layer, a runtime layer and an application layer. Each container has its own thin writable layer on top. Writes copy files up into the writable layer." chart={`flowchart TB
     W1[Writable layer: container A]
     W2[Writable layer: container B]

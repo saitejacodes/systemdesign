@@ -18,7 +18,7 @@ Three terms get blurred constantly, so pin them down first.
 
 The machinery that makes these possible is the <Term slug="deployment-pipeline">deployment pipeline</Term>: an automated sequence of stages that each commit passes through, where each stage gives more confidence at more cost, and a failure at any stage stops the change.
 
-<Figure caption="FIG. 12.1 · A DEPLOYMENT PIPELINE · FAST FEEDBACK FIRST, EXPENSIVE CONFIDENCE LATER">
+<Figure caption="Figure 12.1 · A deployment pipeline · Fast feedback first, expensive confidence later">
   <Diagram label="A commit flows through build, unit tests and static checks, packaging into an image, integration tests, deployment to staging with end-to-end tests, then production deployment with health verification. A failure at any stage stops the pipeline and notifies the author." chart={`flowchart LR
     A[Commit to main] --> B[Build + unit tests + lint]
     B --> C[Package image, record digest]

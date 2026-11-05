@@ -9,7 +9,7 @@ export default function Page() {
   const { weeks, sections } = getPlanView();
   return (
     <>
-      <PageHeader code="T-01" spec="Today" before="What to do" em="next" after="." lede="Flashcards due, the next lesson, the next challenge and your weak spots, in one list." />
+      <PageHeader title="What to do next" lede="Flashcards due, the next lesson, the next challenge and your weak spots, in one list." />
       <TodayView weeks={weeks} sections={sections} />
     </>
   );

@@ -135,7 +135,7 @@ The one awkward part is that `link` and `owner_link` live in different partition
 
 ## High-level design
 
-<Figure caption="FIG. 1 · URL SHORTENER · REFERENCE ARCHITECTURE">
+<Figure caption="Figure 1 · URL shortener · Reference architecture">
   <Diagram label="Creators and visitors resolve the short domain through DNS and reach a load balancer, which spreads requests over nine stateless link-service instances in three availability zones. The link service reads codes from a Redis cache and, on a miss, from a replicated key-value store; creates go straight to the key-value store with a conditional insert. Every redirect also emits a click event asynchronously to a Kafka topic, which analytics consumers aggregate into a data lake." chart={`flowchart LR
     C[Creators] --> DNS[DNS]
     V[Visitors] --> DNS

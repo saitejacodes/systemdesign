@@ -91,7 +91,7 @@ ZeRO-3 does not shrink activations, and its per-layer all-gathers sit on the cri
 
 So each transformer layer costs **two all-reduces in forward and two in backward**. Each GPU holds 1/t of the layer's weights, and every GPU sees the full activations between blocks.
 
-<Figure caption="FIG. 14.1 · MEGATRON MLP SPLIT ACROSS TWO GPUS · ONE ALL-REDUCE PER BLOCK">
+<Figure caption="Figure 14.1 · Megatron MLP split across two GPUs · One all-reduce per block">
   <Diagram label="Input X is replicated on GPU 0 and GPU 1. Each GPU multiplies X by its column slice of A, applies GeLU, multiplies by its row slice of B, and the two partial outputs are summed by an all-reduce to give Z on both GPUs." chart={`flowchart LR
     X[X replicated on both GPUs] --> A0[GPU 0: X times A columns 1 to h]
     X --> A1[GPU 1: X times A columns h to 2h]
@@ -188,7 +188,7 @@ Real jobs combine the strategies. **3D parallelism** (Narayanan et al., SC 2021)
 
 Assume 8 GPUs per node, 80 layers, and 80 GB per GPU. Pick TP = 8 (one node), so each GPU holds 1/8 of each layer. Pick PP = 4, so each stage holds 20 layers; with ZeRO-1 across DP, model state per GPU is roughly 16 × 70 × 10⁹ ÷ (8 × 4) ≈ 35 GB before optimiser sharding, leaving room for activations. Then DP = 1,024 ÷ (8 × 4) = **32**. With a global batch of 1,024 sequences, each DP replica processes 32 sequences per step; at micro-batch size 1, m = 32 and the bubble is 3/35 ≈ 9%.
 
-<Figure caption="FIG. 14.2 · 3D PARALLELISM · TP INSIDE A NODE, PP ACROSS NODES, DP ACROSS REPLICAS">
+<Figure caption="Figure 14.2 · 3D parallelism · TP inside a node, PP across nodes, DP across replicas">
   <Diagram label="Data-parallel replica 1 consists of four nodes in a pipeline, each node running one stage with 8-way tensor parallelism over NVLink. Replica 2 has the same structure. Matching stages of the two replicas exchange gradients over the network." chart={`flowchart LR
     subgraph R1[DP replica 1]
       direction LR

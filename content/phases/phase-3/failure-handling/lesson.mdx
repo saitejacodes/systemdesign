@@ -71,7 +71,7 @@ The defence has three parts: **count deliveries** (SQS tracks `ApproximateReceiv
 
 A <Term slug="dead-letter-queue">dead-letter queue</Term> (DLQ) is a separate queue where messages go after they have failed too many times. Moving the message aside keeps the main queue flowing and preserves the message for a human (or a tool) to inspect.
 
-<Figure caption="FIG. 11.1 · A MESSAGE FAILS FIVE TIMES AND IS DEAD-LETTERED">
+<Figure caption="Figure 11.1 · A message fails five times and is dead-lettered">
 <Diagram label="A message is received five times, fails each time, and the broker moves it to the dead-letter queue" chart={`sequenceDiagram
     participant Q as Main queue
     participant C as Consumer

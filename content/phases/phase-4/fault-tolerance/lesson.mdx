@@ -72,7 +72,7 @@ A service needs **6 instances** to handle peak traffic. With exactly 6, one cras
 
 Removing SPOFs keeps a component alive. <Term slug="graceful-degradation">Graceful degradation</Term> is what you do when a component is *not* alive: keep the core function working with reduced quality instead of failing completely. The key move is to classify every dependency of a request as **critical** (no answer without it) or **optional** (the answer is worse without it, but still useful).
 
-<Figure caption="FIG. 10.1 · A PRODUCT PAGE THAT DEGRADES INSTEAD OF FAILING">
+<Figure caption="Figure 10.1 · A product page that degrades instead of failing">
   <Diagram label="The product page needs catalog and pricing to render. Reviews, recommendations and stock count are optional; if any of them fails, the page renders without that block or with a cached or default value." chart={`flowchart LR
     U[User request] --> P[Product page service]
     P -->|critical| C[Catalog]

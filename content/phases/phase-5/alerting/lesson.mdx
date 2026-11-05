@@ -42,7 +42,7 @@ The rule is "page on symptoms", not "never page on causes". A small number of ca
 
 In Prometheus an alerting rule has an expression and an optional `for` duration. Each evaluation the rule is in one of three states.
 
-<Figure caption="FIG. 5.1 · PROMETHEUS ALERT STATES · INACTIVE, PENDING, FIRING">
+<Figure caption="Figure 5.1 · Prometheus alert states · Inactive, pending, firing">
   <Diagram label="Inactive: the expression returns no result. When it starts returning a result the alert moves to Pending. If the expression stays true for the whole for duration, the alert moves to Firing and is sent to Alertmanager. If it becomes false while Pending, it returns to Inactive without notifying anyone. When a Firing alert's expression becomes false, it returns to Inactive and a resolved notification is sent, optionally after keep_firing_for." chart={`stateDiagram-v2
     [*] --> Inactive
     Inactive --> Pending: expression true

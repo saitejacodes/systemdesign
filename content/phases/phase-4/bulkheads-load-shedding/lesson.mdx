@@ -42,7 +42,7 @@ Give each downstream its own bounded pool sized for normal load plus headroom, a
 
 Rerun the incident. Recommendations still takes 5 seconds, but only **20** calls can be waiting on it at once, so it is served at about 20 ÷ 5 = 4 calls a second and the other ~116 calls a second are rejected in microseconds and fall back to "no recommendations". The remaining 180 threads are untouched, inventory and pricing keep working, and users see a product page with an empty carousel instead of an error page. The bulkhead turned a total outage into graceful degradation.
 
-<Figure caption="FIG. 13.1 · BULKHEADS · ONE FULL COMPARTMENT, THE REST DRY">
+<Figure caption="Figure 13.1 · Bulkheads · One full compartment, the rest dry">
   <Diagram label="Incoming requests reach a worker pool, which calls three dependencies through separate bounded pools. The recommendations pool is full and rejects fast to a fallback, while inventory and pricing pools keep working." chart={`flowchart LR
     R[Incoming requests 400 per s] --> W[Worker threads 200]
     W --> I[Inventory pool max 50]
@@ -134,7 +134,7 @@ Two more pitfalls. First, a shed request that is immediately retried is not shed
 
 <Term slug="admission-control">Admission control</Term> is the decision, made at the entry point, of whether to accept a new request at all, based on the server's current state. Load shedding is the *outcome* (some requests are refused); admission control is the *mechanism* that decides which and when. It is different from <Term slug="rate-limiter">rate limiting</Term>: a rate limiter enforces a per-client quota whatever the server's health ("you get 100 requests a second"), while admission control protects the server whatever the client's quota ("I am full right now").
 
-<Figure caption="FIG. 13.2 · ADMISSION CONTROL · THE DECISION AT THE DOOR">
+<Figure caption="Figure 13.2 · Admission control · The decision at the door">
   <Diagram label="A request arrives. If its deadline has passed it is dropped. If the client is over quota it gets 429. If the server is at its concurrency limit, low-priority requests get 503 and critical ones may wait briefly in a short queue. Otherwise the request is admitted to a per-dependency bulkhead." chart={`flowchart TD
     A[Request arrives] --> B{Deadline already passed?}
     B -->|yes| D1[Drop silently]

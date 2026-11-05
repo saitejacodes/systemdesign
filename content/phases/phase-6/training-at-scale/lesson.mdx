@@ -71,7 +71,7 @@ The job is also <Term slug="gang-scheduling">gang-scheduled</Term>: all of its G
 | 02:34:00 | All ranks restart, re-initialise communication groups and load the last checkpoint, saved at 01:55. |
 | 02:41:00 | Training resumes. Lost: 19 minutes of progress since the checkpoint plus 27 minutes of detection and restart, on every GPU. |
 
-<Figure caption="FIG. 18.1 · THE TRAINING JOB RECOVERY LOOP">
+<Figure caption="Figure 18.1 · The training job recovery loop">
   <Diagram label="State diagram: a training job runs and periodically checkpoints. A rank failure leads to a stall in a collective, then a timeout, then cordoning the bad node and swapping in a spare, then restarting from the last checkpoint and running again." chart={`stateDiagram-v2
     [*] --> Running
     Running --> Checkpointing: every tau seconds

@@ -199,7 +199,7 @@ Each batch carries `(instance_id, flush_seq)`, so replays are deduplicated and i
 
 ## High-level design
 
-<Figure caption="FIG. 1 · API GATEWAY · DATA PLANE PER REGION, SHARED CONTROL PLANE">
+<Figure caption="Figure 1 · API gateway · Data plane per region, shared control plane">
 <Diagram label="Partner apps reach the nearest of three regions through GeoDNS. In each region an L4 load balancer spreads connections over 36 gateways in three zones. Gateways authenticate locally, check a regional Redis limiter, and forward over pooled mTLS to the upstream services; usage flows through Kafka to a usage store. A PostgreSQL-backed control plane pushes config, endpoints and quota flags to every gateway." chart={`flowchart LR
   C[Partner apps] -->|GeoDNS: nearest healthy region| NLB[L4 load balancer]
   subgraph R[Region, one of three]

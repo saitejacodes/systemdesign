@@ -60,7 +60,7 @@ A clickstream topic receives 50,000 events a second, each about 1 KB. One consum
 
 RabbitMQ (speaking the AMQP 0-9-1 protocol) separates **where producers send** from **where messages are stored**. Producers never publish straight to a queue. They publish to an <Term slug="exchange">exchange</Term>, with a <Term slug="routing-key">routing key</Term> (a string such as `order.eu.created`). Queues are attached to exchanges by <Term slug="binding">bindings</Term>, each with a pattern. The exchange's **type** decides how the routing key is matched against the bindings.
 
-<Figure caption="FIG. 13.1 · A TOPIC EXCHANGE ROUTING BY PATTERN">
+<Figure caption="Figure 13.1 · A topic exchange routing by pattern">
 <Diagram label="A producer publishes order.eu.created to a topic exchange; the eu-orders queue and the all-created queue both match, the audit queue matches everything" chart={`flowchart LR
   P["Producer<br/>key: order.eu.created"] --> X["Topic exchange: orders"]
   X -->|"order.eu.*"| Q1["queue: eu-orders"]

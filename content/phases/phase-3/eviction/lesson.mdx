@@ -62,7 +62,7 @@ An LRU cache must support three operations in **O(1)**: find an entry by key, mo
 
 Two <Term slug="sentinel-node">sentinel nodes</Term> (a dummy head and tail that are never removed) remove all the "is the list empty?" edge cases.
 
-<Figure caption="FIG. 3.1 · LRU = HASH MAP + DOUBLY LINKED LIST · THE MAP FINDS, THE LIST ORDERS">
+<Figure caption="Figure 3.1 · LRU = hash map + doubly linked list · The map finds, the list orders">
 <Diagram label="A hash map points each key to a node in a doubly linked list. The list runs from a head sentinel through the most recently used node to the least recently used node and a tail sentinel. Eviction removes the node next to the tail." chart={`flowchart LR
   subgraph Map["hash map"]
     k1["key A"]

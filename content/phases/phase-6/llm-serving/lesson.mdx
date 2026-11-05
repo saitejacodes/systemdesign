@@ -78,7 +78,7 @@ Continuous batching keeps compute busy, but it needs memory to grow on demand, w
 - **Sharing.** Sequences with the same prompt prefix can point at the same physical blocks (copy-on-write when they diverge). vLLM's automatic prefix caching reuses blocks for repeated system prompts.
 - **Preemption.** When free blocks run out, the scheduler must evict someone.
 
-<Figure caption="FIG. 6.8 · REQUEST LIFECYCLE IN A CONTINUOUS-BATCHING SCHEDULER">
+<Figure caption="Figure 6.8 · Request lifecycle in a continuous-batching scheduler">
   <Diagram label="A request waits in a queue, runs prefill and decode steps while it holds KV blocks, can be preempted back to waiting when blocks run out, and finishes on an end token or token limit." chart={`stateDiagram-v2
     [*] --> Waiting: request arrives
     Waiting --> Prefill: free KV blocks for the prompt
@@ -118,7 +118,7 @@ Generation takes seconds, so servers stream tokens as they are produced, usually
 
 Worked example: TTFT 400 ms, TPOT 25 ms, a 500-token answer: 0.4 + 499 × 0.025 ≈ **12.9 seconds** end to end. Unstreamed, that is a spinner for 13 seconds. Streamed, text appears in under half a second and arrives at 40 tokens/s, faster than people read.
 
-<Figure caption="FIG. 6.9 · A STREAMED COMPLETION">
+<Figure caption="Figure 6.9 · A streamed completion">
   <Diagram label="The client sends a prompt; the server queues it, runs prefill, streams the first token, then streams one token per decode step until done." chart={`sequenceDiagram
     participant C as Client
     participant G as API server

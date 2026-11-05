@@ -1,10 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo, IBM_Plex_Mono, Instrument_Serif } from "next/font/google";
+import { Archivo, IBM_Plex_Mono } from "next/font/google";
 import { ServiceWorker } from "@/components/layout/Pwa";
 import "./globals.css";
 
 const archivo = Archivo({ variable: "--f-archivo", subsets: ["latin"] });
-const instrument = Instrument_Serif({ variable: "--f-instrument", subsets: ["latin"], weight: "400", style: "italic" });
 const plexMono = IBM_Plex_Mono({ variable: "--f-plex-mono", subsets: ["latin"], weight: ["400", "500", "600"] });
 
 export const metadata: Metadata = {
@@ -28,7 +27,7 @@ const themeScript = `try{var t=localStorage.getItem("sdl-theme")||"system";if(t=
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" data-theme="paper" suppressHydrationWarning className={`${archivo.variable} ${instrument.variable} ${plexMono.variable}`}>
+    <html lang="en" data-theme="paper" suppressHydrationWarning className={`${archivo.variable} ${plexMono.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

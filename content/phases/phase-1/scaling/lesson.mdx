@@ -10,7 +10,7 @@ Stack Overflow is one of the most visited sites on the internet, and for years i
 
 <Term slug="horizontal-scaling">Horizontal scaling</Term> (scaling out) means running more machines and splitting the work between them, usually with a <Term slug="load-balancer">load balancer</Term> in front. Your code must be ready for it: any copy must be able to handle any request, which is why the client–server section pushed state out of the app servers.
 
-<Figure caption="FIG. 3.1 · SCALE UP VS SCALE OUT">
+<Figure caption="Figure 3.1 · Scale up vs scale out">
   <Diagram label="Left: one server growing from 4 cores to 64 cores. Right: a load balancer spreading traffic over four identical 4-core servers." chart={`flowchart LR
     subgraph UP[Scale up]
       S1[Server 4 cores] -->|resize| S2[Server 64 cores]
@@ -87,7 +87,7 @@ The data tier usually scales in this order, from cheapest to most expensive:
 4. **Split by feature** (vertical partitioning): orders in one database, users in another. Joins across them move to application code.
 5. **Shard** (horizontal partitioning): split one table's rows across many databases by a key such as user ID. Now each database holds a slice. This is powerful and expensive: cross-shard queries, rebalancing and hot keys all become your problem. Phase 2 covers it in depth.
 
-<Figure caption="FIG. 3.2 · DATA TIER · CHEAPEST STEP FIRST">
+<Figure caption="Figure 3.2 · Data tier · Cheapest step first">
   <Diagram label="Ladder of five steps from bottom to top: scale up the database, add a cache, add read replicas, split by feature, shard by key. Cost and complexity rise with each step." chart={`flowchart BT
     A[1 Scale up the DB] --> B[2 Cache hot reads]
     B --> C[3 Read replicas]

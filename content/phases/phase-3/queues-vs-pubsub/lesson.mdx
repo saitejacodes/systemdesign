@@ -45,7 +45,7 @@ Every buyer gets their order confirmed instantly and every email is eventually s
 
 A <Term slug="message-queue">message queue</Term> delivers each message to **exactly one** consumer out of possibly many. This is the **point-to-point** model. You run several identical workers reading the same queue; the broker hands message 1 to worker A, message 2 to worker B, message 3 to worker C, and so on. This is the <Term slug="competing-consumers">competing consumers</Term> pattern: workers compete for messages, and adding workers increases throughput roughly linearly until something downstream (the database, the API) becomes the bottleneck.
 
-<Figure caption="FIG. 8.1 · POINT-TO-POINT · EACH MESSAGE GOES TO ONE OF THE WORKERS">
+<Figure caption="Figure 8.1 · Point-to-point · Each message goes to one of the workers">
 <Diagram label="A producer writes jobs to one queue; three competing workers each take different jobs" chart={`flowchart LR
   P["Producer: checkout"] -->|"job 1, 2, 3, 4"| Q[("Queue: resize-images")]
   Q -->|"job 1, job 4"| W1["Worker A"]
@@ -67,7 +67,7 @@ Typical uses: background jobs (video transcoding, PDF generation), smoothing wri
 
 <Term slug="pub-sub">Publish/subscribe</Term> (pub/sub) delivers each message to **every** subscriber. The producer, now called a **publisher**, writes to a named channel called a **topic** ("orders"). Any number of services **subscribe** to the topic, and each receives its own copy of every message. This one-to-many delivery is called **fan-out**: one message in, many copies out.
 
-<Figure caption="FIG. 8.2 · PUB/SUB · EVERY SUBSCRIBER GETS ITS OWN COPY">
+<Figure caption="Figure 8.2 · Pub/sub · Every subscriber gets its own copy">
 <Diagram label="One publisher writes to an orders topic; email, warehouse and analytics subscribers each receive every message" chart={`flowchart LR
   P["Publisher: checkout"] -->|"order 991 placed"| T{{"Topic: orders"}}
   T -->|"copy"| S1["Email service"]
@@ -107,7 +107,7 @@ Once a message is in the broker, how does it reach a consumer? There are two mod
 
 **Pull:** the consumer asks for messages when it's ready, in batches. Kafka consumers call `poll()`; SQS consumers call `ReceiveMessage` and get up to 10 messages per call. Backpressure is built in: a busy consumer simply doesn't ask. The cost is wasted requests when the queue is empty, which is why SQS offers **long polling**: a `ReceiveMessage` call with `WaitTimeSeconds` up to 20 waits on the server until a message arrives instead of returning empty immediately. It is the same <Term slug="long-polling">long polling</Term> idea used for browsers, applied to queues.
 
-<Figure caption="FIG. 8.3 · PULL WITH LONG POLLING · THE CONSUMER ASKS, THE BROKER WAITS">
+<Figure caption="Figure 8.3 · Pull with long polling · The consumer asks, the broker waits">
 <Diagram label="A consumer issues a long poll; the broker holds the request until messages arrive, then returns a batch" chart={`sequenceDiagram
     participant C as Consumer
     participant B as Broker (SQS)

@@ -89,7 +89,7 @@ An event is **late** when it arrives after the watermark has passed its timestam
 2. **Update the result.** Flink's <Term slug="allowed-lateness">allowed lateness</Term> (`.allowedLateness(Duration.ofMinutes(2))`) keeps the window's state for two more minutes after the watermark passes; each late event fires the window again with a corrected result. In Kafka Streams the grace period does the same job. Downstream must handle updates, for example by upserting on the window key rather than appending.
 3. **Divert it.** Flink's `.sideOutputLateData(tag)` sends events that are too late even for allowed lateness to a separate stream you can store and reconcile later.
 
-<Figure caption="FIG. 3.1 · A LATE EVENT DROPPED AFTER THE WATERMARK">
+<Figure caption="Figure 3.1 · A late event dropped after the watermark">
   <Diagram label="A one-minute window fires when the watermark reaches 10:01:00; an event stamped 10:00:58 arrives four seconds later and is dropped because allowed lateness is zero." chart={`sequenceDiagram
     participant P as Phone (event time)
     participant K as Kafka partition
@@ -132,7 +132,7 @@ You met <Term slug="exactly-once">exactly-once</Term> as a delivery promise in P
 2. **Consistent snapshots of state plus input positions.** Flink takes a <Term slug="checkpoint-barrier">checkpoint</Term> by injecting barrier markers into the streams (asynchronous barrier snapshotting, a variant of Chandy-Lamport; Carbone et al., 2015). Each operator snapshots its state when the barrier reaches it, so the snapshot includes the source offsets and exactly the state those offsets produced. On failure, Flink restores every operator from the last completed checkpoint and rewinds the sources to the saved offsets.
 3. **A sink that doesn't double-apply replayed output.** Either an idempotent sink (upsert by a deterministic key such as `page_id + window_start`) or a transactional one. Flink's Kafka sink with `DeliveryGuarantee.EXACTLY_ONCE` writes into a Kafka transaction and commits it only when the checkpoint completes, a two-phase commit. Kafka Streams with `processing.guarantee=exactly_once_v2` commits output records, state changelog writes and input offsets in one Kafka transaction.
 
-<Figure caption="FIG. 3.2 · WHY AT-LEAST-ONCE DOUBLE COUNTS">
+<Figure caption="Figure 3.2 · Why at-least-once double counts">
   <Diagram label="A consumer adds an amount to the database, crashes before committing its offset, restarts from the old offset and adds the same amount again." chart={`sequenceDiagram
     participant K as Kafka
     participant C as Consumer job

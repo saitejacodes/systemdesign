@@ -150,7 +150,7 @@ CREATE TABLE rules (
 
 ## High-level design
 
-<Figure caption="FIG. 1 · RATE LIMITER · LIBRARY IN EVERY API SERVER, SHARED REDIS COUNTERS">
+<Figure caption="Figure 1 · Rate limiter · Library in every API server, shared Redis counters">
   <Diagram label="Callers reach a load balancer that spreads requests over 50 API servers in three availability zones. Each API server runs the limiter as an in-process library: it matches the request to rules held in memory, then runs two Lua scripts in parallel on a Redis Cluster of 80 primaries and 80 replicas, with a 3 ms timeout. A rules service backed by PostgreSQL pushes rule snapshots every 10 seconds. Decisions and fail-open counts go to monitoring." chart={`flowchart LR
     C[API callers] --> LB[Load balancer]
     subgraph Region

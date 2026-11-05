@@ -34,7 +34,7 @@ Worked example with labelled assumptions: a support assistant sends a 2,500-toke
 - **Classify then route.** A cheap classifier (rules, a small model, or a trained router) predicts difficulty or intent and sends the request to one model. Latency is one model call plus the router.
 - **Cascade.** A <Term slug="model-cascade">model cascade</Term> tries the small model first, checks the result, and escalates to a larger model only if the check fails. FrugalGPT (Chen, Zaharia and Zou, 2023) studied this pattern; RouteLLM (Ong et al., 2024) trains routers from preference data.
 
-<Figure caption="FIG. 6.10 · A TWO-TIER CASCADE">
+<Figure caption="Figure 6.10 · A two-tier cascade">
   <Diagram label="A request goes to the small model; a validator checks the output; passing outputs are returned, failing ones escalate to the large model." chart={`flowchart LR
     R[Request] --> S[Small model]
     S --> V{Validator passes?}

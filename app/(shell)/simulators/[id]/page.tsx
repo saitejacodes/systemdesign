@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FigureCaption } from "@/components/brand";
 import { SimulatorLoader } from "@/components/sim/SimulatorLoader";
 import { getSectionById, sectionHref } from "@/lib/content";
 import { getSim, REGISTRY } from "@/lib/simulators/registry";
@@ -20,7 +19,7 @@ export default async function Page({ params }: PageProps<"/simulators/[id]">) {
   return (
     <div className="grid gap-4 px-4 py-6 sm:px-8">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <FigureCaption parts={[entry.code, "Simulator", `Phase ${entry.phase}`]} />
+        <span className="fm-cap">Simulator · Phase {entry.phase}</span>
         {lessons.map((s) => <Link key={s.meta.id} href={sectionHref(s.meta)} className="fm-cap inline-flex min-h-11 items-center">Lesson · {s.meta.title} →</Link>)}
       </div>
       <h1 className="fm-h2">{entry.title}</h1>

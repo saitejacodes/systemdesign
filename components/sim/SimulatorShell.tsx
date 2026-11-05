@@ -3,7 +3,7 @@ import Link from "next/link";
 import { memo, useEffect, useRef, useState } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Info, Maximize2, Pause, Play, RotateCcw, StepForward, X } from "lucide-react";
-import { DepthStamp, SpecLabel, StatusLabel } from "@/components/brand";
+import { DepthStamp, StatusLabel } from "@/components/brand";
 import { SetHud } from "@/components/layout/SetHud";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useChallengeResults } from "@/lib/db/hooks";
@@ -306,7 +306,7 @@ export function SimulatorShell({ entry, def, compact = false }: { entry: SimEntr
 
   const header = (
     <div className="flex flex-wrap items-center gap-3">
-      <SpecLabel code={entry.code} parts={[entry.title.toUpperCase()]} note="NTS" />
+      {compact && <span className="text-[15px] font-semibold">{entry.title}</span>}
       <DepthStamp depth={entry.depth} />
       <span className="ml-auto flex flex-wrap gap-2">
         <button type="button" className="fm-btn fm-btn--tool" onClick={() => setInfo(true)}><Info className="size-3.5" />What this models</button>

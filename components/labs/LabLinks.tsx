@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { labsForSection } from "@/lib/labs";
-import { labCode } from "./labCode";
 
 /** "Code labs" cards for a lesson section; renders nothing when the section has none. */
 export function LabLinks({ sectionId }: { sectionId: string }) {
@@ -13,7 +12,7 @@ export function LabLinks({ sectionId }: { sectionId: string }) {
         {labs.map((l) => (
           <li key={l.meta.id}>
             <Link href={`/simulators/code-labs/${l.meta.id}`} className="fm-card block p-4 no-underline" style={{ color: "var(--ink)" }}>
-              <span className="fm-cap">{labCode(l.meta.order)} · Code lab →</span>
+              <span className="fm-cap">Code lab →</span>
               <span className="mt-1 block font-semibold">{l.meta.title}</span>
               <span className="mt-1 block text-[15px] text-ink-muted">{l.meta.summary}</span>
             </Link>

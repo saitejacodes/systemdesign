@@ -26,7 +26,7 @@ The defences all aim at one idea: **only one caller rebuilds a given key; everyo
 
 On a miss, try to take a short-lived lock for that key, for example in Redis with `SET lock:top-deals <token> NX PX 5000` (set only if absent, expire after 5 seconds). The winner queries the database, writes the cache and releases the lock. The losers sleep briefly (say 50 ms) and re-read the cache.
 
-<Figure caption="FIG. 5.1 · LOCK-BASED REBUILD · ONE QUERY INSTEAD OF THOUSANDS">
+<Figure caption="Figure 5.1 · Lock-based rebuild · One query instead of thousands">
   <Diagram label="Two clients miss the same key. Client A wins the lock and rebuilds; client B retries the cache and gets A's value without touching the database." chart={`sequenceDiagram
     participant A as Client A
     participant B as Client B

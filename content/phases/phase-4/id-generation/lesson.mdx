@@ -79,7 +79,7 @@ A <Term slug="snowflake-id">Snowflake ID</Term> packs time, machine and a counte
 | 10 | Machine ID | Twitter split it into 5 bits of data centre and 5 of worker: up to 1,024 generators |
 | 12 | Sequence | Counter within one millisecond on one machine: 0 to 4,095 |
 
-<Figure caption="FIG. 7.1 · SNOWFLAKE GENERATION · ONE MILLISECOND AT A TIME">
+<Figure caption="Figure 7.1 · Snowflake generation · One millisecond at a time">
   <Diagram label="Flowchart of Snowflake generation: read the clock; if it went backwards, wait or refuse; if it is the same millisecond, increment the sequence and wait for the next millisecond on overflow; otherwise reset the sequence; then assemble the ID from timestamp, machine ID and sequence." chart={`flowchart TD
     A[Read current time in ms] --> B{now less than last timestamp?}
     B -- yes, clock went back --> C[Wait until clock catches up or refuse and alert]

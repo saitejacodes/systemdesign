@@ -6,10 +6,10 @@ const tick = { fontFamily: "var(--font-mono)", fontSize: 10, fill: "var(--ink-mu
 const axis = { stroke: "var(--ink)", tickLine: false, tick };
 const tip = { contentStyle: { background: "var(--surface)", border: "1px solid var(--ink)", borderRadius: 2, fontFamily: "var(--font-mono)", fontSize: 11 }, cursor: { fill: "var(--line)" } };
 
-export function Figure({ code, title, empty, children }: { code: string; title: string; empty?: string; children: React.ReactNode }) {
+export function Figure({ title, empty, children }: { title: string; empty?: string; children: React.ReactNode }) {
   return (
     <figure className="fm-card min-w-0">
-      <figcaption className="fm-card__head"><span>{code} · {title}</span></figcaption>
+      <figcaption className="fm-card__head"><span>{title}</span></figcaption>
       <div className="fm-card__body">{empty ? <p className="grid h-[180px] place-items-center text-center text-ink-muted">{empty}</p> : children}</div>
     </figure>
   );

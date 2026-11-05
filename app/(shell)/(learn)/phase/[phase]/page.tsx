@@ -19,12 +19,12 @@ export default async function Page({ params }: PageProps<"/phase/[phase]">) {
   const sections = getSectionsByPhase(phase.n);
   return (
     <>
-      <PageHeader code={`P-0${phase.n}`} spec={`Phase ${phase.n} · ${weekLabel(phase.weeks)}`} before={`Phase ${phase.n}:`} em={phase.short.toLowerCase()} lede={phase.name} />
+      <PageHeader title={phase.name} lede={`Phase ${phase.n} · ${weekLabel(phase.weeks)}`} />
       <div className="grid max-w-3xl gap-3 px-4 py-8 sm:px-8">
         {sections.length === 0 && <p className="fm-cap">Coming soon · lessons for this phase are being written</p>}
         {sections.map(({ meta }) => (
           <Link key={meta.id} href={sectionHref(meta)} className="fm-card block p-4 no-underline" style={{ color: "var(--ink)" }}>
-            <span className="fm-cap">§{meta.phase}.{meta.order} · Week {meta.week} · {meta.estimatedMinutes} min</span>
+            <span className="fm-cap">{meta.phase}.{meta.order} · Week {meta.week} · {meta.estimatedMinutes} min</span>
             <span className="mt-1 block text-[18px] font-bold">{meta.title}</span>
           </Link>
         ))}

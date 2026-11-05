@@ -48,7 +48,7 @@ export function AppShell({ children, sections }: { children: ReactNode; sections
           </div>
         </div>
       </div>
-      {pageHud ? <HudBar {...pageHud} /> : <HudBar live={`Lab · ${pathname.split("/")[1] || "home"}`} items={[{ k: "QPS", v: "0" }, { k: "P99", v: "—" }]} right="Field Manual · Rev. A" />}
+      {pageHud ? <HudBar {...pageHud} /> : <HudBar live={`GET ${pathname}`} />}
       <SearchBootstrap />
       <StudyTracker />
       <CommandPalette />

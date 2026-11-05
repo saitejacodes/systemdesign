@@ -128,7 +128,7 @@ Media goes straight from the device to object storage through a <Term slug="pres
 
 ## High-level design
 
-<Figure caption="FIG. 1 · CHAT APP · REFERENCE ARCHITECTURE">
+<Figure caption="Figure 1 · Chat app · Reference architecture">
   <Diagram label="Devices connect over WebSocket to 720 gateways in three zones. Each send goes to the conversation's owner in the chat service, which stores it, acks, and appends it to a Kafka log. Fan-out workers find recipients in a Redis registry, deliver to online devices, update inbox rows and push to offline users." chart={`flowchart LR
     U[Users' devices] -->|WebSocket TLS| LB[L4 load balancer]
     U -->|presigned upload| OBJ[(Media blobs)]

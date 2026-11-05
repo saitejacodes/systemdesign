@@ -145,7 +145,7 @@ Modelling a like as `PUT …/likes/me` makes it naturally idempotent: a double t
 
 ## High-level design
 
-<Figure caption="FIG. 1 · PHOTO-SHARING APP · REFERENCE ARCHITECTURE">
+<Figure caption="Figure 1 · Photo-sharing app · Reference architecture">
   <Diagram label="Phones upload originals straight to object storage with presigned URLs; an object-created event queues a resize job, and resize workers write four variants and a manifest back to storage. Phones fetch variants from an image CDN backed by object storage. All API calls go through a load balancer to 225 API instances in three zones, which read timelines and post objects from Redis and fall back to the posts store. Posts, likes and comments, and follows live in separate wide-column stores. Change data capture from the posts store feeds fan-out workers that push post IDs into followers' Redis timelines, and change data capture from the engagement store feeds counter aggregators that write a counters store." chart={`flowchart LR
     U[Phones] -->|PUT original, presigned| OS[(Object storage)]
     U -->|GET variant| CDN[Image CDN]

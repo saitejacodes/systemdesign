@@ -50,7 +50,7 @@ Every node is in one of three roles:
 - **Candidate:** a follower that has stopped hearing from a leader and is asking for votes.
 - **Leader:** handles all client writes and replicates them. At most one per term.
 
-<Figure caption="FIG. 4.1 · RAFT ROLE TRANSITIONS">
+<Figure caption="Figure 4.1 · Raft role transitions">
   <Diagram label="State diagram: a follower whose election timeout fires becomes a candidate. A candidate that wins a majority becomes leader. A candidate that sees a valid leader or higher term returns to follower; a split vote makes it time out and start a new election. A leader that sees a higher term steps down to follower." chart={`stateDiagram-v2
     [*] --> Follower
     Follower --> Candidate: election timeout, no heartbeat
@@ -110,7 +110,7 @@ Once elected, the leader is the only node that accepts writes. Each write become
 5. Once the entry is stored on a **majority** (leader included), the leader marks it **committed**, applies it to its state machine and replies to the client.
 6. Later messages tell followers the new commit position, and they apply the entry too.
 
-<Figure caption="FIG. 4.2 · RAFT LOG REPLICATION · COMMIT ON MAJORITY">
+<Figure caption="Figure 4.2 · Raft log replication · Commit on majority">
   <Diagram label="Sequence: a client sends SET to the leader. The leader appends entry 42 and sends it to followers F1 to F4. F1 and F2 acknowledge; F3 is slow and F4 is down. With leader plus F1 and F2 the entry is on 3 of 5 nodes, so the leader advances the commit index to 42, applies it and replies OK. The next heartbeat carries commit index 42 and followers apply it." chart={`sequenceDiagram
     participant Cl as Client
     participant L as Leader

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
-import { Wordmark } from "@/components/brand";
+import { Mark, Wordmark } from "@/components/brand";
 import { LEARN_ICON, NAV_BOTTOM, NAV_TOP, type NavItem } from "@/lib/nav";
 import { PHASES, weekLabel } from "@/lib/curriculum";
 import { useUi } from "@/lib/ui-store";
@@ -58,7 +58,7 @@ export function Sidebar({ sections = [] }: { sections?: TreeSection[] }) {
       >
         <div className="flex h-14 items-center border-b border-ink px-4">
           <Link href="/" className="no-underline" style={{ color: "var(--ink)" }} aria-label="SysDesign Lab home">
-            {collapsed ? <span className="fm-mono font-bold">SDL</span> : <Wordmark />}
+            {collapsed ? <Mark size={26} /> : <Wordmark />}
           </Link>
         </div>
         <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 pb-6" onClick={(e) => (e.target as HTMLElement).closest("a") && set({ drawerOpen: false })}>
@@ -96,7 +96,7 @@ export function Sidebar({ sections = [] }: { sections?: TreeSection[] }) {
                             const sp = sectionProgress(s, data, SIM_CHALLENGES);
                             return (
                               <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined} className={sp.complete ? "done" : undefined}>
-                                <span className="s">§{s.phase}.{s.order}</span> {s.title}
+                                <span className="s">{s.phase}.{s.order}</span> {s.title}
                                 {sp.complete && <span className="sr-only">, complete</span>}
                                 {sp.newSimulator && <span className="sr-only">, new simulator</span>}
                               </Link>

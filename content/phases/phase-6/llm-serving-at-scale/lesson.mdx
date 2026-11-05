@@ -12,7 +12,7 @@ Serving an LLM fleet is running an airport where every flight is a jumbo jet who
 
 A typical path has seven hops, each with a distinct job:
 
-<Figure caption="FIG. 6.17 · A TYPICAL LLM REQUEST PATH">
+<Figure caption="Figure 6.17 · A typical LLM request path">
   <Diagram label="A request passes edge, API gateway, rate limiter, regional router, model cluster router and replica scheduler before reaching the GPU, which streams tokens back along the same path." chart={`sequenceDiagram
     participant C as Client
     participant E as Edge / LB
@@ -186,7 +186,7 @@ Blind retries at several layers multiply this into <Term slug="retry-amplificati
 
 <Term slug="stream-resumption">Stream resumption</Term> is a common alternative: the router or gateway keeps the tokens it has already sent, and on failure re-submits prompt plus emitted tokens to a healthy replica as a new prefix, then continues streaming. The client sees a pause, not an error.
 
-<Figure caption="FIG. 6.18 · A REPLICA FAILS MID-STREAM">
+<Figure caption="Figure 6.18 · A replica fails mid-stream">
   <Diagram label="The gateway streams tokens from replica A; A fails at token 412; the gateway resubmits the prompt plus 412 tokens to replica B, which prefills them and continues streaming from token 413." chart={`sequenceDiagram
     participant C as Client
     participant G as Gateway

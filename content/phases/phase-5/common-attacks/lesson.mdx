@@ -54,7 +54,7 @@ L7 attacks send real, complete HTTP requests, so they look like users. In Octobe
 
 So the layered L7 defence is: **cache everything you can** at the edge; put a WAF and bot detection (reputation, browser challenges, request fingerprints) in front of what you can't cache; rate-limit by **user, API key or session**, not only IP, and especially on expensive endpoints (search, login, checkout); and **shed load** at the origin so overload degrades gracefully instead of collapsing. Finally, **cloak the origin**: if attackers can find your origin's IP, they bypass the CDN entirely. Allow inbound traffic only from the CDN's address ranges, or use an authenticated tunnel.
 
-<Figure caption="FIG. 9.1 · DDOS DEFENCE IN LAYERS · EACH LAYER REMOVES WHAT IT CAN SEE">
+<Figure caption="Figure 9.1 · DDoS defence in layers · Each layer removes what it can see">
   <Diagram label="Flowchart: attack and user traffic enter an anycast edge that absorbs volumetric floods, then a WAF and bot detection layer, then CDN cache, then per-key rate limiting at the API gateway, then load shedding at the origin, which reaches the database." chart={`flowchart LR
     T[Users and attack traffic] --> E[Anycast edge and scrubbing: drops L3/L4 floods]
     E --> W[WAF and bot detection: drops known-bad L7]
@@ -111,7 +111,7 @@ The same rule applies everywhere: keep code and data in separate channels.
 2. **Content Security Policy** (CSP), a response header that restricts which scripts may run (for example only scripts carrying a per-response nonce), so injected script is blocked even if encoding fails.
 3. **`HttpOnly` cookies**, so script can't read the session cookie (it can still act as the user, so this limits harm).
 
-<Figure caption="FIG. 9.2 · PARAMETERISED QUERY · CODE AND DATA TRAVEL SEPARATELY">
+<Figure caption="Figure 9.2 · Parameterised query · Code and data travel separately">
   <Diagram label="Sequence diagram: the app sends a SQL statement with a placeholder; the database parses and plans it; the app then sends the value separately; the database binds it as data and executes the already-parsed plan, so the value cannot change the query's structure." chart={`sequenceDiagram
     participant A as App
     participant D as Database
@@ -149,7 +149,7 @@ Three independent controls would each have broken this chain: no SSRF in the WAF
 
 AWS's IMDSv2 makes credential theft through typical SSRF much harder:
 
-<Figure caption="FIG. 9.3 · IMDSv2 · A SESSION TOKEN BEFORE ANY METADATA">
+<Figure caption="Figure 9.3 · IMDSv2 · A session token before any metadata">
   <Diagram label="Sequence diagram: a legitimate SDK on the instance sends a PUT to the token endpoint with a TTL header and gets a token, then sends GET requests with the token header. A typical SSRF bug can only make a GET without custom headers, so the metadata service rejects it." chart={`sequenceDiagram
     participant S as SDK on instance
     participant M as IMDS 169.254.169.254

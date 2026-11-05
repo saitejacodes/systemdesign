@@ -24,7 +24,7 @@ One speculative step works like this:
 
 So every target pass yields **at least one** token (the replacement or bonus) and at most γ + 1.
 
-<Figure caption="FIG. 6.15 · ONE SPECULATIVE STEP WITH γ = 4">
+<Figure caption="Figure 6.15 · One speculative step with γ = 4">
   <Diagram label="Sequence diagram: the scheduler asks the draft model for four tokens one at a time, sends prefix plus four draft tokens to the target in one pass, gets five distributions back, accepts the first two draft tokens, rejects the third, samples a replacement from the corrected distribution, rolls back the KV cache for the discarded tokens, and starts the next step." chart={`sequenceDiagram
     participant S as Scheduler
     participant D as Draft model q

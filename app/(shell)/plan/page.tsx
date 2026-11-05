@@ -9,7 +9,7 @@ export default function Page() {
   const { weeks, sections } = getPlanView();
   return (
     <>
-      <PageHeader code="P-16" spec="The plan" before="Sixteen weeks, one" em="system" after="." lede="Seven phases in the order you should learn them, about eight hours a week. Open a week to see its lessons, simulators and deliverable." />
+      <PageHeader title="Sixteen weeks, one system" lede="Seven phases in the order you should learn them, about eight hours a week. Open a week to see its lessons, simulators and deliverable." />
       <PlanTimeline weeks={weeks} sections={sections} />
     </>
   );

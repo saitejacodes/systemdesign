@@ -15,7 +15,7 @@ export function LearnWidgets({ kind, section }: { kind: keyof typeof TITLES; sec
       <h2 id={`${kind}-h`} className="fm-h4 mb-4">{TITLES[kind]}</h2>
       {kind === "checkpoints" && <CheckpointList section={info} items={section.checkpoints} />}
       {kind === "quiz" && <QuizPlayer section={info} questions={section.quiz} topics={Object.fromEntries(section.meta.topics.map((t) => [t.id, t.title]))} />}
-      {kind === "flashcards" && <FlashcardDeck sectionId={section.meta.id} sectionLabel={`§${section.meta.phase}.${section.meta.order} ${section.meta.title}`} cards={section.flashcards} />}
+      {kind === "flashcards" && <FlashcardDeck sectionId={section.meta.id} sectionLabel={`${section.meta.phase}.${section.meta.order} ${section.meta.title}`} cards={section.flashcards} />}
     </section>
   );
 }

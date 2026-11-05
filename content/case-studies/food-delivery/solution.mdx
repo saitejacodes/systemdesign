@@ -147,7 +147,7 @@ Location takes a **batch** of points, so a courier who loses signal uploads the 
 
 ## High-level design
 
-<Figure caption="FIG. 1 · FOOD DELIVERY · REFERENCE ARCHITECTURE">
+<Figure caption="Figure 1 · Food delivery · Reference architecture">
   <Diagram label="Three client apps reach an API gateway that routes to location, catalog, order and realtime tiers spread over three zones. Location writes positions to a Redis geo index and Kafka; a tracking worker pushes them to customers. Catalog reads Redis and a search index. The order service writes orders and an outbox to Postgres and calls the payment provider; order events reach the notifier and dispatch, which reads the geo index, asks the maps provider for ETAs and assigns couriers in Postgres." chart={`flowchart LR
     CU[Customers] --> GW[API gateway]
     RS[Restaurant tablets] --> GW

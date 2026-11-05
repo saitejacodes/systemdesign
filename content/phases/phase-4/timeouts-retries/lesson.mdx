@@ -74,7 +74,7 @@ The fix is <Term slug="deadline-propagation">deadline propagation</Term>: the fi
 
 gRPC builds this in: a client sets a deadline, gRPC sends the remaining time in the `grpc-timeout` header, and in Go the server sees it as the request `context` deadline, which it can pass to its own outgoing calls. In HTTP you have to carry it yourself, usually in a custom header.
 
-<Figure caption="FIG. 11.1 · DEADLINE PROPAGATION · EACH HOP SPENDS FROM ONE BUDGET">
+<Figure caption="Figure 11.1 · Deadline propagation · Each hop spends from one budget">
   <Diagram label="The gateway sets a 1,000 ms budget. The order service spends 300 ms and passes 650 ms to inventory after a 50 ms margin. Inventory spends 200 ms and passes 400 ms to the database. If the remaining budget is too small, a hop fails fast instead of calling downstream." chart={`sequenceDiagram
     participant G as Gateway
     participant O as Order service

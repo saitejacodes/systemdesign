@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { FigureCaption } from "@/components/brand";
 import { ArchitectureFigure } from "@/components/capstone/ArchitectureFigure";
 import { CapstoneChecklist } from "@/components/capstone/CapstoneChecklist";
 import { CapstoneProgress, StageBadge } from "@/components/capstone/CapstoneProgress";
 import { ZipDownload } from "@/components/capstone/ZipDownload";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { coverageMatrix, getBreakIt, getCapstoneGuides, PROJECT_TITLE, ZIP_ROOT } from "@/lib/capstone";
+import { coverageMatrix, getBreakIt, getCapstoneGuides, ZIP_ROOT } from "@/lib/capstone";
 import { getSectionById, sectionHref } from "@/lib/content";
 import { PHASES } from "@/lib/curriculum";
 
@@ -23,11 +22,7 @@ export default function Page() {
   return (
     <>
       <PageHeader
-        code="K-00"
-        spec="Capstone"
-        before="Serve an open-weights LLM like a"
-        em="frontier"
-        after=" lab."
+        title="Serve an open-weights LLM like a frontier lab"
         lede="A mini inference platform on your own laptop: real model servers, a streaming gateway, tenants and token quotas, routing, caching, a batch queue, dashboards, failure drills and a load test. Eleven stages that use every phase of the course."
       >
         <CapstoneProgress stages={progress} />
@@ -150,7 +145,7 @@ export default function Page() {
           </ol>
         </section>
 
-        <FigureCaption parts={["K-00", PROJECT_TITLE, `${guides.length} stages · ${breakIt.length} drills`]} />
+        <p className="fm-cap">{guides.length} stages · {breakIt.length} drills</p>
       </div>
     </>
   );

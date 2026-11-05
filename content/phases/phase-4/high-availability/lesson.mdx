@@ -141,7 +141,7 @@ A<sub>parallel</sub> = 1 − (1 − A<sub>1</sub>) × (1 − A<sub>2</sub>) × �
 
 Two independent copies at 99% each: 1 − 0.01 × 0.01 = **99.99%**. Each independent copy multiplies the failure probability by its own.
 
-<Figure caption="FIG. 9.1 · SERIES AND PARALLEL · THE CHECKOUT PATH AFTER STEP 3">
+<Figure caption="Figure 9.1 · Series and parallel · The checkout path after step 3">
   <Diagram label="Block diagram: a load balancer in series with a parallel pair of app servers, in series with an active-passive database pair. Series blocks multiply availability; parallel blocks multiply failure probability." chart={`flowchart LR
     U[Users] --> LB[Load balancer 99.99%]
     LB --> A1[App server 1 99.95%]

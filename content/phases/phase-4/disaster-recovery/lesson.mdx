@@ -114,7 +114,7 @@ Replication also sets a floor on RPO for disasters it *does* cover. With asynchr
 
 The AWS whitepaper *Disaster Recovery of Workloads on AWS* names four strategies, ordered by cost and speed. The names are now used well beyond AWS.
 
-<Figure caption="FIG. 14.1 · DR TIERS · WHAT IS RUNNING IN THE RECOVERY REGION">
+<Figure caption="Figure 14.1 · DR tiers · What is running in the recovery region">
   <Diagram label="Four DR tiers from cheapest to most expensive. Backup and restore keeps only backups in the recovery region. Pilot light adds live replicated data with compute switched off. Warm standby runs a scaled-down full copy. Active-active runs full capacity serving traffic in both regions." chart={`flowchart LR
     A[Backup and restore: backups only] --> B[Pilot light: live data replica, compute off]
     B --> C[Warm standby: small full stack running]
@@ -161,7 +161,7 @@ A team with a warm standby in a second region runs its first planned drill on a 
 
 Every finding was cheap to fix on a Tuesday and would have been agonising at 3 a.m. during a real outage. That is the point of the drill.
 
-<Figure caption="FIG. 14.2 · REGIONAL FAILOVER · THE STEPS A DRILL MUST EXERCISE">
+<Figure caption="Figure 14.2 · Regional failover · The steps a drill must exercise">
   <Diagram label="The on-call engineer declares the disaster, fences the old primary so it cannot accept writes, promotes the standby database, scales the standby compute, shifts traffic, verifies with synthetic checks, and later fails back." chart={`sequenceDiagram
     participant O as On-call
     participant P as Primary region

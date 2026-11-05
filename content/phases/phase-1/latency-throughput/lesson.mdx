@@ -45,7 +45,7 @@ A <Term slug="percentile">percentile</Term> answers "how slow is the request at 
 - **p99:** 99% are faster; 1 in 100 is slower. This is the "tail".
 - **p99.9:** 1 in 1,000 is slower. Large services watch this too.
 
-<Figure caption="FIG. 5.1 · A LATENCY DISTRIBUTION · LONG RIGHT TAIL">
+<Figure caption="Figure 5.1 · A latency distribution · Long right tail">
   <Diagram label="Bar chart of request counts by latency bucket: most requests between 5 and 20 ms, a few between 50 and 200 ms, and a thin tail out to 1 second. Markers show p50 at 12 ms, p95 at 60 ms and p99 at 250 ms." chart={`xychart-beta
     title "Requests by latency bucket"
     x-axis ["0-5", "5-10", "10-20", "20-50", "50-100", "100-200", "200-500", "500-1000"]

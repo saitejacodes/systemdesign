@@ -83,7 +83,7 @@ Here is the bug. A writer's natural instinct is "clear the cache, then change th
 
 The cache now holds v1 and the database v2. Nothing will fix it until the TTL expires, and with no TTL, it is wrong **forever**. The window is wide: any read that misses between the delete and the commit (which might include a slow transaction) can cause it, and on a hot key that's almost guaranteed.
 
-<Figure caption="FIG. 4.1 · DELETE-THEN-UPDATE · A READER WRITES THE OLD VALUE BACK AFTER THE DELETE">
+<Figure caption="Figure 4.1 · Delete-then-update · A reader writes the old value back after the delete">
 <Diagram label="Writer deletes the cache key. Reader misses and reads v1 from the database. Writer updates the database to v2. Reader then stores v1 in the cache, leaving a stale value that later readers hit." chart={`sequenceDiagram
   participant W as Writer
   participant C as Cache

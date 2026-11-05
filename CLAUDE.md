@@ -128,14 +128,22 @@ Match them closely; when a detail is missing, follow these rules:
 - Themes: "Paper" (warm off-white, ink black, cobalt accent) and "Blueprint" (deep navy,
   chalk lines). Implement tokens as CSS variables from /design/tokens.json.
 - Phase colors: 1 sage, 2 lime, 3 coral, 4 plum, 5 lavender, 6 cobalt, 7 charcoal.
-- Type: heavy grotesk display; one italic serif cobalt word per headline; clean sans body
-  (17–18px, line-height 1.6); uppercase wide-tracked monospace for labels, captions,
-  metrics, tables and HUD.
+- Type: heavy grotesk display (Archivo) in sentence case, no trailing periods, light
+  negative tracking only at display sizes; clean sans body (17–18px, line-height 1.6);
+  sans labels and captions in sentence case; monospace only for data: metrics, numbers
+  with units, code, paths and the HUD. (Revised 2026-11-05 at the user's request: the
+  italic serif accent word and uppercase tracked labels were retired.)
 - Signature components (build in /components/brand): FigureCaption, NumberedCallout,
   PartsList, SpecLabel, HudBar, PhasePath (the 7 phases as climbing isometric steps, SVG),
   DepthStamp (DEEP / TRADEOFFS / AWARENESS).
-- Style: hairline borders, 2–4px radius, no soft shadows (hard offset shadows allowed),
-  drafting grid and crosshair marks only in heroes and simulator canvases.
+- Style: structural lines in the rule colour (48% ink), full ink only on controls; 2–4px
+  radius; no soft shadows and no offset slabs; drafting grid only in heroes and simulator
+  canvases (crosshair marks only in simulator canvases).
+- No decoration that pretends to be data or a document: no FIG / sheet / revision codes,
+  no § numbering, no eyebrow above every heading, no made-up telemetry. Details carry
+  system meaning instead: the cursor (a request packet; wired to a node over controls),
+  a packet running along link underlines, lessons as nodes on a phase pipeline, loading
+  as a request in flight, errors as log lines, 404 as an HTTP status.
 - Motion: diagrams assemble on first view, callout lines draw in, request dots travel;
   150–400ms; all disabled under prefers-reduced-motion.
 - Simulator canvases are drawn like technical drawings: isometric blocks, leader-line

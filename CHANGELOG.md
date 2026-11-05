@@ -281,3 +281,13 @@
 - **Known limitations:**
   - With the CPU throttled 4× (a low-end laptop), llm-inference drops to about 36 fps and the others to 50–54.
   - Content QA still reports 59 warnings.
+
+## Design revision · less template, more system
+- Removed the "AI template" markers: italic serif accent words (and the font), headline periods, heavy negative tracking, uppercase tracked mono labels, § numbers, FIG / S-03 / K-00 / B-2.13 codes, spec-label plates, "Rev. A / NTS / Sheet 05 of 05", rotated depth stamps, status pills, hard offset shadows, landing crosshairs, and the made-up QPS / P99 in the default status bar.
+- Type and lines: sentence-case sans labels and captions; mono only for data (metrics, units, code, paths, HUD). Structural lines use a new `--rule` colour (48% ink, still 3:1); controls keep full ink. Callouts are a coloured left rule with a bold head.
+- System details: a custom cursor (a pointer with a request packet; over controls the packet is wired to a server node), a packet that runs along prose-link underlines on hover, lessons in the sidebar as nodes on each phase's wire (hollow, done, current), loading as a packet in flight, errors as log lines, the 404 page as `404 Not Found`, the status bar showing `GET /path`, thin scrollbars and cobalt selection. Motion stops under reduced motion.
+- Landing page rewritten: no eyebrows or sheet codes, the weekly loop drawn as a request path, the load-balancer preview with real units, the 16-week plan as a Gantt strip.
+- All 124 figure captions in content are sentence case, with acronyms and product names kept.
+- New brand mark and real favicon (the tab showed the default Next.js "N"): one node fanning out to two servers on an ink tile. `node scripts/make-icons.mjs` writes `app/icon.svg`, `app/favicon.ico` and the PWA icons.
+- CLAUDE.md §5 and DECISIONS record the new rules.
+- Verify: open / and a lesson in Paper and Blueprint, hover a link inside a lesson, and check the browser tab icon.

@@ -19,7 +19,7 @@ export default async function Page({ params }: PageProps<"/interview/[caseId]">)
   if (!c || !c.rubric) notFound();
   return (
     <>
-      <PageHeader code="I-00" spec={`Interview · ${c.meta.title}`} before="Defend your" em="design" after="." lede={c.meta.summary} />
+      <PageHeader title={`Interview: ${c.meta.title}`} lede={c.meta.summary} />
       <InterviewApp
         c={{ meta: c.meta, rubric: c.rubric, reference: c.design }}
         solution={<SolutionRenderer source={c.solution} idPrefix="ref-" />}

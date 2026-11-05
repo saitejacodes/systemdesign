@@ -129,7 +129,7 @@ POST /v1/trips/{tripId}/cancel     → 200 { "cancellationFee": 0 }
 
 ## High-level design
 
-<Figure caption="FIG. 1 · RIDE SHARING · REFERENCE ARCHITECTURE">
+<Figure caption="Figure 1 · Ride sharing · Reference architecture">
   <Diagram label="Riders and drivers connect through a load balancer to realtime WebSocket gateways and to trip-and-dispatch services in three zones. Gateways write each driver location to the geo index primaries and append it to a Kafka topic; route recorders and a surge job consume that topic. Dispatch searches the geo index replicas, gets surge from a pricing store and ETAs from the external maps provider, and assigns drivers with conditional updates in Postgres. Offers and trip updates reach phones through Redis pub/sub channels that the gateways subscribe to. Trip events leave Postgres through an outbox to Kafka, where payment workers charge through the external payment provider and record a double-entry ledger." chart={`flowchart LR
     R[Riders] --> LB[Load balancer]
     D[Drivers] --> LB

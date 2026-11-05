@@ -124,7 +124,7 @@ In ordinary TLS only the server presents a certificate. With <Term slug="mtls">m
 
 <Term slug="spiffe">SPIFFE</Term> (Secure Production Identity Framework for Everyone, a CNCF project) standardises this across platforms. A workload's identity is a URI such as `spiffe://prod.example.com/ns/payments/sa/api`. The credential proving it is an **SVID**, either an X.509 certificate carrying the ID in its URI SAN field (used for mTLS) or a JWT-SVID. SPIRE, the reference implementation, attests a workload (which node, which Kubernetes service account, which container image) before issuing a short-lived SVID, and rotates it automatically. Istio uses SPIFFE-format identities for its sidecars in the same way, so a <Term slug="service-mesh">service mesh</Term> can enforce "only `orders` may call `payments` `POST /charges`" without any application code.
 
-<Figure caption="FIG. 7.1 · WORKLOAD IDENTITY · ATTEST, ISSUE, CALL, AUTHORIZE">
+<Figure caption="Figure 7.1 · Workload identity · Attest, issue, call, authorize">
   <Diagram label="The orders workload is attested by the local identity agent and receives a short-lived certificate containing its SPIFFE ID. It opens an mTLS connection to payments, which verifies the certificate chain, reads the SPIFFE ID and checks policy before serving the request." chart={`sequenceDiagram
     participant O as orders workload
     participant A as Identity agent on node

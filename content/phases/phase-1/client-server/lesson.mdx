@@ -10,7 +10,7 @@ A **client** is any program that starts a conversation: a browser, a mobile app,
 
 The basic pattern is <Term slug="request-response">request/response</Term>. The client sends a request, the server does some work, the server sends one response back. For a typical web request, the full journey looks like this:
 
-<Figure caption="FIG. 1.1 · REQUEST LIFECYCLE · ONE HTTPS GET">
+<Figure caption="Figure 1.1 · Request lifecycle · One HTTPS GET">
   <Diagram label="Sequence diagram: browser resolves DNS, opens TCP and TLS connections to a load balancer, which forwards to an app server; the app server reads from a cache and a database and returns a response." chart={`sequenceDiagram
     participant B as Browser
     participant D as DNS resolver
@@ -72,7 +72,7 @@ Stateful servers are not bad. Some workloads are naturally stateful, and pretend
 
 The design skill is not "never be stateful". It is: **keep the tier that you need to scale and replace freely stateless, and push state into a small number of components that are built to hold it.**
 
-<Figure caption="FIG. 1.2 · STATELESS TIER · STATE PUSHED DOWN">
+<Figure caption="Figure 1.2 · Stateless tier · State pushed down">
   <Diagram label="Flowchart: clients reach a load balancer that spreads requests over three identical stateless app servers; all three read and write a shared cache and a shared database." chart={`flowchart LR
     U[Clients] --> LB[Load balancer]
     LB --> A1[App server 1]

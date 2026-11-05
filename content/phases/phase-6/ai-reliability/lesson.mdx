@@ -65,7 +65,7 @@ With 2,000 user requests per second during an incident, that is up to 36,000 req
 
 <Term slug="provider-failover">Provider failover</Term> routes LLM calls to a second model provider, or the same model in another region or cloud, when the primary is failing. It is the LLM version of active-passive redundancy, and it has the same shape: a health signal, a switching rule, and a secondary that must actually work when you need it.
 
-<Figure caption="FIG. 10.1 · FAILOVER BEHIND A CIRCUIT BREAKER">
+<Figure caption="Figure 10.1 · Failover behind a circuit breaker">
   <Diagram label="The gateway sends a request to provider A, gets 503 twice, the breaker opens, and the request and later ones go to provider B with a provider-specific prompt." chart={`sequenceDiagram
     participant App
     participant GW as LLM gateway

@@ -69,7 +69,7 @@ But you can't send terabytes through a remote API. AWS KMS's `Encrypt` call, for
 3. Store the **wrapped DEK next to the ciphertext**, and erase the plaintext DEK from memory.
 4. To read: send the wrapped DEK (a few hundred bytes) to the KMS `Decrypt` call, get the plaintext DEK back if your policy allows, decrypt locally.
 
-<Figure caption="FIG. 8.1 · ENVELOPE ENCRYPTION · ONLY THE SMALL KEY TRAVELS TO THE KMS">
+<Figure caption="Figure 8.1 · Envelope encryption · Only the small key travels to the KMS">
   <Diagram label="Sequence diagram: on write the app asks KMS for a data key, gets plaintext and wrapped copies, encrypts the object locally and stores ciphertext plus wrapped key. On read it sends only the wrapped key to KMS, gets the plaintext data key, and decrypts locally." chart={`sequenceDiagram
     participant A as App server
     participant K as KMS (KEK in HSM)

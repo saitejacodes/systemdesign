@@ -10,9 +10,8 @@ export default function GlobalError({ error, retry }: { error: unknown; retry: (
       <body>
         <ErrorState
           standalone
-          caption={["ERR", "SYSTEM FAULT"]}
-          before="The lab hit a"
-          em="fault"
+          status="unhandled error · app"
+          title="The app hit an error"
           message="SysDesign Lab failed to start this page. Your progress is stored in this browser and is safe. Try again; if it keeps failing, reload the page or come back later."
           retry={retry}
           digest={digestOf(error)}

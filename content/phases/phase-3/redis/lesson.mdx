@@ -186,7 +186,7 @@ One Redis process is limited by one machine's memory and one core's command thro
 
 Clients cache the slot-to-node map. If a client asks the wrong node, it gets a redirect. In the example below, `CLUSTER KEYSLOT user:42` returns 15880, which falls in node C's range.
 
-<Figure caption="FIG. 7.1 · CLUSTER REDIRECTS · THE CLIENT LEARNS WHERE A SLOT LIVES">
+<Figure caption="Figure 7.1 · Cluster redirects · The client learns where a slot lives">
   <Diagram label="The client sends a command for a key in slot 15880 to node A. Node A replies MOVED with node C's address. The client updates its slot map and retries on node C, which answers." chart={`sequenceDiagram
     participant C as Client
     participant A as Node A (slots 0-5460)

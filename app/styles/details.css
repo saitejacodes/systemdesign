@@ -1,0 +1,89 @@
+/*
+ * System details: the small things that make the site read as a systems tool rather than a template.
+ * Everything here is drawn from what engineers actually look at — topology diagrams, traces, request paths.
+ * Tokens first, then base-layer defaults (so components and utilities can still override them).
+ */
+
+/* Structural lines: 48% ink. Still 3:1 against paper (WCAG 1.4.11) but no longer black everywhere. */
+:root, [data-theme="paper"] {
+  --rule: color-mix(in srgb, var(--ink) 48%, var(--paper));
+  /* Cursor: a pointer with a request packet; over something clickable the packet is wired to a node. */
+  --cur-default: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 2.5v14.2l3.9-3.6 2.6 6.1 2.4-1-2.6-6h5.3z' fill='%23121212' stroke='%23F4EFE4' stroke-width='1.3' stroke-linejoin='round'/%3E%3Ccircle cx='18.5' cy='19' r='2.3' fill='%233B4CF5' stroke='%23F4EFE4' stroke-width='1.1'/%3E%3C/svg%3E") 3 2, auto;
+  --cur-link: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 2.5v14.2l3.9-3.6 2.6 6.1 2.4-1-2.6-6h5.3z' fill='%23121212' stroke='%23F4EFE4' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M15 19.5h4' stroke='%23121212' stroke-width='1.4'/%3E%3Ccircle cx='14.6' cy='19.5' r='2.1' fill='%233B4CF5' stroke='%23F4EFE4' stroke-width='1'/%3E%3Crect x='18.6' y='16.8' width='4.6' height='5.4' rx='1' fill='%23F4EFE4' stroke='%23121212' stroke-width='1.3'/%3E%3C/svg%3E") 3 2, pointer;
+}
+[data-theme="blueprint"] {
+  --cur-default: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 2.5v14.2l3.9-3.6 2.6 6.1 2.4-1-2.6-6h5.3z' fill='%23E8EEF6' stroke='%230A1020' stroke-width='1.3' stroke-linejoin='round'/%3E%3Ccircle cx='18.5' cy='19' r='2.3' fill='%238A97FF' stroke='%230A1020' stroke-width='1.1'/%3E%3C/svg%3E") 3 2, auto;
+  --cur-link: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 2.5v14.2l3.9-3.6 2.6 6.1 2.4-1-2.6-6h5.3z' fill='%23E8EEF6' stroke='%230A1020' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M15 19.5h4' stroke='%23E8EEF6' stroke-width='1.4'/%3E%3Ccircle cx='14.6' cy='19.5' r='2.1' fill='%238A97FF' stroke='%230A1020' stroke-width='1'/%3E%3Crect x='18.6' y='16.8' width='4.6' height='5.4' rx='1' fill='%230A1020' stroke='%23E8EEF6' stroke-width='1.3'/%3E%3C/svg%3E") 3 2, pointer;
+}
+
+/* Floating layers (menus, dialogs, the tour) sit on a thin hard edge instead of a 3px offset slab. */
+:root, [data-theme] {
+  --shadow-hard: 0 0 0 1px var(--rule), 0 4px 0 0 var(--line);
+  --shadow-hard-lg: 0 0 0 1px var(--rule), 0 8px 0 0 var(--line);
+}
+
+@layer base {
+  html { cursor: var(--cur-default); }
+  a[href], button:not(:disabled), summary, label[for], select, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="switch"] { cursor: var(--cur-link); }
+  button:disabled, [aria-disabled="true"] { cursor: not-allowed; }
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"]), textarea, [contenteditable="true"] { cursor: text; }
+
+  ::selection { background: color-mix(in srgb, var(--cobalt) 26%, transparent); color: inherit; }
+
+  /* Thin scrollbars the colour of a rule, like a log viewer. */
+  * { scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+}
+
+/* Tailwind's cursor-pointer gets the wired pointer too. */
+.cursor-pointer { cursor: var(--cur-link); }
+
+/* Structural lines that were full ink now use the rule colour; controls keep their ink outline. */
+.border-ink { border-color: var(--rule); }
+
+/*
+ * Links in running text: on hover a request packet runs along the underline, source to destination.
+ * Two background layers: the 1px wire and a 5px packet whose position animates once.
+ */
+.lesson a:not(.term > a, .fm-btn, .fm-card), .prose-link {
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor), radial-gradient(circle, currentColor 0 2.25px, transparent 2.6px);
+  background-size: 100% 1px, 6px 6px;
+  background-position: 0 calc(100% - 1px), -8px calc(100% + 1px);
+  background-repeat: no-repeat;
+  padding-bottom: 2px;
+}
+.lesson a:not(.term > a, .fm-btn, .fm-card):hover, .prose-link:hover { animation: sdl-packet .55s cubic-bezier(.3, .6, .3, 1) both; }
+@keyframes sdl-packet {
+  from { background-position: 0 calc(100% - 1px), -8px calc(100% + 1px); }
+  to { background-position: 0 calc(100% - 1px), calc(100% + 8px) calc(100% + 1px); }
+}
+
+/*
+ * Curriculum tree as a pipeline: each lesson is a node on the phase's wire.
+ * Hollow = not started, filled = complete, cobalt = where you are.
+ */
+.fm-sub a { position: relative; }
+.fm-sub a::before {
+  content: ""; position: absolute; left: -16px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px;
+  border-radius: 50%; border: 1.5px solid var(--rule); background: var(--paper);
+}
+.fm-sub a.done::before { background: var(--status-ok); border-color: var(--status-ok); }
+.fm-sub a[aria-current]::before { background: var(--cobalt); border-color: var(--cobalt); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cobalt) 22%, transparent); }
+
+/* A request in flight: the loading state is a packet crossing a wire, not a spinner. */
+.sdl-inflight { position: relative; height: 9px; max-width: 28rem; }
+.sdl-inflight::before { content: ""; position: absolute; inset: 4px 0 auto; height: 1px; background: var(--rule); }
+.sdl-inflight::after {
+  content: ""; position: absolute; top: 1px; left: 0; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--cobalt); animation: sdl-inflight 1.1s cubic-bezier(.45, 0, .55, 1) infinite;
+}
+@keyframes sdl-inflight { from { left: 0; } to { left: calc(100% - 7px); } }
+
+/* Health dot for things that are live (simulator running, service worker online). */
+.sdl-live { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--status-ok); box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-ok) 50%, transparent); animation: sdl-heartbeat 2s ease-out infinite; }
+@keyframes sdl-heartbeat { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-ok) 50%, transparent); } 70%, 100% { box-shadow: 0 0 0 6px transparent; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sdl-inflight::after { animation: none; left: 50%; }
+  .lesson a:hover, .prose-link:hover { animation: none !important; }
+}

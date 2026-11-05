@@ -105,7 +105,7 @@ Nothing on the read path is a database. The serving structure is **immutable**: 
 
 ## High-level design
 
-<Figure caption="FIG. 1 · TYPEAHEAD · SERVING PATH AND UPDATE PIPELINE">
+<Figure caption="Figure 1 · Typeahead · Serving path and update pipeline">
   <Diagram label="Searchers reach a CDN that answers about half of suggestion requests from cache. Misses go through a load balancer to twelve suggest servers in three zones, each holding the whole index in memory. Search events go to collectors and Kafka; a stream job builds a trending overlay each minute, an archiver writes logs to object storage, and a batch builder makes a new snapshot every six hours." chart={`flowchart LR
     S[Searchers] -->|GET /suggest| CDN[CDN 5-min cache]
     CDN -->|misses| LB[Load balancer]

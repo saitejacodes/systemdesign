@@ -19,7 +19,7 @@ Its weaknesses show up as the team and the codebase grow. Every change ships wit
 
 A <Term slug="modular-monolith">modular monolith</Term> keeps the single deployable but enforces boundaries inside it. Each module (orders, payments, catalog) owns its own code and its own tables, exposes a small public interface, and other modules may only call that interface. Many teams enforce the rules with build tooling, for example a check that fails the build when `payments` imports a private class from `orders`. Shopify described doing exactly this with their Rails codebase.
 
-<Figure caption="FIG. 2.1 · THREE SHAPES · SAME DOMAIN">
+<Figure caption="Figure 2.1 · Three shapes · Same domain">
   <Diagram label="Three diagrams side by side. Left: a big ball of mud where users, orders and payments modules all read each other's tables. Middle: a modular monolith where each module owns its tables and talks through interfaces, all inside one deployable. Right: microservices where each service owns its own database and they talk over the network." chart={`flowchart LR
     subgraph M1[Big ball of mud]
       U1[Users] --- O1[Orders]

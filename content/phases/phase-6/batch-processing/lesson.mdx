@@ -23,7 +23,7 @@ Word count is the canonical example: map emits `(word, 1)` for every word in a l
 
 The paper reports routinely running jobs with M = 200,000 and R = 5,000 on 2,000 machines: far more tasks than machines, so work balances dynamically and a failed task is small to redo.
 
-<Figure caption="FIG. 4.1 · MAPREDUCE DATA FLOW · WORD COUNT">
+<Figure caption="Figure 4.1 · MapReduce data flow · Word count">
   <Diagram label="Input splits feed map tasks, map outputs are partitioned by hash of key, each reducer pulls its partition from every mapper, sorts, and writes one output file." chart={`flowchart LR
     S1[Split 1] --> M1[Map task 1]
     S2[Split 2] --> M2[Map task 2]

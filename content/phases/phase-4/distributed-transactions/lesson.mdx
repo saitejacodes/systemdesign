@@ -25,7 +25,7 @@ Where the analogy breaks: real participants in 2PC are not just waiting politely
 4. If every participant voted YES, the coordinator writes COMMIT to its own durable log. **That write is the commit point**: the transaction is now committed, whatever happens next. If any vote was NO or timed out, the decision is ABORT.
 5. The coordinator sends the decision to every participant and keeps retrying until each acknowledges, through crashes and restarts if necessary.
 
-<Figure caption="FIG. 6.1 · TWO-PHASE COMMIT · THE COMMIT POINT IS THE COORDINATOR'S LOG WRITE">
+<Figure caption="Figure 6.1 · Two-phase commit · The commit point is the coordinator's log write">
   <Diagram label="Sequence: the coordinator sends PREPARE to the orders database and the payments database. Each writes a prepare record, holds its locks and votes YES. The coordinator writes COMMIT to its log, which is the commit point, then sends COMMIT to both. Each commits, releases locks and acknowledges." chart={`sequenceDiagram
     participant C as Coordinator
     participant O as Orders DB
@@ -150,7 +150,7 @@ Someone has to decide which step runs next. There are two styles.
 
 In <Term slug="saga-orchestration">orchestration</Term>, a central orchestrator tells each service what to do and records progress, like a conductor. In <Term slug="saga-choreography">choreography</Term>, there is no central brain: each service listens for events and reacts, publishing its own events in turn (OrderCreated → payment service charges → PaymentCompleted → inventory service reserves → …).
 
-<Figure caption="FIG. 6.2 · ORCHESTRATED SAGA WITH COMPENSATION">
+<Figure caption="Figure 6.2 · Orchestrated saga with compensation">
   <Diagram label="Sequence: the orchestrator tells the order service to create a pending order, the inventory service to reserve stock, and the payment service to charge. Payment replies declined. The orchestrator then tells inventory to release stock and the order service to cancel the order." chart={`sequenceDiagram
     participant Or as Orchestrator
     participant O as Order svc

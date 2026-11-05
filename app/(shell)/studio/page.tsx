@@ -9,7 +9,7 @@ export default function Page() {
   const caseStudies = Object.fromEntries(getCaseStudies().map((c) => [c.meta.id, c.meta.title]));
   return (
     <>
-      <PageHeader code="D-00" spec="Design Studio" before="Draw it, then" em="run" after=" it." lede="Place components, wire them up and write down why. Designs are saved in this browser, with version history." />
+      <PageHeader title="Draw it, then run it" lede="Place components, wire them up and write down why. Designs are saved in this browser, with version history." />
       <StudioHome caseStudies={caseStudies} />
     </>
   );

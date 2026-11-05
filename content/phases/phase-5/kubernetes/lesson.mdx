@@ -68,7 +68,7 @@ A ClusterIP is not a running proxy. On every node, kube-proxy programs iptables 
 
 An <Term slug="ingress">Ingress</Term> is a set of <Term slug="l7-load-balancing">layer 7</Term> HTTP routing rules for traffic entering the cluster: host `shop.example.com`, path `/api` goes to Service `api`, path `/` goes to Service `web`, with TLS terminated at the edge. The Ingress object does nothing by itself; an **ingress controller** (NGINX, HAProxy, Traefik, a cloud load balancer integration) watches Ingress objects and configures a real proxy. The newer Gateway API (v1.0 released in 2023) is the more expressive successor, with separate objects for the infrastructure owner (Gateway) and the application team (HTTPRoute), and support for traffic splitting by weight.
 
-<Figure caption="FIG. 11.1 · REQUEST PATH · INGRESS TO POD">
+<Figure caption="Figure 11.1 · Request path · Ingress to pod">
   <Diagram label="A client request reaches the cloud load balancer, then the ingress controller, which routes by host and path to a Service. The Service's virtual IP is translated by kube-proxy rules to one of three ready pods; a fourth pod that is not ready is excluded." chart={`flowchart LR
     C[Client] --> LB[Cloud load balancer]
     LB --> IC[Ingress controller: host and path rules]

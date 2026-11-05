@@ -20,7 +20,7 @@ Partitions are the unit of everything that matters for scale:
 
 This is the same idea as <Term slug="sharding">sharding</Term> a database: split one big thing into many smaller ones so the work spreads across machines. Kinesis calls its partitions **shards**; SQS FIFO queues get a similar effect from **message group IDs**, where order is kept within a group and different groups are processed in parallel.
 
-<Figure caption="FIG. 10.1 · A TOPIC WITH THREE PARTITIONS AND TWO CONSUMER GROUPS">
+<Figure caption="Figure 10.1 · A topic with three partitions and two consumer groups">
 <Diagram label="Producer writes keyed messages to three partitions; group A has two consumers splitting the partitions; group B has one consumer reading all three" chart={`flowchart LR
   P["Producer"] -->|"key=acct-17"| P0[("Partition 0")]
   P -->|"key=acct-42"| P1[("Partition 1")]
@@ -130,7 +130,7 @@ Ways to reduce the pain:
 
 Kafka 4.0 made a newer, broker-driven consumer group protocol generally available, designed to make rebalances more incremental and less disruptive. The trade-offs above still apply: any partition move costs some pause and some reprocessing.
 
-<Figure caption="FIG. 10.2 · A REBALANCE WHEN A THIRD CONSUMER JOINS">
+<Figure caption="Figure 10.2 · A rebalance when a third consumer joins">
 <Diagram label="Consumer 3 joins a group; the coordinator reassigns partitions so consumer 2 gives up partition 3 to consumer 3" chart={`sequenceDiagram
     participant C1 as Consumer 1
     participant C2 as Consumer 2

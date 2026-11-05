@@ -16,7 +16,7 @@ A CDN is a fleet of caching reverse proxies spread across many <Term slug="point
 
 With a <Term slug="pull-cdn">pull CDN</Term>, the PoP fetches content from the origin **on demand**: the first request for a URL at a PoP is a miss, the PoP fetches it from the origin, stores it according to its caching headers, and serves later requests from its own copy. CloudFront, Cloudflare, Fastly and Akamai all work this way by default.
 
-<Figure caption="FIG. 6.1 · PULL CDN WITH AN ORIGIN SHIELD · ONE ORIGIN FETCH PER OBJECT">
+<Figure caption="Figure 6.1 · Pull CDN with an origin shield · One origin fetch per object">
   <Diagram label="The first user's request misses at the edge PoP and the shield and is fetched from the origin once. A later user at another PoP misses at the edge but hits the shield, so the origin is not contacted again." chart={`sequenceDiagram
     participant U1 as User (Paris)
     participant E1 as Edge PoP Paris

@@ -134,7 +134,7 @@ The budget is a dial: bigger chunks mean better prefill efficiency and TTFT, sma
 
 Chunking still makes prefill and decode share a GPU and a parallelism layout. <Term slug="prefill-decode-disaggregation">Disaggregation</Term> runs them on **separate GPU pools**. DistServe (Zhong et al., OSDI 2024) showed that splitting the phases removes their interference and lets each pool pick its own parallelism and size, maximising goodput under separate TTFT and TPOT targets. Splitwise (Patel et al., ISCA 2024) made the hardware argument: decode barely uses compute, so it can run on cheaper or older machines while prefill gets the most compute-dense ones. Moonshot AI's Mooncake (2024) built a production serving system around this split with a pooled KV store.
 
-<Figure caption="FIG. 6.16 · DISAGGREGATED PREFILL AND DECODE">
+<Figure caption="Figure 6.16 · Disaggregated prefill and decode">
   <Diagram label="The router sends a request to a prefill worker, which computes the KV cache and first token, transfers the KV to a decode worker over the network, and the decode worker streams the remaining tokens." chart={`sequenceDiagram
     participant R as Router
     participant P as Prefill pool

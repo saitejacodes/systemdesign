@@ -69,7 +69,7 @@ How it works:
 3. Every outgoing call copies it into a header. Every message published to a queue carries it as a message attribute, and the consumer restores it into its context before processing.
 4. The ID is returned to the client in a response header, so a support ticket can quote it.
 
-<Figure caption="FIG. 1 · ONE ID, FOUR SERVICES, ONE QUERY">
+<Figure caption="Figure 1 · One ID, four services, one query">
   <Diagram label="The gateway assigns request ID 7f3c9a2e, passes it to the orders service, which passes it to payments and to a queue consumer. Every service logs with the same ID." chart={`sequenceDiagram
     participant C as Client
     participant G as Gateway

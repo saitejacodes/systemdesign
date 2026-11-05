@@ -174,7 +174,7 @@ CREATE TABLE templates (
 
 ## High-level design
 
-<Figure caption="FIG. 1 · NOTIFICATION SYSTEM · TWO PRIORITY LANES, PER-CHANNEL SENDERS">
+<Figure caption="Figure 1 · Notification system · Two priority lanes, per-channel senders">
 <Diagram label="Product services and apps call an API gateway, which routes to an accept API in three availability zones. The API checks idempotency in Redis and appends to a transactional topic or a bulk topic. Router workers for each lane read preferences, quiet hours, dedup and rate counters, render the template and append to per-channel queues for push, email and SMS. Sender pools call APNs or FCM, the email provider and the SMS provider, and write status to the notification log. Failed messages go to retry queues and then a dead-letter queue. Provider webhooks flow back into the log and preferences." chart={`flowchart LR
   PS[Product services] --> GW[API gateway]
   APP[Apps: prefs and devices] --> GW

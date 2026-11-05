@@ -12,7 +12,7 @@ Almost every request your backend serves travels over TCP. But when you join a v
 2. **SYN-ACK.** The server responds with its own SYN and an <Term slug="ack">ACK</Term> acknowledging the client's sequence number.
 3. **ACK.** The client acknowledges the server's sequence number. The connection is now open, and data can flow.
 
-<Figure caption="FIG. 7.1 · THE THREE-WAY HANDSHAKE · ONE ROUND TRIP BEFORE DATA">
+<Figure caption="Figure 7.1 · The three-way handshake · One round trip before data">
   <Diagram label="The TCP three-way handshake adds one round trip of latency before any application data is sent." chart={`sequenceDiagram
     participant Client
     participant Server
@@ -109,7 +109,7 @@ TCP Fast Open (TFO) lets the client send data in the SYN packet on repeat connec
 
 This matters most in multiplexed protocols. HTTP/2 runs multiple request streams over a single TCP connection. If one packet carrying data for stream A is lost, streams B, C and D are also stalled until the retransmission arrives, even though their data is sitting in the receive buffer.
 
-<Figure caption="FIG. 7.2 · HEAD-OF-LINE BLOCKING">
+<Figure caption="Figure 7.2 · Head-of-line blocking">
   <Diagram label="Head-of-line blocking: packets 3 and 4 are ready but cannot be delivered until lost packet 2 is retransmitted." chart={`flowchart LR
     subgraph TCP receive buffer
         P1["Packet 1 ✓"]

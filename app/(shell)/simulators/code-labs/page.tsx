@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { LabGrid, type LabCard } from "@/components/labs/LabGrid";
-import { labCode } from "@/components/labs/labCode";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { getSectionById } from "@/lib/content";
 import { PHASES } from "@/lib/curriculum";
@@ -12,11 +11,11 @@ export default function Page() {
   const labs: LabCard[] = getLabs().map(({ meta }) => {
     const s = getSectionById(meta.sectionIds[0]);
     const phase = s?.meta.phase ?? 1;
-    return { id: meta.id, code: labCode(meta.order), title: meta.title, summary: meta.summary, phase, phaseShort: PHASES[phase - 1].short, lesson: s?.meta.title ?? "" };
+    return { id: meta.id, title: meta.title, summary: meta.summary, phase, phaseShort: PHASES[phase - 1].short, lesson: s?.meta.title ?? "" };
   });
   return (
     <>
-      <PageHeader code="L-00" spec="Code labs" before="Build the parts" em="yourself" after="." lede="Small, testable versions of the data structures and algorithms behind the lessons: caches, rate limiters, hash rings, clocks and more.">
+      <PageHeader title="Build the parts yourself" lede="Small, testable versions of the data structures and algorithms behind the lessons: caches, rate limiters, hash rings, clocks and more.">
         <ul className="grid max-w-[70ch] list-disc gap-1.5 pl-5 text-[15px] text-ink-muted">
           <li>Code runs in your browser, in a Web Worker. Nothing is sent anywhere, and your code is saved on this device.</li>
           <li>Python runs on Pyodide (about 10 MB, downloaded the first time you run). JavaScript runs as is; TypeScript is compiled in the browser first.</li>

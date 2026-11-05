@@ -140,7 +140,7 @@ A relational database could hold 4 TB, but the write rate, the need to shard it 
 
 The system is a set of identical **cells**, one per availability zone. Each cell owns a share of hosts (by host hash) and contains a frontier shard, its Bloom filter, a fetch-task queue and a pool of fetch-and-parse workers. State that must survive a zone, the URL store and the page store, is regional and replicated across zones.
 
-<Figure caption="FIG. 1 · WEB CRAWLER · ONE CELL PER ZONE, REGIONAL STATE">
+<Figure caption="Figure 1 · Web crawler · One cell per zone, regional state">
 <Diagram label="Operators reach a crawl control API backed by SQL. A load balancer feeds three zone cells. In each cell the frontier shard checks discovered URLs against a Bloom filter backed by a regional URL store, and leases due URLs into a fetch queue consumed by fetch and parse workers that download pages from the public web, write WARC files to object storage and send outlinks back to the frontier that owns each host." chart={`flowchart LR
   OP["Crawl operators"] --> LB["Load balancer"]
   LB --> CTL["Crawl control API"]

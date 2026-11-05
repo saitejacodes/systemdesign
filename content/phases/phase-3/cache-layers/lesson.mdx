@@ -56,7 +56,7 @@ Each layer of caching sits on a different rung of a latency ladder. The figures 
 
 Two jumps dominate. Going from **in-process** (nanoseconds) to **any network hop** (hundreds of microseconds) is a factor of roughly a thousand. Going from **in-region** to **cross-continent** is another factor of a hundred or more. Caching close to the user beats caching close to the database whenever the data allows it.
 
-<Figure caption="FIG. 1.1 · THE CACHE LAYERS A READ PASSES THROUGH · EACH HIT STOPS THE JOURNEY">
+<Figure caption="Figure 1.1 · The cache layers a read passes through · Each hit stops the journey">
 <Diagram label="A request flows from the browser cache to a CDN edge, then a reverse proxy, then the app with its in-process cache, then a distributed cache, then the database and its buffer pool. Each layer can answer and stop the request." chart={`flowchart LR
   B["Browser cache"] -->|miss| C["CDN edge"]
   C -->|miss| R["Reverse proxy cache"]

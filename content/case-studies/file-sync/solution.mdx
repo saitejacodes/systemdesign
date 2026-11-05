@@ -183,7 +183,7 @@ Incrementing `journal_head` under the row lock serialises commits **within one n
 
 ## High-level design
 
-<Figure caption="FIG. 1 · FILE SYNC · METADATA PLANE, BLOCK PLANE AND NOTIFICATIONS">
+<Figure caption="Figure 1 · File sync · Metadata plane, block plane and notifications">
 <Diagram label="Devices resolve DNS and reach a load balancer. Metadata API instances in three availability zones read a namespace-head cache and read and write 128 metadata shards. Devices upload and download blocks directly to content-addressed object storage with presigned URLs. Each commit is published to a change topic; notifier workers look up which devices follow the namespace and send a doorbell through notification gateways in each zone, or through mobile push." chart={`flowchart LR
   D[Devices: desktop, mobile, web] --> DNS[DNS]
   D --> LB[Load balancer]

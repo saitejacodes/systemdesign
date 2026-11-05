@@ -11,7 +11,7 @@ export default function Page() {
   const cases = getCaseStudies().filter((c) => c.rubric).sort((a, b) => a.meta.weekRecommended - b.meta.weekRecommended || a.meta.difficulty - b.meta.difficulty || a.meta.title.localeCompare(b.meta.title));
   return (
     <>
-      <PageHeader code="C-00" spec="Case studies" before="Real systems, one" em="method" after="." lede="Each case is a full worked answer in the 7-step framework, a reference design you can run, and a rubric to score your own attempt." />
+      <PageHeader title="Real systems, one method" lede="Each case is a full worked answer in the 7-step framework, a reference design you can run, and a rubric to score your own attempt." />
       <ol className="grid gap-0 px-4 py-6 sm:px-8" aria-label="Case studies">
         {cases.map((c, i) => (
           <li key={c.meta.id} className="grid gap-1 border-b border-line py-4 sm:grid-cols-[3rem_1fr_auto] sm:items-baseline sm:gap-4">
